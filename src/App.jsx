@@ -2,8 +2,8 @@
 import { useState, useEffect } from "react";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
-var SURL = "https://hgeosttxkqyprkwdwbjw.supabase.co";
-var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnZW9zdHR4a3F5cHJrd2R3Ymp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3ODE1NzEsImV4cCI6MjA5NDM1NzU3MX0.bdqYFKUj1dwm2Os9ert3NZfIIDkxSZuXItaPqYDmUE8";
+var SURL = "https://qcfwqnqtrqyjdfvakwxt.supabase.co";
+var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjZndxbnF0cnF5amRmdmFrd3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzYxODMsImV4cCI6MjA5NjE1MjE4M30.Zh5jN_oGXde0JGBJ_NTBn5Mkr2m6lI3VPjAsqrzd6Gc";
 var SH = { "Content-Type": "application/json", "apikey": SKEY, "Authorization": "Bearer " + SKEY, "Prefer": "return=representation" };
 
 async function sbLoad() {

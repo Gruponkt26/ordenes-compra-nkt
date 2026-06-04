@@ -47,11 +47,14 @@ var FACTURACION = [
 ];
 
 var INIT_USERS = [
-  { id: "u1", nombre: "Admin",      usuario: "admin",      password: "admin123", local: null, rol: "admin"   },
-  { id: "u2", nombre: "El Bodegón", usuario: "bodegon",    password: "bodegon1", local: "l1", rol: "usuario" },
-  { id: "u3", nombre: "Kusama",     usuario: "kusama",     password: "kusama1",  local: "l2", rol: "usuario" },
-  { id: "u4", nombre: "Colantonio", usuario: "colantonio", password: "colant1",  local: "l3", rol: "usuario" },
-  { id: "u5", nombre: "Oficina",    usuario: "oficina",    password: "oficina1", local: "l4", rol: "usuario" },
+  { id: "u1", nombre: "Sofia",   usuario: "sofia",   password: "Sofia0422",   local: null, rol: "admin",   seccion: "" },
+  { id: "u2", nombre: "Araceli", usuario: "araceli", password: "Araceli123",  local: null, rol: "admin",   seccion: "" },
+  { id: "u3", nombre: "Belen",   usuario: "belen",   password: "Belen1509",   local: "l4", rol: "usuario", seccion: "" },
+  { id: "u4", nombre: "Ariana",  usuario: "ariana",  password: "Ariana123",   local: "l2", rol: "usuario", seccion: "" },
+  { id: "u5", nombre: "Galo",    usuario: "galo",    password: "Galo123",     local: "l1", rol: "usuario", seccion: "Salón" },
+  { id: "u6", nombre: "Sol",     usuario: "sol",     password: "Sol123",      local: "l1", rol: "usuario", seccion: "Cocina" },
+  { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
+  { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l3", rol: "usuario", seccion: "Cocina" },
 ];
 
 var INIT_PROVEEDORES = [
@@ -137,7 +140,7 @@ function Login(p) {
             <div key={u.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",padding:"3px 0",borderBottom:"1px solid #1A1A1A"}}>
               <span style={{color:u.rol==="admin"?"#C1440E":"#888"}}>{u.rol==="admin"?"👑":"👤"} {u.usuario}</span>
               <span style={{color:"#333"}}>{u.password}</span>
-              <span style={{color:loc?loc.color:"#555"}}>{loc?loc.nombre:"Admin"}</span>
+              <span style={{color:loc?loc.color:"#555"}}>{loc?loc.nombre+(u.seccion?" · "+u.seccion:""):"Admin"}</span>
             </div>
           );})}
         </div>
@@ -149,7 +152,23 @@ function Login(p) {
 // ─── PDF ──────────────────────────────────────────────────────────────────────
 async function makePDF(orden, local, prov, items, fact) {
   if (!window.jspdf) {
-    await new Promise(function(res,rej){var s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+    await new Promise(function(res,rej){
+      var urls = [
+        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+        "https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js",
+        "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
+      ];
+      var idx = 0;
+      function tryNext() {
+        if (idx >= urls.length) { rej(new Error("No se pudo cargar jsPDF")); return; }
+        var s = document.createElement("script");
+        s.src = urls[idx++];
+        s.onload = res;
+        s.onerror = function() { tryNext(); };
+        document.head.appendChild(s);
+      }
+      tryNext();
+    });
   }
   var doc=new window.jspdf.jsPDF({unit:"mm",format:"a4"});
   var W=210,m=18,cW=W-m*2;
@@ -624,9 +643,11 @@ function OrdenCard(p) {
             </div>
             <div style={{fontSize:11,color:"#444"}}>
               <span style={{color:bc,fontWeight:600}}>{local?local.emoji:""} {local?local.nombre:""}</span>
+              {orden.seccion&&<span style={{margin:"0 4px",color:"#666"}}>· {orden.seccion}</span>}
               <span style={{margin:"0 4px"}}>·</span>
               <span>{(orden.provSections||[]).length} proveedores</span>
             </div>
+            {orden.emisor&&<div style={{fontSize:10,color:"#555"}}>por {orden.emisor}</div>}
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
             <div style={{fontSize:14,fontWeight:800,fontFamily:"'Playfair Display',serif"}}>${tot.toFixed(2)}</div>
@@ -830,6 +851,7 @@ export default function App() {
   var esAdmin=cu.rol==="admin";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
+  var seccion=cu.seccion||"";
 
   var filtered=ordenes.filter(function(o){
     return (lf?o.local===lf:(filtroLocal==="all"?true:o.local===filtroLocal))&&(filtroStatus==="all"||o.status===filtroStatus);
@@ -844,7 +866,11 @@ export default function App() {
 
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}
-  function saveOrden(o){sbSave(o);setOrdenes(function(p){return[o,...p];});}
+  function saveOrden(o){
+    var ordenConSeccion = {...o, emisor: cu.nombre, seccion: cu.seccion||""};
+    sbSave(ordenConSeccion);
+    setOrdenes(function(p){return[ordenConSeccion,...p];});
+  }
 
   return(
     <div>
@@ -855,7 +881,7 @@ export default function App() {
         <div style={{borderBottom:"1px solid #181818",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <div><div style={{fontSize:10,color:"#333",letterSpacing:3,textTransform:"uppercase"}}>Sistema de</div><h1 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800}}>Órdenes de Compra</h1></div>
-            {la&&<div style={{padding:"4px 11px",borderRadius:20,background:la.color+"22",border:"1px solid "+la.color+"44",color:la.color,fontSize:12,fontWeight:700}}>{la.emoji} {la.nombre}</div>}
+            {la&&<div style={{padding:"4px 11px",borderRadius:20,background:la.color+"22",border:"1px solid "+la.color+"44",color:la.color,fontSize:12,fontWeight:700}}>{la.emoji} {la.nombre}{seccion?" · "+seccion:""}</div>}
             {esAdmin&&<Badge color="#C1440E">👑 Admin</Badge>}
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>

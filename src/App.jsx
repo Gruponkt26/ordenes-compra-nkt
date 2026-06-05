@@ -51,6 +51,12 @@ async function sbDelete(id) {
   } catch(e) {}
 }
 
+async function sbDelete(id) {
+  try {
+    await fetch(SURL + "/rest/v1/ordenes?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 var LOCALES = [
   { id: "l1", nombre: "El Bodegón Nkt", emoji: "🍷", color: "#C1440E" },
@@ -649,16 +655,82 @@ function NuevaOrden(p) {
 }
 
 // ─── ORDEN CARD ───────────────────────────────────────────────────────────────
+
+// EDIT ORDEN MODAL
+function EditOrdenModal(p) {
+  var orden=p.orden, proveedores=p.proveedores, onClose=p.onClose, onSave=p.onSave;
+  var [notas,setNotas]=useState(orden.notas||"");
+  var [facturacion,setFacturacion]=useState(orden.facturacion||"");
+  var [fechaEntrega,setFechaEntrega]=useState(orden.fechaEntrega||"");
+  var [status,setStatus]=useState(orden.status);
+
+  function doSave(){
+    onSave({...orden, notas:notas, facturacion:facturacion, fechaEntrega:fechaEntrega, status:status});
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:350,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(500px,95vw)",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:2}}>Editando</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:17}}>✏️ {orden.id}</h2>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:13}}>
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Estado</label>
+            <select value={status} onChange={function(e){setStatus(e.target.value);}} style={INP}>
+              <option value="borrador">Borrador</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="enviada">Enviada</option>
+              <option value="confirmada">Confirmada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Fecha de Entrega</label>
+            <input type="date" value={fechaEntrega} onChange={function(e){setFechaEntrega(e.target.value);}} style={INP}/>
+          </div>
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Facturar a</label>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <button onClick={function(){setFacturacion(facturacion==="f1"?"":"f1");}} style={{padding:"9px 12px",borderRadius:8,border:"2px solid "+(facturacion==="f1"?"#D4A017":"#1E1E1E"),background:facturacion==="f1"?"#D4A01711":"#0F0F0F",color:facturacion==="f1"?"#D4A017":"#666",cursor:"pointer",fontFamily:"'Lora',serif",textAlign:"left"}}>
+                <div style={{fontSize:12,fontWeight:700}}>Calzon Gitano SRL</div>
+                <div style={{fontSize:10,color:"#555"}}>CUIT 30-71844629-1</div>
+              </button>
+              <button onClick={function(){setFacturacion(facturacion==="f2"?"":"f2");}} style={{padding:"9px 12px",borderRadius:8,border:"2px solid "+(facturacion==="f2"?"#D4A017":"#1E1E1E"),background:facturacion==="f2"?"#D4A01711":"#0F0F0F",color:facturacion==="f2"?"#D4A017":"#666",cursor:"pointer",fontFamily:"'Lora',serif",textAlign:"left"}}>
+                <div style={{fontSize:12,fontWeight:700}}>Colantonio Carlos Nicolas</div>
+                <div style={{fontSize:10,color:"#555"}}>CUIT 20-26958479-4</div>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Notas</label>
+            <textarea value={notas} onChange={function(e){setNotas(e.target.value);}} rows={3} placeholder="Notas adicionales..." style={{...INP,resize:"vertical"}}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{...GH,flex:1}}>Cancelar</button>
+            <button onClick={doSave} style={{...BS("#3A7D44"),flex:2}}>✓ Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrdenCard(p) {
-  var orden=p.orden, proveedores=p.proveedores, onUpdate=p.onUpdate, onDelete=p.onDelete;
+  var orden=p.orden, proveedores=p.proveedores, onUpdate=p.onUpdate, onDelete=p.onDelete, esAdmin=p.esAdmin;
   var local=getLocal(orden.local), bc=local?local.color:"#444";
-  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [sent,setSent]=useState([]);
+  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [sent,setSent]=useState([]), [editMode,setEditMode]=useState(false);
   var tot=(orden.provSections||[]).reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
   var fact=orden.facturacion?getFact(orden.facturacion):null;
   var NS={borrador:"pendiente",pendiente:"enviada",enviada:"confirmada"};
   var NL={borrador:"Emitir",pendiente:"Marcar Enviada",enviada:"Confirmar Recepción"};
   return(
     <div>
+      {editMode&&<EditOrdenModal orden={orden} proveedores={proveedores} onClose={function(){setEditMode(false);}} onSave={function(o){sbPatch(o.id,{notas:o.notas,facturacion:o.facturacion,fecha_entrega:o.fechaEntrega,status:o.status});onUpdate(o.id,o);setEditMode(false);}}/>}
       <div style={{background:"#111",border:"1px solid "+(open?bc+"44":"#1A1A1A"),borderRadius:12,overflow:"hidden",transition:"border-color 0.3s"}}>
         <div onClick={function(){setOpen(function(o){return !o;});}} style={{padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:4,height:36,background:bc,borderRadius:2,flexShrink:0}}/>
@@ -704,7 +776,9 @@ function OrdenCard(p) {
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               {NS[orden.status]&&<button onClick={function(){onUpdate(orden.id,{status:NS[orden.status]});}} style={{...BS("#C1440E"),padding:"6px 10px",fontSize:11}}>{NL[orden.status]}</button>}
               {!["cancelada","confirmada"].includes(orden.status)&&<button onClick={function(){onUpdate(orden.id,{status:"cancelada"});}} style={{...GH,padding:"6px 10px",fontSize:11}}>Cancelar</button>}
-              <button onClick={function(){if(window.confirm("¿Eliminar la orden "+orden.id+"? Esta acción no se puede deshacer."))onDelete(orden.id);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E33"}}>🗑️ Eliminar</button>
+              {esAdmin&&<button onClick={function(){setEditMode(true);setOpen(false);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#D4A017",borderColor:"#D4A01744"}}>✏️ Editar</button>}
+              {esAdmin&&<button onClick={function(){onDelete(orden.id);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E44"}}>🗑️ Eliminar</button>}
+
             </div>
           </div>
         )}
@@ -893,6 +967,7 @@ export default function App() {
   };
 
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
+  function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
   function delOrden(id){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}
   function saveOrden(o){
     var now = new Date().toISOString(); var ordenConSeccion = {...o, emisor: cu.nombre, seccion: cu.seccion||"", createdAt: now};
@@ -944,7 +1019,7 @@ export default function App() {
 
           {/* PANEL DESPACHO */}
           {esAdmin&&vista==="despacho"&&(
-            <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden}/>
+            <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
           {/* HISTORIAL */}
@@ -971,7 +1046,7 @@ export default function App() {
                 <div style={{textAlign:"center",padding:"44px 20px"}}><div style={{fontSize:36,marginBottom:10}}>📋</div><div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E",marginBottom:4}}>Sin órdenes</div><div style={{fontSize:12,color:"#222"}}>{la?"No hay órdenes de "+la.nombre+" todavía":"Creá tu primera orden"}</div></div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                  {filtered.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>;  })}
+                  {filtered.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden} esAdmin={esAdmin}/>;  })}
                 </div>
               )}
             </div>

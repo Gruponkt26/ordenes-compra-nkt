@@ -17,8 +17,26 @@ async function sbLoad() {
 
 async function sbSave(orden) {
   try {
-    await fetch(SURL + "/rest/v1/ordenes", { method: "POST", headers: SH, body: JSON.stringify({ id: orden.id, local: orden.local, fecha: orden.fecha, fecha_entrega: orden.fechaEntrega || null, notas: orden.notas || null, facturacion: orden.facturacion || null, status: orden.status, prov_sections: orden.provSections, created_at: orden.createdAt }) });
-  } catch(e) {}
+    var headers = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var body = {
+      id: orden.id,
+      local: orden.local,
+      fecha: orden.fecha,
+      fecha_entrega: orden.fechaEntrega || null,
+      notas: orden.notas || null,
+      facturacion: orden.facturacion || null,
+      status: orden.status,
+      prov_sections: orden.provSections,
+      emisor: orden.emisor || null,
+      seccion: orden.seccion || null,
+      created_at: orden.createdAt
+    };
+    var r = await fetch(SURL + "/rest/v1/ordenes", { method: "POST", headers: headers, body: JSON.stringify(body) });
+    if (!r.ok) {
+      var err = await r.text();
+      console.error("Supabase error:", err);
+    }
+  } catch(e) { console.error("sbSave error:", e); }
 }
 
 async function sbPatch(id, changes) {
@@ -77,7 +95,7 @@ var INIT_PRODUCTOS = {
   p5: ["Atun","Mayonesa","Choclo","Vino blanco","Vino tinto","Harina 0000","Maicena","Panko","Polenta","Azucar","Sal fina","Sal gruesa","Azucar mascabo","Vinagre blanco","Esponja cocina","Esponja acero","Detergente","Trapo de piso","Rejillas","Desengrasante","Alcohol","Guantes de limpieza","Desodorante piso","Papel higienico","Lavandina","Bolsas residuos","Aceite","Aceitunas","Perfumina","Repasadores","Vinagre de manzana"],
   p6: ["Dips","Tapas de dips","Lapiceras","Cinta","Bolsas delivery F8 o F9","Papel manteca","Film","Aluminio","Bandejas de aluminio f75","Guantes de nitrilo","Mangas descartables N5","Bobina de papel","Cajas de empanadas chinas","Ensaladeras","Palitos chinos","Rollo comandera","Rollo posnet","Sticker dips","Tarjeta QR","Baucher","Caja de servilletas","Caja de pizza","Caja de media docena","Pinchos","Bandejas de aluminio f100","Bandeja de aluminio f200"],
   p7: ["Ajo en polvo","Sesamo negro","Sesamo blanco","Tomates secos","Tomillo","Almendras","Nueces","Mani","Pimenton Ahumado","Humo en polvo","Hongos de Pino","Perejil","Pimienta negra","Cebolla crispy"],
-  p8: ["Cajas de sushi","Wasabi","Mirin","Alga kombu","Aceite de sesamo","Salsa de soja","Salsa de ostras","Arroz koyi","Alga nori","Caviar","Finlandia","Ajinomoto","Crema de leche","Flores decoracion"],
+  p8: ["Cajas de sushi","Wasabi","Mirin","Alga kombu","Aceite de sesamo","Salsa de soja","Salsa de ostras","Arroz koyi","Alga nori","Caviar","Finlandia","Ajinomoto","Crema de leche","Flores decoracion","Palitos chinos"],
   p9: ["Gin","Vinos","Coca","Coca zero","Sprite","Fanta","Pomelo","Pera","Manzana","Naranja","Cerveza","Heineken lata","Imperial IPA","Grolsh lata"],
 };
 
@@ -85,12 +103,18 @@ var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
 var _oc = 1, _pc = 10, _uc = 10;
-function genOC() { return "OC-" + String(_oc++).padStart(4,"0"); }
+function genOC() { var ts = String(new Date().getTime()).slice(-7); return "OC-" + ts; }
 function genProv() { return "p" + _pc++; }
 function genUser() { return "u" + _uc++; }
 function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || null; }
 function getFact(id) { return FACTURACION.find(function(f) { return f.id === id; }) || null; }
 function fmtDate(s) { if (!s) return "—"; var p = s.split("-"); return p[2]+"/"+p[1]+"/"+p[0]; }
+function fmtDateTime(s) {
+  if (!s) return "—";
+  var d = new Date(s);
+  var pad = function(n) { return n < 10 ? "0"+n : n; };
+  return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
 function cleanPhone(s) { return s.replace(/\D/g,""); }
 
 var INP = { padding:"9px 12px", borderRadius:8, border:"1px solid #2A2A2A", background:"#0F0F0F", color:"#F0EDE8", fontFamily:"'Lora',serif", fontSize:13, boxSizing:"border-box", width:"100%" };
@@ -220,7 +244,8 @@ function WspModal(p) {
   var tot=items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);
   var itext=items.map(function(i){return "• "+i.nombre+": "+i.cantidad+" "+i.unidad;}).join("\n");
   var ftxt=fact?("\n\n🧾 *Facturar a:* "+fact.razonSocial+"\nCUIT: "+fact.cuit+" · "+fact.condicion+"\n"+fact.domicilio):"";
-  var msg="📋 *Orden "+orden.id+"*\n\n🏪 *"+(local?local.nombre:"")+"*\n📅 "+fmtDate(orden.fecha)+(orden.fechaEntrega?"\n🚚 Entrega: "+fmtDate(orden.fechaEntrega):"")+"\n\n*Detalle:*\n"+itext+"\n\n💰 *Total: $"+tot.toFixed(2)+"*"+(orden.notas?"\n\n📝 "+orden.notas:"")+ftxt+"\n\n_(Adjunto PDF)_";
+  var ahora = fmtDateTime(new Date().toISOString());
+  var msg="📋 *Orden "+orden.id+"*\n\n🏪 *"+(local?local.nombre:"")+"*\n📅 "+fmtDate(orden.fecha)+"\n⏱ Enviada: "+ahora+(orden.fechaEntrega?"\n🚚 Entrega: "+fmtDate(orden.fechaEntrega):"")+"\n\n*Detalle:*\n"+itext+"\n\n💰 *Total: $"+tot.toFixed(2)+"*"+(orden.notas?"\n\n📝 "+orden.notas:"")+ftxt+"\n\n_(Adjunto PDF)_";
   async function dl(){setGen(true);try{var doc=await makePDF(orden,local,prov,items,fact);var n=orden.id+"_"+prov.nombre.replace(/\s+/g,"-")+".pdf";doc.save(n);setFname(n);setStep("abrir");}catch(e){alert("Error: "+e.message);}setGen(false);}
   function wa(){var num=cleanPhone(phone);if(!num){alert("Ingresá el número.");return;}window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg),"_blank");setStep("done");}
   return (
@@ -315,6 +340,7 @@ function PanelDespacho(p) {
                     <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:12,fontWeight:700,color:entry.local?entry.local.color:"#888"}}>{entry.local?entry.local.emoji:""} {entry.local?entry.local.nombre:""}</span>
                       <span style={{fontSize:10,color:"#555"}}>· {entry.orden.id}</span>
+                      {entry.orden.createdAt&&<span style={{fontSize:10,color:"#444"}}>· ⏱ {fmtDateTime(entry.orden.createdAt)}</span>}
                       <SBadge status={entry.orden.status}/>
                       {isSent&&<span style={{fontSize:11,color:"#3A7D44",fontWeight:700}}>✓ Enviado</span>}
                     </div>
@@ -652,6 +678,7 @@ function OrdenCard(p) {
           <div style={{textAlign:"right",flexShrink:0}}>
             <div style={{fontSize:14,fontWeight:800,fontFamily:"'Playfair Display',serif"}}>${tot.toFixed(2)}</div>
             <div style={{fontSize:10,color:"#333"}}>{fmtDate(orden.fecha)}</div>
+            {orden.createdAt&&<div style={{fontSize:10,color:"#444"}}>⏱ {fmtDateTime(orden.createdAt)}</div>}
           </div>
           <div style={{color:"#333",fontSize:11}}>{open?"▴":"▾"}</div>
         </div>
@@ -867,7 +894,7 @@ export default function App() {
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}
   function saveOrden(o){
-    var ordenConSeccion = {...o, emisor: cu.nombre, seccion: cu.seccion||""};
+    var now = new Date().toISOString(); var ordenConSeccion = {...o, emisor: cu.nombre, seccion: cu.seccion||"", createdAt: now};
     sbSave(ordenConSeccion);
     setOrdenes(function(p){return[ordenConSeccion,...p];});
   }

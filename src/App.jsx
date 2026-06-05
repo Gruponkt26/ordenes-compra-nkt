@@ -340,6 +340,7 @@ function PanelDespacho(p) {
                     <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:12,fontWeight:700,color:entry.local?entry.local.color:"#888"}}>{entry.local?entry.local.emoji:""} {entry.local?entry.local.nombre:""}</span>
                       <span style={{fontSize:10,color:"#555"}}>· {entry.orden.id}</span>
+                      {entry.orden.emisor&&<span style={{fontSize:11,color:"#D4A017",fontWeight:700}}>· 👤 {entry.orden.emisor}{entry.orden.seccion?" · "+entry.orden.seccion:""}</span>}
                       {entry.orden.createdAt&&<span style={{fontSize:10,color:"#444"}}>· ⏱ {fmtDateTime(entry.orden.createdAt)}</span>}
                       <SBadge status={entry.orden.status}/>
                       {isSent&&<span style={{fontSize:11,color:"#3A7D44",fontWeight:700}}>✓ Enviado</span>}

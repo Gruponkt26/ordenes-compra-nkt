@@ -72,12 +72,6 @@ async function sbDeleteFaltante(id) {
   } catch(e) {}
 }
 
-async function sbDelete(id) {
-  try {
-    await fetch(SURL + "/rest/v1/ordenes?id=eq." + id, { method: "DELETE", headers: SH });
-  } catch(e) {}
-}
-
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 var LOCALES = [
   { id: "l1", nombre: "El Bodegón Nkt", emoji: "🍷", color: "#C1440E" },
@@ -1138,7 +1132,6 @@ export default function App() {
 
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
-  function delOrden(id){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}
   function saveOrden(o){
     var now = new Date().toISOString(); var ordenConSeccion = {...o, emisor: cu.nombre, seccion: cu.seccion||"", createdAt: now};
     sbSave(ordenConSeccion);

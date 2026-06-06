@@ -185,16 +185,7 @@ function Login(p) {
             <button onClick={go} style={{...BS("#C1440E"),padding:"12px",fontSize:14,marginTop:4,boxShadow:"0 4px 18px #C1440E33"}}>Ingresar →</button>
           </div>
         </div>
-        <div style={{marginTop:16,background:"#111",border:"1px solid #1E1E1E",borderRadius:12,padding:"11px 15px"}}>
-          <div style={{fontSize:10,color:"#444",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>Usuarios de demo</div>
-          {INIT_USERS.map(function(u){var loc=getLocal(u.local); return (
-            <div key={u.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",padding:"3px 0",borderBottom:"1px solid #1A1A1A"}}>
-              <span style={{color:u.rol==="admin"?"#C1440E":"#888"}}>{u.rol==="admin"?"👑":"👤"} {u.usuario}</span>
-              <span style={{color:"#333"}}>{u.password}</span>
-              <span style={{color:loc?loc.color:"#555"}}>{loc?loc.nombre+(u.seccion?" · "+u.seccion:""):"Admin"}</span>
-            </div>
-          );})}
-        </div>
+
       </div>
     </div>
   );
@@ -953,6 +944,75 @@ function GestUsuarios(p) {
   );
 }
 
+
+// MIS PRODUCTOS - para usuarios normales
+function MisProductosModal(p) {
+  var proveedores=p.proveedores, productos=p.productos, onClose=p.onClose, onSave=p.onSave;
+  var [prods,setProds]=useState(productos);
+  var [sel,setSel]=useState(null);
+  var [newProd,setNewProd]=useState("");
+
+  function addProd(){if(!newProd.trim()||!sel)return;setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),newProd.trim()];return n;});setNewProd("");}
+  function delProd(pid,prod){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(x){return x!==prod;});return n;});}
+  var selProv=proveedores.find(function(x){return x.id===sel;})||null;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.88)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(820px,96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>📦 Mis Productos</h2>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){onSave(prods);}} style={{...BS("#3A7D44"),fontSize:12}}>✓ Guardar</button>
+            <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+          <div style={{width:250,borderRight:"1px solid #1A1A1A",display:"flex",flexDirection:"column",flexShrink:0}}>
+            <div style={{padding:"9px 11px",borderBottom:"1px solid #1A1A1A"}}><span style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase"}}>Seleccioná un proveedor</span></div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {proveedores.map(function(pv){return(
+                <div key={pv.id} onClick={function(){setSel(pv.id);}} style={{padding:"10px 12px",borderBottom:"1px solid #161616",cursor:"pointer",background:sel===pv.id?"#1C1C1C":"transparent",borderLeft:"3px solid "+(sel===pv.id?"#C1440E":"transparent")}}>
+                  <div style={{fontSize:12,fontWeight:600,color:sel===pv.id?"#F0EDE8":"#999"}}>{pv.nombre}</div>
+                  <div style={{fontSize:10,color:"#444"}}>{pv.categoria}</div>
+                  <div style={{fontSize:10,color:"#333"}}>{(prods[pv.id]||[]).length} productos</div>
+                </div>
+              );})}
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+            {!sel?(
+              <div style={{textAlign:"center",paddingTop:60,color:"#2A2A2A"}}>
+                <div style={{fontSize:32,marginBottom:10}}>👈</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#333"}}>Seleccioná un proveedor</div>
+              </div>
+            ):(
+              <div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:14}}>{selProv?selProv.nombre:""}</div>
+                <div style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Productos ({(prods[sel]||[]).length})</div>
+                <div style={{display:"flex",gap:6,marginBottom:10}}>
+                  <input placeholder="Nuevo producto... (Enter)" value={newProd} onChange={function(e){setNewProd(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
+                  <button onClick={addProd} style={{...BS("#C1440E"),padding:"9px 12px",flexShrink:0}}>+</button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {(prods[sel]||[]).length===0
+                    ?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"12px 0"}}>Sin productos.</div>
+                    :(prods[sel]||[]).map(function(prod,idx){return(
+                      <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
+                        <span style={{fontSize:12,color:"#BBB"}}>📦 {prod}</span>
+                        <button onClick={function(){delProd(sel,prod);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
+                      </div>
+                    )})
+                  }
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── GESTIÓN PROVEEDORES ──────────────────────────────────────────────────────
 function GestProveedores(p) {
   var [provs,setProvs]=useState(p.proveedores), [prods,setProds]=useState(p.productos), [sel,setSel]=useState(null), [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""}), [newProd,setNewProd]=useState(""), [showAdd,setShowAdd]=useState(false), [ed,setEd]=useState(null);
@@ -1043,6 +1103,7 @@ export default function App() {
   var [ordenes,setOrdenes]=useState([]);
   var [showOrden,setShowOrden]=useState(false);
   var [showGest,setShowGest]=useState(false);
+  var [showMisProds,setShowMisProds]=useState(false);
   var [showUsers,setShowUsers]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
@@ -1100,6 +1161,7 @@ export default function App() {
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {esAdmin&&<button onClick={function(){setShowGest(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>⚙️ Proveedores</button>}
+            {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             <button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -1172,11 +1234,19 @@ export default function App() {
           {(!esAdmin||vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
-                {esAdmin&&LOCALES.map(function(l){return(
-                  <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>
-                    {l.emoji} {l.nombre}
+                {esAdmin&&(
+                  <button onClick={function(){setFiltroLocal("all");}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal==="all"?"#555":"#1A1A1A"),background:filtroLocal==="all"?"#222":"none",color:filtroLocal==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>
+                    Todos
                   </button>
-                );})}
+                )}
+                {esAdmin&&LOCALES.map(function(l){
+                  var cnt=ordenes.filter(function(o){return o.local===l.id;}).length;
+                  return(
+                    <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>
+                      {l.emoji} {l.nombre} {cnt>0?"("+cnt+")":""}
+                    </button>
+                  );
+                })}
                 <select value={filtroStatus} onChange={function(e){setFiltroStatus(e.target.value);}} style={{...INP,width:"auto",padding:"4px 9px",fontSize:11,borderRadius:20}}>
                   <option value="all">Todo estado</option>
                   <option value="borrador">Borrador</option>
@@ -1202,6 +1272,7 @@ export default function App() {
 
       {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){setProveedores(pv);setProductos(pd);setShowGest(false);}}/>}
+      {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){setProductos(pd);setShowMisProds(false);}}/>}
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}} onSave={function(u){setUsers(u);setShowUsers(false);}}/>}
     </div>
   );

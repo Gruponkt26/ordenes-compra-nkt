@@ -51,6 +51,27 @@ async function sbDelete(id) {
   } catch(e) {}
 }
 
+async function sbGetFaltantes() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/faltantes?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveFaltante(f) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/faltantes", { method: "POST", headers: h, body: JSON.stringify(f) });
+  } catch(e) {}
+}
+
+async function sbDeleteFaltante(id) {
+  try {
+    await fetch(SURL + "/rest/v1/faltantes?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbDelete(id) {
   try {
     await fetch(SURL + "/rest/v1/ordenes?id=eq." + id, { method: "DELETE", headers: SH });
@@ -656,6 +677,73 @@ function NuevaOrden(p) {
 
 // ─── ORDEN CARD ───────────────────────────────────────────────────────────────
 
+
+// CONFIRMAR ENTREGA MODAL
+function ConfirmarEntregaModal(p) {
+  var orden=p.orden, proveedores=p.proveedores, onClose=p.onClose, onConfirm=p.onConfirm;
+  // Build list of all items across all provSections
+  var todosItems = [];
+  (orden.provSections||[]).forEach(function(sec){
+    var pv = proveedores.find(function(x){return x.id===sec.provId;});
+    sec.items.forEach(function(item){
+      todosItems.push({...item, provNombre: pv?pv.nombre:"", provId: sec.provId});
+    });
+  });
+  var [faltantes, setFaltantes] = useState([]);
+
+  function toggleFaltante(itemId) {
+    setFaltantes(function(prev){
+      return prev.includes(itemId) ? prev.filter(function(x){return x!==itemId;}) : [...prev, itemId];
+    });
+  }
+
+  function doConfirm() {
+    var itemsFaltantes = todosItems.filter(function(i){return faltantes.includes(i.id);});
+    onConfirm(itemsFaltantes);
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:350,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(520px,95vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:2}}>Confirmar entrega</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:17}}>📦 {orden.id}</h2>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"14px 20px",background:"#0F0F0F",flexShrink:0}}>
+          <div style={{fontSize:12,color:"#888"}}>Marcá los productos que <strong style={{color:"#C1440E"}}>NO llegaron</strong> para agregarlos como faltantes pendientes.</div>
+        </div>
+        <div style={{overflowY:"auto",flex:1,padding:"12px 20px"}}>
+          {todosItems.map(function(item){
+            var isFaltante = faltantes.includes(item.id);
+            return(
+              <div key={item.id} onClick={function(){toggleFaltante(item.id);}}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",marginBottom:6,borderRadius:10,border:"1px solid "+(isFaltante?"#C1440E44":"#1E1E1E"),background:isFaltante?"#1A0808":"#0F0F0F",cursor:"pointer",transition:"all 0.2s"}}>
+                <div style={{width:20,height:20,borderRadius:5,border:"2px solid "+(isFaltante?"#C1440E":"#444"),background:isFaltante?"#C1440E":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12}}>
+                  {isFaltante?"✕":""}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,color:isFaltante?"#C1440E":"#F0EDE8",fontWeight:isFaltante?700:400}}>{item.nombre}</div>
+                  <div style={{fontSize:10,color:"#555"}}>{item.provNombre} · {item.cantidad} {item.unidad}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"13px 20px",borderTop:"1px solid #1E1E1E",flexShrink:0}}>
+          {faltantes.length>0&&<div style={{fontSize:12,color:"#C1440E",marginBottom:10,textAlign:"center"}}>⚠️ {faltantes.length} producto{faltantes.length!==1?"s":""} marcado{faltantes.length!==1?"s":""} como faltante{faltantes.length!==1?"s":""}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{...GH,flex:1}}>Cancelar</button>
+            <button onClick={doConfirm} style={{...BS("#3A7D44"),flex:2}}>✓ Confirmar entrega</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // EDIT ORDEN MODAL
 function EditOrdenModal(p) {
   var orden=p.orden, proveedores=p.proveedores, onClose=p.onClose, onSave=p.onSave;
@@ -723,7 +811,7 @@ function EditOrdenModal(p) {
 function OrdenCard(p) {
   var orden=p.orden, proveedores=p.proveedores, onUpdate=p.onUpdate, onDelete=p.onDelete, esAdmin=p.esAdmin;
   var local=getLocal(orden.local), bc=local?local.color:"#444";
-  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [sent,setSent]=useState([]), [editMode,setEditMode]=useState(false);
+  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [sent,setSent]=useState([]), [editMode,setEditMode]=useState(false), [confirmarModal,setConfirmarModal]=useState(false);
   var tot=(orden.provSections||[]).reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
   var fact=orden.facturacion?getFact(orden.facturacion):null;
   var NS={borrador:"pendiente",pendiente:"enviada",enviada:"confirmada"};
@@ -731,6 +819,19 @@ function OrdenCard(p) {
   return(
     <div>
       {editMode&&<EditOrdenModal orden={orden} proveedores={proveedores} onClose={function(){setEditMode(false);}} onSave={function(o){sbPatch(o.id,{notas:o.notas,facturacion:o.facturacion,fecha_entrega:o.fechaEntrega,status:o.status});onUpdate(o.id,o);setEditMode(false);}}/>}
+      {confirmarModal&&<ConfirmarEntregaModal orden={orden} proveedores={proveedores} onClose={function(){setConfirmarModal(false);}} onConfirm={function(itemsFaltantes){
+        onUpdate(orden.id,{status:"confirmada"});
+        sbPatch(orden.id,{status:"confirmada"});
+        if(itemsFaltantes.length>0){
+          itemsFaltantes.forEach(function(item){
+            var f = {id: String(Date.now())+"_"+item.id, producto: item.nombre, proveedor: item.provNombre, prov_id: item.provId, cantidad: item.cantidad, unidad: item.unidad, orden_id: orden.id, local: orden.local, created_at: new Date().toISOString()};
+            sbSaveFaltante(f);
+          });
+        }
+        setConfirmarModal(false);
+        if(itemsFaltantes.length>0) alert("✓ Entrega confirmada. Se guardaron "+itemsFaltantes.length+" faltante(s) para el próximo pedido.");
+        else alert("✓ Entrega confirmada. Todo llegó correctamente.");
+      }}/>}
       <div style={{background:"#111",border:"1px solid "+(open?bc+"44":"#1A1A1A"),borderRadius:12,overflow:"hidden",transition:"border-color 0.3s"}}>
         <div onClick={function(){setOpen(function(o){return !o;});}} style={{padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:4,height:36,background:bc,borderRadius:2,flexShrink:0}}/>
@@ -774,7 +875,13 @@ function OrdenCard(p) {
             {orden.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginBottom:9}}>📝 {orden.notas}</div>}
             {fact&&<div style={{fontSize:11,color:"#D4A017",marginBottom:9}}>🧾 {fact.razonSocial} · CUIT {fact.cuit}</div>}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              {NS[orden.status]&&<button onClick={function(){onUpdate(orden.id,{status:NS[orden.status]});}} style={{...BS("#C1440E"),padding:"6px 10px",fontSize:11}}>{NL[orden.status]}</button>}
+              {NS[orden.status]&&<button onClick={function(){
+  if(orden.status==="enviada" && esAdmin){
+    setConfirmarModal(true);
+  } else {
+    onUpdate(orden.id,{status:NS[orden.status]});
+  }
+}} style={{...BS("#C1440E"),padding:"6px 10px",fontSize:11}}>{NL[orden.status]}</button>}
               {!["cancelada","confirmada"].includes(orden.status)&&<button onClick={function(){onUpdate(orden.id,{status:"cancelada"});}} style={{...GH,padding:"6px 10px",fontSize:11}}>Cancelar</button>}
               {esAdmin&&<button onClick={function(){setEditMode(true);setOpen(false);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#D4A017",borderColor:"#D4A01744"}}>✏️ Editar</button>}
               {esAdmin&&<button onClick={function(){onDelete(orden.id);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E44"}}>🗑️ Eliminar</button>}
@@ -941,11 +1048,13 @@ export default function App() {
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [loading,setLoading]=useState(false);
   var [vista,setVista]=useState("despacho");
+  var [faltantes,setFaltantes]=useState([]);
 
   useEffect(function(){
     if(!cu)return;
     setLoading(true);
     sbLoad().then(function(d){setOrdenes(d);setLoading(false);}).catch(function(){setLoading(false);});
+    sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -1014,12 +1123,49 @@ export default function App() {
             <div style={{display:"flex",gap:6,marginBottom:16}}>
               <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Panel de Despacho</button>
               <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+              <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
+              </button>
             </div>
           )}
 
           {/* PANEL DESPACHO */}
           {esAdmin&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
+          )}
+
+          {esAdmin&&vista==="faltantes"&&(
+            <div>
+              <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
+                {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
+              </div>
+              {faltantes.length===0?(
+                <div style={{textAlign:"center",padding:"40px 20px"}}>
+                  <div style={{fontSize:36,marginBottom:10}}>✅</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3A7D44"}}>Sin faltantes pendientes</div>
+                </div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {faltantes.map(function(f){
+                    var loc=getLocal(f.local);
+                    return(
+                      <div key={f.id} style={{background:"#111",border:"1px solid #C1440E33",borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:12}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{f.producto}</div>
+                          <div style={{fontSize:11,color:"#555",marginTop:3}}>
+                            {f.proveedor} · {f.cantidad} {f.unidad}
+                            {loc&&<span style={{marginLeft:6,color:loc.color}}>· {loc.emoji} {loc.nombre}</span>}
+                          </div>
+                          <div style={{fontSize:10,color:"#444",marginTop:2}}>Orden: {f.orden_id} · {fmtDateTime(f.created_at)}</div>
+                        </div>
+                        <button onClick={function(){sbDeleteFaltante(f.id);setFaltantes(function(p){return p.filter(function(x){return x.id!==f.id;});});}}
+                          style={{...GH,padding:"5px 9px",fontSize:11,color:"#3A7D44",borderColor:"#3A7D4444"}}>✓ Resuelto</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {/* HISTORIAL */}

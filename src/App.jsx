@@ -97,16 +97,21 @@ var INIT_USERS = [
 ];
 
 var INIT_PROVEEDORES = [
-  { id: "p1", nombre: "Carnicería",    categoria: "Carnes & Aves",           compartido: true, whatsapp: "" },
-  { id: "p2", nombre: "Fiambrería",    categoria: "Lácteos & Fiambres",      compartido: true, whatsapp: "" },
-  { id: "p3", nombre: "Pescadería",    categoria: "Mariscos & Pescados",     compartido: true, whatsapp: "" },
-  { id: "p4", nombre: "Verdulería",    categoria: "Frutas & Verduras",       compartido: true, whatsapp: "" },
-  { id: "p5", nombre: "Distribuidora", categoria: "Secos & Limpieza",        compartido: true, whatsapp: "" },
-  { id: "p6", nombre: "Papelera",      categoria: "Descartables",            compartido: true, whatsapp: "" },
-  { id: "p7", nombre: "Especias",      categoria: "Especias & Frutos secos", compartido: true, whatsapp: "" },
-  { id: "p8", nombre: "Insumos",       categoria: "Insumos & Salsas",        compartido: true, whatsapp: "" },
-  { id: "p9", nombre: "Bebidas",       categoria: "Bebidas",                 compartido: true, whatsapp: "" },
+  { id: "p1",  nombre: "Carnicería",    categoria: "Carnes & Aves",           compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p2",  nombre: "Fiambrería",    categoria: "Lácteos & Fiambres",      compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p3",  nombre: "Pescadería",    categoria: "Mariscos & Pescados",     compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p4",  nombre: "Verdulería",    categoria: "Frutas & Verduras",       compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p5",  nombre: "Distribuidora", categoria: "Secos & Limpieza",        compartido: true, whatsapp: "", locales: ["l1","l2","l3","l4"] },
+  { id: "p6",  nombre: "Papelera",      categoria: "Descartables",            compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p7",  nombre: "Especias",      categoria: "Especias & Frutos secos", compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p8",  nombre: "Insumos",       categoria: "Insumos & Salsas",        compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p9",  nombre: "Bebidas",       categoria: "Bebidas",                 compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
+  { id: "p10", nombre: "Librería",      categoria: "Librería",                compartido: true, whatsapp: "", locales: ["l1","l2","l3","l4"] },
+  { id: "p11", nombre: "Imprenta",      categoria: "Imprenta",                compartido: true, whatsapp: "", locales: ["l1","l2","l3","l4"] },
 ];
+
+// Precios por producto: { "provId_producto": precio }
+var INIT_PRECIOS = {};
 
 var INIT_PRODUCTOS = {
   p1: ["Pechuga de pollo","Carne picada","Pulpa de cerdo","Desmechado de cerdo","Alitas","Paleta","Bola de lomo o nalga","Pata Muslo","Osobuco"],
@@ -118,6 +123,8 @@ var INIT_PRODUCTOS = {
   p7: ["Ajo en polvo","Sesamo negro","Sesamo blanco","Tomates secos","Tomillo","Almendras","Nueces","Mani","Pimenton Ahumado","Humo en polvo","Hongos de Pino","Perejil","Pimienta negra","Cebolla crispy"],
   p8: ["Cajas de sushi","Wasabi","Mirin","Alga kombu","Aceite de sesamo","Salsa de soja","Salsa de ostras","Arroz koyi","Alga nori","Caviar","Finlandia","Ajinomoto","Crema de leche","Flores decoracion","Palitos chinos"],
   p9: ["Gin","Vinos","Coca","Coca zero","Sprite","Fanta","Pomelo","Pera","Manzana","Naranja","Cerveza","Heineken lata","Imperial IPA","Grolsh lata"],
+  p10: [],
+  p11: [],
 };
 
 var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
@@ -252,12 +259,12 @@ async function makePDF(orden, local, prov, items, fact) {
 // ─── MODAL WSP ────────────────────────────────────────────────────────────────
 function WspModal(p) {
   var orden=p.orden, local=p.local, prov=p.provEntry.prov, items=p.provEntry.items, fact=p.fact;
-  var [step,setStep]=useState("preview"), [phone,setPhone]=useState(prov.whatsapp||""), [gen,setGen]=useState(false), [fname,setFname]=useState("");
+  var [step,setStep]=useState("preview"), [phone,setPhone]=useState(prov.whatsapp||"542932595986"), [gen,setGen]=useState(false), [fname,setFname]=useState("");
   var tot=items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);
   var itext=items.map(function(i){return "• "+i.nombre+": "+i.cantidad+" "+i.unidad;}).join("\n");
   var ftxt=fact?("\n\n🧾 *Facturar a:* "+fact.razonSocial+"\nCUIT: "+fact.cuit+" · "+fact.condicion+"\n"+fact.domicilio):"";
   var ahora = fmtDateTime(new Date().toISOString());
-  var msg="📋 *Orden "+orden.id+"*\n\n🏪 *"+(local?local.nombre:"")+"*\n📅 "+fmtDate(orden.fecha)+"\n⏱ Enviada: "+ahora+(orden.fechaEntrega?"\n🚚 Entrega: "+fmtDate(orden.fechaEntrega):"")+"\n\n*Detalle:*\n"+itext+"\n\n💰 *Total: $"+tot.toFixed(2)+"*"+(orden.notas?"\n\n📝 "+orden.notas:"")+ftxt+"\n\n_(Adjunto PDF)_";
+  var msg="📋 *Orden "+orden.id+"*\n\n🏪 *"+(local?local.nombre:"")+"*\n📅 "+fmtDate(orden.fecha)+"\n⏱ Enviada: "+ahora+(orden.fechaEntrega?"\n🚚 Entrega: "+fmtDate(orden.fechaEntrega):"")+"\n\n🏬 *"+prov.nombre+"*\n"+itext+"\n\n💰 *Total: $"+tot.toFixed(2)+"*"+(orden.notas?"\n\n📝 "+orden.notas:"")+ftxt+"\n\n_(Adjunto PDF)_";
   async function dl(){setGen(true);try{var doc=await makePDF(orden,local,prov,items,fact);var n=orden.id+"_"+prov.nombre.replace(/\s+/g,"-")+".pdf";doc.save(n);setFname(n);setStep("abrir");}catch(e){alert("Error: "+e.message);}setGen(false);}
   function wa(){var num=cleanPhone(phone);if(!num){alert("Ingresá el número.");return;}window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg),"_blank");setStep("done");}
   return (
@@ -395,6 +402,9 @@ function NuevaOrden(p) {
   var [cp,setCp]=useState("");
   var local=getLocal(orden.local);
   var lc=local?local.color:"#C1440E";
+  var precios=p.precios||{};
+  var provsDisponibles = orden.local ? p.proveedores.filter(function(pv){ return !pv.locales || pv.locales.includes(orden.local); }) : p.proveedores;
+  function getPrecio(provId, prod){ return precios[provId+"_"+prod]||""; }
   var tot=orden.provSections.reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
   var has=orden.provSections.some(function(s){return s.items.length>0;});
 
@@ -493,7 +503,7 @@ function NuevaOrden(p) {
                 Tocá un proveedor para cargar productos
               </label>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-                {p.proveedores.map(function(pv){
+                {provsDisponibles.map(function(pv){
                   var sec=orden.provSections.find(function(s){return s.provId===pv.id;});
                   var cnt=sec?sec.items.length:0;
                   var st=sec?sec.items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0):0;
@@ -543,7 +553,7 @@ function NuevaOrden(p) {
                       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:7,alignItems:"end"}}>
                         <div>
                           <label style={{fontSize:10,color:"#444",display:"block",marginBottom:4}}>Producto</label>
-                          <select value={ni.producto} onChange={function(e){setNi(function(n){return{...n,producto:e.target.value};});}} style={INP}>
+                          <select value={ni.producto} onChange={function(e){var prod=e.target.value;var precio=getPrecio(actProv,prod);setNi(function(n){return{...n,producto:prod,precio:precio};});}} style={INP}>
                             <option value="">Seleccionar...</option>
                             {prods.map(function(pr){return <option key={pr} value={pr}>{pr}</option>;})}
                             <option value="__custom__">+ Otro</option>
@@ -939,6 +949,92 @@ function GestUsuarios(p) {
 }
 
 
+
+// GESTIÓN DE PRECIOS - solo admins
+function GestPreciosModal(p) {
+  var proveedores=p.proveedores, productos=p.productos, precios=p.precios, onClose=p.onClose, onSave=p.onSave;
+  var [prs,setPrs]=useState(precios);
+  var [sel,setSel]=useState(null);
+
+  function setPrice(provId, prod, val) {
+    var key = provId + "_" + prod;
+    setPrs(function(prev){ var n={...prev}; n[key]=val; return n; });
+  }
+  function getPrice(provId, prod) {
+    var key = provId + "_" + prod;
+    return prs[key]||"";
+  }
+
+  var selProv = proveedores.find(function(x){return x.id===sel;})||null;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.88)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(820px,96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:10,color:"#444",letterSpacing:3,textTransform:"uppercase"}}>Administración</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>💲 Lista de Precios</h2>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){onSave(prs);}} style={{...BS("#3A7D44"),fontSize:12}}>✓ Guardar</button>
+            <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+          <div style={{width:250,borderRight:"1px solid #1A1A1A",display:"flex",flexDirection:"column",flexShrink:0}}>
+            <div style={{padding:"9px 11px",borderBottom:"1px solid #1A1A1A"}}><span style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase"}}>Proveedor</span></div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {proveedores.map(function(pv){
+                var cnt = (productos[pv.id]||[]).filter(function(prod){ return getPrice(pv.id,prod)!==""; }).length;
+                return(
+                  <div key={pv.id} onClick={function(){setSel(pv.id);}} style={{padding:"10px 12px",borderBottom:"1px solid #161616",cursor:"pointer",background:sel===pv.id?"#1C1C1C":"transparent",borderLeft:"3px solid "+(sel===pv.id?"#D4A017":"transparent")}}>
+                    <div style={{fontSize:12,fontWeight:600,color:sel===pv.id?"#F0EDE8":"#999"}}>{pv.nombre}</div>
+                    <div style={{fontSize:10,color:cnt>0?"#D4A017":"#444"}}>{cnt>0?cnt+" precios cargados":"Sin precios"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+            {!sel?(
+              <div style={{textAlign:"center",paddingTop:60,color:"#2A2A2A"}}>
+                <div style={{fontSize:32,marginBottom:10}}>👈</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#333"}}>Seleccioná un proveedor</div>
+              </div>
+            ):(
+              <div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:5}}>{selProv?selProv.nombre:""}</div>
+                <div style={{fontSize:11,color:"#555",marginBottom:14}}>Cargá el precio unitario de cada producto</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {(productos[sel]||[]).length===0?(
+                    <div style={{fontSize:12,color:"#333",fontStyle:"italic"}}>Sin productos cargados.</div>
+                  ):(productos[sel]||[]).map(function(prod,idx){
+                    return(
+                      <div key={idx} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
+                        <div style={{flex:1,fontSize:12,color:"#CCC"}}>{prod}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                          <span style={{fontSize:12,color:"#555"}}>$</span>
+                          <input
+                            type="number"
+                            placeholder="0.00"
+                            value={getPrice(sel,prod)}
+                            onChange={function(e){setPrice(sel,prod,e.target.value);}}
+                            style={{width:90,padding:"5px 8px",borderRadius:6,border:"1px solid "+(getPrice(sel,prod)?"#D4A017":"#2A2A2A"),background:"#141414",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,textAlign:"right"}}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // MIS PRODUCTOS - para usuarios normales
 function MisProductosModal(p) {
   var proveedores=p.proveedores, productos=p.productos, onClose=p.onClose, onSave=p.onSave;
@@ -1098,12 +1194,14 @@ export default function App() {
   var [showOrden,setShowOrden]=useState(false);
   var [showGest,setShowGest]=useState(false);
   var [showMisProds,setShowMisProds]=useState(false);
+  var [showPrecios,setShowPrecios]=useState(false);
   var [showUsers,setShowUsers]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [loading,setLoading]=useState(false);
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
+  var [precios,setPrecios]=useState(INIT_PRECIOS);
 
   useEffect(function(){
     if(!cu)return;
@@ -1154,6 +1252,7 @@ export default function App() {
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {esAdmin&&<button onClick={function(){setShowGest(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>⚙️ Proveedores</button>}
+            {esAdmin&&<button onClick={function(){setShowPrecios(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>💲 Precios</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             <button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
@@ -1263,9 +1362,10 @@ export default function App() {
         </div>
       </div>
 
-      {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
+      {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){setProveedores(pv);setProductos(pd);setShowGest(false);}}/>}
       {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){setProductos(pd);setShowMisProds(false);}}/>}
+      {showPrecios&&<GestPreciosModal proveedores={proveedores} productos={productos} precios={precios} onClose={function(){setShowPrecios(false);}} onSave={function(prs){setPrecios(prs);setShowPrecios(false);}}/>}
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}} onSave={function(u){setUsers(u);setShowUsers(false);}}/>}
     </div>
   );

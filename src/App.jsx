@@ -72,6 +72,69 @@ async function sbDeleteFaltante(id) {
   } catch(e) {}
 }
 
+// Proveedores
+async function sbLoadProveedores() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/proveedores?order=nombre", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) && d.length > 0 ? d : null;
+  } catch(e) { return null; }
+}
+async function sbSaveProveedor(prov) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/proveedores", { method: "POST", headers: h, body: JSON.stringify(prov) });
+  } catch(e) {}
+}
+async function sbDeleteProveedor(id) {
+  try {
+    await fetch(SURL + "/rest/v1/proveedores?id=eq." + id, { method: "DELETE", headers: SH });
+    await fetch(SURL + "/rest/v1/productos?prov_id=eq." + id, { method: "DELETE", headers: SH });
+    await fetch(SURL + "/rest/v1/precios?prov_id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
+// Productos
+async function sbLoadProductos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/productos?order=nombre", { headers: SH });
+    var d = await r.json();
+    if (!Array.isArray(d) || d.length === 0) return null;
+    var result = {};
+    d.forEach(function(p){ if(!result[p.prov_id]) result[p.prov_id]=[]; result[p.prov_id].push(p.nombre); });
+    return result;
+  } catch(e) { return null; }
+}
+async function sbSaveProducto(provId, nombre) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre }) });
+  } catch(e) {}
+}
+async function sbDeleteProducto(provId, nombre) {
+  try {
+    await fetch(SURL + "/rest/v1/productos?id=eq." + provId+"_"+nombre.replace(/\s+/g,"_"), { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
+// Precios
+async function sbLoadPrecios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/precios", { headers: SH });
+    var d = await r.json();
+    if (!Array.isArray(d) || d.length === 0) return null;
+    var result = {};
+    d.forEach(function(p){ result[p.prov_id+"_"+p.producto] = String(p.precio); });
+    return result;
+  } catch(e) { return null; }
+}
+async function sbSavePrecio(provId, producto, precio) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/precios", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+producto.replace(/\s+/g,"_"), prov_id: provId, producto: producto, precio: parseFloat(precio)||0 }) });
+  } catch(e) {}
+}
+
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 var LOCALES = [
   { id: "l1", nombre: "El Bodegón Nkt", emoji: "🍷", color: "#C1440E" },
@@ -1208,6 +1271,9 @@ export default function App() {
     setLoading(true);
     sbLoad().then(function(d){setOrdenes(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
+    sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
+    sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
+    sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -1363,9 +1429,31 @@ export default function App() {
       </div>
 
       {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
-      {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){setProveedores(pv);setProductos(pd);setShowGest(false);}}/>}
-      {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){setProductos(pd);setShowMisProds(false);}}/>}
-      {showPrecios&&<GestPreciosModal proveedores={proveedores} productos={productos} precios={precios} onClose={function(){setShowPrecios(false);}} onSave={function(prs){setPrecios(prs);setShowPrecios(false);}}/>}
+      {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){
+        // Save all proveedores to Supabase
+        pv.forEach(function(p){ sbSaveProveedor(p); });
+        // Save all productos to Supabase
+        Object.keys(pd).forEach(function(provId){
+          pd[provId].forEach(function(nombre){ sbSaveProducto(provId, nombre); });
+        });
+        setProveedores(pv);setProductos(pd);setShowGest(false);
+      }}/>}
+      {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){
+        Object.keys(pd).forEach(function(provId){
+          pd[provId].forEach(function(nombre){ sbSaveProducto(provId, nombre); });
+        });
+        setProductos(pd);setShowMisProds(false);
+      }}/>}
+      {showPrecios&&<GestPreciosModal proveedores={proveedores} productos={productos} precios={precios} onClose={function(){setShowPrecios(false);}} onSave={function(prs){
+        // Save all precios to Supabase
+        Object.keys(prs).forEach(function(key){
+          var parts = key.split("_");
+          var provId = parts[0];
+          var producto = parts.slice(1).join("_");
+          if(prs[key]) sbSavePrecio(provId, producto, prs[key]);
+        });
+        setPrecios(prs);setShowPrecios(false);
+      }}/>}
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}} onSave={function(u){setUsers(u);setShowUsers(false);}}/>}
     </div>
   );

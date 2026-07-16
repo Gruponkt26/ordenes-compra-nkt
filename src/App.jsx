@@ -195,7 +195,27 @@ var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
 var _oc = 1, _pc = 10, _uc = 10;
-function genOC() { var ts = String(new Date().getTime()).slice(-7); return "OC-" + ts; }
+var _contadores = { l1: 0, l2: 0, l3: 0, l4: 0 };
+var _prefijos = { l1: "BOD", l2: "KUS", l3: "COL", l4: "OFI" };
+
+function genOC(localId) {
+  _contadores[localId] = (_contadores[localId]||0) + 1;
+  return (_prefijos[localId]||"ORD") + "-" + String(_contadores[localId]).padStart(4,"0");
+}
+
+function initContadores(ordenes) {
+  var conteos = { l1: 0, l2: 0, l3: 0, l4: 0 };
+  ordenes.forEach(function(o) {
+    if (!o.local || !o.id) return;
+    var prefijo = _prefijos[o.local];
+    if (!prefijo) return;
+    if (o.id.startsWith(prefijo + "-")) {
+      var num = parseInt(o.id.split("-")[1]) || 0;
+      if (num > conteos[o.local]) conteos[o.local] = num;
+    }
+  });
+  _contadores = conteos;
+}
 function genProv() { return "p" + String(Date.now()).slice(-8); }
 function genUser() { return "u" + _uc++; }
 function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || null; }
@@ -620,7 +640,7 @@ function NuevaOrden(p) {
   function doSave(status){
     var vs=orden.provSections.filter(function(s){return s.items.length>0;});
     if(!orden.local||vs.length===0)return;
-    p.onSave({...orden,provSections:vs,id:genOC(),status:status,createdAt:new Date().toISOString()});
+    p.onSave({...orden,provSections:vs,id:genOC(orden.local),status:status,createdAt:new Date().toISOString()});
     p.onClose();
   }
 
@@ -1455,6 +1475,149 @@ function GestProveedores(p) {
   );
 }
 
+
+// PANEL ANALYTICS
+function PanelAnalytics(p) {
+  var ordenes=p.ordenes, proveedores=p.proveedores;
+  var [periodo,setPeriodo]=useState("todo");
+
+  // Filter by period
+  var ahora=new Date();
+  var ordensFiltradas=ordenes.filter(function(o){
+    if(o.status==="cancelada")return false;
+    if(periodo==="todo")return true;
+    var fecha=new Date(o.createdAt||o.fecha);
+    if(periodo==="mes") return fecha.getMonth()===ahora.getMonth()&&fecha.getFullYear()===ahora.getFullYear();
+    if(periodo==="semana"){var diff=(ahora-fecha)/(1000*60*60*24);return diff<=7;}
+    return true;
+  });
+
+  // Gasto por local
+  var gastoLocal={};
+  LOCALES.forEach(function(l){gastoLocal[l.id]=0;});
+  ordensFiltradas.forEach(function(o){
+    var tot=(o.provSections||[]).reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
+    gastoLocal[o.local]=(gastoLocal[o.local]||0)+tot;
+  });
+
+  // Gasto por proveedor
+  var gastoProv={};
+  ordensFiltradas.forEach(function(o){
+    (o.provSections||[]).forEach(function(sec){
+      var pv=proveedores.find(function(x){return x.id===sec.provId;});
+      var nombre=pv?pv.nombre:sec.provId;
+      var tot=sec.items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);
+      gastoProv[nombre]=(gastoProv[nombre]||0)+tot;
+    });
+  });
+
+  // Productos más pedidos
+  var conteoProds={};
+  ordensFiltradas.forEach(function(o){
+    (o.provSections||[]).forEach(function(sec){
+      sec.items.forEach(function(item){
+        var key=item.nombre;
+        if(!conteoProds[key])conteoProds[key]={nombre:item.nombre,cantidad:0,veces:0};
+        conteoProds[key].cantidad+=parseFloat(item.cantidad||0);
+        conteoProds[key].veces+=1;
+      });
+    });
+  });
+
+  var topProvs=Object.entries(gastoProv).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  var topProds=Object.values(conteoProds).sort(function(a,b){return b.veces-a.veces;}).slice(0,10);
+  var totalGeneral=Object.values(gastoLocal).reduce(function(a,b){return a+b;},0);
+  var maxGasto=Math.max.apply(null,Object.values(gastoLocal).concat([1]));
+  var maxProv=topProvs.length>0?topProvs[0][1]:1;
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      {/* Periodo filter */}
+      <div style={{display:"flex",gap:6,marginBottom:18}}>
+        {[["todo","Todo el tiempo"],["mes","Este mes"],["semana","Esta semana"]].map(function(opt){
+          return(
+            <button key={opt[0]} onClick={function(){setPeriodo(opt[0]);}}
+              style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(periodo===opt[0]?"#D4A017":"#1E1E1E"),background:periodo===opt[0]?"#D4A01722":"none",color:periodo===opt[0]?"#D4A017":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+              {opt[1]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Total general */}
+      <div style={{background:"#111",border:"1px solid #C1440E33",borderRadius:12,padding:"14px 18px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Total gastado</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#C1440E"}}>${totalGeneral.toFixed(0)}</div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:11,color:"#555"}}>{ordensFiltradas.length} órdenes</div>
+          <div style={{fontSize:11,color:"#555"}}>{Object.keys(conteoProds).length} productos distintos</div>
+        </div>
+      </div>
+
+      {/* Gasto por local */}
+      <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Gasto por local</div>
+        {LOCALES.map(function(l){
+          var gasto=gastoLocal[l.id]||0;
+          var pct=totalGeneral>0?(gasto/totalGeneral*100):0;
+          var barPct=maxGasto>0?(gasto/maxGasto*100):0;
+          return(
+            <div key={l.id} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:12,color:l.color,fontWeight:600}}>{l.emoji} {l.nombre}</span>
+                <span style={{fontSize:12,color:"#F0EDE8",fontWeight:700}}>${gasto.toFixed(0)} <span style={{color:"#555",fontSize:10}}>({pct.toFixed(0)}%)</span></span>
+              </div>
+              <div style={{height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:"100%",width:barPct+"%",background:l.color,borderRadius:3,transition:"width 0.5s"}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Top proveedores */}
+      <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Top proveedores por gasto</div>
+        {topProvs.length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic"}}>Sin datos</div>:topProvs.map(function(entry,idx){
+          var pct=maxProv>0?(entry[1]/maxProv*100):0;
+          return(
+            <div key={entry[0]} style={{marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontSize:11,color:"#CCC"}}>{idx+1}. {entry[0]}</span>
+                <span style={{fontSize:11,color:"#D4A017",fontWeight:700}}>${entry[1].toFixed(0)}</span>
+              </div>
+              <div style={{height:4,background:"#1A1A1A",borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",width:pct+"%",background:"#D4A017",borderRadius:2}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Top productos */}
+      <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px 18px"}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>Productos más pedidos</div>
+        {topProds.length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic"}}>Sin datos</div>:topProds.map(function(prod,idx){
+          return(
+            <div key={prod.nombre} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #1A1A1A"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:"#444",width:16}}>{idx+1}</span>
+                <span style={{fontSize:12,color:"#CCC"}}>{prod.nombre}</span>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>{prod.veces}x pedido</div>
+                <div style={{fontSize:10,color:"#555"}}>{prod.cantidad.toFixed(0)} unidades total</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
@@ -1477,7 +1640,7 @@ export default function App() {
   useEffect(function(){
     if(!cu)return;
     setLoading(true);
-    sbLoad().then(function(d){setOrdenes(d);setLoading(false);}).catch(function(){setLoading(false);});
+    sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
@@ -1554,12 +1717,19 @@ export default function App() {
               <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
               </button>
+              <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                📊 Análisis
+              </button>
             </div>
           )}
 
           {/* PANEL DESPACHO */}
           {esAdmin&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
+          )}
+
+          {esAdmin&&vista==="analytics"&&(
+            <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
           {esAdmin&&vista==="faltantes"&&(

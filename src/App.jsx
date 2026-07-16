@@ -29,14 +29,15 @@ async function sbSave(orden) {
       prov_sections: orden.provSections,
       emisor: orden.emisor || null,
       seccion: orden.seccion || null,
-      created_at: orden.createdAt
+      created_at: orden.createdAt || new Date().toISOString()
     };
     var r = await fetch(SURL + "/rest/v1/ordenes", { method: "POST", headers: headers, body: JSON.stringify(body) });
     if (!r.ok) {
-      var err = await r.text();
-      console.error("Supabase error:", err);
+      var errText = await r.text();
+      console.error("Supabase save error:", r.status, errText);
+      alert("Error guardando orden: " + r.status + " - " + errText);
     }
-  } catch(e) { console.error("sbSave error:", e); }
+  } catch(e) { console.error("sbSave error:", e); alert("Error de conexión: " + e.message); }
 }
 
 async function sbPatch(id, changes) {
@@ -195,7 +196,7 @@ var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Beb
 
 var _oc = 1, _pc = 10, _uc = 10;
 function genOC() { var ts = String(new Date().getTime()).slice(-7); return "OC-" + ts; }
-function genProv() { return "p" + _pc++; }
+function genProv() { return "p" + String(Date.now()).slice(-8); }
 function genUser() { return "u" + _uc++; }
 function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || null; }
 function getFact(id) { return FACTURACION.find(function(f) { return f.id === id; }) || null; }
@@ -256,7 +257,7 @@ function Login(p) {
 }
 
 // ─── PDF ──────────────────────────────────────────────────────────────────────
-async function makePDF(orden, local, prov, items, fact) {
+async function loadJsPDF() {
   if (!window.jspdf) {
     await new Promise(function(res,rej){
       var urls = [
@@ -276,6 +277,10 @@ async function makePDF(orden, local, prov, items, fact) {
       tryNext();
     });
   }
+}
+
+async function makePDF(orden, local, prov, items, fact) {
+  await loadJsPDF();
   var doc=new window.jspdf.jsPDF({unit:"mm",format:"a4"});
   var W=210,m=18,cW=W-m*2;
   doc.setFillColor(193,68,14);doc.rect(0,0,W,38,"F");
@@ -316,6 +321,118 @@ async function makePDF(orden, local, prov, items, fact) {
   doc.setTextColor(193,68,14);doc.setFontSize(14);doc.setFont("helvetica","bold");doc.text("$"+tot.toFixed(2),Cs,y+3,{align:"right"});
   if(orden.notas){y+=20;doc.setFillColor(15,15,15);doc.roundedRect(m,y,cW,16,2,2,"F");doc.setTextColor(100,100,100);doc.setFontSize(7);doc.setFont("helvetica","bold");doc.text("NOTAS",m+5,y+6);doc.setFont("helvetica","normal");doc.setTextColor(160,160,160);doc.setFontSize(9);doc.text(orden.notas,m+5,y+12);}
   doc.setFillColor(15,15,15);doc.rect(0,282,W,15,"F");doc.setTextColor(60,60,60);doc.setFontSize(7);doc.setFont("helvetica","normal");doc.text("Generado "+new Date().toLocaleString("es-AR"),W/2,291,{align:"center"});
+  return doc;
+}
+
+
+// PDF COMPLETO - todos los proveedores en uno
+async function makePDFCompleto(orden, local, proveedores, fact) {
+  await loadJsPDF();
+  var doc = new window.jspdf.jsPDF({unit:"mm",format:"a4"});
+  var W=210, m=18, cW=W-m*2;
+
+  // Header
+  doc.setFillColor(193,68,14); doc.rect(0,0,W,38,"F");
+  doc.setTextColor(255,255,255); doc.setFontSize(20); doc.setFont("helvetica","bold");
+  doc.text("ORDEN DE COMPRA", m, 18);
+  doc.setFontSize(11); doc.setFont("helvetica","normal");
+  doc.text(orden.id, m, 27);
+  doc.setFontSize(9);
+  doc.text("Emitida: "+fmtDate(orden.fecha), W-m, 18, {align:"right"});
+  if(orden.fechaEntrega) doc.text("Entrega: "+fmtDate(orden.fechaEntrega), W-m, 26, {align:"right"});
+
+  // Local
+  var y = 46;
+  doc.setFillColor(20,20,20); doc.roundedRect(m,y,cW,18,3,3,"F");
+  doc.setTextColor(140,140,140); doc.setFontSize(7); doc.setFont("helvetica","bold");
+  doc.text("LOCAL", m+8, y+7);
+  doc.setTextColor(240,237,232); doc.setFontSize(13); doc.setFont("helvetica","bold");
+  doc.text(local?local.nombre:"", m+8, y+14);
+
+  // Facturacion
+  if(fact){
+    y+=24;
+    doc.setFillColor(30,20,5); doc.roundedRect(m,y,cW,18,3,3,"F");
+    doc.setTextColor(212,160,23); doc.setFontSize(7); doc.setFont("helvetica","bold");
+    doc.text("FACTURAR A", m+8, y+6);
+    doc.setTextColor(240,237,232); doc.setFontSize(10); doc.setFont("helvetica","bold");
+    doc.text(fact.razonSocial, m+8, y+12);
+    doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(160,160,160);
+    doc.text("CUIT "+fact.cuit+" · "+fact.condicion+" · "+fact.domicilio, m+8, y+17);
+    y+=22;
+  } else { y+=22; }
+
+  var totalGeneral = 0;
+
+  // Sections by proveedor
+  (orden.provSections||[]).forEach(function(sec){
+    var pv = proveedores.find(function(x){return x.id===sec.provId;});
+    var items = sec.items||[];
+    if(items.length===0) return;
+    var secTotal = items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);
+    totalGeneral += secTotal;
+
+    // Check page space
+    if(y > 240) { doc.addPage(); y=20; }
+
+    // Proveedor header
+    y+=6;
+    doc.setFillColor(40,20,10); doc.rect(m,y,cW,10,"F");
+    doc.setTextColor(193,68,14); doc.setFontSize(10); doc.setFont("helvetica","bold");
+    doc.text(pv?pv.nombre:"Proveedor", m+4, y+7);
+    doc.setTextColor(160,160,160); doc.setFontSize(8);
+    doc.text("$"+secTotal.toFixed(2), W-m-3, y+7, {align:"right"});
+    y+=14;
+
+    // Column headers
+    doc.setFillColor(30,30,30); doc.rect(m,y-4,cW,8,"F");
+    doc.setTextColor(120,120,120); doc.setFontSize(6); doc.setFont("helvetica","bold");
+    doc.text("PRODUCTO", m+3, y+1);
+    doc.text("CANT.", m+cW*0.55, y+1);
+    doc.text("UD.", m+cW*0.67, y+1);
+    doc.text("P.UNIT.", m+cW*0.78, y+1);
+    doc.text("SUBTOTAL", m+cW-3, y+1, {align:"right"});
+    y+=7;
+
+    // Items
+    items.forEach(function(item,idx){
+      if(y>270){doc.addPage();y=20;}
+      if(idx%2===0){doc.setFillColor(18,18,18);doc.rect(m,y-3,cW,8,"F");}
+      var sub=parseFloat(item.cantidad||0)*parseFloat(item.precio||0);
+      doc.setTextColor(200,200,200); doc.setFontSize(8); doc.setFont("helvetica","normal");
+      doc.text(item.nombre,m+3,y+2);
+      doc.setTextColor(212,160,23); doc.text(String(item.cantidad),m+cW*0.55,y+2);
+      doc.setTextColor(100,100,100); doc.text(item.unidad,m+cW*0.67,y+2);
+      doc.setTextColor(160,160,160); doc.text("$"+parseFloat(item.precio||0).toFixed(2),m+cW*0.78,y+2);
+      doc.setTextColor(220,220,220); doc.setFont("helvetica","bold");
+      doc.text("$"+sub.toFixed(2),m+cW-3,y+2,{align:"right"});
+      y+=8;
+    });
+  });
+
+  // Total general
+  y+=4;
+  if(y>270){doc.addPage();y=20;}
+  doc.setDrawColor(50,50,50); doc.line(m,y,W-m,y); y+=6;
+  doc.setFillColor(40,15,10); doc.rect(m,y-4,cW,12,"F");
+  doc.setTextColor(140,140,140); doc.setFontSize(8); doc.setFont("helvetica","normal");
+  doc.text("TOTAL GENERAL", m+3, y+3);
+  doc.setTextColor(193,68,14); doc.setFontSize(14); doc.setFont("helvetica","bold");
+  doc.text("$"+totalGeneral.toFixed(2), m+cW-3, y+4, {align:"right"});
+
+  if(orden.notas){
+    y+=18;
+    doc.setFillColor(15,15,15); doc.roundedRect(m,y,cW,14,2,2,"F");
+    doc.setTextColor(100,100,100); doc.setFontSize(7); doc.setFont("helvetica","bold");
+    doc.text("NOTAS", m+5, y+6);
+    doc.setFont("helvetica","normal"); doc.setTextColor(160,160,160); doc.setFontSize(8);
+    doc.text(orden.notas, m+5, y+11);
+  }
+
+  doc.setFillColor(15,15,15); doc.rect(0,282,W,15,"F");
+  doc.setTextColor(60,60,60); doc.setFontSize(6); doc.setFont("helvetica","normal");
+  doc.text("Generado "+new Date().toLocaleString("es-AR"), W/2, 291, {align:"center"});
+
   return doc;
 }
 
@@ -866,10 +983,99 @@ function EditOrdenModal(p) {
   );
 }
 
+
+// WSP COMPLETO - un solo PDF con todos los proveedores
+function WspCompletoModal(p) {
+  var orden=p.orden, local=p.local, proveedores=p.proveedores, fact=p.fact;
+  var [step,setStep]=useState("preview");
+  var [phone,setPhone]=useState("542932595986");
+  var [gen,setGen]=useState(false);
+  var [fname,setFname]=useState("");
+
+  var totalOrden=(orden.provSections||[]).reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
+  var ahora=fmtDateTime(new Date().toISOString());
+
+  // Build message with all providers
+  var detalle=(orden.provSections||[]).map(function(sec){
+    var pv=proveedores.find(function(x){return x.id===sec.provId;});
+    var itemsTxt=sec.items.map(function(i){return "  • "+i.nombre+": "+i.cantidad+" "+i.unidad;}).join("\n");
+    return "🏬 *"+(pv?pv.nombre:"?")+":*\n"+itemsTxt;
+  }).join("\n\n");
+
+  var factText=fact?"\n\n🧾 *Facturar a:* "+fact.razonSocial+"\nCUIT: "+fact.cuit+" · "+fact.condicion:"";
+  var msg="📋 *Orden "+orden.id+"*\n\n🏪 *"+(local?local.nombre:"")+"*\n📅 "+fmtDate(orden.fecha)+"\n⏱ "+ahora+(orden.fechaEntrega?"\n🚚 Entrega: "+fmtDate(orden.fechaEntrega):"")+
+    "\n\n"+detalle+
+    "\n\n💰 *Total: $"+totalOrden.toFixed(2)+"*"+
+    (orden.notas?"\n\n📝 "+orden.notas:"")+factText+
+    "\n\n_(Adjunto PDF completo)_";
+
+  async function doDescargar(){
+    setGen(true);
+    try{
+      var doc=await makePDFCompleto(orden,local,proveedores,fact);
+      var n=orden.id+"_completo.pdf";
+      doc.save(n);setFname(n);setStep("abrir");
+    }catch(e){alert("Error: "+e.message);}
+    setGen(false);
+  }
+  function doAbrir(){
+    var num=phone.replace(/\D/g,"");
+    if(!num){alert("Ingresá el número.");return;}
+    window.open("https://wa.me/"+num+"?text="+encodeURIComponent(msg),"_blank");
+    setStep("done");
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.92)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(500px,95vw)",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"15px 20px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:2}}>Orden completa</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:17}}>📲 Enviar por WhatsApp</h2>
+          </div>
+          <button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"15px 20px"}}>
+          <div style={{background:"#0F0F0F",borderRadius:10,padding:"10px 13px",marginBottom:13}}>
+            <div style={{fontSize:12,color:"#666",marginBottom:5}}>{(orden.provSections||[]).length} proveedores · <span style={{color:"#C1440E",fontWeight:700}}>${totalOrden.toFixed(2)}</span></div>
+            {(orden.provSections||[]).map(function(sec){
+              var pv=proveedores.find(function(x){return x.id===sec.provId;});
+              var st=sec.items.reduce(function(a,i){return a+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);
+              return <div key={sec.provId} style={{fontSize:11,color:"#888",padding:"2px 0"}}>• {pv?pv.nombre:"?"} — {sec.items.length} productos · ${st.toFixed(2)}</div>;
+            })}
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Número WhatsApp</label>
+            <input placeholder="542932595986" value={phone} onChange={function(e){setPhone(e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+          </div>
+          {step==="preview"&&<button onClick={doDescargar} disabled={gen} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",padding:"12px"}}>{gen?"⏳ Generando PDF...":"📥 Descargar PDF completo"}</button>}
+          {step==="abrir"&&(
+            <div>
+              <div style={{background:"#0A1A0A",border:"1px solid #1A3A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
+                <div style={{fontSize:12,color:"#3A7D44",fontWeight:700,marginBottom:3}}>✅ {fname}</div>
+                <div style={{fontSize:11,color:"#555"}}>Adjuntá el PDF en WhatsApp con 📎</div>
+              </div>
+              <button onClick={doAbrir} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",padding:"12px"}}>💬 Abrir WhatsApp</button>
+            </div>
+          )}
+          {step==="done"&&(
+            <div>
+              <div style={{background:"#0A0F1A",border:"1px solid #1A2A3A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
+                <div style={{fontSize:12,color:"#1A6B8A",fontWeight:700}}>🚀 WhatsApp abierto — adjuntá el PDF antes de enviar.</div>
+              </div>
+              <button onClick={function(){p.onMarkSent();p.onClose();}} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",padding:"12px"}}>✓ Marcar como Enviada</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrdenCard(p) {
   var orden=p.orden, proveedores=p.proveedores, onUpdate=p.onUpdate, onDelete=p.onDelete, esAdmin=p.esAdmin;
   var local=getLocal(orden.local), bc=local?local.color:"#444";
-  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [sent,setSent]=useState([]), [editMode,setEditMode]=useState(false), [confirmarModal,setConfirmarModal]=useState(false);
+  var [open,setOpen]=useState(false), [wsp,setWsp]=useState(null), [wspCompleto,setWspCompleto]=useState(false), [sent,setSent]=useState([]), [editMode,setEditMode]=useState(false), [confirmarModal,setConfirmarModal]=useState(false);
   var tot=(orden.provSections||[]).reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
   var fact=orden.facturacion?getFact(orden.facturacion):null;
   var NS={borrador:"pendiente",pendiente:"enviada",enviada:"confirmada"};
@@ -933,6 +1139,7 @@ function OrdenCard(p) {
             {orden.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginBottom:9}}>📝 {orden.notas}</div>}
             {fact&&<div style={{fontSize:11,color:"#D4A017",marginBottom:9}}>🧾 {fact.razonSocial} · CUIT {fact.cuit}</div>}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              <button onClick={function(){setWspCompleto(true);}} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"6px 11px"}}>📲 Enviar por WhatsApp</button>
               {NS[orden.status]&&<button onClick={function(){
   if(orden.status==="enviada" && esAdmin){
     setConfirmarModal(true);
@@ -949,6 +1156,7 @@ function OrdenCard(p) {
         )}
       </div>
       {wsp&&<WspModal orden={orden} local={local} provEntry={wsp} fact={fact} onClose={function(){setWsp(null);}} onMarkSent={function(){setSent(function(s){return [...s,wsp.prov.id];});onUpdate(orden.id,{status:"enviada"});}}/>}
+      {wspCompleto&&<WspCompletoModal orden={orden} local={local} proveedores={p.proveedores} fact={fact} onClose={function(){setWspCompleto(false);}} onMarkSent={function(){onUpdate(orden.id,{status:"enviada"});}}/>}
     </div>
   );
 }
@@ -1420,7 +1628,7 @@ export default function App() {
                 <div style={{textAlign:"center",padding:"44px 20px"}}><div style={{fontSize:36,marginBottom:10}}>📋</div><div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E",marginBottom:4}}>Sin órdenes</div><div style={{fontSize:12,color:"#222"}}>{la?"No hay órdenes de "+la.nombre+" todavía":"Creá tu primera orden"}</div></div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                  {filtered.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden} esAdmin={esAdmin}/>;  })}
+                  {filtered.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden} esAdmin={esAdmin} p={{proveedores:proveedores}}/>;  })}
                 </div>
               )}
             </div>

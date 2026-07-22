@@ -1648,6 +1648,129 @@ async function sbLogMovimiento(localId, plato, tipo, cantidad, usuario) {
 }
 
 
+
+// ─── EDITOR MENÚ STOCK ────────────────────────────────────────────────────────
+function EditorMenuStock(p) {
+  var onClose=p.onClose, onSave=p.onSave;
+  var [localSel,setLocalSel]=useState("l1");
+  var [menu,setMenu]=useState(JSON.parse(JSON.stringify(MENU_POR_LOCAL)));
+  var [nuevaCat,setNuevaCat]=useState("");
+  var [nuevoPlato,setNuevoPlato]=useState("");
+  var [catSel,setCatSel]=useState("");
+
+  var menuActual=menu[localSel]||{};
+  var cats=Object.keys(menuActual);
+
+  function addCat(){
+    if(!nuevaCat.trim())return;
+    setMenu(function(m){var n=JSON.parse(JSON.stringify(m));if(!n[localSel])n[localSel]={};n[localSel][nuevaCat.trim()]=[];return n;});
+    setCatSel(nuevaCat.trim());
+    setNuevaCat("");
+  }
+
+  function delCat(cat){
+    if(!window.confirm("¿Eliminar la categoría '"+cat+"' y todos sus platos?"))return;
+    setMenu(function(m){var n=JSON.parse(JSON.stringify(m));delete n[localSel][cat];return n;});
+    if(catSel===cat)setCatSel("");
+  }
+
+  function addPlato(){
+    if(!nuevoPlato.trim()||!catSel)return;
+    setMenu(function(m){var n=JSON.parse(JSON.stringify(m));if(!n[localSel][catSel])n[localSel][catSel]=[];n[localSel][catSel].push(nuevoPlato.trim());return n;});
+    setNuevoPlato("");
+  }
+
+  function delPlato(cat,plato){
+    setMenu(function(m){var n=JSON.parse(JSON.stringify(m));n[localSel][cat]=n[localSel][cat].filter(function(p){return p!==plato;});return n;});
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(820px,96vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        
+        {/* Header */}
+        <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:10,color:"#444",letterSpacing:3,textTransform:"uppercase"}}>Administración</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>🍽️ Editor de Menú / Stock</h2>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){onSave(menu);}} style={{...BS("#3A7D44"),fontSize:12}}>✓ Guardar</button>
+            <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+
+        {/* Local selector */}
+        <div style={{padding:"12px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",gap:6,flexShrink:0}}>
+          {LOCALES.map(function(l){
+            return(
+              <button key={l.id} onClick={function(){setLocalSel(l.id);setCatSel("");}}
+                style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(localSel===l.id?l.color:"#1E1E1E"),background:localSel===l.id?l.color+"22":"none",color:localSel===l.id?l.color:"#555",fontFamily:"'Lora',serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                {l.emoji} {l.nombre}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+          {/* Categorías */}
+          <div style={{width:240,borderRight:"1px solid #1A1A1A",display:"flex",flexDirection:"column",flexShrink:0}}>
+            <div style={{padding:"10px 12px",borderBottom:"1px solid #1A1A1A"}}>
+              <div style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Categorías</div>
+              <div style={{display:"flex",gap:5}}>
+                <input placeholder="Nueva categoría..." value={nuevaCat} onChange={function(e){setNuevaCat(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addCat();}} style={{...INP,flex:1,fontSize:11,padding:"6px 8px"}}/>
+                <button onClick={addCat} style={{...BS("#C1440E"),padding:"6px 10px",fontSize:12,flexShrink:0}}>+</button>
+              </div>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {cats.length===0?<div style={{padding:"20px 12px",fontSize:12,color:"#333",fontStyle:"italic"}}>Sin categorías</div>:cats.map(function(cat){
+                return(
+                  <div key={cat} onClick={function(){setCatSel(cat);}}
+                    style={{padding:"10px 12px",borderBottom:"1px solid #161616",cursor:"pointer",background:catSel===cat?"#1C1C1C":"transparent",borderLeft:"3px solid "+(catSel===cat?"#C1440E":"transparent"),display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:catSel===cat?"#F0EDE8":"#999"}}>{cat}</div>
+                      <div style={{fontSize:10,color:"#444"}}>{(menuActual[cat]||[]).length} platos</div>
+                    </div>
+                    <button onClick={function(e){e.stopPropagation();delCat(cat);}} style={{background:"none",border:"none",color:"#C1440E",cursor:"pointer",fontSize:13,opacity:0.6}}>🗑️</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Platos */}
+          <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+            {!catSel?(
+              <div style={{textAlign:"center",paddingTop:60,color:"#2A2A2A"}}>
+                <div style={{fontSize:32,marginBottom:10}}>👈</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:14,color:"#333"}}>Seleccioná una categoría</div>
+              </div>
+            ):(
+              <div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:14}}>{catSel}</div>
+                <div style={{display:"flex",gap:6,marginBottom:12}}>
+                  <input placeholder="Nuevo plato... (Enter)" value={nuevoPlato} onChange={function(e){setNuevoPlato(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addPlato();}} style={{...INP,flex:1}}/>
+                  <button onClick={addPlato} style={{...BS("#C1440E"),padding:"9px 13px",flexShrink:0}}>+</button>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {(menuActual[catSel]||[]).length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"12px 0"}}>Sin platos en esta categoría.</div>:(menuActual[catSel]||[]).map(function(plato,idx){
+                    return(
+                      <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
+                        <span style={{fontSize:12,color:"#CCC"}}>🍽️ {plato}</span>
+                        <button onClick={function(){delPlato(catSel,plato);}} style={{background:"none",border:"none",color:"#444",cursor:"pointer",fontSize:14}}>✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PANEL STOCK ──────────────────────────────────────────────────────────────
 function PanelStock(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
@@ -1818,6 +1941,8 @@ export default function App() {
   var [showGest,setShowGest]=useState(false);
   var [showMisProds,setShowMisProds]=useState(false);
   var [showPrecios,setShowPrecios]=useState(false);
+  var [showEditorMenu,setShowEditorMenu]=useState(false);
+  var [menuStock,setMenuStock]=useState(MENU_POR_LOCAL);
   var [showUsers,setShowUsers]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
@@ -1880,6 +2005,7 @@ export default function App() {
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {esAdmin&&<button onClick={function(){setShowGest(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>⚙️ Proveedores</button>}
             {esAdmin&&<button onClick={function(){setShowPrecios(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>💲 Precios</button>}
+            {esAdmin&&<button onClick={function(){setShowEditorMenu(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>🍽️ Menú Stock</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             <button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
@@ -2047,6 +2173,12 @@ export default function App() {
         });
         setProductos(pd);setShowMisProds(false);
       }}/>}
+      {showEditorMenu&&<EditorMenuStock onClose={function(){setShowEditorMenu(false);}} onSave={function(m){
+        // Update global menu
+        Object.keys(m).forEach(function(k){MENU_POR_LOCAL[k]=m[k];});
+        setMenuStock({...m});
+        setShowEditorMenu(false);
+      }}/>}
       {showPrecios&&<GestPreciosModal proveedores={proveedores} productos={productos} precios={precios} onClose={function(){setShowPrecios(false);}} onSave={function(prs){
         // Save all precios to Supabase
         Object.keys(prs).forEach(function(key){
@@ -2061,3 +2193,4 @@ export default function App() {
     </div>
   );
 }
+

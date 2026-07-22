@@ -178,13 +178,13 @@ var INIT_PROVEEDORES = [
 var INIT_PRECIOS = {};
 
 var INIT_PRODUCTOS = {
-  p1: ["Pechuga de pollo","Carne picada","Pulpa de cerdo","Desmechado de cerdo","Alitas","Paleta","Bola de lomo o nalga","Pata Muslo","Osobuco"],
-  p2: ["Queso brie","Queso semiduro"],
-  p3: ["Kanikama","Salmon ahumado","Penca de salmon","Langostinos","Penca de trucha","Abadejo","Anchoas"],
-  p4: ["Zanahoria","Papas","Batata","Cebolla comun","Cebolla morada","Verdeo","Ciboulette","Albahaca","Menta","Manzana verde","Jenjibre","Palta","Limon","Huevos","Tomates cherry","Pepino","Lechuga crespa","Remolacha","Rucula","Repollo","Zuccini","Frutillas","Mango","Curcuma"],
-  p5: ["Atun","Mayonesa","Choclo","Vino blanco","Vino tinto","Harina 0000","Maicena","Panko","Polenta","Azucar","Sal fina","Sal gruesa","Azucar mascabo","Vinagre blanco","Esponja cocina","Esponja acero","Detergente","Trapo de piso","Rejillas","Desengrasante","Alcohol","Guantes de limpieza","Desodorante piso","Papel higienico","Lavandina","Bolsas residuos","Aceite","Aceitunas","Perfumina","Repasadores","Vinagre de manzana"],
-  p6: ["Dips","Tapas de dips","Lapiceras","Cinta","Bolsas delivery F8 o F9","Papel manteca","Film","Aluminio","Bandejas de aluminio f75","Guantes de nitrilo","Mangas descartables N5","Bobina de papel","Cajas de empanadas chinas","Ensaladeras","Palitos chinos","Rollo comandera","Rollo posnet","Sticker dips","Tarjeta QR","Baucher","Caja de servilletas","Caja de pizza","Caja de media docena","Pinchos","Bandejas de aluminio f100","Bandeja de aluminio f200"],
-  p7: ["Ajo en polvo","Sesamo negro","Sesamo blanco","Tomates secos","Tomillo","Almendras","Nueces","Mani","Pimenton Ahumado","Humo en polvo","Hongos de Pino","Perejil","Pimienta negra","Cebolla crispy"],
+  p1: ["Bondiola","Carne picada","Carre de cerdo","Morcilla","Osobuco","Pata y muslo","Pechuga de pollo","Riñones","Roast beef","Vacio","Panceta","Pastron","Pepperoni"],
+  p2: ["Brie","Cebolla encurtida","Cheddar","Crudo","Dulce de batata","Jamon cocido","Mascarpone","Mortadela","Mozzarella","Mozzarella en barra","Provoleta","Queso cremoso","Queso de maquina","Queso para rallar","Ricota","Roquefort"],
+  p3: ["Calamaretes","Cornalitos","Langostinos","Mejillones media valva","Mejillones sin valva","Merluza molida","Navajuelas","Penca de salmon","Rabas","Salmon ahumado","Salsa de pescado","Salsa de ostras","Salsa de soja","Salsa teriyaki"],
+  p4: ["Acelga","Ajo","Albahaca","Apio","Berenjena","Brocoli","Cebolla blanca","Cebolla morada","Cebolla comun","Champiñones","Ciboulette","Coliflor","Espinaca","Huevos","Lechuga crespa","Lechuga morada","Lechuga repollada","Limones","Manzana verde","Menta","Morrones","Palta","Papas","Pepino","Puerro","Rabanito","Repollo colorado","Rucula","Tomates cherry","Tomates redondo","Verdeo","Zanahoria","Zucchini"],
+  p5: ["Aceitunas negras","Aceitunas verdes","Aceto balsamico","Azucar","Barbacoa","Bolsas de residuos","Esponja","Esponja de acero","Fosforos","Hamburguesas","Harina 000","Harina 0000","Ketchup","Leche","Levadura seca","Limon artificial","Mayonesa","Mostaza","Pan rallado","Polenta","Salchichas","Sal fina","Sal entrefina","Sal gruesa","Salsas para postre","Tomate concentrado","Tomate triturado","Vinagre alc man y vino","Vino blanco","Vino tinto","Bicarbonato de sodio","Hielo","Prepizzas","Cheesecake"],
+  p6: ["Bandejas de aluminio chicas","Bandejas de aluminio grandes","Bandejas para ensaladas","Bobina de papel","Bolsas blancas grandes y chicas","Bolsas de carton","Bolsas para porcionar 15x20","Bolsas para porcionar 20x30","Cajas de media pizza","Cajas de pizzas","Cajas de pizza masa madre","Dips","Film","Papel aluminio","Pinchos","Tridentes para pizzas"],
+  p7: ["Aji molido","Ajo deshidratado","Ajo en polvo","Albahaca deshidratada","Almendras","Anis","Azucar mascabo","Azucar negra","Canela","Castañas de caju","Cebolla deshidratada","Cebolla en polvo","Cereales de maiz","Clavo de olor","Comino","Curcuma","Curry","Eneldo","Estragón","Hongos de pino","Humo en polvo","Jenjibre","Laurel","Lentejas","Miel","Mix de semillas","Nueces","Nueces de pecan","Nuez moscada","Oregano","Panko","Paprika","Perejil","Pimenton ahumado","Pimenton picante","Pimienta blanca","Pimienta de cayena","Pimienta en granos","Pimienta negra","Polvo de hornear","Provenzal","Romero","Semillas de amapola","Semillas de coriandro","Semillas de fenogreco","Semillas de hinojo","Semillas de mostaza","Semillas de sesamo","Semillas eneldo","Tofu","Tomates secos"],
   p8: ["Cajas de sushi","Wasabi","Mirin","Alga kombu","Aceite de sesamo","Salsa de soja","Salsa de ostras","Arroz koyi","Alga nori","Caviar","Finlandia","Ajinomoto","Crema de leche","Flores decoracion","Palitos chinos"],
   p9: ["Gin","Vinos","Coca","Coca zero","Sprite","Fanta","Pomelo","Pera","Manzana","Naranja","Cerveza","Heineken lata","Imperial IPA","Grolsh lata"],
   p10: [],
@@ -1618,6 +1618,195 @@ function PanelAnalytics(p) {
   );
 }
 
+
+
+// Stock Supabase
+async function sbLoadStock(localId) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/stock?local=eq."+localId+"&order=plato", { headers: SH });
+    var d = await r.json();
+    if (!Array.isArray(d)) return {};
+    var result = {};
+    d.forEach(function(s){ result[s.plato] = { cantidad: s.cantidad, minimo: s.minimo||0, updatedAt: s.updated_at }; });
+    return result;
+  } catch(e) { return {}; }
+}
+
+async function sbUpdateStock(localId, plato, cantidad, minimo) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var id = localId + "_" + plato.replace(/[^a-zA-Z0-9]/g,"_");
+    await fetch(SURL + "/rest/v1/stock", { method: "POST", headers: h, body: JSON.stringify({ id: id, local: localId, plato: plato, cantidad: cantidad, minimo: minimo||0, updated_at: new Date().toISOString() }) });
+  } catch(e) {}
+}
+
+async function sbLogMovimiento(localId, plato, tipo, cantidad, usuario) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/stock_movimientos", { method: "POST", headers: h, body: JSON.stringify({ id: String(Date.now()), local: localId, plato: plato, tipo: tipo, cantidad: cantidad, usuario: usuario, created_at: new Date().toISOString() }) });
+  } catch(e) {}
+}
+
+
+// ─── PANEL STOCK ──────────────────────────────────────────────────────────────
+function PanelStock(p) {
+  var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
+  var menu = MENU_POR_LOCAL[localId] || {};
+  var categorias = Object.keys(menu);
+  var [stock,setStock]=useState({});
+  var [loading,setLoading]=useState(true);
+  var [catAct,setCatAct]=useState(categorias[0]||"");
+  var [modo,setModo]=useState("ver"); // ver | cargar | descontar
+  var [cambios,setCambios]=useState({});
+  var [descuentos,setDescuentos]=useState({});
+  var [saving,setSaving]=useState(false);
+  var [minimos,setMinimos]=useState({});
+
+  useState(function(){
+    setLoading(true);
+    sbLoadStock(localId).then(function(d){
+      setStock(d);
+      var mins={};
+      Object.keys(d).forEach(function(k){mins[k]=d[k].minimo||0;});
+      setMinimos(mins);
+      setLoading(false);
+    }).catch(function(){setLoading(false);});
+  },[localId]);
+
+  function getCantidad(plato){ return stock[plato]?stock[plato].cantidad:0; }
+  function getMinimo(plato){ return minimos[plato]||0; }
+
+  async function guardarCarga(){
+    setSaving(true);
+    var newStock={...stock};
+    for(var plato of Object.keys(cambios)){
+      var val=parseInt(cambios[plato])||0;
+      if(val===0)continue;
+      var actual=getCantidad(plato);
+      var nuevo=actual+val;
+      newStock[plato]={cantidad:nuevo,minimo:getMinimo(plato),updatedAt:new Date().toISOString()};
+      await sbUpdateStock(localId,plato,nuevo,getMinimo(plato));
+      await sbLogMovimiento(localId,plato,"entrada",val,usuario);
+    }
+    setStock(newStock);
+    setCambios({});
+    setModo("ver");
+    setSaving(false);
+  }
+
+  async function guardarDescuento(){
+    setSaving(true);
+    var newStock={...stock};
+    for(var plato of Object.keys(descuentos)){
+      var val=parseInt(descuentos[plato])||0;
+      if(val===0)continue;
+      var actual=getCantidad(plato);
+      var nuevo=Math.max(0,actual-val);
+      newStock[plato]={cantidad:nuevo,minimo:getMinimo(plato),updatedAt:new Date().toISOString()};
+      await sbUpdateStock(localId,plato,nuevo,getMinimo(plato));
+      await sbLogMovimiento(localId,plato,"salida",val,usuario);
+    }
+    setStock(newStock);
+    setDescuentos({});
+    setModo("ver");
+    setSaving(false);
+  }
+
+  var platosActuales=menu[catAct]||[];
+  var totalBajos=Object.keys(stock).filter(function(k){return stock[k].cantidad<=getMinimo(k)&&stock[k].cantidad>=0;}).length;
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Control de Stock</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>{localNombre}</div>
+        </div>
+        {totalBajos>0&&<div style={{background:"#C1440E22",border:"1px solid #C1440E44",borderRadius:8,padding:"6px 12px",fontSize:12,color:"#C1440E",fontWeight:700}}>⚠️ {totalBajos} producto{totalBajos!==1?"s":""} bajo mínimo</div>}
+      </div>
+
+      {/* Modo buttons */}
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        <button onClick={function(){setModo("ver");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="ver"?"#555":"#1E1E1E"),background:modo==="ver"?"#222":"#111",color:modo==="ver"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>👁 Ver stock</button>
+        <button onClick={function(){setModo("cargar");setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="cargar"?"#3A7D44":"#1E1E1E"),background:modo==="cargar"?"#3A7D4422":"#111",color:modo==="cargar"?"#3A7D44":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar stock</button>
+        <button onClick={function(){setModo("descontar");setCambios({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
+      </div>
+
+      {/* Categorias */}
+      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+        {categorias.map(function(cat){
+          var bajos=(menu[cat]||[]).filter(function(pl){return stock[pl]&&stock[pl].cantidad<=getMinimo(pl);}).length;
+          return(
+            <button key={cat} onClick={function(){setCatAct(cat);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(catAct===cat?"#D4A017":"#1E1E1E"),background:catAct===cat?"#D4A01722":"none",color:catAct===cat?"#D4A017":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+              {cat} {bajos>0&&<span style={{color:"#C1440E",fontWeight:700}}>({bajos})</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
+        <div>
+          {/* Lista de platos */}
+          <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16}}>
+            {platosActuales.map(function(plato){
+              var cant=getCantidad(plato);
+              var min=getMinimo(plato);
+              var bajo=cant<=min&&cant>=0;
+              var cero=cant===0;
+              return(
+                <div key={plato} style={{background:cero?"#1A0808":bajo?"#150A00":"#111",border:"1px solid "+(cero?"#C1440E44":bajo?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,color:cero?"#C1440E":bajo?"#D4A017":"#F0EDE8",fontWeight:cero||bajo?700:400}}>{plato}</div>
+                    {stock[plato]&&stock[plato].updatedAt&&<div style={{fontSize:10,color:"#444",marginTop:2}}>Actualizado: {fmtDateTime(stock[plato].updatedAt)}</div>}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    {modo==="cargar"&&(
+                      <input type="number" min="0" placeholder="+" value={cambios[plato]||""}
+                        onChange={function(e){setCambios(function(p){var n={...p};n[plato]=e.target.value;return n;});}}
+                        style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                    )}
+                    {modo==="descontar"&&(
+                      <input type="number" min="0" max={cant} placeholder="-" value={descuentos[plato]||""}
+                        onChange={function(e){setDescuentos(function(p){var n={...p};n[plato]=e.target.value;return n;});}}
+                        style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                    )}
+                    <div style={{width:50,textAlign:"center"}}>
+                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero?"#C1440E":bajo?"#D4A017":"#F0EDE8"}}>{cant}</div>
+                      <div style={{fontSize:9,color:"#444"}}>unidades</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Botón guardar */}
+          {modo==="cargar"&&Object.keys(cambios).filter(function(k){return cambios[k]>0;}).length>0&&(
+            <button onClick={guardarCarga} disabled={saving} style={{...BS("#3A7D44"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar carga de stock"}</button>
+          )}
+          {modo==="descontar"&&Object.keys(descuentos).filter(function(k){return descuentos[k]>0;}).length>0&&(
+            <button onClick={guardarDescuento} disabled={saving} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar descuento de cierre"}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STOCK DATA ───────────────────────────────────────────────────────────────
+var MENU_BODEGON = {
+  "Entradas": ["Albóndigas de cerdo","Albóndigas de merluza y langostinos","Aros de cebolla","Bastones de muzzarella","Bastones de salmón","Bombas de papa","Brocheta de langostinos","Brusquetón de pastrón","Brusquetón de salmón","Brusquetón NKT","Burrata capresse","Cornalitos fritos","Crocantes de pollo","Croquetas de verdura","Gambas al ajillo","Langostinos","Mejillones","Omelette XL","Provoleta campera","Provoleta NKT","Rabas","Rabas media porción","Sushi Kusama"],
+  "Picadas": ["Picada de fiambres","Picada de mariscos"],
+  "Pizzas": ["Anchoas","Boconccinos","Burrata y pesto","Capresse","Crudo y rúcula","Del bosque","Del mar","Especial","Fugazzeta","Hongos y salsa de ostras","Langostinos al ajillo","Mortadela","Muzzarella","Muzzarella con huevo","Napolitana","Panceta y huevo","Pepperoni","Super roquefort","Tres quesos","Verduras"],
+  "Sándwiches": ["Baguette de mortadela","Baguette de pastrón","Ciabatta de rabas","Crudo","Desmechado de carne","Desmechado de cerdo","Desmechado de pollo","Gravlax de salmón","Medallón de carne","Medallón de carne ahumado","Medallón de carne crispy","Medallón de carne NKT","Vegetariano"],
+  "Papas": ["Papas de mar","Papas fritas","Papas ibéricas","Papas NKT","Papas picantes","Papas roquefort"],
+  "Ensaladas": ["Ensalada con langostinos","Ensalada de vegetales asados","Ensalada NKT","Ensalada serrana"],
+  "Especialidades": ["Abadejo de autor","Bife de chorizo","Milanesa de lenguado","Milanesa de pollo","Milanesa de ternera","Salmón","Trucha al eneldo"]
+};
+
+var MENU_POR_LOCAL = { "l1": MENU_BODEGON, "l2": {}, "l3": {}, "l4": {} };
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
@@ -1635,6 +1824,7 @@ export default function App() {
   var [loading,setLoading]=useState(false);
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
+  var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
 
   useEffect(function(){
@@ -1720,6 +1910,9 @@ export default function App() {
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
               </button>
+              <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                📦 Stock
+              </button>
             </div>
           )}
 
@@ -1730,6 +1923,25 @@ export default function App() {
 
           {esAdmin&&vista==="analytics"&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
+          )}
+
+          {esAdmin&&vista==="stock"&&(
+            <div>
+              <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                {LOCALES.map(function(l){
+                  var hasMenu=Object.keys(MENU_POR_LOCAL[l.id]||{}).length>0;
+                  return(
+                    <button key={l.id} onClick={function(){if(hasMenu)setVistaUsuario(l.id);}}
+                      style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:hasMenu?"#666":"#333",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:hasMenu?"pointer":"not-allowed",opacity:hasMenu?1:0.5}}>
+                      {l.emoji} {l.nombre} {!hasMenu&&<span style={{fontSize:9}}>(próximamente)</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {vistaUsuario&&MENU_POR_LOCAL[vistaUsuario]&&Object.keys(MENU_POR_LOCAL[vistaUsuario]).length>0&&(
+                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}/>
+              )}
+            </div>
           )}
 
           {esAdmin&&vista==="faltantes"&&(
@@ -1767,7 +1979,20 @@ export default function App() {
           )}
 
           {/* HISTORIAL */}
-          {(!esAdmin||vista==="historial")&&(
+          {!esAdmin&&(
+            <div style={{display:"flex",gap:6,marginBottom:16}}>
+              <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
+              {MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
+                <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock</button>
+              )}
+            </div>
+          )}
+
+          {!esAdmin&&vistaUsuario==="stock"&&MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
+            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}/>
+          )}
+
+          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

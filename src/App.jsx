@@ -1784,6 +1784,7 @@ function PanelStock(p) {
   var [descuentos,setDescuentos]=useState({});
   var [saving,setSaving]=useState(false);
   var [minimos,setMinimos]=useState({});
+  var [minimoEdit,setMinimoEdit]=useState({});
 
   useState(function(){
     setLoading(true);
@@ -1798,6 +1799,24 @@ function PanelStock(p) {
 
   function getCantidad(plato){ return stock[plato]?stock[plato].cantidad:0; }
   function getMinimo(plato){ return minimos[plato]||0; }
+
+  async function guardarMinimos(){
+    setSaving(true);
+    var newStock={...stock};
+    var newMinimos={...minimos};
+    for(var plato of Object.keys(minimoEdit)){
+      var val=parseInt(minimoEdit[plato])||0;
+      newMinimos[plato]=val;
+      var cant=getCantidad(plato);
+      newStock[plato]={cantidad:cant,minimo:val,updatedAt:stock[plato]?stock[plato].updatedAt:new Date().toISOString()};
+      await sbUpdateStock(localId,plato,cant,val);
+    }
+    setStock(newStock);
+    setMinimos(newMinimos);
+    setMinimoEdit({});
+    setModo("ver");
+    setSaving(false);
+  }
 
   async function guardarCarga(){
     setSaving(true);
@@ -1854,6 +1873,7 @@ function PanelStock(p) {
         <button onClick={function(){setModo("ver");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="ver"?"#555":"#1E1E1E"),background:modo==="ver"?"#222":"#111",color:modo==="ver"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>👁 Ver stock</button>
         <button onClick={function(){setModo("cargar");setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="cargar"?"#3A7D44":"#1E1E1E"),background:modo==="cargar"?"#3A7D4422":"#111",color:modo==="cargar"?"#3A7D44":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar stock</button>
         <button onClick={function(){setModo("descontar");setCambios({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
+        <button onClick={function(){setModo("minimos");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="minimos"?"#8B2FC9":"#1E1E1E"),background:modo==="minimos"?"#8B2FC922":"#111",color:modo==="minimos"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚡ Mínimos</button>
       </div>
 
       {/* Categorias */}
@@ -1894,6 +1914,14 @@ function PanelStock(p) {
                         onChange={function(e){setDescuentos(function(p){var n={...p};n[plato]=e.target.value;return n;});}}
                         style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
                     )}
+                    {modo==="minimos"&&(
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                        <input type="number" min="0" placeholder="0" value={minimoEdit[plato]!==undefined?minimoEdit[plato]:getMinimo(plato)}
+                          onChange={function(e){setMinimoEdit(function(m){var n={...m};n[plato]=e.target.value;return n;});}}
+                          style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #8B2FC9",background:"#0F0A1A",color:"#8B2FC9",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                        <div style={{fontSize:9,color:"#555"}}>mínimo</div>
+                      </div>
+                    )}
                     <div style={{width:50,textAlign:"center"}}>
                       <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero?"#C1440E":bajo?"#D4A017":"#F0EDE8"}}>{cant}</div>
                       <div style={{fontSize:9,color:"#444"}}>unidades</div>
@@ -1910,6 +1938,9 @@ function PanelStock(p) {
           )}
           {modo==="descontar"&&Object.keys(descuentos).filter(function(k){return descuentos[k]>0;}).length>0&&(
             <button onClick={guardarDescuento} disabled={saving} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar descuento de cierre"}</button>
+          )}
+          {modo==="minimos"&&Object.keys(minimoEdit).length>0&&(
+            <button onClick={guardarMinimos} disabled={saving} style={{...BS("#8B2FC9"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar mínimos"}</button>
           )}
         </div>
       )}
@@ -1968,10 +1999,10 @@ function PanelStockMP(p) {
   var [descuentos,setDescuentos]=useState({});
   var [cargaManual,setCargaManual]=useState({});
   var [saving,setSaving]=useState(false);
-  var [filtro,setFiltro]=useState("");
-  var [provFiltro,setProvFiltro]=useState("todos");
+  var [provSel,setProvSel]=useState(null);
   var [showAddProd,setShowAddProd]=useState(false);
   var [newProd,setNewProd]=useState({nombre:"",cantidad:"",unidad:"kg",proveedor:""});
+  var [minimoEditMP,setMinimoEditMP]=useState({});
 
   useState(function(){
     setLoading(true);
@@ -1986,12 +2017,10 @@ function PanelStockMP(p) {
     });
   });
 
-  // Filter
-  var productosFiltrados=todosProductos.filter(function(p){
-    var matchFiltro=!filtro||p.nombre.toLowerCase().includes(filtro.toLowerCase());
-    var matchProv=provFiltro==="todos"||p.proveedor===provFiltro;
-    return matchFiltro&&matchProv;
-  });
+  // Filter by selected proveedor
+  var proveedoresFiltrados = provSel
+    ? proveedores.filter(function(pv){return pv.id===provSel;})
+    : proveedores.filter(function(pv){return (productos[pv.id]||[]).length>0;});
 
   // Also include manual products in stock not in list
   var stockKeys=Object.keys(stock);
@@ -2043,6 +2072,23 @@ function PanelStockMP(p) {
     setSaving(false);
   }
 
+  async function guardarMinimosMP(){
+    setSaving(true);
+    var newStock={...stock};
+    for(var prod of Object.keys(minimoEditMP)){
+      var val=parseFloat(minimoEditMP[prod])||0;
+      var cant=getCant(prod);
+      var unidad=getUnidad(prod);
+      var prov=getProv(prod);
+      newStock[prod]={cantidad:cant,unidad:unidad,minimo:val,proveedor:prov,updatedAt:stock[prod]?stock[prod].updatedAt:new Date().toISOString()};
+      await sbUpdateStockMP(localId,prod,cant,unidad,val,prov);
+    }
+    setStock(newStock);
+    setMinimoEditMP({});
+    setModo("ver");
+    setSaving(false);
+  }
+
   async function agregarProductoNuevo(){
     if(!newProd.nombre.trim()||!newProd.cantidad)return;
     var val=parseFloat(newProd.cantidad);
@@ -2055,7 +2101,7 @@ function PanelStockMP(p) {
     setShowAddProd(false);
   }
 
-  var totalBajos=Object.keys(stock).filter(function(k){return parseFloat(stock[k].cantidad)<=parseFloat(stock[k].minimo||0)&&parseFloat(stock[k].cantidad)>=0;}).length;
+  var totalBajos=Object.keys(stock).filter(function(k){return parseFloat(stock[k].minimo||0)>0&&parseFloat(stock[k].cantidad)<=parseFloat(stock[k].minimo||0);}).length;
   var provsUnicos=["todos",...new Set(todosProductos.map(function(p){return p.proveedor;}))];
 
   return(
@@ -2073,7 +2119,8 @@ function PanelStockMP(p) {
       <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={function(){setModo("ver");setDescuentos({});setCargaManual({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="ver"?"#555":"#1E1E1E"),background:modo==="ver"?"#222":"#111",color:modo==="ver"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>👁 Ver</button>
         <button onClick={function(){setModo("cargar");setDescuentos({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="cargar"?"#3A7D44":"#1E1E1E"),background:modo==="cargar"?"#3A7D4422":"#111",color:modo==="cargar"?"#3A7D44":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar</button>
-        <button onClick={function(){setModo("descontar");setCargaManual({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
+        <button onClick={function(){setModo("descontar");setCargaManual({});setMinimoEditMP({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
+        <button onClick={function(){setModo("minimos");setCargaManual({});setDescuentos({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="minimos"?"#8B2FC9":"#1E1E1E"),background:modo==="minimos"?"#8B2FC922":"#111",color:modo==="minimos"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚡ Mínimos</button>
         <button onClick={function(){setShowAddProd(true);}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid #D4A017",background:"#D4A01711",color:"#D4A017",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Agregar producto</button>
       </div>
 
@@ -2094,66 +2141,74 @@ function PanelStockMP(p) {
         </div>
       )}
 
-      {/* Filtros */}
-      <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap"}}>
-        <input placeholder="🔍 Buscar producto..." value={filtro} onChange={function(e){setFiltro(e.target.value);}} style={{...INP,flex:1,minWidth:150,fontSize:12}}/>
-        <select value={provFiltro} onChange={function(e){setProvFiltro(e.target.value);}} style={{...INP,width:"auto",fontSize:11}}>
-          {provsUnicos.map(function(pv){return <option key={pv} value={pv}>{pv==="todos"?"Todos los proveedores":pv}</option>;})}
-        </select>
+      {/* Tabs por proveedor */}
+      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+        <button onClick={function(){setProvSel(null);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(provSel===null?"#D4A017":"#1E1E1E"),background:provSel===null?"#D4A01722":"none",color:provSel===null?"#D4A017":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+          Todos
+        </button>
+        {proveedores.filter(function(pv){return (productos[pv.id]||[]).length>0;}).map(function(pv){
+          var enStock=(productos[pv.id]||[]).filter(function(prod){return stock[prod]!==undefined;}).length;
+          var bajos=(productos[pv.id]||[]).filter(function(prod){return stock[prod]&&parseFloat(stock[prod].cantidad)===0;}).length;
+          return(
+            <button key={pv.id} onClick={function(){setProvSel(pv.id);}}
+              style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(provSel===pv.id?"#1A6B8A":"#1E1E1E"),background:provSel===pv.id?"#1A6B8A22":"none",color:provSel===pv.id?"#1A6B8A":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+              {pv.nombre} {bajos>0&&<span style={{color:"#C1440E",fontWeight:700}}>({bajos})</span>}
+            </button>
+          );
+        })}
       </div>
 
       {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
         <div>
-          {/* Extras en stock (productos manuales) */}
-          {extrasEnStock.length>0&&(
-            <div style={{marginBottom:10}}>
-              <div style={{fontSize:10,color:"#D4A017",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Productos agregados manualmente</div>
-              {extrasEnStock.map(function(prod){
-                var cant=getCant(prod);
-                var unidad=getUnidad(prod);
-                var cero=cant===0;
-                return(
-                  <div key={prod} style={{background:cero?"#1A0808":"#111",border:"1px solid "+(cero?"#C1440E44":"#D4A01733"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,color:cero?"#C1440E":"#F0EDE8",fontWeight:600}}>{prod}</div>
-                      {stock[prod]&&stock[prod].proveedor&&<div style={{fontSize:10,color:"#555"}}>{stock[prod].proveedor}</div>}
-                    </div>
-                    {modo==="cargar"&&<input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:unidad};return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
-                    {modo==="descontar"&&<input type="number" min="0" placeholder="-" value={descuentos[prod]||""} onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
-                    <div style={{width:60,textAlign:"center"}}>
-                      <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero?"#C1440E":"#F0EDE8"}}>{cant}</div>
-                      <div style={{fontSize:9,color:"#444"}}>{unidad}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Productos de proveedores */}
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {productosFiltrados.map(function(item){
-              var prod=item.nombre;
-              var cant=getCant(prod);
-              var unidad=getUnidad(prod)||"unid";
-              var cero=cant===0;
-              var enStock=stock[prod]!==undefined;
+          {/* Productos agrupados por proveedor */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {proveedoresFiltrados.map(function(pv){
+              var prods=productos[pv.id]||[];
+              if(prods.length===0)return null;
+              var bajosEnProv=prods.filter(function(prod){return stock[prod]&&parseFloat(stock[prod].cantidad)===0;}).length;
               return(
-                <div key={prod} style={{background:cero&&enStock?"#1A0808":"#111",border:"1px solid "+(cero&&enStock?"#C1440E44":"#1A1A1A"),borderRadius:10,padding:"9px 14px",display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,color:cero&&enStock?"#C1440E":"#F0EDE8"}}>{prod}</div>
-                    <div style={{fontSize:10,color:"#444"}}>{item.proveedor}</div>
-                  </div>
-                  {modo==="cargar"&&(
-                    <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                      <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:unidad};return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
-                      <select value={cargaManual[prod]?cargaManual[prod].unidad:unidad} onChange={function(e){setCargaManual(function(c){var n={...c};if(!n[prod])n[prod]={cantidad:"",unidad:e.target.value};else n[prod].unidad=e.target.value;return n;});}} style={{width:55,padding:"4px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:10}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                <div key={pv.id} style={{background:"#0F0F0F",borderRadius:12,border:"1px solid "+(bajosEnProv>0?"#C1440E33":"#1E1E1E"),overflow:"hidden"}}>
+                  {/* Proveedor header */}
+                  <div style={{padding:"10px 14px",background:"#151515",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{pv.nombre}</div>
+                      <div style={{fontSize:10,color:"#555"}}>{pv.categoria} · {prods.length} productos</div>
                     </div>
-                  )}
-                  {modo==="descontar"&&enStock&&<input type="number" min="0" placeholder="-" value={descuentos[prod]||""} onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
-                  <div style={{width:60,textAlign:"center"}}>
-                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero&&enStock?"#C1440E":enStock?"#F0EDE8":"#333"}}>{enStock?cant:"—"}</div>
-                    <div style={{fontSize:9,color:"#444"}}>{enStock?unidad:""}</div>
+                    {bajosEnProv>0&&<div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>⚠️ {bajosEnProv} en cero</div>}
+                  </div>
+                  {/* Productos */}
+                  <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                    {prods.map(function(prod){
+                      var cant=getCant(prod);
+                      var unidad=getUnidad(prod)||"unid";
+                      var enStock=stock[prod]!==undefined;
+                      var minimo=stock[prod]?parseFloat(stock[prod].minimo||0):0;
+                      var cero=(enStock&&minimo>0&&cant<=minimo)||(enStock&&cant===0);
+                      return(
+                        <div key={prod} style={{background:cero?"#1A0808":"#111",border:"1px solid "+(cero?"#C1440E33":"#1A1A1A"),borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{flex:1,fontSize:12,color:cero?"#C1440E":"#CCC"}}>{prod}</div>
+                          {modo==="cargar"&&(
+                            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                              <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:cargaManual[prod]?cargaManual[prod].unidad:unidad};return n;});}} style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                              <select value={cargaManual[prod]?cargaManual[prod].unidad:unidad} onChange={function(e){setCargaManual(function(c){var n={...c};if(!n[prod])n[prod]={cantidad:"",unidad:e.target.value};else n[prod].unidad=e.target.value;return n;});}} style={{width:50,padding:"3px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:10}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                            </div>
+                          )}
+                          {modo==="descontar"&&enStock&&<input type="number" min="0" placeholder="-" value={descuentos[prod]||""} onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}} style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
+                          {modo==="minimos"&&(
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                              <input type="number" min="0" placeholder="0" value={minimoEditMP[prod]!==undefined?minimoEditMP[prod]:(stock[prod]?stock[prod].minimo||0:0)}
+                                onChange={function(e){setMinimoEditMP(function(m){var n={...m};n[prod]=e.target.value;return n;});}}
+                                style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #8B2FC9",background:"#0F0A1A",color:"#8B2FC9",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                              <div style={{fontSize:9,color:"#555"}}>mínimo</div>
+                            </div>
+                          )}
+                          <div style={{width:55,textAlign:"center",flexShrink:0}}>
+                            <div style={{fontSize:15,fontWeight:800,color:cero?"#C1440E":enStock?"#F0EDE8":"#333"}}>{enStock?cant:"—"}</div>
+                            <div style={{fontSize:9,color:"#444"}}>{enStock?unidad:""}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -2166,6 +2221,9 @@ function PanelStockMP(p) {
           )}
           {modo==="descontar"&&Object.keys(descuentos).filter(function(k){return parseFloat(descuentos[k])>0;}).length>0&&(
             <button onClick={guardarDescuento} disabled={saving} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar descuento"}</button>
+          )}
+          {modo==="minimos"&&Object.keys(minimoEditMP).length>0&&(
+            <button onClick={guardarMinimosMP} disabled={saving} style={{...BS("#8B2FC9"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar mínimos"}</button>
           )}
         </div>
       )}

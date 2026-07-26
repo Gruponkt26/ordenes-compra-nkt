@@ -1653,7 +1653,7 @@ async function sbLogMovimiento(localId, plato, tipo, cantidad, usuario) {
 function EditorMenuStock(p) {
   var onClose=p.onClose, onSave=p.onSave;
   var [localSel,setLocalSel]=useState("l1");
-  var [menu,setMenu]=useState(JSON.parse(JSON.stringify(MENU_POR_LOCAL)));
+  var [menu,setMenu]=useState(function(){ return JSON.parse(JSON.stringify(MENU_POR_LOCAL)); });
   var [nuevaCat,setNuevaCat]=useState("");
   var [nuevoPlato,setNuevoPlato]=useState("");
   var [catSel,setCatSel]=useState("");
@@ -2062,7 +2062,8 @@ var MENU_BODEGON = {
   "Especialidades": ["Abadejo de autor","Bife de chorizo","Milanesa de lenguado","Milanesa de pollo","Milanesa de ternera","Salmón","Trucha al eneldo"]
 };
 
-var MENU_POR_LOCAL = { "l1": MENU_BODEGON, "l2": {}, "l3": {}, "l4": {} };
+// MENU_POR_LOCAL starts empty - loaded from Supabase, falls back to MENU_BODEGON only if no Supabase data
+var MENU_POR_LOCAL = { "l1": {}, "l2": {}, "l3": {}, "l4": {} };
 
 
 // ─── PANEL STOCK MATERIA PRIMA ────────────────────────────────────────────────
@@ -2349,7 +2350,22 @@ export default function App() {
     sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
-    sbLoadMenuStock().then(function(d){if(d){Object.keys(d).forEach(function(k){MENU_POR_LOCAL[k]=d[k];});setMenuStock({...MENU_POR_LOCAL});}}).catch(function(){});
+    sbLoadMenuStock().then(function(d){
+      if(d && Object.keys(d.l1||{}).length>0){
+        // Supabase has data - use it completely (respects deletions)
+        Object.keys(d).forEach(function(k){ MENU_POR_LOCAL[k]=d[k]; });
+      } else {
+        // No Supabase data yet - use default menu and save it
+        MENU_POR_LOCAL["l1"] = MENU_BODEGON;
+        Object.keys(MENU_BODEGON).forEach(function(cat){
+          sbSaveMenuStock("l1", cat, MENU_BODEGON[cat]);
+        });
+      }
+      setMenuStock(JSON.parse(JSON.stringify(MENU_POR_LOCAL)));
+    }).catch(function(){
+      MENU_POR_LOCAL["l1"] = MENU_BODEGON;
+      setMenuStock(JSON.parse(JSON.stringify(MENU_POR_LOCAL)));
+    });
     sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
     sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
   },[cu]);

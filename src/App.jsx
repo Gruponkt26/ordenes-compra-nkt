@@ -1959,6 +1959,36 @@ function PanelStock(p) {
 }
 
 
+// Menu Stock Supabase
+async function sbLoadMenuStock() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/menu_stock?order=local,categoria", { headers: SH });
+    var d = await r.json();
+    if (!Array.isArray(d) || d.length === 0) return null;
+    var result = { l1:{}, l2:{}, l3:{}, l4:{} };
+    d.forEach(function(row){
+      if(!result[row.local]) result[row.local]={};
+      result[row.local][row.categoria] = row.platos||[];
+    });
+    return result;
+  } catch(e) { return null; }
+}
+
+async function sbSaveMenuStock(localId, categoria, platos) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var id = localId + "_" + categoria.replace(/[^a-zA-Z0-9]/g,"_");
+    await fetch(SURL + "/rest/v1/menu_stock", { method: "POST", headers: h, body: JSON.stringify({ id: id, local: localId, categoria: categoria, platos: platos }) });
+  } catch(e) {}
+}
+
+async function sbDeleteMenuStock(localId, categoria) {
+  try {
+    var id = localId + "_" + categoria.replace(/[^a-zA-Z0-9]/g,"_");
+    await fetch(SURL + "/rest/v1/menu_stock?id=eq."+id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // Stock Materia Prima Supabase
 async function sbLoadStockMP(localId) {
   try {
@@ -2319,6 +2349,7 @@ export default function App() {
     sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
+    sbLoadMenuStock().then(function(d){if(d){Object.keys(d).forEach(function(k){MENU_POR_LOCAL[k]=d[k];});setMenuStock({...MENU_POR_LOCAL});}}).catch(function(){});
     sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
     sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
   },[cu]);
@@ -2557,6 +2588,21 @@ export default function App() {
         setProductos(pd);setShowMisProds(false);
       }}/>}
       {showEditorMenu&&<EditorMenuStock onClose={function(){setShowEditorMenu(false);}} onSave={function(m){
+        // Save to Supabase
+        Object.keys(m).forEach(function(localId){
+          var localMenu=m[localId]||{};
+          // Save each category
+          Object.keys(localMenu).forEach(function(cat){
+            sbSaveMenuStock(localId,cat,localMenu[cat]);
+          });
+          // Delete categories that were removed
+          var oldMenu=MENU_POR_LOCAL[localId]||{};
+          Object.keys(oldMenu).forEach(function(cat){
+            if(!localMenu[cat]){
+              sbDeleteMenuStock(localId,cat);
+            }
+          });
+        });
         // Update global menu
         Object.keys(m).forEach(function(k){MENU_POR_LOCAL[k]=m[k];});
         setMenuStock({...m});

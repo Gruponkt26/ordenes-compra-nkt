@@ -1794,6 +1794,12 @@ function PanelStock(p) {
       Object.keys(d).forEach(function(k){mins[k]=d[k].minimo||0;});
       setMinimos(mins);
       setLoading(false);
+      // Play sound if any product is critical or zero
+      var hasCritical=Object.keys(d).some(function(k){
+        var status=getStockColor(d[k].cantidad,d[k].minimo||0);
+        return status==="critico"||status==="cero";
+      });
+      if(hasCritical) setTimeout(playAlertSound, 500);
     }).catch(function(){setLoading(false);});
   },[localId]);
 
@@ -1895,13 +1901,17 @@ function PanelStock(p) {
             {platosActuales.map(function(plato){
               var cant=getCantidad(plato);
               var min=getMinimo(plato);
-              var bajo=cant<=min&&cant>=0;
-              var cero=cant===0;
+              var stockStatus=getStockColor(cant,min);
+              var sc=STOCK_COLORS[stockStatus];
               return(
-                <div key={plato} style={{background:cero?"#1A0808":bajo?"#150A00":"#111",border:"1px solid "+(cero?"#C1440E44":bajo?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                <div key={plato} style={{background:sc.bg,border:"1px solid "+sc.border,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,transition:"all 0.3s"}}>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:12,color:cero?"#C1440E":bajo?"#D4A017":"#F0EDE8",fontWeight:cero||bajo?700:400}}>{plato}</div>
-                    {stock[plato]&&stock[plato].updatedAt&&<div style={{fontSize:10,color:"#444",marginTop:2}}>Actualizado: {fmtDateTime(stock[plato].updatedAt)}</div>}
+                    <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                      <div style={{fontSize:12,color:sc.text,fontWeight:stockStatus!=="ok"?700:400}}>{plato}</div>
+                      {sc.badge&&<span style={{fontSize:10,fontWeight:800,color:sc.text,background:sc.border,padding:"1px 7px",borderRadius:10}}>{sc.badge}</span>}
+                    </div>
+                    {min>0&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Mínimo: {min}{stock[plato]&&stock[plato].updatedAt?" · "+fmtDateTime(stock[plato].updatedAt):""}</div>}
+                    {!min&&stock[plato]&&stock[plato].updatedAt&&<div style={{fontSize:10,color:"#444",marginTop:2}}>Actualizado: {fmtDateTime(stock[plato].updatedAt)}</div>}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     {modo==="cargar"&&(
@@ -1923,7 +1933,7 @@ function PanelStock(p) {
                       </div>
                     )}
                     <div style={{width:50,textAlign:"center"}}>
-                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero?"#C1440E":bajo?"#D4A017":"#F0EDE8"}}>{cant}</div>
+                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:sc.text}}>{cant}</div>
                       <div style={{fontSize:9,color:"#444"}}>unidades</div>
                     </div>
                   </div>
@@ -1976,6 +1986,41 @@ async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usua
   } catch(e) {}
 }
 
+// ─── ALERTAS STOCK ────────────────────────────────────────────────────────────
+function playAlertSound() {
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Three beeps
+    [0, 0.3, 0.6].forEach(function(t) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = "sine";
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.2);
+    });
+  } catch(e) {}
+}
+
+function getStockColor(cant, minimo) {
+  if (minimo <= 0) return cant === 0 ? "cero" : "ok";
+  if (cant === 0) return "cero";
+  if (cant <= minimo) return "critico";
+  if (cant <= minimo * 2) return "bajo";
+  return "ok";
+}
+
+var STOCK_COLORS = {
+  ok:      { bg: "#111",    border: "#1A1A1A", text: "#CCC",     badge: null },
+  bajo:    { bg: "#1A1500", border: "#D4A01744", text: "#D4A017", badge: "⚠️ BAJO" },
+  critico: { bg: "#1A0808", border: "#C1440E88", text: "#C1440E", badge: "🔴 CRÍTICO" },
+  cero:    { bg: "#2A0000", border: "#C1440EBB", text: "#FF4444", badge: "❌ SIN STOCK" },
+};
+
 // ─── STOCK DATA ───────────────────────────────────────────────────────────────
 var MENU_BODEGON = {
   "Entradas": ["Albóndigas de cerdo","Albóndigas de merluza y langostinos","Aros de cebolla","Bastones de muzzarella","Bastones de salmón","Bombas de papa","Brocheta de langostinos","Brusquetón de pastrón","Brusquetón de salmón","Brusquetón NKT","Burrata capresse","Cornalitos fritos","Crocantes de pollo","Croquetas de verdura","Gambas al ajillo","Langostinos","Mejillones","Omelette XL","Provoleta campera","Provoleta NKT","Rabas","Rabas media porción","Sushi Kusama"],
@@ -2006,7 +2051,15 @@ function PanelStockMP(p) {
 
   useState(function(){
     setLoading(true);
-    sbLoadStockMP(localId).then(function(d){setStock(d);setLoading(false);}).catch(function(){setLoading(false);});
+    sbLoadStockMP(localId).then(function(d){
+      setStock(d);
+      setLoading(false);
+      var hasCritical=Object.keys(d).some(function(k){
+        var status=getStockColor(parseFloat(d[k].cantidad),parseFloat(d[k].minimo||0));
+        return status==="critico"||status==="cero";
+      });
+      if(hasCritical) setTimeout(playAlertSound, 500);
+    }).catch(function(){setLoading(false);});
   },[localId]);
 
   // Build product list from proveedores
@@ -2183,10 +2236,17 @@ function PanelStockMP(p) {
                       var unidad=getUnidad(prod)||"unid";
                       var enStock=stock[prod]!==undefined;
                       var minimo=stock[prod]?parseFloat(stock[prod].minimo||0):0;
-                      var cero=(enStock&&minimo>0&&cant<=minimo)||(enStock&&cant===0);
+                      var stockStatus=enStock?getStockColor(cant,minimo):"ok";
+                      var sc2=STOCK_COLORS[stockStatus];
                       return(
-                        <div key={prod} style={{background:cero?"#1A0808":"#111",border:"1px solid "+(cero?"#C1440E33":"#1A1A1A"),borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
-                          <div style={{flex:1,fontSize:12,color:cero?"#C1440E":"#CCC"}}>{prod}</div>
+                        <div key={prod} style={{background:enStock?sc2.bg:"#111",border:"1px solid "+(enStock?sc2.border:"#1A1A1A"),borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8,transition:"all 0.3s"}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <span style={{fontSize:12,color:enStock?sc2.text:"#CCC",fontWeight:stockStatus!=="ok"&&enStock?700:400}}>{prod}</span>
+                              {enStock&&sc2.badge&&<span style={{fontSize:9,fontWeight:800,color:sc2.text,background:sc2.border,padding:"1px 6px",borderRadius:8}}>{sc2.badge}</span>}
+                            </div>
+                            {minimo>0&&enStock&&<div style={{fontSize:9,color:"#555",marginTop:1}}>Mínimo: {minimo}</div>}
+                          </div>
                           {modo==="cargar"&&(
                             <div style={{display:"flex",gap:4,alignItems:"center"}}>
                               <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:cargaManual[prod]?cargaManual[prod].unidad:unidad};return n;});}} style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
@@ -2203,7 +2263,7 @@ function PanelStockMP(p) {
                             </div>
                           )}
                           <div style={{width:55,textAlign:"center",flexShrink:0}}>
-                            <div style={{fontSize:15,fontWeight:800,color:cero?"#C1440E":enStock?"#F0EDE8":"#333"}}>{enStock?cant:"—"}</div>
+                            <div style={{fontSize:15,fontWeight:800,color:enStock?sc2.text:"#333"}}>{enStock?cant:"—"}</div>
                             <div style={{fontSize:9,color:"#444"}}>{enStock?unidad:""}</div>
                           </div>
                         </div>

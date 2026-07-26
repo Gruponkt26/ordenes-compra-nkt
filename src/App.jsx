@@ -1917,6 +1917,34 @@ function PanelStock(p) {
   );
 }
 
+
+// Stock Materia Prima Supabase
+async function sbLoadStockMP(localId) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/stock_materia_prima?local=eq."+localId+"&order=producto", { headers: SH });
+    var d = await r.json();
+    if (!Array.isArray(d)) return {};
+    var result = {};
+    d.forEach(function(s){ result[s.producto] = { cantidad: s.cantidad, unidad: s.unidad||"unid", minimo: s.minimo||0, proveedor: s.proveedor||"", updatedAt: s.updated_at }; });
+    return result;
+  } catch(e) { return {}; }
+}
+
+async function sbUpdateStockMP(localId, producto, cantidad, unidad, minimo, proveedor) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var id = localId + "_" + producto.replace(/[^a-zA-Z0-9]/g,"_").slice(0,50);
+    await fetch(SURL + "/rest/v1/stock_materia_prima", { method: "POST", headers: h, body: JSON.stringify({ id: id, local: localId, producto: producto, cantidad: cantidad, unidad: unidad||"unid", minimo: minimo||0, proveedor: proveedor||"", updated_at: new Date().toISOString() }) });
+  } catch(e) {}
+}
+
+async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usuario) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/stock_mp_movimientos", { method: "POST", headers: h, body: JSON.stringify({ id: String(Date.now())+"_"+Math.random().toString(36).slice(2,6), local: localId, producto: producto, tipo: tipo, cantidad: cantidad, unidad: unidad||"unid", usuario: usuario, created_at: new Date().toISOString() }) });
+  } catch(e) {}
+}
+
 // ─── STOCK DATA ───────────────────────────────────────────────────────────────
 var MENU_BODEGON = {
   "Entradas": ["Albóndigas de cerdo","Albóndigas de merluza y langostinos","Aros de cebolla","Bastones de muzzarella","Bastones de salmón","Bombas de papa","Brocheta de langostinos","Brusquetón de pastrón","Brusquetón de salmón","Brusquetón NKT","Burrata capresse","Cornalitos fritos","Crocantes de pollo","Croquetas de verdura","Gambas al ajillo","Langostinos","Mejillones","Omelette XL","Provoleta campera","Provoleta NKT","Rabas","Rabas media porción","Sushi Kusama"],
@@ -1929,6 +1957,221 @@ var MENU_BODEGON = {
 };
 
 var MENU_POR_LOCAL = { "l1": MENU_BODEGON, "l2": {}, "l3": {}, "l4": {} };
+
+
+// ─── PANEL STOCK MATERIA PRIMA ────────────────────────────────────────────────
+function PanelStockMP(p) {
+  var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, proveedores=p.proveedores, productos=p.productos;
+  var [stock,setStock]=useState({});
+  var [loading,setLoading]=useState(true);
+  var [modo,setModo]=useState("ver");
+  var [descuentos,setDescuentos]=useState({});
+  var [cargaManual,setCargaManual]=useState({});
+  var [saving,setSaving]=useState(false);
+  var [filtro,setFiltro]=useState("");
+  var [provFiltro,setProvFiltro]=useState("todos");
+  var [showAddProd,setShowAddProd]=useState(false);
+  var [newProd,setNewProd]=useState({nombre:"",cantidad:"",unidad:"kg",proveedor:""});
+
+  useState(function(){
+    setLoading(true);
+    sbLoadStockMP(localId).then(function(d){setStock(d);setLoading(false);}).catch(function(){setLoading(false);});
+  },[localId]);
+
+  // Build product list from proveedores
+  var todosProductos=[];
+  proveedores.forEach(function(pv){
+    (productos[pv.id]||[]).forEach(function(prod){
+      todosProductos.push({nombre:prod,proveedor:pv.nombre,provId:pv.id});
+    });
+  });
+
+  // Filter
+  var productosFiltrados=todosProductos.filter(function(p){
+    var matchFiltro=!filtro||p.nombre.toLowerCase().includes(filtro.toLowerCase());
+    var matchProv=provFiltro==="todos"||p.proveedor===provFiltro;
+    return matchFiltro&&matchProv;
+  });
+
+  // Also include manual products in stock not in list
+  var stockKeys=Object.keys(stock);
+  var nombresEnLista=todosProductos.map(function(p){return p.nombre;});
+  var extrasEnStock=stockKeys.filter(function(k){return !nombresEnLista.includes(k);});
+
+  function getCant(prod){return stock[prod]?parseFloat(stock[prod].cantidad):0;}
+  function getUnidad(prod){return stock[prod]?stock[prod].unidad:"unid";}
+  function getProv(prod){return stock[prod]?stock[prod].proveedor:"";}
+
+  async function guardarDescuento(){
+    setSaving(true);
+    var newStock={...stock};
+    for(var prod of Object.keys(descuentos)){
+      var val=parseFloat(descuentos[prod])||0;
+      if(val===0)continue;
+      var actual=getCant(prod);
+      var nuevo=Math.max(0,actual-val);
+      var unidad=getUnidad(prod);
+      var prov=getProv(prod);
+      newStock[prod]={cantidad:nuevo,unidad:unidad,minimo:stock[prod]?stock[prod].minimo:0,proveedor:prov,updatedAt:new Date().toISOString()};
+      await sbUpdateStockMP(localId,prod,nuevo,unidad,stock[prod]?stock[prod].minimo:0,prov);
+      await sbLogMovimientoMP(localId,prod,"salida",val,unidad,usuario);
+    }
+    setStock(newStock);
+    setDescuentos({});
+    setModo("ver");
+    setSaving(false);
+  }
+
+  async function guardarCargaManual(){
+    setSaving(true);
+    var newStock={...stock};
+    for(var prod of Object.keys(cargaManual)){
+      var entry=cargaManual[prod];
+      if(!entry.cantidad||parseFloat(entry.cantidad)===0)continue;
+      var val=parseFloat(entry.cantidad);
+      var actual=getCant(prod);
+      var nuevo=actual+val;
+      var unidad=entry.unidad||getUnidad(prod);
+      var prov=getProv(prod);
+      newStock[prod]={cantidad:nuevo,unidad:unidad,minimo:stock[prod]?stock[prod].minimo:0,proveedor:prov,updatedAt:new Date().toISOString()};
+      await sbUpdateStockMP(localId,prod,nuevo,unidad,stock[prod]?stock[prod].minimo:0,prov);
+      await sbLogMovimientoMP(localId,prod,"entrada_manual",val,unidad,usuario);
+    }
+    setStock(newStock);
+    setCargaManual({});
+    setModo("ver");
+    setSaving(false);
+  }
+
+  async function agregarProductoNuevo(){
+    if(!newProd.nombre.trim()||!newProd.cantidad)return;
+    var val=parseFloat(newProd.cantidad);
+    var newStock={...stock};
+    newStock[newProd.nombre]={cantidad:val,unidad:newProd.unidad,minimo:0,proveedor:newProd.proveedor,updatedAt:new Date().toISOString()};
+    await sbUpdateStockMP(localId,newProd.nombre,val,newProd.unidad,0,newProd.proveedor);
+    await sbLogMovimientoMP(localId,newProd.nombre,"entrada_manual",val,newProd.unidad,usuario);
+    setStock(newStock);
+    setNewProd({nombre:"",cantidad:"",unidad:"kg",proveedor:""});
+    setShowAddProd(false);
+  }
+
+  var totalBajos=Object.keys(stock).filter(function(k){return parseFloat(stock[k].cantidad)<=parseFloat(stock[k].minimo||0)&&parseFloat(stock[k].cantidad)>=0;}).length;
+  var provsUnicos=["todos",...new Set(todosProductos.map(function(p){return p.proveedor;}))];
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Stock de Materia Prima</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>{localNombre}</div>
+        </div>
+        {totalBajos>0&&<div style={{background:"#C1440E22",border:"1px solid #C1440E44",borderRadius:8,padding:"6px 12px",fontSize:12,color:"#C1440E",fontWeight:700}}>⚠️ {totalBajos} bajo mínimo</div>}
+      </div>
+
+      {/* Modo buttons */}
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        <button onClick={function(){setModo("ver");setDescuentos({});setCargaManual({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="ver"?"#555":"#1E1E1E"),background:modo==="ver"?"#222":"#111",color:modo==="ver"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>👁 Ver</button>
+        <button onClick={function(){setModo("cargar");setDescuentos({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="cargar"?"#3A7D44":"#1E1E1E"),background:modo==="cargar"?"#3A7D4422":"#111",color:modo==="cargar"?"#3A7D44":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar</button>
+        <button onClick={function(){setModo("descontar");setCargaManual({});}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
+        <button onClick={function(){setShowAddProd(true);}} style={{padding:"7px 14px",borderRadius:10,border:"1px solid #D4A017",background:"#D4A01711",color:"#D4A017",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Agregar producto</button>
+      </div>
+
+      {/* Add product manual */}
+      {showAddProd&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#D4A017",fontWeight:700,marginBottom:10}}>Agregar producto al stock</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:7,marginBottom:8}}>
+            <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Producto</label><input value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} placeholder="Nombre..." style={INP}/></div>
+            <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Cantidad</label><input type="number" value={newProd.cantidad} onChange={function(e){setNewProd(function(n){return{...n,cantidad:e.target.value};});}} placeholder="0" style={INP}/></div>
+            <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Unidad</label><select value={newProd.unidad} onChange={function(e){setNewProd(function(n){return{...n,unidad:e.target.value};});}} style={INP}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select></div>
+          </div>
+          <div style={{marginBottom:10}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Proveedor</label><input value={newProd.proveedor} onChange={function(e){setNewProd(function(n){return{...n,proveedor:e.target.value};});}} placeholder="Proveedor..." style={INP}/></div>
+          <div style={{display:"flex",gap:7}}>
+            <button onClick={agregarProductoNuevo} style={{...BS("#D4A017","#000"),flex:2}}>✓ Agregar</button>
+            <button onClick={function(){setShowAddProd(false);}} style={{...GH,flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap"}}>
+        <input placeholder="🔍 Buscar producto..." value={filtro} onChange={function(e){setFiltro(e.target.value);}} style={{...INP,flex:1,minWidth:150,fontSize:12}}/>
+        <select value={provFiltro} onChange={function(e){setProvFiltro(e.target.value);}} style={{...INP,width:"auto",fontSize:11}}>
+          {provsUnicos.map(function(pv){return <option key={pv} value={pv}>{pv==="todos"?"Todos los proveedores":pv}</option>;})}
+        </select>
+      </div>
+
+      {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
+        <div>
+          {/* Extras en stock (productos manuales) */}
+          {extrasEnStock.length>0&&(
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:"#D4A017",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Productos agregados manualmente</div>
+              {extrasEnStock.map(function(prod){
+                var cant=getCant(prod);
+                var unidad=getUnidad(prod);
+                var cero=cant===0;
+                return(
+                  <div key={prod} style={{background:cero?"#1A0808":"#111",border:"1px solid "+(cero?"#C1440E44":"#D4A01733"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,color:cero?"#C1440E":"#F0EDE8",fontWeight:600}}>{prod}</div>
+                      {stock[prod]&&stock[prod].proveedor&&<div style={{fontSize:10,color:"#555"}}>{stock[prod].proveedor}</div>}
+                    </div>
+                    {modo==="cargar"&&<input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:unidad};return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
+                    {modo==="descontar"&&<input type="number" min="0" placeholder="-" value={descuentos[prod]||""} onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
+                    <div style={{width:60,textAlign:"center"}}>
+                      <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero?"#C1440E":"#F0EDE8"}}>{cant}</div>
+                      <div style={{fontSize:9,color:"#444"}}>{unidad}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Productos de proveedores */}
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {productosFiltrados.map(function(item){
+              var prod=item.nombre;
+              var cant=getCant(prod);
+              var unidad=getUnidad(prod)||"unid";
+              var cero=cant===0;
+              var enStock=stock[prod]!==undefined;
+              return(
+                <div key={prod} style={{background:cero&&enStock?"#1A0808":"#111",border:"1px solid "+(cero&&enStock?"#C1440E44":"#1A1A1A"),borderRadius:10,padding:"9px 14px",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,color:cero&&enStock?"#C1440E":"#F0EDE8"}}>{prod}</div>
+                    <div style={{fontSize:10,color:"#444"}}>{item.proveedor}</div>
+                  </div>
+                  {modo==="cargar"&&(
+                    <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                      <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""} onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:unidad};return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>
+                      <select value={cargaManual[prod]?cargaManual[prod].unidad:unidad} onChange={function(e){setCargaManual(function(c){var n={...c};if(!n[prod])n[prod]={cantidad:"",unidad:e.target.value};else n[prod].unidad=e.target.value;return n;});}} style={{width:55,padding:"4px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:10}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                    </div>
+                  )}
+                  {modo==="descontar"&&enStock&&<input type="number" min="0" placeholder="-" value={descuentos[prod]||""} onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}} style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Lora',serif",fontSize:12,textAlign:"center"}}/>}
+                  <div style={{width:60,textAlign:"center"}}>
+                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cero&&enStock?"#C1440E":enStock?"#F0EDE8":"#333"}}>{enStock?cant:"—"}</div>
+                    <div style={{fontSize:9,color:"#444"}}>{enStock?unidad:""}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Botones guardar */}
+          {modo==="cargar"&&Object.keys(cargaManual).filter(function(k){return cargaManual[k]&&parseFloat(cargaManual[k].cantidad)>0;}).length>0&&(
+            <button onClick={guardarCargaManual} disabled={saving} style={{...BS("#3A7D44"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar carga de mercadería"}</button>
+          )}
+          {modo==="descontar"&&Object.keys(descuentos).filter(function(k){return parseFloat(descuentos[k])>0;}).length>0&&(
+            <button onClick={guardarDescuento} disabled={saving} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar descuento"}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -2037,7 +2280,10 @@ export default function App() {
                 📊 Análisis
               </button>
               <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                📦 Stock
+                📦 Stock Platos
+              </button>
+              <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🥩 Materia Prima
               </button>
             </div>
           )}
@@ -2049,6 +2295,20 @@ export default function App() {
 
           {esAdmin&&vista==="analytics"&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
+          )}
+
+          {esAdmin&&vista==="stockmp"&&(
+            <div>
+              <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                {LOCALES.map(function(l){return(
+                  <button key={l.id} onClick={function(){setVistaUsuario(l.id);}}
+                    style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:"#666",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    {l.emoji} {l.nombre}
+                  </button>
+                );})}
+              </div>
+              <PanelStockMP localId={vistaUsuario||"l1"} localNombre={LOCALES.find(function(l){return l.id===(vistaUsuario||"l1");})?LOCALES.find(function(l){return l.id===(vistaUsuario||"l1");}).nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
+            </div>
           )}
 
           {esAdmin&&vista==="stock"&&(
@@ -2106,16 +2366,21 @@ export default function App() {
 
           {/* HISTORIAL */}
           {!esAdmin&&(
-            <div style={{display:"flex",gap:6,marginBottom:16}}>
+            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
               {MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
-                <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock</button>
+                <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
               )}
+              <button onClick={function(){setVistaUsuario("stockmp");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vistaUsuario==="stockmp"?"#1A6B8A22":"#111",color:vistaUsuario==="stockmp"?"#1A6B8A":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🥩 Materia Prima</button>
             </div>
           )}
 
           {!esAdmin&&vistaUsuario==="stock"&&MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
             <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}/>
+          )}
+
+          {!esAdmin&&vistaUsuario==="stockmp"&&(
+            <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
           {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&vista==="historial")&&(

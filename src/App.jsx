@@ -1476,6 +1476,127 @@ function GestProveedores(p) {
 }
 
 
+// ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
+function PanelGastos(p) {
+  var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
+  var hoy=new Date().toISOString().split("T")[0];
+  var [showForm,setShowForm]=useState(false);
+  var [filtroLocal,setFiltroLocal]=useState("all");
+  var [filtroFecha,setFiltroFecha]=useState("hoy");
+  var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+  var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  var CATEGORIAS=["Proveedores","Servicios","Sueldos","Impuestos","Mantenimiento","Limpieza","Otros"];
+  var filtered=gastos.filter(function(g){
+    var matchLocal=filtroLocal==="all"||g.local===filtroLocal;
+    var matchFecha=true;
+    if(filtroFecha==="hoy") matchFecha=g.fecha===hoy;
+    if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(1000*60*60*24);matchFecha=diff<=7;}
+    if(filtroFecha==="mes") matchFecha=g.fecha&&g.fecha.slice(0,7)===hoy.slice(0,7);
+    return matchLocal&&matchFecha;
+  });
+  var totalFiltered=filtered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var totalEfectivo=filtered.filter(function(g){return g.forma_pago==="Efectivo";}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var totalTransf=filtered.filter(function(g){return g.forma_pago==="Transferencia";}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var totalFact=filtered.filter(function(g){return g.facturado;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var totalNoFact=filtered.filter(function(g){return !g.facturado;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  function doSave(){
+    if(!form.concepto.trim()||!form.monto)return;
+    var gasto={id:String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:form.categoria,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString()};
+    onSave(gasto);
+    setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+    setShowForm(false);
+  }
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💰 Gastos Diarios</div>
+        </div>
+        <button onClick={function(){setShowForm(function(v){return !v;});}} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>+ Cargar gasto</button>
+      </div>
+      {showForm&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A44",borderRadius:14,padding:"18px",marginBottom:18}}>
+          <div style={{fontSize:11,color:"#1A6B8A",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Nuevo gasto</div>
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>Local</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#555",fontFamily:"'Lora',serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:9,marginBottom:12}}>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label><input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Ej: Verdulería, Carnicería..." style={INP}/></div>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label><input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={INP}/></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:12}}>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label><select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>{FORMAS_PAGO.map(function(fp){return <option key={fp}>{fp}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label><select value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} style={INP}>{CATEGORIAS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:11,color:"#555",display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={form.facturado} onChange={function(e){setForm(function(f){return{...f,facturado:e.target.checked};});}}/>
+              <span style={{color:form.facturado?"#D4A017":"#555",fontWeight:form.facturado?700:400}}>Gasto facturado</span>
+            </label>
+          </div>
+          {form.facturado&&(
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:7}}>Facturar a</label>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {FACTURACION.map(function(f){return(<button key={f.id} onClick={function(){setForm(function(fm){return{...fm,facturacion:f.id};});}} style={{padding:"9px 13px",borderRadius:8,border:"2px solid "+(form.facturacion===f.id?"#D4A017":"#1E1E1E"),background:form.facturacion===f.id?"#D4A01711":"#0F0F0F",color:form.facturacion===f.id?"#D4A017":"#666",cursor:"pointer",fontFamily:"'Lora',serif",textAlign:"left"}}><div style={{fontSize:12,fontWeight:700}}>{f.razonSocial}</div><div style={{fontSize:10,color:"#555"}}>CUIT {f.cuit} · {f.condicion}</div></button>);})}
+              </div>
+            </div>
+          )}
+          <div style={{marginBottom:14}}><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label><input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Observaciones..." style={INP}/></div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doSave} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar gasto</button>
+            <button onClick={function(){setShowForm(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Lora',serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:16}}>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Total período</div><div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#1A6B8A"}}>${totalFiltered.toLocaleString("es-AR")}</div><div style={{fontSize:10,color:"#444",marginTop:3}}>{filtered.length} gastos</div></div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",marginBottom:4}}>Facturado</div><div style={{fontSize:16,fontWeight:800,color:"#3A7D44"}}>${totalFact.toLocaleString("es-AR")}</div><div style={{fontSize:10,color:"#C1440E",marginTop:3}}>Sin factura: ${totalNoFact.toLocaleString("es-AR")}</div></div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Efectivo</div><div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalEfectivo.toLocaleString("es-AR")}</div></div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Transferencia</div><div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalTransf.toLocaleString("es-AR")}</div></div>
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
+        {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["all","Todo"]].map(function(opt){return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#1A6B8A":"#1A1A1A"),background:filtroFecha===opt[0]?"#1A6B8A22":"none",color:filtroFecha===opt[0]?"#1A6B8A":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;})}
+        <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
+        {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+      </div>
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:32,marginBottom:10}}>💰</div><div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin gastos en este período</div></div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {filtered.map(function(g){
+            var loc=getLocal(g.local);
+            var fact=g.facturado&&g.facturacion?getFact(g.facturacion):null;
+            return(
+              <div key={g.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{g.concepto}</span>
+                    <span style={{fontSize:10,background:g.facturado?"#3A7D4422":"#C1440E22",color:g.facturado?"#3A7D44":"#C1440E",border:"1px solid "+(g.facturado?"#3A7D4444":"#C1440E44"),borderRadius:4,padding:"1px 7px"}}>{g.facturado?"Facturado":"Sin factura"}</span>
+                    {loc&&<span style={{fontSize:10,color:loc.color}}>{loc.emoji} {loc.nombre}</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"#555"}}>{g.forma_pago} · {g.categoria} · {fmtDate(g.fecha)}{fact&&<span style={{color:"#D4A017"}}> · 🧾 {fact.razonSocial}</span>}</div>
+                  {g.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginTop:3}}>📝 {g.notas}</div>}
+                  <div style={{fontSize:10,color:"#333",marginTop:2}}>por {g.usuario} · {fmtDateTime(g.created_at)}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>${parseFloat(g.monto).toLocaleString("es-AR")}</div>
+                  <button onClick={function(){if(window.confirm("¿Eliminar este gasto?"))onDelete(g.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12,marginTop:4}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // PANEL ANALYTICS
 function PanelAnalytics(p) {
   var ordenes=p.ordenes, proveedores=p.proveedores;
@@ -2050,6 +2171,28 @@ async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usua
   } catch(e) {}
 }
 
+// ─── GASTOS SUPABASE ──────────────────────────────────────────────────────────
+async function sbLoadGastos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/gastos?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveGasto(gasto) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/gastos", { method: "POST", headers: h, body: JSON.stringify(gasto) });
+  } catch(e) {}
+}
+
+async function sbDeleteGasto(id) {
+  try {
+    await fetch(SURL + "/rest/v1/gastos?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── ALERTAS STOCK ────────────────────────────────────────────────────────────
 function playAlertSound() {
   try {
@@ -2382,8 +2525,10 @@ export default function App() {
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState("compras"); // compras | admin
+  // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
+  var [gastos,setGastos]=useState([]);
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
 
@@ -2392,6 +2537,7 @@ export default function App() {
     setLoading(true);
     sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
+    sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
       if(d && Object.keys(d.l1||{}).length>0){
@@ -2511,6 +2657,9 @@ export default function App() {
           {/* TABS MÓDULO ADMINISTRACIÓN */}
           {esSofia&&modulo==="admin"&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+              <button onClick={function(){setVista("gastos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="gastos"?"#1A6B8A":"#1E1E1E"),background:vista==="gastos"?"#1A6B8A22":"#111",color:vista==="gastos"?"#1A6B8A":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                💰 Gastos
+              </button>
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
               </button>
@@ -2520,6 +2669,13 @@ export default function App() {
           {/* PANEL DESPACHO */}
           {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="gastos"&&(
+            <PanelGastos gastos={gastos} usuario={cu.nombre}
+              onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
+              onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
+            />
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

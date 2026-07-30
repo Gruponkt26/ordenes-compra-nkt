@@ -2972,7 +2972,7 @@ export default function App() {
               <button onClick={function(){setVista("gastos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="gastos"?"#1A6B8A":"#1E1E1E"),background:vista==="gastos"?"#1A6B8A22":"#111",color:vista==="gastos"?"#1A6B8A":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 💰 Gastos
               </button>
-              <button onClick={function(){setShowExportarGastos(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #3A7D44",background:"#3A7D4411",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              <button onClick={function(){setShowExportarGastos(true);}} style={{padding:"9px 18px",borderRadius:10,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px #3A7D4444"}}>
                 📊 Exportar Excel
               </button>
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>

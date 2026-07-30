@@ -1476,16 +1476,130 @@ function GestProveedores(p) {
 }
 
 
+// ─── EDITOR CATEGORÍAS GASTOS ─────────────────────────────────────────────────
+var GRUPOS_DEFAULT = ["Proveedores","Personal","Servicios","Impuestos","Mantenimiento","Marketing","Otros"];
+
+function EditorCategoriasGastos(p) {
+  var onClose=p.onClose, onSave=p.onSave;
+  var [cats,setCats]=useState(p.categorias||[]);
+  var [grupoSel,setGrupoSel]=useState(GRUPOS_DEFAULT[0]);
+  var [nuevoNombre,setNuevoNombre]=useState("");
+  var [nuevoGrupo,setNuevoGrupo]=useState("");
+  var [showNuevoGrupo,setShowNuevoGrupo]=useState(false);
+
+  var grupos=[...new Set([...GRUPOS_DEFAULT,...cats.map(function(c){return c.grupo;})])];
+  var catsDelGrupo=cats.filter(function(c){return c.grupo===grupoSel;});
+
+  function addCat(){
+    if(!nuevoNombre.trim())return;
+    var id=grupoSel+"_"+nuevoNombre.trim().replace(/\s+/g,"_")+"_"+Date.now();
+    var newCat={id:id,grupo:grupoSel,nombre:nuevoNombre.trim()};
+    setCats(function(p){return[...p,newCat];});
+    sbSaveCategoriaGasto(id,grupoSel,nuevoNombre.trim());
+    setNuevoNombre("");
+  }
+
+  function delCat(id){
+    setCats(function(p){return p.filter(function(c){return c.id!==id;});});
+    sbDeleteCategoriaGasto(id);
+  }
+
+  function addGrupo(){
+    if(!nuevoGrupo.trim())return;
+    setGrupoSel(nuevoGrupo.trim());
+    setShowNuevoGrupo(false);
+    setNuevoGrupo("");
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(760px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Lora',serif",overflow:"hidden"}}>
+        <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <div>
+            <div style={{fontSize:10,color:"#444",letterSpacing:3,textTransform:"uppercase"}}>Administración</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>🏷️ Editor de Categorías</h2>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){onSave(cats);onClose();}} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>✓ Guardar</button>
+            <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+          {/* Grupos */}
+          <div style={{width:220,borderRight:"1px solid #1A1A1A",display:"flex",flexDirection:"column",flexShrink:0}}>
+            <div style={{padding:"10px 12px",borderBottom:"1px solid #1A1A1A",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase"}}>Grupos</span>
+              <button onClick={function(){setShowNuevoGrupo(function(v){return !v;});}} style={{background:"#C1440E",border:"none",borderRadius:6,color:"#fff",fontFamily:"'Lora',serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"4px 9px"}}>+ Grupo</button>
+            </div>
+            {showNuevoGrupo&&(
+              <div style={{padding:"8px 12px",borderBottom:"1px solid #1A1A1A",background:"#0A0A0A"}}>
+                <input placeholder="Nombre del grupo..." value={nuevoGrupo} onChange={function(e){setNuevoGrupo(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addGrupo();}} style={{...{padding:"6px 9px",borderRadius:6,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"},marginBottom:6}}/>
+                <div style={{display:"flex",gap:5}}>
+                  <button onClick={addGrupo} style={{background:"#C1440E",border:"none",borderRadius:6,color:"#fff",fontFamily:"'Lora',serif",fontSize:11,fontWeight:700,cursor:"pointer",flex:1,padding:"5px"}}>Agregar</button>
+                  <button onClick={function(){setShowNuevoGrupo(false);}} style={{background:"none",border:"1px solid #333",borderRadius:6,color:"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer",flex:1,padding:"5px"}}>✕</button>
+                </div>
+              </div>
+            )}
+            <div style={{overflowY:"auto",flex:1}}>
+              {grupos.map(function(g){
+                var cnt=cats.filter(function(c){return c.grupo===g;}).length;
+                return(
+                  <div key={g} onClick={function(){setGrupoSel(g);}}
+                    style={{padding:"10px 12px",borderBottom:"1px solid #161616",cursor:"pointer",background:grupoSel===g?"#1C1C1C":"transparent",borderLeft:"3px solid "+(grupoSel===g?"#1A6B8A":"transparent")}}>
+                    <div style={{fontSize:12,fontWeight:600,color:grupoSel===g?"#F0EDE8":"#999"}}>{g}</div>
+                    <div style={{fontSize:10,color:"#444"}}>{cnt} subcategorías personalizadas</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Categorías del grupo */}
+          <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,marginBottom:14}}>{grupoSel}</div>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              <input placeholder="Nueva subcategoría... (Enter)" value={nuevoNombre} onChange={function(e){setNuevoNombre(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addCat();}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,flex:1}}/>
+              <button onClick={addCat} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"9px 14px",flexShrink:0}}>+</button>
+            </div>
+            {catsDelGrupo.length===0?(
+              <div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"14px 0"}}>Sin subcategorías personalizadas. Agregá la primera arriba.</div>
+            ):catsDelGrupo.map(function(cat){
+              return(
+                <div key={cat.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",marginBottom:5}}>
+                  <span style={{fontSize:12,color:"#BBB"}}>🏷️ {cat.nombre}</span>
+                  <button onClick={function(){delCat(cat.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 function PanelGastos(p) {
-  var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
+  var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario, categoriasCustom=p.categoriasCustom||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [showForm,setShowForm]=useState(false);
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("hoy");
   var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
-  var CATEGORIAS=["Proveedores","Servicios","Sueldos","Impuestos","Mantenimiento","Limpieza","Otros"];
+  var CATS_DEFAULT=[
+    "Proveedores - Carnicería","Proveedores - Verdulería","Proveedores - Pescadería",
+    "Proveedores - Distribuidora","Proveedores - Papelera","Proveedores - Bebidas",
+    "Proveedores - Especias","Proveedores - Insumos","Proveedores - Fiambrería",
+    "Proveedores - Librería","Proveedores - Imprenta","Proveedores - Otro",
+    "Personal - Sueldos","Personal - Jornales","Personal - Propinas",
+    "Servicios - Luz","Servicios - Gas","Servicios - Internet","Servicios - Teléfono","Servicios - Otro",
+    "Impuestos - AFIP","Impuestos - IIBB","Impuestos - Municipal","Impuestos - Otro",
+    "Mantenimiento - Reparaciones","Mantenimiento - Equipamiento","Mantenimiento - Otro",
+    "Marketing - Redes sociales","Marketing - Diseño","Marketing - Publicidad","Marketing - Otro",
+    "Limpieza","Otro"
+  ];
+  var CATS_CUSTOM=categoriasCustom.map(function(c){return c.grupo+" - "+c.nombre;});
+  var CATEGORIAS=[...CATS_DEFAULT,...CATS_CUSTOM.filter(function(c){return !CATS_DEFAULT.includes(c);})];
   var filtered=gastos.filter(function(g){
     var matchLocal=filtroLocal==="all"||g.local===filtroLocal;
     var matchFecha=true;
@@ -1530,7 +1644,14 @@ function PanelGastos(p) {
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:12}}>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label><select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>{FORMAS_PAGO.map(function(fp){return <option key={fp}>{fp}</option>;})}</select></div>
-            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label><select value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} style={INP}>{CATEGORIAS.map(function(c){return <option key={c}>{c}</option>;})}</select></div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
+              <select value={CATEGORIAS.includes(form.categoria)?form.categoria:"__otro__"} onChange={function(e){if(e.target.value==="__otro__"){setForm(function(f){return{...f,categoria:""};});}else{setForm(function(f){return{...f,categoria:e.target.value};});}}} style={INP}>
+                {CATEGORIAS.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                <option value="__otro__">+ Escribir otra...</option>
+              </select>
+              {!CATEGORIAS.includes(form.categoria)&&<input value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} placeholder="Escribí la categoría..." style={{...INP,marginTop:5}}/>}
+            </div>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
           </div>
           <div style={{marginBottom:12}}>
@@ -2171,6 +2292,28 @@ async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usua
   } catch(e) {}
 }
 
+// ─── CATEGORIAS GASTOS SUPABASE ───────────────────────────────────────────────
+async function sbLoadCategoriasGastos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/categorias_gastos?order=grupo,nombre", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveCategoriaGasto(id, grupo, nombre) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/categorias_gastos", { method: "POST", headers: h, body: JSON.stringify({ id: id, grupo: grupo, nombre: nombre }) });
+  } catch(e) {}
+}
+
+async function sbDeleteCategoriaGasto(id) {
+  try {
+    await fetch(SURL + "/rest/v1/categorias_gastos?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── GASTOS SUPABASE ──────────────────────────────────────────────────────────
 async function sbLoadGastos() {
   try {
@@ -2529,6 +2672,8 @@ export default function App() {
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
+  var [categoriasGastos,setCategoriasGastos]=useState([]);
+  var [showEditorCats,setShowEditorCats]=useState(false);
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
 
@@ -2538,6 +2683,7 @@ export default function App() {
     sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
+    sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
       if(d && Object.keys(d.l1||{}).length>0){
@@ -2663,6 +2809,9 @@ export default function App() {
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
               </button>
+              <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🏷️ Categorías
+              </button>
             </div>
           )}
 
@@ -2672,7 +2821,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="gastos"&&(
-            <PanelGastos gastos={gastos} usuario={cu.nombre}
+            <PanelGastos gastos={gastos} usuario={cu.nombre} categoriasCustom={categoriasGastos}
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
             />
@@ -2823,6 +2972,7 @@ export default function App() {
         });
         setProductos(pd);setShowMisProds(false);
       }}/>}
+      {showEditorCats&&<EditorCategoriasGastos categorias={categoriasGastos} onClose={function(){setShowEditorCats(false);}} onSave={function(cats){setCategoriasGastos(cats);setShowEditorCats(false);}}/>}
       {showEditorMenu&&<EditorMenuStock onClose={function(){setShowEditorMenu(false);}} onSave={function(m){
         // Save to Supabase
         Object.keys(m).forEach(function(localId){

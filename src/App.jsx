@@ -2381,6 +2381,7 @@ export default function App() {
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [loading,setLoading]=useState(false);
+  var [modulo,setModulo]=useState("compras"); // compras | admin
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
@@ -2415,6 +2416,7 @@ export default function App() {
   if(!cu)return <Login users={users} onLogin={setCu}/>;
 
   var esAdmin=cu.rol==="admin";
+  var esSofia=cu.usuario==="sofia";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -2462,6 +2464,20 @@ export default function App() {
           </div>
         </div>
 
+        {/* MÓDULOS */}
+        {esSofia&&(
+          <div style={{borderBottom:"1px solid #111",background:"#0A0A0A",padding:"10px 20px",display:"flex",gap:6}}>
+            <button onClick={function(){setModulo("compras");setVista("despacho");}}
+              style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"transparent",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              📋 Compras
+            </button>
+            <button onClick={function(){setModulo("admin");setVista("analytics");}}
+              style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="admin"?"#1A6B8A":"transparent",color:modulo==="admin"?"#fff":"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              💰 Administración
+            </button>
+          </div>
+        )}
+
         <div style={{padding:"14px 20px",maxWidth:900,margin:"0 auto"}}>
 
           {/* STATS */}
@@ -2475,16 +2491,13 @@ export default function App() {
             );})}
           </div>
 
-          {/* TABS ADMIN */}
-          {esAdmin&&(
-            <div style={{display:"flex",gap:6,marginBottom:16}}>
-              <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Panel de Despacho</button>
+          {/* TABS MÓDULO COMPRAS */}
+          {esAdmin&&(!esSofia||modulo==="compras")&&(
+            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+              <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
               <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
               <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
-              </button>
-              <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                📊 Análisis
               </button>
               <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📦 Stock Platos
@@ -2495,16 +2508,25 @@ export default function App() {
             </div>
           )}
 
+          {/* TABS MÓDULO ADMINISTRACIÓN */}
+          {esSofia&&modulo==="admin"&&(
+            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+              <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                📊 Análisis
+              </button>
+            </div>
+          )}
+
           {/* PANEL DESPACHO */}
-          {esAdmin&&vista==="despacho"&&(
+          {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
-          {esAdmin&&vista==="analytics"&&(
+          {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {esAdmin&&vista==="stockmp"&&(
+          {esAdmin&&modulo==="compras"&&vista==="stockmp"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
@@ -2518,7 +2540,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&vista==="stock"&&(
+          {esAdmin&&modulo==="compras"&&vista==="stock"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
@@ -2537,7 +2559,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&vista==="faltantes"&&(
+          {esAdmin&&modulo==="compras"&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -2590,7 +2612,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&modulo==="compras"&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

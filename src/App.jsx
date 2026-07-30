@@ -248,8 +248,8 @@ function Login(p) {
       <div style={{width:"min(380px,92vw)"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:40,marginBottom:10}}>🍽️</div>
-          <div style={{fontSize:10,color:"#444",letterSpacing:4,textTransform:"uppercase",marginBottom:6}}>Sistema de</div>
-          <h1 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8"}}>Órdenes de Compra</h1>
+          <div style={{fontSize:10,color:"#444",letterSpacing:4,textTransform:"uppercase",marginBottom:6}}>Grupo NKT</div>
+          <h1 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8"}}>Gestión Grupo NKT</h1>
           <div style={{width:36,height:2,background:"#C1440E",margin:"12px auto 0"}}/>
         </div>
         <div style={{background:"#141414",border:"1px solid #222",borderRadius:16,padding:"24px 24px 20px"}}>
@@ -1771,6 +1771,18 @@ function EditorMenuStock(p) {
   );
 }
 
+
+// ─── RECETAS AUTOMÁTICAS ──────────────────────────────────────────────────────
+var RECETAS = {
+  "Desmechado de carne":  [{ plato: "Pan de desmechado", cantidad: 1 }],
+  "Desmechado de cerdo":  [{ plato: "Pan de desmechado", cantidad: 1 }],
+  "Desmechado de pollo":  [{ plato: "Pan de desmechado", cantidad: 1 }],
+  "Medallón de carne":         [{ plato: "Pan de papa", cantidad: 1 }],
+  "Medallón de carne ahumado": [{ plato: "Pan de papa", cantidad: 1 }],
+  "Medallón de carne crispy":  [{ plato: "Pan de papa", cantidad: 1 }],
+  "Medallón de carne NKT":     [{ plato: "Pan de papa", cantidad: 1 }],
+};
+
 // ─── PANEL STOCK ──────────────────────────────────────────────────────────────
 function PanelStock(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
@@ -1845,19 +1857,40 @@ function PanelStock(p) {
   async function guardarDescuento(){
     setSaving(true);
     var newStock={...stock};
+    var todosDescuentos={...descuentos};
+
+    // Aplicar recetas automáticas
     for(var plato of Object.keys(descuentos)){
       var val=parseInt(descuentos[plato])||0;
       if(val===0)continue;
-      var actual=getCantidad(plato);
-      var nuevo=Math.max(0,actual-val);
-      newStock[plato]={cantidad:nuevo,minimo:getMinimo(plato),updatedAt:new Date().toISOString()};
-      await sbUpdateStock(localId,plato,nuevo,getMinimo(plato));
-      await sbLogMovimiento(localId,plato,"salida",val,usuario);
+      var receta=RECETAS[plato];
+      if(receta){
+        receta.forEach(function(r){
+          todosDescuentos[r.plato]=(parseInt(todosDescuentos[r.plato])||0)+(r.cantidad*val);
+        });
+      }
+    }
+
+    // Aplicar todos los descuentos
+    for(var pl of Object.keys(todosDescuentos)){
+      var v=parseInt(todosDescuentos[pl])||0;
+      if(v===0)continue;
+      var actual=getCantidad(pl);
+      var nuevo=Math.max(0,actual-v);
+      newStock[pl]={cantidad:nuevo,minimo:getMinimo(pl),updatedAt:new Date().toISOString()};
+      await sbUpdateStock(localId,pl,nuevo,getMinimo(pl));
+      await sbLogMovimiento(localId,pl,!descuentos[pl]?"salida_auto":"salida",v,usuario);
     }
     setStock(newStock);
     setDescuentos({});
     setModo("ver");
     setSaving(false);
+
+    // Mostrar resumen de descuentos automáticos
+    var autoItems=Object.keys(todosDescuentos).filter(function(k){return !descuentos[k]&&parseInt(todosDescuentos[k])>0;});
+    if(autoItems.length>0){
+      alert("✓ Descuento guardado.\n\n🔗 Descuentos automáticos:\n"+autoItems.map(function(k){return "• "+k+": -"+todosDescuentos[k];}).join("\n"));
+    }
   }
 
   var platosActuales=menu[catAct]||[];
@@ -1901,14 +1934,15 @@ function PanelStock(p) {
             {platosActuales.map(function(plato){
               var cant=getCantidad(plato);
               var min=getMinimo(plato);
-              var stockStatus=getStockColor(cant,min);
-              var sc=STOCK_COLORS[stockStatus];
+              var stockSt=getStockStatus(cant,min);
+              var sc=STOCK_COLORS[stockSt.status];
               return(
                 <div key={plato} style={{background:sc.bg,border:"1px solid "+sc.border,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,transition:"all 0.3s"}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
-                      <div style={{fontSize:12,color:sc.text,fontWeight:stockStatus!=="ok"?700:400}}>{plato}</div>
+                      <div style={{fontSize:12,color:sc.text,fontWeight:stockSt.status!=="ok"?700:400}}>{plato}</div>
                       {sc.badge&&<span style={{fontSize:10,fontWeight:800,color:sc.text,background:sc.border,padding:"1px 7px",borderRadius:10}}>{sc.badge}</span>}
+                      {stockSt.status==="proximo"&&<span style={{fontSize:10,fontWeight:800,color:"#5A9D44",background:"#0F2A00",padding:"1px 7px",borderRadius:10}}>📊 A {stockSt.diff} del mínimo</span>}
                     </div>
                     {min>0&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Mínimo: {min}{stock[plato]&&stock[plato].updatedAt?" · "+fmtDateTime(stock[plato].updatedAt):""}</div>}
                     {!min&&stock[plato]&&stock[plato].updatedAt&&<div style={{fontSize:10,color:"#444",marginTop:2}}>Actualizado: {fmtDateTime(stock[plato].updatedAt)}</div>}
@@ -2036,16 +2070,23 @@ function playAlertSound() {
   } catch(e) {}
 }
 
+function getStockStatus(cant, minimo) {
+  if (cant === 0) return { status: "cero", diff: 0 };
+  if (minimo <= 0) return { status: "ok", diff: 0 };
+  var diff = cant - minimo;
+  if (cant <= minimo) return { status: "critico", diff: diff };
+  if (diff <= 2) return { status: "proximo", diff: diff };
+  if (cant <= minimo * 1.5) return { status: "bajo", diff: diff };
+  return { status: "ok", diff: diff };
+}
+
 function getStockColor(cant, minimo) {
-  if (minimo <= 0) return cant === 0 ? "cero" : "ok";
-  if (cant === 0) return "cero";
-  if (cant <= minimo) return "critico";
-  if (cant <= minimo * 2) return "bajo";
-  return "ok";
+  return getStockStatus(cant, minimo).status;
 }
 
 var STOCK_COLORS = {
   ok:      { bg: "#111",    border: "#1A1A1A", text: "#CCC",     badge: null },
+  proximo: { bg: "#0F1A00", border: "#3A7D4488", text: "#5A9D44", badge: null },
   bajo:    { bg: "#1A1500", border: "#D4A01744", text: "#D4A017", badge: "⚠️ BAJO" },
   critico: { bg: "#1A0808", border: "#C1440E88", text: "#C1440E", badge: "🔴 CRÍTICO" },
   cero:    { bg: "#2A0000", border: "#C1440EBB", text: "#FF4444", badge: "❌ SIN STOCK" },
@@ -2267,14 +2308,15 @@ function PanelStockMP(p) {
                       var unidad=getUnidad(prod)||"unid";
                       var enStock=stock[prod]!==undefined;
                       var minimo=stock[prod]?parseFloat(stock[prod].minimo||0):0;
-                      var stockStatus=enStock?getStockColor(cant,minimo):"ok";
-                      var sc2=STOCK_COLORS[stockStatus];
+                      var stockSt2=enStock?getStockStatus(cant,minimo):{status:"ok",diff:0};
+                      var sc2=STOCK_COLORS[stockSt2.status];
                       return(
                         <div key={prod} style={{background:enStock?sc2.bg:"#111",border:"1px solid "+(enStock?sc2.border:"#1A1A1A"),borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8,transition:"all 0.3s"}}>
                           <div style={{flex:1}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                              <span style={{fontSize:12,color:enStock?sc2.text:"#CCC",fontWeight:stockStatus!=="ok"&&enStock?700:400}}>{prod}</span>
+                              <span style={{fontSize:12,color:enStock?sc2.text:"#CCC",fontWeight:stockSt2.status!=="ok"&&enStock?700:400}}>{prod}</span>
                               {enStock&&sc2.badge&&<span style={{fontSize:9,fontWeight:800,color:sc2.text,background:sc2.border,padding:"1px 6px",borderRadius:8}}>{sc2.badge}</span>}
+                              {enStock&&stockSt2.status==="proximo"&&<span style={{fontSize:9,fontWeight:800,color:"#5A9D44",background:"#0F2A00",padding:"1px 6px",borderRadius:8}}>📊 A {stockSt2.diff} del mín.</span>}
                             </div>
                             {minimo>0&&enStock&&<div style={{fontSize:9,color:"#555",marginTop:1}}>Mínimo: {minimo}</div>}
                           </div>
@@ -2404,7 +2446,7 @@ export default function App() {
         {/* HEADER */}
         <div style={{borderBottom:"1px solid #181818",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div><div style={{fontSize:10,color:"#333",letterSpacing:3,textTransform:"uppercase"}}>Sistema de</div><h1 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800}}>Órdenes de Compra</h1></div>
+            <div><div style={{fontSize:10,color:"#333",letterSpacing:3,textTransform:"uppercase"}}>Grupo NKT</div><h1 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800}}>Gestión Grupo NKT</h1></div>
             {la&&<div style={{padding:"4px 11px",borderRadius:20,background:la.color+"22",border:"1px solid "+la.color+"44",color:la.color,fontSize:12,fontWeight:700}}>{la.emoji} {la.nombre}{seccion?" · "+seccion:""}</div>}
             {esAdmin&&<Badge color="#C1440E">👑 Admin</Badge>}
           </div>

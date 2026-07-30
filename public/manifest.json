@@ -1,6 +1,6 @@
 {
-  "name": "Órdenes de Compra - Grupo NKT",
-  "short_name": "Grupo NKT",
+  "name": "Gestión Grupo NKT",
+  "short_name": "Gestión Grupo NKT",
   "description": "Sistema de órdenes de compra para Grupo NKT",
   "start_url": "/",
   "display": "standalone",

@@ -1747,6 +1747,7 @@ function PanelGastos(p) {
   var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario, categoriasCustom=p.categoriasCustom||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [showForm,setShowForm]=useState(false);
+  var [showExportar,setShowExportar]=useState(false);
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("hoy");
   var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
@@ -1792,8 +1793,12 @@ function PanelGastos(p) {
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💰 Gastos Diarios</div>
         </div>
-        <button onClick={function(){setShowForm(function(v){return !v;});}} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>+ Cargar gasto</button>
+        <div style={{display:"flex",gap:7"}}>
+          <button onClick={function(){setShowExportar(true);}} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>📊 Excel</button>
+          <button onClick={function(){setShowForm(function(v){return !v;});}} style={{background:"#1A6B8A",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>+ Cargar</button>
+        </div>
       </div>
+      {showExportar&&<ExportarGastosModal gastos={gastos} onClose={function(){setShowExportar(false);}}/>}
       {showForm&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A44",borderRadius:14,padding:"18px",marginBottom:18}}>
           <div style={{fontSize:11,color:"#1A6B8A",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Nuevo gasto</div>
@@ -2971,9 +2976,6 @@ export default function App() {
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVista("gastos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="gastos"?"#1A6B8A":"#1E1E1E"),background:vista==="gastos"?"#1A6B8A22":"#111",color:vista==="gastos"?"#1A6B8A":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 💰 Gastos
-              </button>
-              <button onClick={function(){setShowExportarGastos(true);}} style={{padding:"9px 18px",borderRadius:10,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px #3A7D4444"}}>
-                📊 Exportar Excel
               </button>
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis

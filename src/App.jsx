@@ -1476,6 +1476,171 @@ function GestProveedores(p) {
 }
 
 
+
+// ─── EXPORTAR GASTOS ──────────────────────────────────────────────────────────
+var WSP_ADMIN = [
+  { nombre: "Administración 1", numero: "542932595986" },
+  { nombre: "Administración 2", numero: "542915730836" },
+  { nombre: "Administración 3", numero: "5492932497380" },
+];
+
+function ExportarGastosModal(p) {
+  var gastos=p.gastos, onClose=p.onClose;
+  var hoy=new Date().toISOString().split("T")[0];
+  var primerDiaMes=hoy.slice(0,8)+"01";
+  var [filtroTipo,setFiltroTipo]=useState("todos");
+  var [filtroLocal,setFiltroLocal]=useState("todos");
+  var [fechaDesde,setFechaDesde]=useState(primerDiaMes);
+  var [fechaHasta,setFechaHasta]=useState(hoy);
+  var [wspSel,setWspSel]=useState(null);
+  var [gen,setGen]=useState(false);
+  var [excelBlob,setExcelBlob]=useState(null);
+  var [excelNombre,setExcelNombre]=useState("");
+
+  var TIPOS=["todos","Proveedores","Personal","Servicios","Impuestos","Mantenimiento","Marketing","Limpieza","Otro"];
+
+  var filtered=gastos.filter(function(g){
+    var matchFecha=(!fechaDesde||g.fecha>=fechaDesde)&&(!fechaHasta||g.fecha<=fechaHasta);
+    var matchTipo=filtroTipo==="todos"||g.categoria.startsWith(filtroTipo);
+    var matchLocal=filtroLocal==="todos"||g.local===filtroLocal;
+    return matchFecha&&matchTipo&&matchLocal;
+  });
+
+  var totalFiltered=filtered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+
+  async function generarExcel(){
+    setGen(true);
+    try {
+      // Load SheetJS
+      if(!window.XLSX){
+        await new Promise(function(res,rej){
+          var s=document.createElement("script");
+          s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload=res;s.onerror=rej;
+          document.head.appendChild(s);
+        });
+      }
+      var XLSX=window.XLSX;
+      var wb=XLSX.utils.book_new();
+      var rows=[["Fecha","Local","Concepto","Categoría","Forma de Pago","Monto","Facturado","Facturación","Notas","Usuario"]];
+      filtered.forEach(function(g){
+        var loc=LOCALES.find(function(l){return l.id===g.local;});
+        var fact=g.facturado&&g.facturacion?FACTURACION.find(function(f){return f.id===g.facturacion;}):null;
+        rows.push([
+          g.fecha||"",
+          loc?loc.nombre:"",
+          g.concepto||"",
+          g.categoria||"",
+          g.forma_pago||"",
+          parseFloat(g.monto||0),
+          g.facturado?"Sí":"No",
+          fact?fact.razonSocial+" - CUIT "+fact.cuit:"",
+          g.notas||"",
+          g.usuario||""
+        ]);
+      });
+      // Total row
+      rows.push(["","","","","TOTAL",totalFiltered,"","","",""]);
+      var ws=XLSX.utils.aoa_to_sheet(rows);
+      // Column widths
+      ws["!cols"]=[{wch:12},{wch:18},{wch:25},{wch:25},{wch:18},{wch:14},{wch:10},{wch:35},{wch:25},{wch:12}];
+      XLSX.utils.book_append_sheet(wb,ws,"Gastos");
+      var nombre="Gastos_NKT_"+fechaDesde+"_"+fechaHasta+".xlsx";
+      XLSX.writeFile(wb,nombre);
+      setExcelNombre(nombre);
+      setExcelBlob(true);
+    } catch(e){ alert("Error: "+e.message); }
+    setGen(false);
+  }
+
+  function abrirWsp(wsp){
+    var loc=filtroLocal==="todos"?"Todos los locales":(LOCALES.find(function(l){return l.id===filtroLocal;})||{nombre:filtroLocal}).nombre;
+    var msg="📊 *Reporte de Gastos - Gestión Grupo NKT*
+
+📅 Período: "+fmtDate(fechaDesde)+" al "+fmtDate(fechaHasta)+"
+🏪 Local: "+loc+"
+🏷️ Tipo: "+filtroTipo+"
+📋 "+filtered.length+" gastos
+💰 *Total: $"+totalFiltered.toLocaleString("es-AR")+"*
+
+_(Adjunto el Excel con el detalle completo)_";
+    window.open("https://wa.me/"+wsp.numero+"?text="+encodeURIComponent(msg),"_blank");
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.92)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
+      <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(560px,95vw)",maxHeight:"90vh",overflowY:"auto",color:"#F0EDE8",fontFamily:"'Lora',serif"}}>
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:2}}>Exportar</div>
+            <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:17}}>📊 Gastos a Excel</h2>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:13}}>
+          {/* Fechas */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Desde</label><input type="date" value={fechaDesde} onChange={function(e){setFechaDesde(e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Hasta</label><input type="date" value={fechaHasta} onChange={function(e){setFechaHasta(e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+          </div>
+          {/* Tipo */}
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:7}}>Tipo de gasto</label>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              {TIPOS.map(function(t){return(
+                <button key={t} onClick={function(){setFiltroTipo(t);}}
+                  style={{padding:"5px 11px",borderRadius:20,border:"1px solid "+(filtroTipo===t?"#1A6B8A":"#1E1E1E"),background:filtroTipo===t?"#1A6B8A22":"none",color:filtroTipo===t?"#1A6B8A":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+                  {t==="todos"?"Todos":t}
+                </button>
+              );})}
+            </div>
+          </div>
+          {/* Local */}
+          <div>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:7}}>Local</label>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              <button onClick={function(){setFiltroLocal("todos");}} style={{padding:"5px 11px",borderRadius:20,border:"1px solid "+(filtroLocal==="todos"?"#555":"#1E1E1E"),background:filtroLocal==="todos"?"#222":"none",color:filtroLocal==="todos"?"#F0EDE8":"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>Todos</button>
+              {LOCALES.map(function(l){return(
+                <button key={l.id} onClick={function(){setFiltroLocal(l.id);}}
+                  style={{padding:"5px 11px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1E1E1E"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#555",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+                  {l.emoji} {l.nombre}
+                </button>
+              );})}
+            </div>
+          </div>
+          {/* Resumen */}
+          <div style={{background:"#0F0F0F",borderRadius:10,padding:"10px 13px",border:"1px solid #1A6B8A33"}}>
+            <div style={{fontSize:12,color:"#555",marginBottom:4}}>{filtered.length} gastos seleccionados</div>
+            <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#1A6B8A"}}>${totalFiltered.toLocaleString("es-AR")}</div>
+          </div>
+          {/* Generar Excel */}
+          <button onClick={generarExcel} disabled={gen||filtered.length===0} style={{background:filtered.length===0?"#1A1A1A":"#3A7D44",border:"none",borderRadius:8,color:filtered.length===0?"#444":"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:filtered.length===0?"not-allowed":"pointer",padding:"12px"}}>
+            {gen?"⏳ Generando...":"📥 Descargar Excel"}
+          </button>
+          {/* Enviar por WSP */}
+          {excelBlob&&(
+            <div>
+              <div style={{background:"#0A1A0A",border:"1px solid #1A3A1A",borderRadius:10,padding:"10px 13px",marginBottom:10}}>
+                <div style={{fontSize:12,color:"#3A7D44",fontWeight:700,marginBottom:3}}>✅ {excelNombre}</div>
+                <div style={{fontSize:11,color:"#555"}}>Adjuntá el Excel en WhatsApp con 📎 antes de enviar.</div>
+              </div>
+              <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:7}}>Enviar a:</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {WSP_ADMIN.map(function(wsp){return(
+                  <button key={wsp.numero} onClick={function(){abrirWsp(wsp);}}
+                    style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px",textAlign:"left"}}>
+                    📲 {wsp.nombre} — +{wsp.numero}
+                  </button>
+                );})}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── EDITOR CATEGORÍAS GASTOS ─────────────────────────────────────────────────
 var GRUPOS_DEFAULT = ["Proveedores","Personal","Servicios","Impuestos","Mantenimiento","Marketing","Otros"];
 
@@ -2674,6 +2839,7 @@ export default function App() {
   var [gastos,setGastos]=useState([]);
   var [categoriasGastos,setCategoriasGastos]=useState([]);
   var [showEditorCats,setShowEditorCats]=useState(false);
+  var [showExportarGastos,setShowExportarGastos]=useState(false);
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
 
@@ -2805,6 +2971,9 @@ export default function App() {
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVista("gastos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="gastos"?"#1A6B8A":"#1E1E1E"),background:vista==="gastos"?"#1A6B8A22":"#111",color:vista==="gastos"?"#1A6B8A":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 💰 Gastos
+              </button>
+              <button onClick={function(){setShowExportarGastos(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #3A7D44",background:"#3A7D4411",color:"#3A7D44",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                📊 Exportar Excel
               </button>
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
@@ -2972,6 +3141,7 @@ export default function App() {
         });
         setProductos(pd);setShowMisProds(false);
       }}/>}
+      {showExportarGastos&&<ExportarGastosModal gastos={gastos} onClose={function(){setShowExportarGastos(false);}}/>}
       {showEditorCats&&<EditorCategoriasGastos categorias={categoriasGastos} onClose={function(){setShowEditorCats(false);}} onSave={function(cats){setCategoriasGastos(cats);setShowEditorCats(false);}}/>}
       {showEditorMenu&&<EditorMenuStock onClose={function(){setShowEditorMenu(false);}} onSave={function(m){
         // Save to Supabase

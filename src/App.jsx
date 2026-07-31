@@ -2934,7 +2934,7 @@ export default function App() {
               style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"transparent",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               📋 Compras
             </button>
-            <button onClick={function(){setModulo("admin");setVista("analytics");}}
+            <button onClick={function(){setModulo("admin");setVista("gastos");}}
               style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="admin"?"#1A6B8A":"transparent",color:modulo==="admin"?"#fff":"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
               💰 Administración
             </button>

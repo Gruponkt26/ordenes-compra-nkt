@@ -1,4 +1,4 @@
-// v4.0 - Supabase + Panel Despacho + Multi-proveedor
+// v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import { useState, useEffect } from "react";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────

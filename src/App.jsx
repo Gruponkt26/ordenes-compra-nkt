@@ -1897,6 +1897,285 @@ function PanelGastos(p) {
   );
 }
 
+
+// ─── PANEL IVA ────────────────────────────────────────────────────────────────
+function PanelIVA(p) {
+  var gastos=p.gastos;
+  var hoy=new Date().toISOString().split("T")[0];
+  var primerDiaMes=hoy.slice(0,8)+"01";
+  var [filtroLocal,setFiltroLocal]=useState("all");
+  var [filtroFecha,setFiltroFecha]=useState("mes");
+  var [fechaDesde,setFechaDesde]=useState(primerDiaMes);
+  var [fechaHasta,setFechaHasta]=useState(hoy);
+
+  // Solo gastos facturados
+  var filtered=gastos.filter(function(g){
+    if(!g.facturado) return false;
+    var matchLocal=filtroLocal==="all"||g.local===filtroLocal;
+    var matchFecha=true;
+    if(filtroFecha==="hoy") matchFecha=g.fecha===hoy;
+    if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(1000*60*60*24);matchFecha=diff<=7;}
+    if(filtroFecha==="mes") matchFecha=g.fecha&&g.fecha.slice(0,7)===hoy.slice(0,7);
+    if(filtroFecha==="custom") matchFecha=(!fechaDesde||g.fecha>=fechaDesde)&&(!fechaHasta||g.fecha<=fechaHasta);
+    return matchLocal&&matchFecha;
+  });
+
+  function getIVA(g){
+    var monto=parseFloat(g.monto||0);
+    var cat=g.categoria||"";
+    var alicuota=cat.toLowerCase().includes("verdulería")||cat.toLowerCase().includes("verduleria")?0.105:0.21;
+    return { neto: monto/(1+alicuota), iva: monto-(monto/(1+alicuota)), alicuota: alicuota*100 };
+  }
+
+  // Calcular por local
+  var porLocal={};
+  LOCALES.forEach(function(l){ porLocal[l.id]={nombre:l.nombre,emoji:l.emoji,color:l.color,neto:0,iva105:0,iva21:0,total:0,items:[]}; });
+
+  filtered.forEach(function(g){
+    var calc=getIVA(g);
+    if(!porLocal[g.local]) return;
+    porLocal[g.local].neto+=calc.neto;
+    if(calc.alicuota===10.5) porLocal[g.local].iva105+=calc.iva;
+    else porLocal[g.local].iva21+=calc.iva;
+    porLocal[g.local].total+=parseFloat(g.monto||0);
+    porLocal[g.local].items.push({...g,...calc});
+  });
+
+  var totalNeto=Object.values(porLocal).reduce(function(a,l){return a+l.neto;},0);
+  var totalIva105=Object.values(porLocal).reduce(function(a,l){return a+l.iva105;},0);
+  var totalIva21=Object.values(porLocal).reduce(function(a,l){return a+l.iva21;},0);
+  var totalIva=totalIva105+totalIva21;
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧾 Crédito Fiscal IVA</div>
+      </div>
+
+      {/* Filtros período */}
+      <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+        {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["custom","Personalizado"],["all","Todo"]].map(function(opt){
+          return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#D4A017":"#1A1A1A"),background:filtroFecha===opt[0]?"#D4A01722":"none",color:filtroFecha===opt[0]?"#D4A017":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;
+        })}
+      </div>
+
+      {filtroFecha==="custom"&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
+          <div><label style={{display:"block",fontSize:10,color:"#555",marginBottom:4}}>Desde</label><input type="date" value={fechaDesde} onChange={function(e){setFechaDesde(e.target.value);}} style={{padding:"8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
+          <div><label style={{display:"block",fontSize:10,color:"#555",marginBottom:4}}>Hasta</label><input type="date" value={fechaHasta} onChange={function(e){setFechaHasta(e.target.value);}} style={{padding:"8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
+        </div>
+      )}
+
+      {/* Filtro local */}
+      <div style={{display:"flex",gap:5,marginBottom:16,flexWrap:"wrap"}}>
+        <button onClick={function(){setFiltroLocal("all");}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal==="all"?"#555":"#1A1A1A"),background:filtroLocal==="all"?"#222":"none",color:filtroLocal==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
+        {LOCALES.map(function(l){return(
+          <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}}
+            style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>
+            {l.emoji} {l.nombre}
+          </button>
+        );})}
+      </div>
+
+      {/* Resumen general */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:16}}>
+        <div style={{background:"#111",border:"1px solid #D4A01733",borderRadius:11,padding:"12px 14px",gridColumn:"1/-1"}}>
+          <div style={{fontSize:10,color:"#D4A017",textTransform:"uppercase",marginBottom:4}}>Total IVA Crédito Fiscal</div>
+          <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#D4A017"}}>${totalIva.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div style={{fontSize:11,color:"#555",marginTop:3}}>Neto: ${totalNeto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})} · {filtered.length} comprobantes</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>IVA 21%</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalIva21.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>IVA 10.5% (Verdulería)</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalIva105.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+      </div>
+
+      {/* Por local */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {LOCALES.filter(function(l){return porLocal[l.id]&&porLocal[l.id].total>0;}).map(function(l){
+          var loc=porLocal[l.id];
+          var ivaTotal=loc.iva105+loc.iva21;
+          return(
+            <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"10px 14px",background:"#151515",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:15,fontWeight:800,color:"#D4A017"}}>${ivaTotal.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                  <div style={{fontSize:10,color:"#555"}}>Neto: ${loc.neto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                </div>
+              </div>
+              <div style={{padding:"8px 14px"}}>
+                {loc.iva21>0&&<div style={{fontSize:11,color:"#888",marginBottom:3}}>IVA 21%: <span style={{color:"#F0EDE8",fontWeight:600}}>${loc.iva21.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>}
+                {loc.iva105>0&&<div style={{fontSize:11,color:"#888",marginBottom:3}}>IVA 10.5%: <span style={{color:"#F0EDE8",fontWeight:600}}>${loc.iva105.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>}
+                <div style={{fontSize:10,color:"#444",marginTop:4}}>{loc.items.length} comprobante{loc.items.length!==1?"s":""}</div>
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length===0&&(
+          <div style={{textAlign:"center",padding:"40px 20px"}}>
+            <div style={{fontSize:32,marginBottom:10}}>🧾</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin comprobantes facturados en este período</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── PANEL IVA ────────────────────────────────────────────────────────────────
+function PanelIVA(p) {
+  var gastos=p.gastos;
+  var hoy=new Date().toISOString().split("T")[0];
+  var primerDiaMes=hoy.slice(0,8)+"01";
+  var [fechaDesde,setFechaDesde]=useState(primerDiaMes);
+  var [fechaHasta,setFechaHasta]=useState(hoy);
+
+  function getAlicuota(categoria) {
+    if(categoria&&categoria.toLowerCase().includes("verdulería")) return 0.105;
+    return 0.21;
+  }
+
+  function getIVA(gasto) {
+    if(!gasto.facturado) return 0;
+    var alicuota = getAlicuota(gasto.categoria);
+    var monto = parseFloat(gasto.monto||0);
+    return monto - (monto / (1 + alicuota));
+  }
+
+  var filtered=gastos.filter(function(g){
+    return g.facturado && (!fechaDesde||g.fecha>=fechaDesde) && (!fechaHasta||g.fecha<=fechaHasta);
+  });
+
+  // Group by local
+  var porLocal={};
+  LOCALES.forEach(function(l){ porLocal[l.id]={gastos:[],iva21:0,iva105:0,base21:0,base105:0}; });
+
+  filtered.forEach(function(g){
+    if(!porLocal[g.local]) return;
+    var alicuota=getAlicuota(g.categoria);
+    var monto=parseFloat(g.monto||0);
+    var iva=monto-(monto/(1+alicuota));
+    var base=monto-iva;
+    if(alicuota===0.105){
+      porLocal[g.local].iva105+=iva;
+      porLocal[g.local].base105+=base;
+    } else {
+      porLocal[g.local].iva21+=iva;
+      porLocal[g.local].base21+=base;
+    }
+    porLocal[g.local].gastos.push(g);
+  });
+
+  var totalIVA21=Object.values(porLocal).reduce(function(a,l){return a+l.iva21;},0);
+  var totalIVA105=Object.values(porLocal).reduce(function(a,l){return a+l.iva105;},0);
+  var totalIVA=totalIVA21+totalIVA105;
+  var totalBase=Object.values(porLocal).reduce(function(a,l){return a+l.base21+l.base105;},0);
+  var totalFacturado=Object.values(porLocal).reduce(function(a,l){return a+l.gastos.reduce(function(b,g){return b+parseFloat(g.monto||0);},0);},0);
+
+  function fmt(n){ return "$"+n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,"."); }
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧾 Crédito Fiscal IVA</div>
+      </div>
+
+      {/* Filtro fechas */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:16}}>
+        <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Desde</label><input type="date" value={fechaDesde} onChange={function(e){setFechaDesde(e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+        <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Hasta</label><input type="date" value={fechaHasta} onChange={function(e){setFechaHasta(e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+      </div>
+
+      {/* Resumen general */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:18}}>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Total facturado</div>
+          <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{fmt(totalFacturado)}</div>
+          <div style={{fontSize:10,color:"#444",marginTop:2}}>{filtered.length} comprobantes</div>
+        </div>
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:11,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",marginBottom:4}}>Total IVA crédito fiscal</div>
+          <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#3A7D44"}}>{fmt(totalIVA)}</div>
+          <div style={{fontSize:10,color:"#444",marginTop:2}}>Base imponible: {fmt(totalBase)}</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:"#D4A017",textTransform:"uppercase",marginBottom:4}}>IVA 21%</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{fmt(totalIVA21)}</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",marginBottom:4}}>IVA 10.5% (Verdulería)</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#1A6B8A"}}>{fmt(totalIVA105)}</div>
+        </div>
+      </div>
+
+      {/* Por local */}
+      <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Detalle por local</div>
+      {LOCALES.map(function(l){
+        var data=porLocal[l.id];
+        if(!data||data.gastos.length===0) return null;
+        var totalLocal=data.iva21+data.iva105;
+        var totalFactLocal=data.gastos.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+        return(
+          <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:10,color:"#555"}}>Facturado: {fmt(totalFactLocal)}</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#3A7D44"}}>IVA: {fmt(totalLocal)}</div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {data.iva21>0&&(
+                <div style={{background:"#0A0A0A",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:10,color:"#D4A017"}}>IVA 21%</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#D4A017"}}>{fmt(data.iva21)}</div>
+                  <div style={{fontSize:10,color:"#444"}}>Base: {fmt(data.base21)}</div>
+                </div>
+              )}
+              {data.iva105>0&&(
+                <div style={{background:"#0A0A0A",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:10,color:"#1A6B8A"}}>IVA 10.5%</div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#1A6B8A"}}>{fmt(data.iva105)}</div>
+                  <div style={{fontSize:10,color:"#444"}}>Base: {fmt(data.base105)}</div>
+                </div>
+              )}
+            </div>
+            {/* Detalle comprobantes */}
+            <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
+              {data.gastos.map(function(g){
+                var alicuota=getAlicuota(g.categoria);
+                var iva=getIVA(g);
+                var base=parseFloat(g.monto||0)-iva;
+                return(
+                  <div key={g.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",padding:"4px 0",borderBottom:"1px solid #1A1A1A"}}>
+                    <span>{g.concepto} · {g.categoria}</span>
+                    <span style={{color:"#3A7D44"}}>IVA {(alicuota*100).toFixed(1)}%: {fmt(iva)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {filtered.length===0&&(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <div style={{fontSize:32,marginBottom:10}}>🧾</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin comprobantes facturados en este período</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // PANEL ANALYTICS
 function PanelAnalytics(p) {
   var ordenes=p.ordenes, proveedores=p.proveedores;
@@ -2989,6 +3268,9 @@ export default function App() {
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
               </button>
+              <button onClick={function(){setVista("iva");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="iva"?"#3A7D44":"#1E1E1E"),background:vista==="iva"?"#3A7D4422":"#111",color:vista==="iva"?"#3A7D44":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🧾 IVA
+              </button>
               <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏷️ Categorías
               </button>
@@ -3005,6 +3287,10 @@ export default function App() {
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
             />
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="iva"&&(
+            <PanelIVA gastos={gastos}/>
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

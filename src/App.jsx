@@ -1555,15 +1555,7 @@ function ExportarGastosModal(p) {
 
   function abrirWsp(wsp){
     var loc=filtroLocal==="todos"?"Todos los locales":(LOCALES.find(function(l){return l.id===filtroLocal;})||{nombre:filtroLocal}).nombre;
-    var msg="📊 *Reporte de Gastos - Gestión Grupo NKT*
-
-📅 Período: "+fmtDate(fechaDesde)+" al "+fmtDate(fechaHasta)+"
-🏪 Local: "+loc+"
-🏷️ Tipo: "+filtroTipo+"
-📋 "+filtered.length+" gastos
-💰 *Total: $"+totalFiltered.toLocaleString("es-AR")+"*
-
-_(Adjunto el Excel con el detalle completo)_";
+    var msg="📊 *Reporte de Gastos - Gestión Grupo NKT*\n\n📅 Período: "+fmtDate(fechaDesde)+" al "+fmtDate(fechaHasta)+"\n🏪 Local: "+loc+"\n🏷️ Tipo: "+filtroTipo+"\n📋 "+filtered.length+" gastos\n💰 *Total: $"+totalFiltered.toLocaleString("es-AR")+"*\n\n_(Adjunto el Excel con el detalle completo)_";
     window.open("https://wa.me/"+wsp.numero+"?text="+encodeURIComponent(msg),"_blank");
   }
 

@@ -1742,8 +1742,14 @@ function PanelGastos(p) {
   var [showExportar,setShowExportar]=useState(false);
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("hoy");
-  var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+  var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  var SUBFORMAS={
+    "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
+    "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
+    "Tarjeta de débito":["Mastercard ML Calzon Gitano","Mastercard ML Nicolás","Visa Provincia Personas","Visa Patagonia Empresas","Visa Patagonia Personas"],
+    "Tarjeta de crédito":["Mastercard Patagonia Personas","Visa Patagonia Personas"]
+  };
   var CATS_DEFAULT=[
     "Proveedores - Carnicería","Proveedores - Verdulería","Proveedores - Pescadería",
     "Proveedores - Distribuidora","Proveedores - Papelera","Proveedores - Bebidas",
@@ -1773,9 +1779,9 @@ function PanelGastos(p) {
   var totalNoFact=filtered.filter(function(g){return !g.facturado;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
-    var gasto={id:String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:form.categoria,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString()};
+    var gasto={id:String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago+(form.subforma?" - "+form.subforma:""),facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:form.categoria,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString()};
     onSave(gasto);
-    setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+    setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
     setShowForm(false);
   }
   return(
@@ -1805,7 +1811,18 @@ function PanelGastos(p) {
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label><input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={INP}/></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:12}}>
-            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label><select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>{FORMAS_PAGO.map(function(fp){return <option key={fp}>{fp}</option>;})}</select></div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label>
+              <select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value,subforma:""};});}} style={INP}>
+                {FORMAS_PAGO.map(function(fp){return <option key={fp}>{fp}</option>;})}
+              </select>
+              {SUBFORMAS[form.forma_pago]&&(
+                <select value={form.subforma} onChange={function(e){setForm(function(f){return{...f,subforma:e.target.value};});}} style={{...INP,marginTop:5,color:form.subforma?"#F0EDE8":"#555"}}>
+                  <option value="">-- Seleccioná cuenta --</option>
+                  {SUBFORMAS[form.forma_pago].map(function(sf){return <option key={sf}>{sf}</option>;})}
+                </select>
+              )}
+            </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
               <select value={CATEGORIAS.includes(form.categoria)?form.categoria:"__otro__"} onChange={function(e){if(e.target.value==="__otro__"){setForm(function(f){return{...f,categoria:""};});}else{setForm(function(f){return{...f,categoria:e.target.value};});}}} style={INP}>

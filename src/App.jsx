@@ -1919,7 +1919,7 @@ function PanelCierre(p) {
     var total=calcTotal(form);
     if(total===0)return;
     var cierre={
-      id:localId+"_"+form.fecha,
+      id:localId+"_"+form.fecha+"_"+String(Date.now()),
       local:localId,
       fecha:form.fecha,
       total_ventas:total,

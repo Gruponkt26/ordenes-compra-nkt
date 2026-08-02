@@ -158,6 +158,9 @@ var INIT_USERS = [
   { id: "u6", nombre: "Sol",     usuario: "sol",     password: "Sol123",      local: "l1", rol: "usuario", seccion: "Cocina" },
   { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
   { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l3", rol: "usuario", seccion: "Cocina" },
+  { id: "u9",  nombre: "Cajero Bodegón",      usuario: "cajero_bodegon",     password: "CajeroBod1",  local: "l1", seccion: "Caja", rol: "cajero" },
+  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero" },
+  { id: "u11", nombre: "Cajero Colantonio's", usuario: "cajero_colantonios", password: "CajeroCol1",  local: "l3", seccion: "Caja", rol: "cajero" },
 ];
 
 var INIT_PROVEEDORES = [
@@ -1898,6 +1901,130 @@ function PanelGastos(p) {
 }
 
 
+// ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
+function PanelCierre(p) {
+  var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
+  var hoy=new Date().toISOString().split("T")[0];
+  var [form,setForm]=useState({fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",notas:""});
+  var [showForm,setShowForm]=useState(false);
+
+  var cierresLocal=cierres.filter(function(c){return c.local===localId;});
+  var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
+
+  function calcTotal(f){
+    return (parseFloat(f.efectivo)||0)+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
+  }
+
+  function doSave(){
+    var total=calcTotal(form);
+    if(total===0)return;
+    var cierre={
+      id:localId+"_"+form.fecha,
+      local:localId,
+      fecha:form.fecha,
+      total_ventas:total,
+      efectivo:parseFloat(form.efectivo)||0,
+      transferencia:parseFloat(form.transferencia)||0,
+      tarjeta_debito:parseFloat(form.tarjeta_debito)||0,
+      tarjeta_credito:parseFloat(form.tarjeta_credito)||0,
+      otros:parseFloat(form.otros)||0,
+      notas:form.notas,
+      usuario:usuario,
+      created_at:new Date().toISOString()
+    };
+    onSave(cierre);
+    setShowForm(false);
+  }
+
+  var local=getLocal(localId);
+
+  return(
+    <div style={{fontFamily:"'Lora',serif",maxWidth:600,margin:"0 auto"}}>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Cierre de Caja</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:local?local.color:"#F0EDE8"}}>{local?local.emoji:""} {localNombre}</div>
+      </div>
+
+      {/* Cierre de hoy */}
+      <div style={{background:hoyData?"#0A1A0A":"#111",border:"1px solid "+(hoyData?"#3A7D4444":"#1A1A1A"),borderRadius:14,padding:"16px",marginBottom:16}}>
+        <div style={{fontSize:11,color:hoyData?"#3A7D44":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>
+          {hoyData?"✅ Cierre de hoy cargado":"📋 Hoy aún no hay cierre"}
+        </div>
+        {hoyData?(
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:800,color:"#3A7D44",marginBottom:10}}>${parseFloat(hoyData.total_ventas).toLocaleString("es-AR")}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:11,color:"#555"}}>
+              {hoyData.efectivo>0&&<div>💵 Efectivo: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.efectivo).toLocaleString("es-AR")}</span></div>}
+              {hoyData.transferencia>0&&<div>📲 Transf.: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.transferencia).toLocaleString("es-AR")}</span></div>}
+              {hoyData.tarjeta_debito>0&&<div>💳 Débito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_debito).toLocaleString("es-AR")}</span></div>}
+              {hoyData.tarjeta_credito>0&&<div>💳 Crédito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_credito).toLocaleString("es-AR")}</span></div>}
+              {hoyData.otros>0&&<div>📦 Otros: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.otros).toLocaleString("es-AR")}</span></div>}
+            </div>
+            {hoyData.notas&&<div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
+          </div>
+        ):(
+          <button onClick={function(){setShowForm(true);}} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",width:"100%",marginTop:4}}>
+            + Cargar cierre de hoy
+          </button>
+        )}
+      </div>
+
+      {/* Formulario */}
+      {showForm&&(
+        <div style={{background:"#0F0F0F",border:"1px solid "+(local?local.color+"44":"#2A2A2A"),borderRadius:14,padding:"18px",marginBottom:18}}>
+          <div style={{fontSize:11,color:local?local.color:"#555",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Cierre del día</div>
+          <div style={{marginBottom:10}}>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
+            <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
+            {[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Tarjeta débito"],["tarjeta_credito","💳 Tarjeta crédito"],["otros","📦 Otros"]].map(function(field){
+              return(
+                <div key={field[0]}>
+                  <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{field[1]}</label>
+                  <input type="number" placeholder="0" value={form[field[0]]} onChange={function(e){var v=e.target.value;setForm(function(f){var n={...f};n[field[0]]=v;return n;});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{background:"#1A1A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:3}}>Total calculado</div>
+            <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${calcTotal(form).toLocaleString("es-AR")}</div>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+            <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Observaciones..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doSave} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
+            <button onClick={function(){setShowForm(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Lora',serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Historial */}
+      {cierresLocal.length>0&&(
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Historial de cierres</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {cierresLocal.slice(0,10).map(function(c){
+              return(
+                <div key={c.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}</div>
+                    <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
+                  </div>
+                  <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PANEL RETIROS ────────────────────────────────────────────────────────────
 function PanelRetiros(p) {
   var retiros=p.retiros, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
@@ -2772,6 +2899,28 @@ async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usua
   } catch(e) {}
 }
 
+// ─── CIERRES CAJA SUPABASE ────────────────────────────────────────────────────
+async function sbLoadCierres() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/cierres_caja?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveCierre(cierre) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
+  } catch(e) {}
+}
+
+async function sbDeleteCierre(id) {
+  try {
+    await fetch(SURL + "/rest/v1/cierres_caja?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── RETIROS SUPABASE ─────────────────────────────────────────────────────────
 async function sbLoadRetiros() {
   try {
@@ -3175,6 +3324,7 @@ export default function App() {
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
+  var [cierres,setCierres]=useState([]);
   var [categoriasGastos,setCategoriasGastos]=useState([]);
   var [showEditorCats,setShowEditorCats]=useState(false);
   var [showExportarGastos,setShowExportarGastos]=useState(false);
@@ -3188,6 +3338,7 @@ export default function App() {
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
     sbLoadRetiros().then(function(d){setRetiros(d);}).catch(function(){});
+    sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
@@ -3214,6 +3365,7 @@ export default function App() {
 
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
+  var esCajero=cu.rol==="cajero";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -3317,6 +3469,9 @@ export default function App() {
               <button onClick={function(){setVista("retiros");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="retiros"?"#8B2FC9":"#1E1E1E"),background:vista==="retiros"?"#8B2FC922":"#111",color:vista==="retiros"?"#8B2FC9":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 💼 Retiros
               </button>
+              <button onClick={function(){setVista("cierres");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cierres"?"#C1440E":"#1E1E1E"),background:vista==="cierres"?"#C1440E22":"#111",color:vista==="cierres"?"#C1440E":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🏪 Cierres
+              </button>
               <button onClick={function(){setVista("iva");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="iva"?"#3A7D44":"#1E1E1E"),background:vista==="iva"?"#3A7D4422":"#111",color:vista==="iva"?"#3A7D44":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🧾 IVA
               </button>
@@ -3336,6 +3491,46 @@ export default function App() {
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
             />
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="cierres"&&(
+            <div>
+              <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>Cierres de caja por local</div>
+              {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+                var cierresLocal=cierres.filter(function(c){return c.local===l.id;});
+                var totalMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===new Date().toISOString().slice(0,7);}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+                var hoy=new Date().toISOString().split("T")[0];
+                var cierreHoy=cierresLocal.find(function(c){return c.fecha===hoy;});
+                return(
+                  <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:10,color:"#555"}}>Este mes</div>
+                        <div style={{fontSize:16,fontWeight:800,color:l.color}}>${totalMes.toLocaleString("es-AR")}</div>
+                      </div>
+                    </div>
+                    {cierreHoy?(
+                      <div style={{background:"#0A1A0A",borderRadius:8,padding:"8px 10px"}}>
+                        <div style={{fontSize:10,color:"#3A7D44",fontWeight:700}}>✅ Hoy: ${parseFloat(cierreHoy.total_ventas).toLocaleString("es-AR")}</div>
+                      </div>
+                    ):(
+                      <div style={{background:"#1A0808",borderRadius:8,padding:"8px 10px"}}>
+                        <div style={{fontSize:10,color:"#C1440E",fontWeight:700}}>⚠️ Sin cierre de hoy</div>
+                      </div>
+                    )}
+                    {cierresLocal.slice(0,5).map(function(c){
+                      return(
+                        <div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",padding:"4px 0",borderBottom:"1px solid #1A1A1A"}}>
+                          <span>{fmtDate(c.fecha)}</span>
+                          <span style={{color:"#F0EDE8",fontWeight:600}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(
@@ -3435,7 +3630,13 @@ export default function App() {
             <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}/>
           )}
 
-          {!esAdmin&&vistaUsuario==="stockmp"&&(
+          {esCajero&&(
+            <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
+              onSave={function(c){sbSaveCierre(c);setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}}
+            />
+          )}
+
+          {!esAdmin&&!esCajero&&vistaUsuario==="stockmp"&&(
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 

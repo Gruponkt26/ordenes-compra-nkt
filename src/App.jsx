@@ -1902,6 +1902,127 @@ function PanelGastos(p) {
 
 
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
+function PanelCierresSofia(p) {
+  var cierres=p.cierres;
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [expandido,setExpandido]=useState(null); // "localId_fecha"
+  var [localActivo,setLocalActivo]=useState("all");
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+
+  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+
+  // Meses disponibles en los cierres
+  var mesesDisp=[...new Set(cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
+
+  function toggleExpandido(key){
+    setExpandido(function(prev){return prev===key?null:key;});
+  }
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>Cierres de caja</div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <button onClick={function(){setLocalActivo("all");}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo==="all"?"#555":"#1A1A1A"),background:localActivo==="all"?"#222":"none",color:localActivo==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif"}}>Todos</button>
+        {localesFiltro.map(function(l){return(
+          <button key={l.id} onClick={function(){setLocalActivo(l.id);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo===l.id?l.color:"#1A1A1A"),background:localActivo===l.id?l.color+"22":"none",color:localActivo===l.id?l.color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif"}}>{l.emoji}</button>
+        );})}
+      </div>
+
+      {/* Por local */}
+      {localesFiltro.filter(function(l){return localActivo==="all"||localActivo===l.id;}).map(function(l){
+        var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+        var totalMes=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+        var cierreHoy=cl.find(function(c){return c.fecha===hoy;});
+        if(cl.length===0&&!cierreHoy&&mesFiltro===mesCurrent){
+          // igual mostrar cabecera con alerta
+        }
+        return(
+          <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+            {/* Cabecera local */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:10,color:"#555"}}>{mesFiltro}</div>
+                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>${totalMes.toLocaleString("es-AR")}</div>
+              </div>
+            </div>
+
+            {/* Alerta hoy (solo si mes actual) */}
+            {mesFiltro===mesCurrent&&(
+              <div style={{background:cierreHoy?"#0A1A0A":"#1A0808",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
+                <div style={{fontSize:10,color:cierreHoy?"#3A7D44":"#C1440E",fontWeight:700}}>
+                  {cierreHoy?"✅ Hoy: $"+parseFloat(cierreHoy.total_ventas).toLocaleString("es-AR"):"⚠️ Sin cierre de hoy"}
+                </div>
+              </div>
+            )}
+
+            {/* Totales por medio de pago del mes */}
+            {cl.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:10}}>
+                {[["efectivo","💵"],["transferencia","📲"],["tarjeta_debito","💳db"],["tarjeta_credito","💳cr"],["otros","📦"]].map(function(f){
+                  var tot=cl.reduce(function(a,c){return a+parseFloat(c[f[0]]||0);},0);
+                  if(tot===0)return null;
+                  return(
+                    <div key={f[0]} style={{background:"#0F0F0F",borderRadius:7,padding:"6px 9px"}}>
+                      <div style={{fontSize:9,color:"#444",marginBottom:2}}>{f[1]} {f[0].replace("_"," ")}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>${tot.toLocaleString("es-AR")}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Listado de días */}
+            {cl.length===0?(
+              <div style={{fontSize:11,color:"#444",textAlign:"center",padding:"8px 0"}}>Sin cierres en este período</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {cl.map(function(c){
+                  var key=l.id+"_"+c.fecha;
+                  var abierto=expandido===key;
+                  var esHoy=c.fecha===hoy;
+                  return(
+                    <div key={c.id}>
+                      <div onClick={function(){toggleExpandido(key);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#888",transition:"transform 0.15s",display:"inline-block",transform:abierto?"rotate(90deg)":"rotate(0deg)"}}>▶</span>
+                          <span style={{fontSize:12,color:esHoy?"#3A7D44":"#F0EDE8",fontWeight:esHoy?700:400}}>{fmtDate(c.fecha)}{esHoy&&" ● hoy"}</span>
+                          <span style={{fontSize:10,color:"#444"}}>· {c.usuario}</span>
+                        </div>
+                        <span style={{fontSize:13,fontWeight:700,color:l.color,fontFamily:"'Playfair Display',serif"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",margin:"4px 0 6px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                          {[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].map(function(f){
+                            var v=parseFloat(c[f[0]]||0);
+                            if(v===0)return null;
+                            return(
+                              <div key={f[0]} style={{fontSize:11,color:"#555"}}>
+                                {f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>${v.toLocaleString("es-AR")}</span>
+                              </div>
+                            );
+                          })}
+                          {c.notas&&<div style={{gridColumn:"1/-1",fontSize:10,color:"#444",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
   var hoy=new Date().toISOString().split("T")[0];
@@ -3537,44 +3658,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
-            <div>
-              <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>Cierres de caja por local</div>
-              {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-                var cierresLocal=cierres.filter(function(c){return c.local===l.id;});
-                var mesCurrent=new Date().toISOString().slice(0,7);
-                var totalMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
-                var hoy=new Date().toISOString().split("T")[0];
-                var cierreHoy=cierresLocal.find(function(c){return c.fecha===hoy;});
-                return(
-                  <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                      <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:10,color:"#555"}}>Este mes</div>
-                        <div style={{fontSize:16,fontWeight:800,color:l.color}}>${totalMes.toLocaleString("es-AR")}</div>
-                      </div>
-                    </div>
-                    {cierreHoy?(
-                      <div style={{background:"#0A1A0A",borderRadius:8,padding:"8px 10px"}}>
-                        <div style={{fontSize:10,color:"#3A7D44",fontWeight:700}}>✅ Hoy: ${parseFloat(cierreHoy.total_ventas).toLocaleString("es-AR")}</div>
-                      </div>
-                    ):(
-                      <div style={{background:"#1A0808",borderRadius:8,padding:"8px 10px"}}>
-                        <div style={{fontSize:10,color:"#C1440E",fontWeight:700}}>⚠️ Sin cierre de hoy</div>
-                      </div>
-                    )}
-                    {cierresLocal.slice(0,5).map(function(c){
-                      return(
-                        <div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",padding:"4px 0",borderBottom:"1px solid #1A1A1A"}}>
-                          <span>{fmtDate(c.fecha)}</span>
-                          <span style={{color:"#F0EDE8",fontWeight:600}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+            <PanelCierresSofia cierres={cierres}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(

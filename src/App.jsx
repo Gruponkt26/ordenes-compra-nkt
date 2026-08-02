@@ -3498,7 +3498,8 @@ export default function App() {
               <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>Cierres de caja por local</div>
               {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
                 var cierresLocal=cierres.filter(function(c){return c.local===l.id;});
-                var totalMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===new Date().toISOString().slice(0,7);}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+                var mesCurrent=new Date().toISOString().slice(0,7);
+                var totalMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
                 var hoy=new Date().toISOString().split("T")[0];
                 var cierreHoy=cierresLocal.find(function(c){return c.fecha===hoy;});
                 return(

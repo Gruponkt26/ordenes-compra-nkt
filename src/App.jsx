@@ -1905,21 +1905,35 @@ function PanelGastos(p) {
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
   var hoy=new Date().toISOString().split("T")[0];
-  var [form,setForm]=useState({fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",notas:""});
+  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",notas:""};
+  var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
+  var [editId,setEditId]=useState(null); // id del cierre que estamos editando
 
-  var cierresLocal=cierres.filter(function(c){return c.local===localId;});
+  var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
 
   function calcTotal(f){
     return (parseFloat(f.efectivo)||0)+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
   }
 
+  function abrirNuevo(){
+    setForm(formVacio);
+    setEditId(null);
+    setShowForm(true);
+  }
+
+  function abrirEditar(c){
+    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",notas:c.notas||""});
+    setEditId(c.id);
+    setShowForm(true);
+  }
+
   function doSave(){
     var total=calcTotal(form);
     if(total===0)return;
     var cierre={
-      id:localId+"_"+form.fecha+"_"+String(Date.now()),
+      id: editId || (localId+"_"+form.fecha+"_"+String(Date.now())),
       local:localId,
       fecha:form.fecha,
       total_ventas:total,
@@ -1934,21 +1948,32 @@ function PanelCierre(p) {
     };
     onSave(cierre);
     setShowForm(false);
+    setEditId(null);
   }
 
   var local=getLocal(localId);
 
   return(
     <div style={{fontFamily:"'Lora',serif",maxWidth:600,margin:"0 auto"}}>
-      <div style={{marginBottom:20}}>
-        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Cierre de Caja</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:local?local.color:"#F0EDE8"}}>{local?local.emoji:""} {localNombre}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Cierre de Caja</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:local?local.color:"#F0EDE8"}}>{local?local.emoji:""} {localNombre}</div>
+        </div>
+        {!showForm&&(
+          <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo cierre</button>
+        )}
       </div>
 
       {/* Cierre de hoy */}
       <div style={{background:hoyData?"#0A1A0A":"#111",border:"1px solid "+(hoyData?"#3A7D4444":"#1A1A1A"),borderRadius:14,padding:"16px",marginBottom:16}}>
-        <div style={{fontSize:11,color:hoyData?"#3A7D44":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>
-          {hoyData?"✅ Cierre de hoy cargado":"📋 Hoy aún no hay cierre"}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:hoyData?8:0}}>
+          <div style={{fontSize:11,color:hoyData?"#3A7D44":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5}}>
+            {hoyData?"✅ Cierre de hoy cargado":"📋 Hoy aún no hay cierre"}
+          </div>
+          {hoyData&&(
+            <button onClick={function(){abrirEditar(hoyData);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#888",fontSize:11,cursor:"pointer",padding:"4px 10px",fontFamily:"'Lora',serif"}}>✏️ Editar</button>
+          )}
         </div>
         {hoyData?(
           <div>
@@ -1963,16 +1988,18 @@ function PanelCierre(p) {
             {hoyData.notas&&<div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
           </div>
         ):(
-          <button onClick={function(){setShowForm(true);}} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",width:"100%",marginTop:4}}>
+          <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",width:"100%",marginTop:4}}>
             + Cargar cierre de hoy
           </button>
         )}
       </div>
 
-      {/* Formulario */}
+      {/* Formulario nuevo/editar */}
       {showForm&&(
         <div style={{background:"#0F0F0F",border:"1px solid "+(local?local.color+"44":"#2A2A2A"),borderRadius:14,padding:"18px",marginBottom:18}}>
-          <div style={{fontSize:11,color:local?local.color:"#555",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Cierre del día</div>
+          <div style={{fontSize:11,color:local?local.color:"#555",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
+            {editId?"✏️ Editando cierre":"+ Nuevo cierre"}
+          </div>
           <div style={{marginBottom:10}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
             <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
@@ -1997,7 +2024,7 @@ function PanelCierre(p) {
           </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={doSave} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
-            <button onClick={function(){setShowForm(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Lora',serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+            <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Lora',serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -2007,14 +2034,25 @@ function PanelCierre(p) {
         <div>
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Historial de cierres</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {cierresLocal.slice(0,10).map(function(c){
+            {cierresLocal.map(function(c){
+              var esHoy=c.fecha===hoy;
               return(
-                <div key={c.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
                     <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
+                    <div style={{fontSize:10,color:"#444",marginTop:2}}>
+                      {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}
+                      {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
+                      {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
+                      {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
+                      {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+                    </div>
                   </div>
-                  <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
+                    <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Lora',serif"}}>✏️ Editar</button>
+                  </div>
                 </div>
               );
             })}
@@ -3638,7 +3676,7 @@ export default function App() {
 
           {esCajero&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
-              onSave={function(c){sbSaveCierre(c);setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}}
+              onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
             />
           )}
 

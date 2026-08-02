@@ -2911,8 +2911,13 @@ async function sbLoadCierres() {
 async function sbSaveCierre(cierre) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
+    if (!r.ok) {
+      var err = await r.text();
+      alert("Error al guardar: " + err);
+    }
+    return r.ok;
+  } catch(e) { alert("Error de conexión: " + e.message); return false; }
 }
 
 async function sbDeleteCierre(id) {

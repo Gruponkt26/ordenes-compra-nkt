@@ -2488,130 +2488,308 @@ function PanelRetiros(p) {
 
 // ─── PANEL IVA ────────────────────────────────────────────────────────────────
 function PanelIVA(p) {
-  var gastos=p.gastos;
+  var gastos=p.gastos, cierres=p.cierres||[];
   var hoy=new Date().toISOString().split("T")[0];
-  var primerDiaMes=hoy.slice(0,8)+"01";
-  var [filtroLocal,setFiltroLocal]=useState("all");
-  var [filtroFecha,setFiltroFecha]=useState("mes");
-  var [fechaDesde,setFechaDesde]=useState(primerDiaMes);
-  var [fechaHasta,setFechaHasta]=useState(hoy);
+  var mesCurrent=hoy.slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [tab,setTab]=useState("posicion"); // posicion | compras | optimizacion
 
-  // Solo gastos facturados
-  var filtered=gastos.filter(function(g){
-    if(!g.facturado) return false;
-    var matchLocal=filtroLocal==="all"||g.local===filtroLocal;
-    var matchFecha=true;
-    if(filtroFecha==="hoy") matchFecha=g.fecha===hoy;
-    if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(1000*60*60*24);matchFecha=diff<=7;}
-    if(filtroFecha==="mes") matchFecha=g.fecha&&g.fecha.slice(0,7)===hoy.slice(0,7);
-    if(filtroFecha==="custom") matchFecha=(!fechaDesde||g.fecha>=fechaDesde)&&(!fechaHasta||g.fecha<=fechaHasta);
-    return matchLocal&&matchFecha;
-  });
+  var mesesDisp=[...new Set([
+    ...gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}),
+    ...cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;})
+  ].filter(Boolean))].sort().reverse();
+  if(mesesDisp.length===0)mesesDisp=[mesCurrent];
 
-  function getIVA(g){
+  // ── Helpers IVA ──
+  function calcIVACompra(g){
     var monto=parseFloat(g.monto||0);
-    var cat=g.categoria||"";
-    var alicuota=cat.toLowerCase().includes("verdulería")||cat.toLowerCase().includes("verduleria")?0.105:0.21;
-    return { neto: monto/(1+alicuota), iva: monto-(monto/(1+alicuota)), alicuota: alicuota*100 };
+    var cat=(g.categoria||"").toLowerCase();
+    var alicuota=cat.includes("verdulería")||cat.includes("verduleria")?0.105:0.21;
+    return {neto:monto/(1+alicuota),iva:monto-(monto/(1+alicuota)),alicuota};
+  }
+  function calcIVAVenta(monto){
+    // ventas electrónicas van con IVA incluido al 21%
+    var neto=monto/1.21;
+    return {neto,iva:monto-neto};
   }
 
-  // Calcular por local
-  var porLocal={};
-  LOCALES.forEach(function(l){ porLocal[l.id]={nombre:l.nombre,emoji:l.emoji,color:l.color,neto:0,iva105:0,iva21:0,total:0,items:[]}; });
+  // ── IVA Compras (crédito fiscal) ──
+  var gastosFacturados=gastos.filter(function(g){return g.facturado&&g.fecha&&g.fecha.substring(0,7)===mesFiltro&&g.local!=="l4";});
 
-  filtered.forEach(function(g){
-    var calc=getIVA(g);
-    if(!porLocal[g.local]) return;
-    porLocal[g.local].neto+=calc.neto;
-    if(calc.alicuota===10.5) porLocal[g.local].iva105+=calc.iva;
-    else porLocal[g.local].iva21+=calc.iva;
-    porLocal[g.local].total+=parseFloat(g.monto||0);
-    porLocal[g.local].items.push({...g,...calc});
+  var comprasPorLocal={l1:{ivaCF:0,items:[]},l2:{ivaCF:0,items:[]},l3:{ivaCF:0,items:[]}};
+  gastosFacturados.forEach(function(g){
+    if(!comprasPorLocal[g.local])return;
+    var c=calcIVACompra(g);
+    comprasPorLocal[g.local].ivaCF+=c.iva;
+    comprasPorLocal[g.local].items.push({...g,ivaCalc:c.iva,neto:c.neto});
   });
 
-  var totalNeto=Object.values(porLocal).reduce(function(a,l){return a+l.neto;},0);
-  var totalIva105=Object.values(porLocal).reduce(function(a,l){return a+l.iva105;},0);
-  var totalIva21=Object.values(porLocal).reduce(function(a,l){return a+l.iva21;},0);
-  var totalIva=totalIva105+totalIva21;
+  // ── IVA Ventas (débito fiscal) — solo medios electrónicos ──
+  var MEDIOS_ELECTRONICOS=["transferencia","tarjeta","débito","debito","crédito","credito","mercado pago","mercado libre","qr"];
+  function esElectronico(fp){
+    var f=(fp||"").toLowerCase();
+    return MEDIOS_ELECTRONICOS.some(function(m){return f.includes(m);});
+  }
+
+  var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
+  var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
+  cierresMes.forEach(function(c){
+    if(!ventasPorLocal[c.local])return;
+    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    var v=calcIVAVenta(montoElect);
+    ventasPorLocal[c.local].ivaDF+=v.iva;
+    ventasPorLocal[c.local].base+=v.neto;
+  });
+
+  // ── Posición neta por local ──
+  var posicionPorLocal={};
+  ["l1","l2","l3"].forEach(function(lid){
+    var df=ventasPorLocal[lid]?ventasPorLocal[lid].ivaDF:0;
+    var cf=comprasPorLocal[lid]?comprasPorLocal[lid].ivaCF:0;
+    posicionPorLocal[lid]={df,cf,neta:df-cf}; // positivo = a pagar, negativo = a favor
+  });
+
+  // Posición consolidada SRL (Kusama + Colantonio's)
+  var posSRL={
+    df:posicionPorLocal.l2.df+posicionPorLocal.l3.df,
+    cf:posicionPorLocal.l2.cf+posicionPorLocal.l3.cf,
+    neta:posicionPorLocal.l2.neta+posicionPorLocal.l3.neta
+  };
+
+  var ALERTA_UMBRAL=500000;
+
+  // ── Sugerencias de optimización ──
+  function generarSugerencias(){
+    var sugs=[];
+    // Kusama ↔ Colantonio's (mismo CUIT SRL — reasignación válida)
+    var posL2=posicionPorLocal.l2.neta;
+    var posL3=posicionPorLocal.l3.neta;
+    if(posL2>0&&posL3<0){
+      // Kusama debe pagar, Colantonio's tiene a favor → mover facturas de Col a Kusama
+      var necesita=Math.min(posL2,Math.abs(posL3));
+      var candidatos=comprasPorLocal.l3.items.filter(function(g){return g.ivaCalc<=necesita+1000;}).sort(function(a,b){return b.ivaCalc-a.ivaCalc;}).slice(0,3);
+      if(candidatos.length>0)sugs.push({tipo:"reasignar",de:"l3",a:"l2",motivo:"Kusama tiene posición a pagar, Colantonio's tiene crédito a favor (mismo CUIT SRL)",items:candidatos,impacto:candidatos.reduce(function(a,c){return a+c.ivaCalc;},0)});
+    }
+    if(posL3>0&&posL2<0){
+      var necesita2=Math.min(posL3,Math.abs(posL2));
+      var candidatos2=comprasPorLocal.l2.items.filter(function(g){return g.ivaCalc<=necesita2+1000;}).sort(function(a,b){return b.ivaCalc-a.ivaCalc;}).slice(0,3);
+      if(candidatos2.length>0)sugs.push({tipo:"reasignar",de:"l2",a:"l3",motivo:"Colantonio's tiene posición a pagar, Kusama tiene crédito a favor (mismo CUIT SRL)",items:candidatos2,impacto:candidatos2.reduce(function(a,c){return a+c.ivaCalc;},0)});
+    }
+    // Bodegón ↔ SRL (distinto CUIT — sugerencia de próximas facturas)
+    var posL1=posicionPorLocal.l1.neta;
+    if(posL1>0&&posSRL.neta<0){
+      // Bodegón debe, SRL tiene a favor → pedirle a proveedores que factures próximas al CUIT SRL
+      var diff=Math.min(posL1,Math.abs(posSRL.neta));
+      sugs.push({tipo:"futuro",cuitOrigen:"Bodegón (CUIT 20-26958479-4)",cuitDestino:"Calzon Gitano SRL (CUIT 30-71844629-1)",monto:diff,motivo:"Bodegón tiene saldo a pagar de IVA, SRL tiene crédito a favor. Solicitá a proveedores comunes que las próximas facturas las emitan al CUIT de Calzon Gitano SRL."});
+    }
+    if(posSRL.neta>0&&posL1<0){
+      var diff2=Math.min(posSRL.neta,Math.abs(posL1));
+      sugs.push({tipo:"futuro",cuitOrigen:"Calzon Gitano SRL (CUIT 30-71844629-1)",cuitDestino:"Bodegón (CUIT 20-26958479-4)",monto:diff2,motivo:"SRL tiene saldo a pagar de IVA, Bodegón tiene crédito a favor. Solicitá a proveedores comunes que las próximas facturas las emitan al CUIT de Colantonio Carlos Nicolas."});
+    }
+    return sugs;
+  }
+
+  var sugerencias=generarSugerencias();
+
+  function fmt(n){return "$"+Math.abs(n).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+  var LOCALES_CTRL=[
+    {id:"l1",nombre:"El Bodegón",emoji:"🍷",color:"#C1440E",cuit:"20-26958479-4"},
+    {id:"l2",nombre:"Kusama",emoji:"🌸",color:"#8B2FC9",cuit:"30-71844629-1"},
+    {id:"l3",nombre:"Colantonio's",emoji:"🍝",color:"#1A6B8A",cuit:"30-71844629-1"}
+  ];
 
   return(
     <div style={{fontFamily:"'Lora',serif"}}>
-      <div style={{marginBottom:16}}>
-        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧾 Crédito Fiscal IVA</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧾 Posición IVA</div>
+        </div>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
       </div>
 
-      {/* Filtros período */}
-      <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
-        {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["custom","Personalizado"],["all","Todo"]].map(function(opt){
-          return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#D4A017":"#1A1A1A"),background:filtroFecha===opt[0]?"#D4A01722":"none",color:filtroFecha===opt[0]?"#D4A017":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[["posicion","📊 Posición"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
+          return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:9,border:"1px solid "+(tab===t[0]?"#D4A017":"#1A1A1A"),background:tab===t[0]?"#D4A01722":"none",color:tab===t[0]?"#D4A017":"#555",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif",fontWeight:tab===t[0]?700:400}}>{t[1]}</button>;
         })}
       </div>
 
-      {filtroFecha==="custom"&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
-          <div><label style={{display:"block",fontSize:10,color:"#555",marginBottom:4}}>Desde</label><input type="date" value={fechaDesde} onChange={function(e){setFechaDesde(e.target.value);}} style={{padding:"8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
-          <div><label style={{display:"block",fontSize:10,color:"#555",marginBottom:4}}>Hasta</label><input type="date" value={fechaHasta} onChange={function(e){setFechaHasta(e.target.value);}} style={{padding:"8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
+      {/* TAB: POSICIÓN */}
+      {tab==="posicion"&&(
+        <div>
+          {/* Alertas $500k */}
+          {LOCALES_CTRL.map(function(l){
+            var pos=posicionPorLocal[l.id];
+            if(!pos||pos.neta<=ALERTA_UMBRAL)return null;
+            return(
+              <div key={l.id} style={{background:"#1A0800",border:"2px solid #FF4400",borderRadius:10,padding:"12px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <div style={{fontSize:22}}>🚨</div>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:"#FF4400"}}>{l.emoji} {l.nombre} — Posición a pagar supera $500.000</div>
+                  <div style={{fontSize:11,color:"#AA3300",marginTop:2}}>IVA neto a ingresar: {fmt(pos.neta)}</div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Cards por local */}
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
+            {LOCALES_CTRL.map(function(l){
+              var pos=posicionPorLocal[l.id];
+              var aPagar=pos.neta>0;
+              return(
+                <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"44",borderRadius:12,padding:"14px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                      <div style={{fontSize:10,color:"#444",marginTop:2}}>CUIT {l.cuit}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:10,color:aPagar?"#FF4400":"#3A7D44",textTransform:"uppercase",fontWeight:700,marginBottom:2}}>{aPagar?"A PAGAR":"A FAVOR"}</div>
+                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:aPagar?"#FF6644":"#3A7D44"}}>{fmt(pos.neta)}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    <div style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:3}}>📤 Débito fiscal (ventas)</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{fmt(pos.df)}</div>
+                      <div style={{fontSize:9,color:"#444",marginTop:2}}>transferencias + tarjetas</div>
+                    </div>
+                    <div style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:3}}>📥 Crédito fiscal (compras)</div>
+                      <div style={{fontSize:13,fontWeight:700,color:"#D4A017"}}>{fmt(pos.cf)}</div>
+                      <div style={{fontSize:9,color:"#444",marginTop:2}}>facturas registradas</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Consolidado SRL */}
+          <div style={{background:"#0F0A1A",border:"1px solid #8B2FC944",borderRadius:12,padding:"14px 16px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#8B2FC9",marginBottom:8}}>🏢 Consolidado SRL — Kusama + Colantonio's (CUIT 30-71844629-1)</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:11,color:"#555"}}>Débito fiscal: <span style={{color:"#F0EDE8"}}>{fmt(posSRL.df)}</span> · Crédito fiscal: <span style={{color:"#D4A017"}}>{fmt(posSRL.cf)}</span></div>
+              <div>
+                <div style={{fontSize:10,color:posSRL.neta>0?"#FF4400":"#3A7D44",fontWeight:700}}>{posSRL.neta>0?"A PAGAR":"A FAVOR"}</div>
+                <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:posSRL.neta>0?"#FF6644":"#3A7D44"}}>{fmt(posSRL.neta)}</div>
+              </div>
+            </div>
+            {posSRL.neta>ALERTA_UMBRAL&&<div style={{marginTop:8,fontSize:11,color:"#FF4400",fontWeight:700}}>🚨 Posición SRL supera $500.000</div>}
+          </div>
         </div>
       )}
 
-      {/* Filtro local */}
-      <div style={{display:"flex",gap:5,marginBottom:16,flexWrap:"wrap"}}>
-        <button onClick={function(){setFiltroLocal("all");}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal==="all"?"#555":"#1A1A1A"),background:filtroLocal==="all"?"#222":"none",color:filtroLocal==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
-        {LOCALES.map(function(l){return(
-          <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}}
-            style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>
-            {l.emoji} {l.nombre}
-          </button>
-        );})}
-      </div>
-
-      {/* Resumen general */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:16}}>
-        <div style={{background:"#111",border:"1px solid #D4A01733",borderRadius:11,padding:"12px 14px",gridColumn:"1/-1"}}>
-          <div style={{fontSize:10,color:"#D4A017",textTransform:"uppercase",marginBottom:4}}>Total IVA Crédito Fiscal</div>
-          <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#D4A017"}}>${totalIva.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-          <div style={{fontSize:11,color:"#555",marginTop:3}}>Neto: ${totalNeto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})} · {filtered.length} comprobantes</div>
-        </div>
-        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>IVA 21%</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalIva21.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        </div>
-        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>IVA 10.5% (Verdulería)</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalIva105.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        </div>
-      </div>
-
-      {/* Por local */}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {LOCALES.filter(function(l){return porLocal[l.id]&&porLocal[l.id].total>0;}).map(function(l){
-          var loc=porLocal[l.id];
-          var ivaTotal=loc.iva105+loc.iva21;
-          return(
-            <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,overflow:"hidden"}}>
-              <div style={{padding:"10px 14px",background:"#151515",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:15,fontWeight:800,color:"#D4A017"}}>${ivaTotal.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                  <div style={{fontSize:10,color:"#555"}}>Neto: ${loc.neto.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+      {/* TAB: CRÉDITO FISCAL (compras) */}
+      {tab==="compras"&&(
+        <div>
+          {LOCALES_CTRL.map(function(l){
+            var loc=comprasPorLocal[l.id];
+            if(!loc||loc.items.length===0)return(
+              <div key={l.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:l.color,marginBottom:4}}>{l.emoji} {l.nombre}</div>
+                <div style={{fontSize:11,color:"#444"}}>Sin comprobantes facturados en {mesFiltro}</div>
+              </div>
+            );
+            return(
+              <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"33",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:10,color:"#555"}}>IVA crédito fiscal</div>
+                    <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{fmt(loc.ivaCF)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {loc.items.map(function(g){
+                    return(
+                      <div key={g.id} style={{borderBottom:"1px solid #1A1A1A",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontSize:11,color:"#F0EDE8"}}>{g.concepto}</div>
+                          <div style={{fontSize:10,color:"#444"}}>{fmtDate(g.fecha)} · {g.categoria} · IVA: {fmt(g.ivaCalc)}</div>
+                        </div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#555"}}>{fmt(parseFloat(g.monto||0))}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <div style={{padding:"8px 14px"}}>
-                {loc.iva21>0&&<div style={{fontSize:11,color:"#888",marginBottom:3}}>IVA 21%: <span style={{color:"#F0EDE8",fontWeight:600}}>${loc.iva21.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>}
-                {loc.iva105>0&&<div style={{fontSize:11,color:"#888",marginBottom:3}}>IVA 10.5%: <span style={{color:"#F0EDE8",fontWeight:600}}>${loc.iva105.toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>}
-                <div style={{fontSize:10,color:"#444",marginTop:4}}>{loc.items.length} comprobante{loc.items.length!==1?"s":""}</div>
-              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TAB: OPTIMIZACIÓN */}
+      {tab==="optimizacion"&&(
+        <div>
+          {sugerencias.length===0?(
+            <div style={{background:"#0A1A0A",border:"1px solid #3A7D4433",borderRadius:12,padding:"24px",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:8}}>✅</div>
+              <div style={{fontSize:13,color:"#3A7D44",fontWeight:700}}>Posiciones balanceadas</div>
+              <div style={{fontSize:11,color:"#444",marginTop:4}}>No hay oportunidades de optimización en {mesFiltro}</div>
             </div>
-          );
-        })}
-        {filtered.length===0&&(
-          <div style={{textAlign:"center",padding:"40px 20px"}}>
-            <div style={{fontSize:32,marginBottom:10}}>🧾</div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin comprobantes facturados en este período</div>
-          </div>
-        )}
-      </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {sugerencias.map(function(s,i){
+                var lDe=LOCALES_CTRL.find(function(l){return l.id===s.de;});
+                var lA=LOCALES_CTRL.find(function(l){return l.id===s.a;});
+                return(
+                  <div key={i} style={{background:"#111",border:"1px solid #D4A01733",borderRadius:12,padding:"14px 16px"}}>
+                    {s.tipo==="reasignar"?(
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <div style={{fontSize:18}}>🔄</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>Reasignar facturas entre locales (mismo CUIT SRL)</div>
+                        </div>
+                        <div style={{fontSize:11,color:"#888",marginBottom:10}}>{s.motivo}</div>
+                        <div style={{fontSize:11,color:"#555",marginBottom:8}}>
+                          Mover de <span style={{color:lDe?lDe.color:"#F0EDE8",fontWeight:700}}>{lDe?lDe.emoji+" "+lDe.nombre:s.de}</span> → <span style={{color:lA?lA.color:"#F0EDE8",fontWeight:700}}>{lA?lA.emoji+" "+lA.nombre:s.a}</span>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+                          {s.items.map(function(g){
+                            return(
+                              <div key={g.id} style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <div>
+                                  <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{g.concepto}</div>
+                                  <div style={{fontSize:10,color:"#444"}}>{fmtDate(g.fecha)} · IVA: {fmt(g.ivaCalc)}</div>
+                                </div>
+                                <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(parseFloat(g.monto||0))}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{background:"#1A1400",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#D4A017",fontWeight:700}}>
+                          💡 Impacto estimado: reducís posición a pagar en {fmt(s.impacto)}
+                        </div>
+                      </div>
+                    ):(
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <div style={{fontSize:18}}>📋</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>Solicitar próximas facturas al otro CUIT</div>
+                        </div>
+                        <div style={{fontSize:11,color:"#888",marginBottom:10}}>{s.motivo}</div>
+                        <div style={{background:"#0F0F0F",borderRadius:8,padding:"10px 12px"}}>
+                          <div style={{fontSize:10,color:"#555",marginBottom:4}}>De proveedores de:</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",marginBottom:6}}>{s.cuitOrigen}</div>
+                          <div style={{fontSize:10,color:"#555",marginBottom:4}}>Pedirles que facturen a:</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017",marginBottom:6}}>{s.cuitDestino}</div>
+                          <div style={{fontSize:11,color:"#555"}}>Monto sugerido a redirigir: <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(s.monto)}</span></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3808,7 +3986,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iva"&&(
-            <PanelIVA gastos={gastos}/>
+            <PanelIVA gastos={gastos} cierres={cierres}/>
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

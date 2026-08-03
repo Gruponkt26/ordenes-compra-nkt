@@ -1902,6 +1902,138 @@ function PanelGastos(p) {
 
 
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
+var MEDIOS_POR_LOCAL={
+  "l1":[
+    "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón",
+    "Transferencia - Provincia Personas","Transferencia - Mercado Pago Nicolás",
+    "Tarjeta de débito - Visa Provincia Personas",
+    "Tarjeta de crédito - Mastercard Patagonia Personas","Tarjeta de crédito - Visa Patagonia Personas",
+    "Tarjeta de débito - Visa Patagonia Personas"
+  ],
+  "l2":[
+    "Efectivo","Efectivo - Kusama",
+    "Transferencia - Galicia Empresas"
+  ],
+  "l3":[
+    "Efectivo","Efectivo - Colantonio's","Efectivo - Colantonios",
+    "Transferencia - Patagonia Empresas","Transferencia - Mercado Pago Calzon Gitano"
+  ]
+};
+
+function esMedioCorrecto(gasto){
+  var localMedios=MEDIOS_POR_LOCAL[gasto.local];
+  if(!localMedios)return true; // l4 no se controla
+  var fp=(gasto.forma_pago||"").trim();
+  // Efectivo sin subforma siempre OK
+  if(fp==="Efectivo")return true;
+  return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
+}
+
+function PanelCruzados(p){
+  var gastos=p.gastos;
+  var [mesFiltro,setMesFiltro]=useState(new Date().toISOString().slice(0,7));
+  var [soloProblemas,setSoloProblemas]=useState(true);
+
+  var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
+
+  var gastosFiltrados=gastos.filter(function(g){
+    if(!g.fecha||g.fecha.substring(0,7)!==mesFiltro)return false;
+    if(g.local==="l4")return false;
+    if(soloProblemas)return !esMedioCorrecto(g);
+    return true;
+  }).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+
+  var cruzadosPorLocal={l1:[],l2:[],l3:[]};
+  gastosFiltrados.forEach(function(g){if(cruzadosPorLocal[g.local])cruzadosPorLocal[g.local].push(g);});
+
+  var totalCruzado=gastosFiltrados.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Pagos cruzados</div>
+          <div style={{fontSize:11,color:"#444",marginTop:3}}>Gastos pagados con un medio que no corresponde al local</div>
+        </div>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+
+      {/* Toggle */}
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        <button onClick={function(){setSoloProblemas(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(soloProblemas?"#E07B00":"#1A1A1A"),background:soloProblemas?"#E07B0022":"none",color:soloProblemas?"#E07B00":"#444",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif",fontWeight:700}}>⚠️ Solo cruzados</button>
+        <button onClick={function(){setSoloProblemas(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(!soloProblemas?"#555":"#1A1A1A"),background:!soloProblemas?"#22222288":"none",color:!soloProblemas?"#F0EDE8":"#444",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif"}}>Todos los gastos</button>
+      </div>
+
+      {/* Mapa de medios correctos */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+        {[["l1","#C1440E","🍷","El Bodegón"],["l2","#8B2FC9","🌸","Kusama"],["l3","#1A6B8A","🍝","Colantonio's"]].map(function(ldef){
+          return(
+            <div key={ldef[0]} style={{background:"#0F0F0F",border:"1px solid "+ldef[1]+"33",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:ldef[1],marginBottom:6}}>{ldef[2]} {ldef[3]}</div>
+              {MEDIOS_POR_LOCAL[ldef[0]].filter(function(m){return m!=="Efectivo";}).map(function(m){
+                return <div key={m} style={{fontSize:10,color:"#555",marginBottom:2}}>· {m.replace("Transferencia - ","").replace("Tarjeta de débito - ","").replace("Tarjeta de crédito - "," ")}</div>;
+              })}
+              <div style={{fontSize:10,color:"#555",marginBottom:2}}>· Efectivo</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Resultado */}
+      {gastosFiltrados.length===0?(
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4433",borderRadius:12,padding:"20px",textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:6}}>✅</div>
+          <div style={{fontSize:13,color:"#3A7D44",fontWeight:700}}>Sin pagos cruzados en {mesFiltro}</div>
+          <div style={{fontSize:11,color:"#444",marginTop:4}}>Todos los gastos están pagados con el medio correcto</div>
+        </div>
+      ):(
+        <div>
+          {soloProblemas&&(
+            <div style={{background:"#1A0A00",border:"1px solid #E07B0044",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:11,color:"#E07B00",fontWeight:700}}>⚠️ {gastosFiltrados.length} gasto{gastosFiltrados.length!==1?"s":""} cruzado{gastosFiltrados.length!==1?"s":""}</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#E07B00",fontFamily:"'Playfair Display',serif"}}>${totalCruzado.toLocaleString("es-AR")}</div>
+            </div>
+          )}
+          {["l1","l2","l3"].map(function(lid){
+            var lista=cruzadosPorLocal[lid]||[];
+            if(lista.length===0)return null;
+            var l=getLocal(lid);
+            return(
+              <div key={lid} style={{background:"#111",border:"1px solid "+(l?l.color+"33":"#1A1A1A"),borderRadius:12,padding:"12px 14px",marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:l?l.color:"#F0EDE8",marginBottom:8}}>{l?l.emoji:""} {l?l.nombre:lid} <span style={{fontSize:11,fontWeight:400,color:"#555"}}>· {lista.length} gasto{lista.length!==1?"s":""}</span></div>
+                {lista.map(function(g){
+                  var localCorrecto=Object.keys(MEDIOS_POR_LOCAL).find(function(lid2){
+                    return MEDIOS_POR_LOCAL[lid2].some(function(m){return (g.forma_pago||"").startsWith(m)&&m!=="Efectivo";});
+                  });
+                  var lc=localCorrecto?getLocal(localCorrecto):null;
+                  return(
+                    <div key={g.id} style={{borderBottom:"1px solid #1A1A1A",padding:"8px 0"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:12,color:"#F0EDE8",fontWeight:600}}>{g.concepto}</div>
+                          <div style={{fontSize:10,color:"#E07B00",marginTop:2}}>💳 {g.forma_pago}</div>
+                          {lc&&<div style={{fontSize:10,color:"#555",marginTop:2}}>→ Este medio corresponde a <span style={{color:lc.color}}>{lc.emoji} {lc.nombre}</span></div>}
+                          <div style={{fontSize:10,color:"#444",marginTop:2}}>{fmtDate(g.fecha)} · {g.categoria}</div>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#E07B00",fontFamily:"'Playfair Display',serif",marginLeft:10}}>${parseFloat(g.monto||0).toLocaleString("es-AR")}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{fontSize:12,fontWeight:700,color:l?l.color:"#F0EDE8",textAlign:"right",marginTop:8}}>
+                  Total: ${lista.reduce(function(a,g){return a+parseFloat(g.monto||0);},0).toLocaleString("es-AR")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
   var hoy=new Date().toISOString().split("T")[0];
@@ -3639,6 +3771,9 @@ export default function App() {
               <button onClick={function(){setVista("iva");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="iva"?"#3A7D44":"#1E1E1E"),background:vista==="iva"?"#3A7D4422":"#111",color:vista==="iva"?"#3A7D44":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🧾 IVA
               </button>
+              <button onClick={function(){setVista("cruzados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cruzados"?"#E07B00":"#1E1E1E"),background:vista==="cruzados"?"#E07B0022":"#111",color:vista==="cruzados"?"#E07B00":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                🔀 Cruzados
+              </button>
               <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏷️ Categorías
               </button>
@@ -3659,6 +3794,10 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
             <PanelCierresSofia cierres={cierres}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="cruzados"&&(
+            <PanelCruzados gastos={gastos}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(

@@ -2787,8 +2787,8 @@ function PanelResultados(p){
   function saveCorr(lid){
     var c=getCorr(lid);
     var obj={id:lid+"_"+mesFiltro,local:lid,mes:mesFiltro,efectivo:parseFloat(c.efectivo)||0,transferencia:parseFloat(c.transferencia)||0,debito:parseFloat(c.debito)||0,credito:parseFloat(c.credito)||0,otros:parseFloat(c.otros)||0,nota:c.nota||"",updated_at:new Date().toISOString()};
+    console.log("saveCorr obj:", JSON.stringify(obj), "onSaveCorr:", !!onSaveCorr);
     if(onSaveCorr)onSaveCorr(obj);
-    // limpiar edición local
     setCorrLocal(function(prev){var n={...prev};delete n[lid];return n;});
   }
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});

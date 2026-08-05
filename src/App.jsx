@@ -2038,17 +2038,113 @@ function PanelCierresSofia(p) {
   var cierres=p.cierres;
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=new Date().toISOString().slice(0,7);
-  var [expandido,setExpandido]=useState(null); // "localId_fecha"
+  var [expandido,setExpandido]=useState(null);
   var [localActivo,setLocalActivo]=useState("all");
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [vistaGrid,setVistaGrid]=useState(false);
+  var [expandidoGrid,setExpandidoGrid]=useState(null);
 
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
 
-  // Meses disponibles en los cierres
   var mesesDisp=[...new Set(cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
   function toggleExpandido(key){
     setExpandido(function(prev){return prev===key?null:key;});
+  }
+  function toggleExpandidoGrid(key){
+    setExpandidoGrid(function(prev){return prev===key?null:key;});
+  }
+
+  // ── VISTA GRID (3 columnas full screen) ──
+  if(vistaGrid){
+    return(
+      <div style={{fontFamily:"'Lora',serif",position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px"}}>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>📊 Cierres del mes</div>
+            <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+              {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+            </select>
+          </div>
+          <button onClick={function(){setVistaGrid(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif"}}>✕ Cerrar</button>
+        </div>
+
+        {/* Totales por local */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+          {localesFiltro.map(function(l){
+            var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+            var tot=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+            return(
+              <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:13,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre}</div>
+                <div style={{fontSize:20,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>${tot.toLocaleString("es-AR")}</div>
+                <div style={{fontSize:10,color:"#444",marginTop:2}}>{cl.length} cierre{cl.length!==1?"s":""}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Grid 3 columnas con días */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,alignItems:"start"}}>
+          {localesFiltro.map(function(l){
+            var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+            var cierreHoy=cl.find(function(c){return c.fecha===hoy;});
+            return(
+              <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{fontSize:12,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:6}}>
+                  {l.emoji} {l.nombre}
+                  {mesFiltro===mesCurrent&&(
+                    <span style={{marginLeft:6,fontSize:9,fontWeight:400,color:cierreHoy?"#3A7D44":"#C1440E"}}>
+                      {cierreHoy?"✅ hoy":"⚠️ falta hoy"}
+                    </span>
+                  )}
+                </div>
+                {cl.length===0?(
+                  <div style={{fontSize:10,color:"#333",textAlign:"center",padding:"12px 0"}}>Sin cierres</div>
+                ):(
+                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                    {cl.map(function(c){
+                      var gkey=l.id+"_g_"+c.fecha;
+                      var abierto=expandidoGrid===gkey;
+                      var esHoy=c.fecha===hoy;
+                      return(
+                        <div key={c.id}>
+                          <div onClick={function(){toggleExpandidoGrid(gkey);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #141414",cursor:"pointer",borderRadius:4}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5}}>
+                              <span style={{fontSize:9,color:"#444",display:"inline-block",transform:abierto?"rotate(90deg)":"none",transition:"transform 0.15s"}}>▶</span>
+                              <span style={{fontSize:11,color:esHoy?"#3A7D44":"#888",fontWeight:esHoy?700:400}}>{fmtDate(c.fecha)}</span>
+                            </div>
+                            <span style={{fontSize:12,fontWeight:700,color:l.color,fontFamily:"'Playfair Display',serif"}}>${parseFloat(c.total_ventas||0).toLocaleString("es-AR")}</span>
+                          </div>
+                          {abierto&&(
+                            <div style={{background:"#080808",borderRadius:6,padding:"8px 10px",margin:"3px 0 4px 0"}}>
+                              {[["efectivo","💵"],["transferencia","📲"],["tarjeta_debito","💳db"],["tarjeta_credito","💳cr"],["otros","📦"]].map(function(f){
+                                var v=parseFloat(c[f[0]]||0);
+                                if(v===0)return null;
+                                return(
+                                  <div key={f[0]} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
+                                    <span>{f[1]} {f[0].replace("_"," ")}</span>
+                                    <span style={{color:"#F0EDE8",fontWeight:600}}>${v.toLocaleString("es-AR")}</span>
+                                  </div>
+                                );
+                              })}
+                              {c.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
+                              <div style={{fontSize:10,color:"#333",marginTop:4}}>{c.usuario}</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return(
@@ -2064,6 +2160,7 @@ function PanelCierresSofia(p) {
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalActivo(l.id);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo===l.id?l.color:"#1A1A1A"),background:localActivo===l.id?l.color+"22":"none",color:localActivo===l.id?l.color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif"}}>{l.emoji}</button>
         );})}
+        <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"6px 12px",borderRadius:8,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer",fontFamily:"'Lora',serif"}}>📊 Vista mensual</button>
       </div>
 
       {/* Por local */}

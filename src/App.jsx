@@ -2770,15 +2770,26 @@ function PanelRetiros(p) {
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
+  var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [corrLocal,setCorrLocal]=useState({}); // edición local temporal antes de guardar
+  var [corrLocal,setCorrLocal]=useState({});
+  var [traspLocal,setTraspLocal]=useState({});
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
 
-  // Obtener corrección: primero la edición local, sino la de Supabase
   function getCorr(lid){
     if(corrLocal[lid])return corrLocal[lid];
     return corrResultados[lid+"_"+mesFiltro]||{};
+  }
+  function getTraspaso(lid){
+    if(traspLocal[lid])return traspLocal[lid];
+    return traspasos[lid+"_"+mesFiltro]||null;
+  }
+  function saveTraspaso(lid){
+    var t=traspLocal[lid]||{};
+    var obj={id:lid+"_"+mesFiltro,local:lid,mes:mesFiltro,efectivo:parseFloat(t.efectivo)||0,transferencia:parseFloat(t.transferencia)||0,debito:parseFloat(t.debito)||0,credito:parseFloat(t.credito)||0,otros:parseFloat(t.otros)||0,nota:t.nota||"",updated_at:new Date().toISOString()};
+    if(onSaveTraspaso)onSaveTraspaso(obj);
+    setTraspLocal(function(prev){var n={...prev};n[lid]=obj;return n;});
   }
   function corrTotal(lid){
     var c=getCorr(lid);
@@ -2801,6 +2812,17 @@ function PanelResultados(p){
 
   // Calcular traspaso automático del mes anterior
   function calcTraspaso(lid){
+    // Si hay traspaso manual guardado para este mes, usarlo
+    var manual=getTraspaso(lid);
+    if(manual&&(manual.efectivo||manual.transferencia||manual.debito||manual.credito||manual.otros)){
+      var ef=parseFloat(manual.efectivo||0);
+      var tr=parseFloat(manual.transferencia||0);
+      var db=parseFloat(manual.debito||0);
+      var cr=parseFloat(manual.credito||0);
+      var ot=parseFloat(manual.otros||0);
+      return{efectivo:ef,transferencia:tr,debito:db,credito:cr,otros:ot,electronico:tr+db+cr+ot,total:ef+tr+db+cr+ot,mes:"manual",esManual:true};
+    }
+    // Sino calcular automáticamente del mes anterior
     var d=new Date(mesFiltro+"-01");
     d.setMonth(d.getMonth()-1);
     var mesPrev=d.toISOString().slice(0,7);
@@ -2812,7 +2834,7 @@ function PanelResultados(p){
     var credito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
     var otros=clPrev.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
     var electronico=transferencia+debito+credito+otros;
-    return{efectivo,transferencia,debito,credito,otros,electronico,total:efectivo+electronico,mes:mesPrev};
+    return{efectivo,transferencia,debito,credito,otros,electronico,total:efectivo+electronico,mes:mesPrev,esManual:false};
   }
 
   function calcLocal(lid){
@@ -3047,6 +3069,27 @@ function PanelResultados(p){
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Traspaso manual */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🔄 Traspaso inicial{d.traspaso&&d.traspaso.esManual?" (manual)":" (auto)"}</div>
+                  {d.traspaso&&!d.traspaso.esManual&&<div style={{fontSize:9,color:"#555"}}>del {d.traspaso.mes}</div>}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
+                  {MEDIOS_CORR.map(function(mc){
+                    var tv=traspLocal[l.id]||(traspasos[l.id+"_"+mesFiltro]||{});
+                    return(
+                      <div key={mc[0]}>
+                        <label style={{display:"block",fontSize:9,color:"#555",marginBottom:3}}>{mc[1]}</label>
+                        <input type="number" placeholder={d.traspaso&&!d.traspaso.esManual?String(Math.round(d.traspaso[mc[0]]||0)):"0"} value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    );
+                  })}
+                </div>
+                <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
               </div>
 
               {/* Corrección manual por medio de pago */}
@@ -4116,6 +4159,23 @@ async function sbSaveCorrResultado(corr) {
   } catch(e) {}
 }
 
+async function sbLoadTraspasos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/traspasos_resultados?select=*", { headers: SH });
+    var data = await r.json();
+    var obj = {};
+    (data||[]).forEach(function(t){ obj[t.local+"_"+t.mes] = t; });
+    return obj;
+  } catch(e) { return {}; }
+}
+
+async function sbSaveTraspaso(traspaso) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/traspasos_resultados", { method: "POST", headers: h, body: JSON.stringify(traspaso) });
+  } catch(e) {}
+}
+
 // ─── ALERTAS STOCK ────────────────────────────────────────────────────────────
 function playAlertSound() {
   try {
@@ -4460,6 +4520,7 @@ export default function App() {
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
   var [corrResultados,setCorrResultados]=useState({});
+  var [traspasos,setTraspasos]=useState({});
 
   useEffect(function(){
     if(!cu)return;
@@ -4490,6 +4551,7 @@ export default function App() {
     sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
     sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
     sbLoadCorrResultados().then(function(d){setCorrResultados(d);}).catch(function(){});
+    sbLoadTraspasos().then(function(d){setTraspasos(d);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -4650,10 +4712,15 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} onSaveCorr={function(corr){
-              sbSaveCorrResultado(corr);
-              setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});
-            }}/>
+            <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              onSaveCorr={function(corr){
+                sbSaveCorrResultado(corr);
+                setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});
+              }}
+              onSaveTraspaso={function(t){
+                sbSaveTraspaso(t);
+                setTraspasos(function(prev){var n={...prev};n[t.local+"_"+t.mes]=t;return n;});
+              }}/>
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

@@ -2769,14 +2769,27 @@ function PanelRetiros(p) {
 
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
 function PanelResultados(p){
-  var gastos=p.gastos, cierres=p.cierres;
+  var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [correcciones,setCorrecciones]=useState({}); // {localId: {efectivo:"",transferencia:"",debito:"",credito:"",otros:"",nota:""}}
+  var [corrLocal,setCorrLocal]=useState({}); // edición local temporal antes de guardar
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
+
+  // Obtener corrección: primero la edición local, sino la de Supabase
+  function getCorr(lid){
+    if(corrLocal[lid])return corrLocal[lid];
+    return corrResultados[lid+"_"+mesFiltro]||{};
+  }
   function corrTotal(lid){
-    var c=correcciones[lid]||{};
+    var c=getCorr(lid);
     return ["efectivo","transferencia","debito","credito","otros"].reduce(function(a,k){return a+(parseFloat(c[k])||0);},0);
+  }
+  function saveCorr(lid){
+    var c=getCorr(lid);
+    var obj={id:lid+"_"+mesFiltro,local:lid,mes:mesFiltro,efectivo:parseFloat(c.efectivo)||0,transferencia:parseFloat(c.transferencia)||0,debito:parseFloat(c.debito)||0,credito:parseFloat(c.credito)||0,otros:parseFloat(c.otros)||0,nota:c.nota||"",updated_at:new Date().toISOString()};
+    if(onSaveCorr)onSaveCorr(obj);
+    // limpiar edición local
+    setCorrLocal(function(prev){var n={...prev};delete n[lid];return n;});
   }
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
 
@@ -2840,7 +2853,7 @@ function PanelResultados(p){
     var dispEfectivo=ventaEfectivo-gastoEfectivo+(traspaso?traspaso.efectivo:0);
     var dispElectronico=ventaElectronico-gastoElectronico+(traspaso?traspaso.electronico:0);
     var corrMonto=corrTotal(lid);
-    var corr=correcciones[lid]||{};
+    var corr=getCorr(lid);
     var resultado=ventas-totalGastos+(traspaso?traspaso.total:0)+corrMonto;
     return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico};
   }
@@ -3011,15 +3024,17 @@ function PanelResultados(p){
                 <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🔧 Corrección manual</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
                   {MEDIOS_CORR.map(function(mc){
+                    var cv=getCorr(l.id);
                     return(
                       <div key={mc[0]}>
                         <label style={{display:"block",fontSize:9,color:"#444",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder="0" value={(correcciones[l.id]&&correcciones[l.id][mc[0]])||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" placeholder="0" value={(cv[mc[0]])||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );
                   })}
                 </div>
-                <input placeholder="Nota de corrección..." value={(correcciones[l.id]&&correcciones[l.id].nota)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                <input placeholder="Nota de corrección..." value={(getCorr(l.id).nota)||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                <button onClick={function(){saveCorr(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar corrección</button>
                 {d.corrMonto!==0&&(
                   <div style={{fontSize:10,color:"#D4A017",marginTop:4}}>
                     Total ajuste: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}
@@ -4053,6 +4068,24 @@ async function sbDeleteGasto(id) {
   } catch(e) {}
 }
 
+async function sbLoadCorrResultados() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/correcciones_resultados?select=*", { headers: SH });
+    var data = await r.json();
+    // Convertir array a objeto {localId_mes: {...}}
+    var obj = {};
+    (data||[]).forEach(function(c){ obj[c.local+"_"+c.mes] = c; });
+    return obj;
+  } catch(e) { return {}; }
+}
+
+async function sbSaveCorrResultado(corr) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/correcciones_resultados", { method: "POST", headers: h, body: JSON.stringify(corr) });
+  } catch(e) {}
+}
+
 // ─── ALERTAS STOCK ────────────────────────────────────────────────────────────
 function playAlertSound() {
   try {
@@ -4396,6 +4429,7 @@ export default function App() {
   var [showExportarGastos,setShowExportarGastos]=useState(false);
   var [vistaUsuario,setVistaUsuario]=useState("ordenes");
   var [precios,setPrecios]=useState(INIT_PRECIOS);
+  var [corrResultados,setCorrResultados]=useState({});
 
   useEffect(function(){
     if(!cu)return;
@@ -4425,6 +4459,7 @@ export default function App() {
     });
     sbLoadProductos().then(function(d){if(d)setProductos(d);}).catch(function(){});
     sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
+    sbLoadCorrResultados().then(function(d){setCorrResultados(d);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -4585,7 +4620,10 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados gastos={gastos} cierres={cierres}/>
+            <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} onSaveCorr={function(corr){
+              sbSaveCorrResultado(corr);
+              setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});
+            }}/>
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

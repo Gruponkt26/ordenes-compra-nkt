@@ -1744,9 +1744,12 @@ function PanelGastos(p) {
   var [showForm,setShowForm]=useState(false);
   var [showExportar,setShowExportar]=useState(false);
   var [filtroLocal,setFiltroLocal]=useState("all");
-  var [filtroFecha,setFiltroFecha]=useState("hoy");
+  var [filtroFecha,setFiltroFecha]=useState("mes");
+  var [mesFiltro,setMesFiltro]=useState(hoy.slice(0,7));
   var [vistaGrid,setVistaGrid]=useState(false);
   var [expandidoGrid,setExpandidoGrid]=useState(null);
+  var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(hoy.slice(0,7))===-1)mesesDisp.unshift(hoy.slice(0,7));
   var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBFORMAS={
@@ -1774,7 +1777,8 @@ function PanelGastos(p) {
     var matchFecha=true;
     if(filtroFecha==="hoy") matchFecha=g.fecha===hoy;
     if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(1000*60*60*24);matchFecha=diff<=7;}
-    if(filtroFecha==="mes") matchFecha=g.fecha&&g.fecha.slice(0,7)===hoy.slice(0,7);
+    if(filtroFecha==="mes") matchFecha=g.fecha&&g.fecha.slice(0,7)===mesFiltro;
+    if(filtroFecha==="all") matchFecha=true;
     return matchLocal&&matchFecha;
   });
   var totalFiltered=filtered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
@@ -1866,7 +1870,12 @@ function PanelGastos(p) {
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Transferencia</div><div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>${totalTransf.toLocaleString("es-AR")}</div></div>
       </div>
       <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
-        {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["all","Todo"]].map(function(opt){return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#1A6B8A":"#1A1A1A"),background:filtroFecha===opt[0]?"#1A6B8A22":"none",color:filtroFecha===opt[0]?"#1A6B8A":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;})}
+        {[["hoy","Hoy"],["semana","7 días"],["mes","Mes"],["all","Todo"]].map(function(opt){return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#1A6B8A":"#1A1A1A"),background:filtroFecha===opt[0]?"#1A6B8A22":"none",color:filtroFecha===opt[0]?"#1A6B8A":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;})}
+        {filtroFecha==="mes"&&(
+          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"3px 8px",borderRadius:8,border:"1px solid #1A6B8A44",background:"#111",color:"#1A6B8A",fontFamily:"'Lora',serif",fontSize:11,cursor:"pointer"}}>
+            {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>
+        )}
         <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
         {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
         <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:20,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer"}}>📊 Vista mensual</button>
@@ -2814,10 +2823,26 @@ function PanelResultados(p){
     });
 
     var traspaso=calcTraspaso(lid);
+
+    // Gastos por medio de pago (efectivo vs electrónico)
+    var gastoEfectivo=0,gastoElectronico=0;
+    gl.forEach(function(g){
+      var fp=(g.forma_pago||"").toLowerCase();
+      if(fp.startsWith("efectivo"))gastoEfectivo+=parseFloat(g.monto||0);
+      else gastoElectronico+=parseFloat(g.monto||0);
+    });
+
+    // Ingresos de cierres por medio
+    var ventaEfectivo=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0));},0);
+    var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
+
+    // Disponibilidad
+    var dispEfectivo=ventaEfectivo-gastoEfectivo+(traspaso?traspaso.efectivo:0);
+    var dispElectronico=ventaElectronico-gastoElectronico+(traspaso?traspaso.electronico:0);
     var corrMonto=corrTotal(lid);
     var corr=correcciones[lid]||{};
     var resultado=ventas-totalGastos+(traspaso?traspaso.total:0)+corrMonto;
-    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr};
+    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -2939,6 +2964,47 @@ function PanelResultados(p){
                   </div>
                 </div>
               )}
+
+              {/* Estado de disponibilidad */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Disponibilidad estimada</div>
+                {/* Efectivo */}
+                <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                    <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo</span>
+                    <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2"}}>
+                    <span>Ingresos en efectivo</span><span style={{color:"#3A7D44"}}>+{fmt(d.ventaEfectivo)}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>
+                    <span>Gastos pagados en efectivo</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span>
+                  </div>
+                  {d.traspaso&&d.traspaso.efectivo>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017"}}>
+                      <span>Traspaso mes anterior</span><span>+{fmt(d.traspaso.efectivo)}</span>
+                    </div>
+                  )}
+                </div>
+                {/* Electrónico */}
+                <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                    <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico</span>
+                    <span style={{fontSize:13,fontWeight:800,color:d.dispElectronico>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispElectronico)}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>
+                    <span>Ingresos electrónicos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ventaElectronico)}</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>
+                    <span>Gastos pagados electrónico</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoElectronico)}</span>
+                  </div>
+                  {d.traspaso&&d.traspaso.electronico>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017"}}>
+                      <span>Traspaso mes anterior</span><span>+{fmt(d.traspaso.electronico)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Corrección manual por medio de pago */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>

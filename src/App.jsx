@@ -2718,6 +2718,162 @@ function PanelRetiros(p) {
   );
 }
 
+
+// ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
+function PanelResultados(p){
+  var gastos=p.gastos, cierres=p.cierres;
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+
+  var mesesDisp=[...new Set([
+    ...cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}),
+    ...gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;})
+  ].filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  function calcLocal(lid){
+    // Ventas: suma total_ventas de cierres del mes para ese local
+    var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+    var ventas=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+    var ventasPorMedio={};
+    cl.forEach(function(c){
+      [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
+        var v=parseFloat(c[f[0]]||0);
+        if(v>0)ventasPorMedio[f[1]]=(ventasPorMedio[f[1]]||0)+v;
+      });
+    });
+
+    // Gastos: del mes para ese local
+    var gl=gastos.filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
+    var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+
+    // Gastos por categoría (grupo)
+    var porCat={};
+    gl.forEach(function(g){
+      var cat=(g.categoria||"Otro").split(" - ")[0];
+      porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
+    });
+
+    var resultado=ventas-totalGastos;
+    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length};
+  }
+
+  var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
+  var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas;},0);
+  var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
+  var totalResultado=totalVentas-totalGastos;
+
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+
+  return(
+    <div style={{fontFamily:"'Lora',serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:16}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📈 Resultados por local</div>
+        </div>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+
+      {/* Card resumen grupo */}
+      <div style={{background:"#111",border:"1px solid "+(totalResultado>=0?"#3A7D4444":"#C1440E44"),borderRadius:12,padding:"14px 16px",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>
+        <div>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Ventas totales</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(totalVentas)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Gastos totales</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(totalGastos)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Resultado</div>
+          <div style={{fontSize:22,fontWeight:800,color:totalResultado>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{totalResultado>=0?"":"−"}{fmt(Math.abs(totalResultado))}</div>
+        </div>
+      </div>
+
+      {/* Cards por local */}
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {localesFiltro.map(function(l){
+          var d=datos[l.id];
+          var margen=d.ventas>0?((d.resultado/d.ventas)*100).toFixed(1):null;
+          return(
+            <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"44",borderRadius:12,padding:"14px 16px"}}>
+              {/* Header local */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:18,fontWeight:800,color:d.resultado>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{d.resultado>=0?"":"-"}{fmt(Math.abs(d.resultado))}</div>
+                  {margen!==null&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Margen: {margen}%</div>}
+                </div>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {/* Ventas */}
+                <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                    <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventas)}</div>
+                  </div>
+                  {d.diasCierre===0?(
+                    <div style={{fontSize:10,color:"#333"}}>Sin cierres cargados</div>
+                  ):(
+                    <div>
+                      {Object.keys(d.ventasPorMedio).map(function(mp){return(
+                        <div key={mp} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
+                          <span>{mp}</span>
+                          <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.ventasPorMedio[mp])}</span>
+                        </div>
+                      );})}
+                      <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Gastos */}
+                <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                    <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1}}>Gastos</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</div>
+                  </div>
+                  {d.cantGastos===0?(
+                    <div style={{fontSize:10,color:"#333"}}>Sin gastos cargados</div>
+                  ):(
+                    <div>
+                      {Object.keys(d.porCat).sort(function(a,b){return d.porCat[b]-d.porCat[a];}).map(function(cat){return(
+                        <div key={cat} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
+                          <span>{cat}</span>
+                          <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.porCat[cat])}</span>
+                        </div>
+                      );})}
+                      <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.cantGastos} gasto{d.cantGastos!==1?"s":""}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Barra visual resultado */}
+              {d.ventas>0&&(
+                <div style={{marginTop:10}}>
+                  <div style={{height:5,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:Math.min(100,(d.totalGastos/d.ventas)*100)+"%",background:d.resultado>=0?"#C1440E":"#C1440E",borderRadius:3,transition:"width 0.4s"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#333",marginTop:3}}>
+                    <span>Gastos: {d.ventas>0?((d.totalGastos/d.ventas)*100).toFixed(1):0}% de ventas</span>
+                    <span style={{color:d.resultado>=0?"#3A7D44":"#C1440E"}}>Resultado: {margen}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── PANEL IVA ────────────────────────────────────────────────────────────────
 function PanelIVA(p) {
   var gastos=p.gastos, cierres=p.cierres||[];
@@ -4227,6 +4383,9 @@ export default function App() {
               <button onClick={function(){setVista("cruzados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cruzados"?"#E07B00":"#1E1E1E"),background:vista==="cruzados"?"#E07B0022":"#111",color:vista==="cruzados"?"#E07B00":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🔀 Cruzados
               </button>
+              <button onClick={function(){setVista("resultados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="resultados"?"#8B2FC9":"#1E1E1E"),background:vista==="resultados"?"#8B2FC922":"#111",color:vista==="resultados"?"#8B2FC9":"#666",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                📈 Resultados
+              </button>
               <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Lora',serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏷️ Categorías
               </button>
@@ -4262,6 +4421,10 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="iva"&&(
             <PanelIVA gastos={gastos} cierres={cierres}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="resultados"&&(
+            <PanelResultados gastos={gastos} cierres={cierres}/>
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

@@ -2812,9 +2812,9 @@ function PanelResultados(p){
 
   // Calcular traspaso automático del mes anterior
   function calcTraspaso(lid){
-    // Si hay traspaso manual guardado para este mes, usarlo
+    // Primero buscar traspaso manual guardado
     var manual=getTraspaso(lid);
-    if(manual&&(manual.efectivo||manual.transferencia||manual.debito||manual.credito||manual.otros)){
+    if(manual&&(parseFloat(manual.efectivo||0)||parseFloat(manual.transferencia||0)||parseFloat(manual.debito||0)||parseFloat(manual.credito||0)||parseFloat(manual.otros||0))){
       var ef=parseFloat(manual.efectivo||0);
       var tr=parseFloat(manual.transferencia||0);
       var db=parseFloat(manual.debito||0);
@@ -2827,7 +2827,7 @@ function PanelResultados(p){
     d.setMonth(d.getMonth()-1);
     var mesPrev=d.toISOString().slice(0,7);
     var clPrev=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesPrev;});
-    if(clPrev.length===0)return null;
+    if(clPrev.length===0)return{efectivo:0,transferencia:0,debito:0,credito:0,otros:0,electronico:0,total:0,mes:mesPrev,esManual:false};
     var efectivo=clPrev.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));},0);
     var transferencia=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
     var debito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);

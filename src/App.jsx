@@ -2390,7 +2390,7 @@ function PanelCierresSofia(p) {
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
   var hoy=new Date().toISOString().split("T")[0];
-  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",notas:""};
+  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
@@ -2399,7 +2399,11 @@ function PanelCierre(p) {
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
 
   function calcTotal(f){
-    return (parseFloat(f.efectivo)||0)+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
+    var efectivoNeto=(parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
+    return efectivoNeto+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
+  }
+  function calcEfectivoNeto(f){
+    return (parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
   }
 
   function abrirNuevo(){
@@ -2409,7 +2413,7 @@ function PanelCierre(p) {
   }
 
   function abrirEditar(c){
-    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",notas:c.notas||""});
+    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",notas:c.notas||""});
     setEditId(c.id);
     setShowForm(true);
   }
@@ -2427,6 +2431,9 @@ function PanelCierre(p) {
       tarjeta_debito:parseFloat(form.tarjeta_debito)||0,
       tarjeta_credito:parseFloat(form.tarjeta_credito)||0,
       otros:parseFloat(form.otros)||0,
+      retiro_socio:parseFloat(form.retiro_socio)||0,
+      egresos_diarios:parseFloat(form.egresos_diarios)||0,
+      egresos_nota:form.egresos_nota||"",
       notas:form.notas,
       usuario:usuario,
       created_at:new Date().toISOString()
@@ -2470,6 +2477,12 @@ function PanelCierre(p) {
               {hoyData.tarjeta_credito>0&&<div>💳 Crédito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_credito).toLocaleString("es-AR")}</span></div>}
               {hoyData.otros>0&&<div>📦 Otros: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.otros).toLocaleString("es-AR")}</span></div>}
             </div>
+            {(hoyData.retiro_socio>0||hoyData.egresos_diarios>0)&&(
+              <div style={{marginTop:6,fontSize:11,color:"#C1440E"}}>
+                {hoyData.retiro_socio>0&&<span>👤 Retiro: ${parseFloat(hoyData.retiro_socio).toLocaleString("es-AR")} · </span>}
+                {hoyData.egresos_diarios>0&&<span>📤 Egresos: ${parseFloat(hoyData.egresos_diarios).toLocaleString("es-AR")}{hoyData.egresos_nota?" ("+hoyData.egresos_nota+")":""}</span>}
+              </div>
+            )}
             {hoyData.notas&&<div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
           </div>
         ):(
@@ -2499,6 +2512,32 @@ function PanelCierre(p) {
               );
             })}
           </div>
+          {/* Retiro de socio y egresos diarios */}
+          <div style={{background:"#1A0A0A",border:"1px solid #C1440E22",borderRadius:10,padding:"12px",marginBottom:12}}>
+            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Egresos del día</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:8}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>👤 Retiro de socio</label>
+                <input type="number" placeholder="0" value={form.retiro_socio} onChange={function(e){setForm(function(f){return{...f,retiro_socio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>📤 Egresos diarios</label>
+                <input type="number" placeholder="0" value={form.egresos_diarios} onChange={function(e){setForm(function(f){return{...f,egresos_diarios:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            {(parseFloat(form.egresos_diarios)||0)>0&&(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto de egresos</label>
+                <input value={form.egresos_nota} onChange={function(e){setForm(function(f){return{...f,egresos_nota:e.target.value};});}} placeholder="Ej: repuesto, limpieza..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            )}
+            {((parseFloat(form.retiro_socio)||0)+(parseFloat(form.egresos_diarios)||0))>0&&(
+              <div style={{marginTop:8,fontSize:11,color:"#C1440E"}}>
+                Efectivo bruto: ${(parseFloat(form.efectivo)||0).toLocaleString("es-AR")} − Egresos: ${((parseFloat(form.retiro_socio)||0)+(parseFloat(form.egresos_diarios)||0)).toLocaleString("es-AR")} = <strong>${calcEfectivoNeto(form).toLocaleString("es-AR")}</strong>
+              </div>
+            )}
+          </div>
+
           <div style={{background:"#1A1A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:3}}>Total calculado</div>
             <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${calcTotal(form).toLocaleString("es-AR")}</div>
@@ -2724,6 +2763,7 @@ function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres;
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [correcciones,setCorrecciones]=useState({}); // {localId: {monto:"", nota:""}}
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
 
   var mesesDisp=[...new Set([
@@ -2732,31 +2772,47 @@ function PanelResultados(p){
   ].filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
+  // Calcular traspaso automático del mes anterior
+  function calcTraspaso(lid){
+    // Mes anterior
+    var d=new Date(mesFiltro+"-01");
+    d.setMonth(d.getMonth()-1);
+    var mesPrev=d.toISOString().slice(0,7);
+    var clPrev=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesPrev;});
+    if(clPrev.length===0)return null;
+    var efectivo=clPrev.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));},0);
+    var electronico=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
+    return{efectivo,electronico,total:efectivo+electronico,mes:mesPrev};
+  }
+
   function calcLocal(lid){
-    // Ventas: suma total_ventas de cierres del mes para ese local
     var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+    // Ventas netas = total_ventas ya incluye retiro/egresos restados en el cierre
     var ventas=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+    var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
+    var egresos=cl.reduce(function(a,c){return a+parseFloat(c.egresos_diarios||0);},0);
     var ventasPorMedio={};
     cl.forEach(function(c){
       [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
+        if(f[0]==="efectivo")v=v-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));
         if(v>0)ventasPorMedio[f[1]]=(ventasPorMedio[f[1]]||0)+v;
       });
     });
 
-    // Gastos: del mes para ese local
     var gl=gastos.filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-
-    // Gastos por categoría (grupo)
     var porCat={};
     gl.forEach(function(g){
       var cat=(g.categoria||"Otro").split(" - ")[0];
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
 
-    var resultado=ventas-totalGastos;
-    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length};
+    var traspaso=calcTraspaso(lid);
+    var corr=correcciones[lid];
+    var corrMonto=corr?parseFloat(corr.monto||0):0;
+    var resultado=ventas-totalGastos+(traspaso?traspaso.total:0)+corrMonto;
+    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr?corr.nota:"" };
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -2814,7 +2870,7 @@ function PanelResultados(p){
                 {/* Ventas */}
                 <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                    <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas</div>
+                    <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas netas</div>
                     <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventas)}</div>
                   </div>
                   {d.diasCierre===0?(
@@ -2827,6 +2883,18 @@ function PanelResultados(p){
                           <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.ventasPorMedio[mp])}</span>
                         </div>
                       );})}
+                      {(d.retiros>0||d.egresos>0)&&(
+                        <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
+                          {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios</span><span>−{fmt(d.retiros)}</span></div>}
+                          {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos diarios</span><span>−{fmt(d.egresos)}</span></div>}
+                        </div>
+                      )}
+                      {d.traspaso&&d.traspaso.total>0&&(
+                        <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>🔄 Traspaso de {d.traspaso.mes}</span><span>+{fmt(d.traspaso.total)}</span></div>
+                          <div style={{fontSize:9,color:"#555"}}>💵 {fmt(d.traspaso.efectivo)} · 📲 {fmt(d.traspaso.electronico)}</div>
+                        </div>
+                      )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
                     </div>
                   )}
@@ -2858,7 +2926,7 @@ function PanelResultados(p){
               {d.ventas>0&&(
                 <div style={{marginTop:10}}>
                   <div style={{height:5,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.min(100,(d.totalGastos/d.ventas)*100)+"%",background:d.resultado>=0?"#C1440E":"#C1440E",borderRadius:3,transition:"width 0.4s"}}/>
+                    <div style={{height:"100%",width:Math.min(100,(d.totalGastos/d.ventas)*100)+"%",background:"#C1440E",borderRadius:3,transition:"width 0.4s"}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#333",marginTop:3}}>
                     <span>Gastos: {d.ventas>0?((d.totalGastos/d.ventas)*100).toFixed(1):0}% de ventas</span>
@@ -2866,6 +2934,16 @@ function PanelResultados(p){
                   </div>
                 </div>
               )}
+
+              {/* Corrección manual */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>🔧 Corrección manual</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                  <input type="number" placeholder="Monto (+ o −)" value={(correcciones[l.id]&&correcciones[l.id].monto)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var n={...prev};n[l.id]={monto:v,nota:(prev[l.id]&&prev[l.id].nota)||""};return n;});}} style={{padding:"7px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                  <input placeholder="Nota..." value={(correcciones[l.id]&&correcciones[l.id].nota)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var n={...prev};n[l.id]={monto:(prev[l.id]&&prev[l.id].monto)||"",nota:v};return n;});}} style={{padding:"7px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                {d.corrMonto!==0&&<div style={{fontSize:10,color:"#D4A017",marginTop:5}}>Ajuste aplicado: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}{d.corrNota?" · "+d.corrNota:""}</div>}
+              </div>
             </div>
           );
         })}

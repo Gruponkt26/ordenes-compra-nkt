@@ -2841,7 +2841,7 @@ function PanelResultados(p){
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
       var fp=(g.forma_pago||"").toLowerCase();
-      if(fp.startsWith("efectivo"))gastoEfectivo+=parseFloat(g.monto||0);
+      if(fp.includes("efectivo"))gastoEfectivo+=parseFloat(g.monto||0);
       else gastoElectronico+=parseFloat(g.monto||0);
     });
 
@@ -2871,7 +2871,7 @@ function PanelResultados(p){
       if(fp.includes("transferencia"))gastoTransferencia+=parseFloat(g.monto||0);
       else if(fp.includes("débito")||fp.includes("debito"))gastoDebito+=parseFloat(g.monto||0);
       else if(fp.includes("crédito")||fp.includes("credito"))gastoCredito+=parseFloat(g.monto||0);
-      else if(!fp.startsWith("efectivo"))gastoOtros+=parseFloat(g.monto||0);
+      else if(!fp.includes("efectivo"))gastoOtros+=parseFloat(g.monto||0);
     });
 
     // Disponibilidad por medio (con corrección aplicada)

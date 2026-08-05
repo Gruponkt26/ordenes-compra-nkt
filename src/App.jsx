@@ -2889,8 +2889,10 @@ function PanelResultados(p){
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
-    var resultado=ventas-totalGastos+(traspaso?traspaso.total:0)+corrMonto;
-    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
+    // Ventas corregidas = ventas originales + diferencia de correcciones
+    var ventasCorregidas=ventas+corrMonto;
+    var resultado=ventasCorregidas-totalGastos+(traspaso?traspaso.total:0);
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -2932,7 +2934,7 @@ function PanelResultados(p){
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {localesFiltro.map(function(l){
           var d=datos[l.id];
-          var margen=d.ventas>0?((d.resultado/d.ventas)*100).toFixed(1):null;
+          var margen=d.ventasCorregidas>0?((d.resultado/d.ventasCorregidas)*100).toFixed(1):null;
           return(
             <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"44",borderRadius:12,padding:"14px 16px"}}>
               {/* Header local */}
@@ -2949,7 +2951,7 @@ function PanelResultados(p){
                 <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
                     <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas netas</div>
-                    <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventas)}</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}{d.corrMonto!==0&&<span style={{fontSize:9,color:"#555",marginLeft:4}}>orig. {fmt(d.ventas)}</span>}</div>
                   </div>
                   {d.diasCierre===0?(
                     <div style={{fontSize:10,color:"#333"}}>Sin cierres cargados</div>
@@ -3001,13 +3003,13 @@ function PanelResultados(p){
               </div>
 
               {/* Barra visual resultado */}
-              {d.ventas>0&&(
+              {d.ventasCorregidas>0&&(
                 <div style={{marginTop:10}}>
                   <div style={{height:5,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:Math.min(100,(d.totalGastos/d.ventas)*100)+"%",background:"#C1440E",borderRadius:3,transition:"width 0.4s"}}/>
+                    <div style={{height:"100%",width:Math.min(100,(d.totalGastos/d.ventasCorregidas)*100)+"%",background:"#C1440E",borderRadius:3,transition:"width 0.4s"}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#333",marginTop:3}}>
-                    <span>Gastos: {d.ventas>0?((d.totalGastos/d.ventas)*100).toFixed(1):0}% de ventas</span>
+                    <span>Gastos: {d.ventasCorregidas>0?((d.totalGastos/d.ventasCorregidas)*100).toFixed(1):0}% de ventas</span>
                     <span style={{color:d.resultado>=0?"#3A7D44":"#C1440E"}}>Resultado: {margen}%</span>
                   </div>
                 </div>

@@ -2137,6 +2137,20 @@ function PanelCierresSofia(p) {
                         </div>
                       );
                     })}
+                    {/* Totales por medio de pago al final de la columna */}
+                    <div style={{marginTop:8,borderTop:"1px solid "+l.color+"33",paddingTop:8}}>
+                      <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Total del mes</div>
+                      {[["efectivo","💵","Efectivo"],["transferencia","📲","Transfer."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]].map(function(f){
+                        var tot=cl.reduce(function(a,c){return a+parseFloat(c[f[0]]||0);},0);
+                        if(tot===0)return null;
+                        return(
+                          <div key={f[0]} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid #0F0F0F"}}>
+                            <span style={{fontSize:10,color:"#555"}}>{f[1]} {f[2]}</span>
+                            <span style={{fontSize:11,fontWeight:700,color:"#F0EDE8"}}>${tot.toLocaleString("es-AR")}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

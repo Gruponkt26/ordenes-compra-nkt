@@ -2763,7 +2763,12 @@ function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres;
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [correcciones,setCorrecciones]=useState({}); // {localId: {monto:"", nota:""}}
+  var [correcciones,setCorrecciones]=useState({}); // {localId: {efectivo:"",transferencia:"",debito:"",credito:"",otros:"",nota:""}}
+  var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
+  function corrTotal(lid){
+    var c=correcciones[lid]||{};
+    return ["efectivo","transferencia","debito","credito","otros"].reduce(function(a,k){return a+(parseFloat(c[k])||0);},0);
+  }
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
 
   var mesesDisp=[...new Set([
@@ -2809,10 +2814,10 @@ function PanelResultados(p){
     });
 
     var traspaso=calcTraspaso(lid);
-    var corr=correcciones[lid];
-    var corrMonto=corr?parseFloat(corr.monto||0):0;
+    var corrMonto=corrTotal(lid);
+    var corr=correcciones[lid]||{};
     var resultado=ventas-totalGastos+(traspaso?traspaso.total:0)+corrMonto;
-    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr?corr.nota:"" };
+    return{ventas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -2935,14 +2940,26 @@ function PanelResultados(p){
                 </div>
               )}
 
-              {/* Corrección manual */}
+              {/* Corrección manual por medio de pago */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
-                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>🔧 Corrección manual</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-                  <input type="number" placeholder="Monto (+ o −)" value={(correcciones[l.id]&&correcciones[l.id].monto)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var n={...prev};n[l.id]={monto:v,nota:(prev[l.id]&&prev[l.id].nota)||""};return n;});}} style={{padding:"7px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
-                  <input placeholder="Nota..." value={(correcciones[l.id]&&correcciones[l.id].nota)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var n={...prev};n[l.id]={monto:(prev[l.id]&&prev[l.id].monto)||"",nota:v};return n;});}} style={{padding:"7px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🔧 Corrección manual</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
+                  {MEDIOS_CORR.map(function(mc){
+                    return(
+                      <div key={mc[0]}>
+                        <label style={{display:"block",fontSize:9,color:"#444",marginBottom:3}}>{mc[1]}</label>
+                        <input type="number" placeholder="0" value={(correcciones[l.id]&&correcciones[l.id][mc[0]])||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                    );
+                  })}
                 </div>
-                {d.corrMonto!==0&&<div style={{fontSize:10,color:"#D4A017",marginTop:5}}>Ajuste aplicado: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}{d.corrNota?" · "+d.corrNota:""}</div>}
+                <input placeholder="Nota de corrección..." value={(correcciones[l.id]&&correcciones[l.id].nota)||""} onChange={function(e){var v=e.target.value;setCorrecciones(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Lora',serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                {d.corrMonto!==0&&(
+                  <div style={{fontSize:10,color:"#D4A017",marginTop:4}}>
+                    Total ajuste: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}
+                    {d.corrNota&&<span style={{color:"#888"}}> · {d.corrNota}</span>}
+                  </div>
+                )}
               </div>
             </div>
           );

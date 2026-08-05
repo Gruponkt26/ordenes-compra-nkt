@@ -2516,12 +2516,23 @@ function PanelIVA(p) {
   // ── IVA Compras (crédito fiscal) ──
   var gastosFacturados=gastos.filter(function(g){return g.facturado&&g.fecha&&g.fecha.substring(0,7)===mesFiltro&&g.local!=="l4";});
 
+  // IVA credito se asigna por CUIT de la factura, no por local
+  // f1 = Calzon Gitano SRL (CUIT 30-71844629-1) -> SRL
+  // f2 = Colantonio Carlos Nicolas (CUIT 20-26958479-4) -> Bodegon (l1)
+  // sin CUIT -> se asigna por local
   var comprasPorLocal={l1:{ivaCF:0,items:[]},l2:{ivaCF:0,items:[]},l3:{ivaCF:0,items:[]}};
   gastosFacturados.forEach(function(g){
-    if(!comprasPorLocal[g.local])return;
     var c=calcIVACompra(g);
-    comprasPorLocal[g.local].ivaCF+=c.iva;
-    comprasPorLocal[g.local].items.push({...g,ivaCalc:c.iva,neto:c.neto});
+    var destino=g.local;
+    if(g.facturacion==="f1"){
+      // CUIT SRL: si el gasto es del Bodegon con CUIT SRL, lo asignamos a l2 como representante SRL
+      destino=(g.local==="l1")?"l2":g.local;
+    } else if(g.facturacion==="f2"){
+      destino="l1";
+    }
+    if(!comprasPorLocal[destino])return;
+    comprasPorLocal[destino].ivaCF+=c.iva;
+    comprasPorLocal[destino].items.push({...g,ivaCalc:c.iva,neto:c.neto,localOrigen:g.local,cuitUsado:g.facturacion});
   });
 
   // ── IVA Ventas (débito fiscal) — solo medios electrónicos ──
@@ -2561,30 +2572,51 @@ function PanelIVA(p) {
   // ── Sugerencias de optimización ──
   function generarSugerencias(){
     var sugs=[];
-    // Kusama ↔ Colantonio's (mismo CUIT SRL — reasignación válida)
+    var posL1=posicionPorLocal.l1.neta;
     var posL2=posicionPorLocal.l2.neta;
     var posL3=posicionPorLocal.l3.neta;
+
+    // Kusama vs Colantonios (mismo CUIT SRL - reasignacion valida)
     if(posL2>0&&posL3<0){
-      // Kusama debe pagar, Colantonio's tiene a favor → mover facturas de Col a Kusama
       var necesita=Math.min(posL2,Math.abs(posL3));
       var candidatos=comprasPorLocal.l3.items.filter(function(g){return g.ivaCalc<=necesita+1000;}).sort(function(a,b){return b.ivaCalc-a.ivaCalc;}).slice(0,3);
-      if(candidatos.length>0)sugs.push({tipo:"reasignar",de:"l3",a:"l2",motivo:"Kusama tiene posición a pagar, Colantonio's tiene crédito a favor (mismo CUIT SRL)",items:candidatos,impacto:candidatos.reduce(function(a,c){return a+c.ivaCalc;},0)});
+      if(candidatos.length>0)sugs.push({tipo:"reasignar",de:"l3",a:"l2",
+        titulo:"Kusama tiene IVA a pagar — Colantonio tiene credito a favor",
+        detalle:"Ambos usan el mismo CUIT (Calzon Gitano SRL). Reasigna estas facturas a Kusama para compensar la posicion:",
+        items:candidatos,impacto:candidatos.reduce(function(a,c){return a+c.ivaCalc;},0)});
     }
     if(posL3>0&&posL2<0){
       var necesita2=Math.min(posL3,Math.abs(posL2));
       var candidatos2=comprasPorLocal.l2.items.filter(function(g){return g.ivaCalc<=necesita2+1000;}).sort(function(a,b){return b.ivaCalc-a.ivaCalc;}).slice(0,3);
-      if(candidatos2.length>0)sugs.push({tipo:"reasignar",de:"l2",a:"l3",motivo:"Colantonio's tiene posición a pagar, Kusama tiene crédito a favor (mismo CUIT SRL)",items:candidatos2,impacto:candidatos2.reduce(function(a,c){return a+c.ivaCalc;},0)});
+      if(candidatos2.length>0)sugs.push({tipo:"reasignar",de:"l2",a:"l3",
+        titulo:"Colantonio tiene IVA a pagar — Kusama tiene credito a favor",
+        detalle:"Ambos usan el mismo CUIT (Calzon Gitano SRL). Reasigna estas facturas a Colantonio para compensar la posicion:",
+        items:candidatos2,impacto:candidatos2.reduce(function(a,c){return a+c.ivaCalc;},0)});
     }
-    // Bodegón ↔ SRL (distinto CUIT — sugerencia de próximas facturas)
-    var posL1=posicionPorLocal.l1.neta;
+
+    // Bodegon vs SRL (distinto CUIT - sugerencia de proximas facturas)
+    // Identificar proveedores comunes (que aparezcan en ambos CUITs)
+    var provsSRL=[...new Set([...comprasPorLocal.l2.items,...comprasPorLocal.l3.items].map(function(g){return g.categoria;}))];
+    var provsL1=[...new Set(comprasPorLocal.l1.items.map(function(g){return g.categoria;}))];
+    var provsComunes=provsSRL.filter(function(p){return provsL1.includes(p);});
+
     if(posL1>0&&posSRL.neta<0){
-      // Bodegón debe, SRL tiene a favor → pedirle a proveedores que factures próximas al CUIT SRL
       var diff=Math.min(posL1,Math.abs(posSRL.neta));
-      sugs.push({tipo:"futuro",cuitOrigen:"Bodegón (CUIT 20-26958479-4)",cuitDestino:"Calzon Gitano SRL (CUIT 30-71844629-1)",monto:diff,motivo:"Bodegón tiene saldo a pagar de IVA, SRL tiene crédito a favor. Solicitá a proveedores comunes que las próximas facturas las emitan al CUIT de Calzon Gitano SRL."});
+      sugs.push({tipo:"futuro",
+        titulo:"Bodegon tiene IVA a pagar — SRL tiene credito a favor",
+        detalle:"Pedile a los proveedores que comparten ambos locales que las proximas facturas las emitan al CUIT de Calzon Gitano SRL (30-71844629-1). Monto a redirigir:",
+        cuitDestino:"Calzon Gitano SRL — CUIT 30-71844629-1",
+        monto:diff,
+        provsComunes:provsComunes});
     }
     if(posSRL.neta>0&&posL1<0){
       var diff2=Math.min(posSRL.neta,Math.abs(posL1));
-      sugs.push({tipo:"futuro",cuitOrigen:"Calzon Gitano SRL (CUIT 30-71844629-1)",cuitDestino:"Bodegón (CUIT 20-26958479-4)",monto:diff2,motivo:"SRL tiene saldo a pagar de IVA, Bodegón tiene crédito a favor. Solicitá a proveedores comunes que las próximas facturas las emitan al CUIT de Colantonio Carlos Nicolas."});
+      sugs.push({tipo:"futuro",
+        titulo:"SRL tiene IVA a pagar — Bodegon tiene credito a favor",
+        detalle:"Pedile a los proveedores que comparten ambos locales que las proximas facturas las emitan al CUIT del Bodegon (20-26958479-4). Monto a redirigir:",
+        cuitDestino:"Colantonio Carlos Nicolas — CUIT 20-26958479-4",
+        monto:diff2,
+        provsComunes:provsComunes});
     }
     return sugs;
   }
@@ -2742,45 +2774,56 @@ function PanelIVA(p) {
                   <div key={i} style={{background:"#111",border:"1px solid #D4A01733",borderRadius:12,padding:"14px 16px"}}>
                     {s.tipo==="reasignar"?(
                       <div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                           <div style={{fontSize:18}}>🔄</div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>Reasignar facturas entre locales (mismo CUIT SRL)</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{s.titulo}</div>
                         </div>
-                        <div style={{fontSize:11,color:"#888",marginBottom:10}}>{s.motivo}</div>
+                        <div style={{fontSize:11,color:"#888",marginBottom:8}}>{s.detalle}</div>
                         <div style={{fontSize:11,color:"#555",marginBottom:8}}>
-                          Mover de <span style={{color:lDe?lDe.color:"#F0EDE8",fontWeight:700}}>{lDe?lDe.emoji+" "+lDe.nombre:s.de}</span> → <span style={{color:lA?lA.color:"#F0EDE8",fontWeight:700}}>{lA?lA.emoji+" "+lA.nombre:s.a}</span>
+                          De <span style={{color:lDe?lDe.color:"#F0EDE8",fontWeight:700}}>{lDe?lDe.emoji+" "+lDe.nombre:s.de}</span> → <span style={{color:lA?lA.color:"#F0EDE8",fontWeight:700}}>{lA?lA.emoji+" "+lA.nombre:s.a}</span>
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
                           {s.items.map(function(g){
+                            var lOrigen=LOCALES_CTRL.find(function(l){return l.id===g.localOrigen;});
                             return(
-                              <div key={g.id} style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                              <div key={g.id} style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                                 <div>
                                   <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{g.concepto}</div>
-                                  <div style={{fontSize:10,color:"#444"}}>{fmtDate(g.fecha)} · IVA: {fmt(g.ivaCalc)}</div>
+                                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{fmtDate(g.fecha)} · {g.categoria}</div>
+                                  {g.localOrigen&&g.localOrigen!==s.de&&lOrigen&&<div style={{fontSize:10,color:lOrigen.color,marginTop:2}}>Cargado en {lOrigen.emoji} {lOrigen.nombre}</div>}
+                                  <div style={{fontSize:10,color:"#D4A017",marginTop:2}}>IVA: {fmt(g.ivaCalc)}</div>
                                 </div>
-                                <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(parseFloat(g.monto||0))}</div>
+                                <div style={{fontSize:12,fontWeight:700,color:"#888",marginLeft:10}}>{fmt(parseFloat(g.monto||0))}</div>
                               </div>
                             );
                           })}
                         </div>
                         <div style={{background:"#1A1400",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#D4A017",fontWeight:700}}>
-                          💡 Impacto estimado: reducís posición a pagar en {fmt(s.impacto)}
+                          💡 Reasignando estas facturas reducís la posición a pagar en {fmt(s.impacto)}
                         </div>
                       </div>
                     ):(
                       <div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                           <div style={{fontSize:18}}>📋</div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>Solicitar próximas facturas al otro CUIT</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{s.titulo}</div>
                         </div>
-                        <div style={{fontSize:11,color:"#888",marginBottom:10}}>{s.motivo}</div>
-                        <div style={{background:"#0F0F0F",borderRadius:8,padding:"10px 12px"}}>
-                          <div style={{fontSize:10,color:"#555",marginBottom:4}}>De proveedores de:</div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",marginBottom:6}}>{s.cuitOrigen}</div>
-                          <div style={{fontSize:10,color:"#555",marginBottom:4}}>Pedirles que facturen a:</div>
+                        <div style={{fontSize:11,color:"#888",marginBottom:10}}>{s.detalle}</div>
+                        <div style={{background:"#0F0F0F",borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+                          <div style={{fontSize:10,color:"#555",marginBottom:4}}>Facturar a:</div>
                           <div style={{fontSize:12,fontWeight:700,color:"#D4A017",marginBottom:6}}>{s.cuitDestino}</div>
-                          <div style={{fontSize:11,color:"#555"}}>Monto sugerido a redirigir: <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(s.monto)}</span></div>
+                          <div style={{fontSize:11,color:"#555"}}>Monto a redirigir: <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(s.monto)}</span></div>
                         </div>
+                        {s.provsComunes&&s.provsComunes.length>0&&(
+                          <div style={{background:"#0A0A1A",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:10,color:"#555",marginBottom:6}}>Categorías de proveedores compartidos entre locales:</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                              {s.provsComunes.map(function(p){return(
+                                <span key={p} style={{background:"#1A1A2A",borderRadius:5,padding:"3px 8px",fontSize:10,color:"#8888CC"}}>{p}</span>
+                              );})}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -2801,15 +2801,18 @@ function PanelResultados(p){
 
   // Calcular traspaso automático del mes anterior
   function calcTraspaso(lid){
-    // Mes anterior
     var d=new Date(mesFiltro+"-01");
     d.setMonth(d.getMonth()-1);
     var mesPrev=d.toISOString().slice(0,7);
     var clPrev=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesPrev;});
     if(clPrev.length===0)return null;
     var efectivo=clPrev.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));},0);
-    var electronico=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
-    return{efectivo,electronico,total:efectivo+electronico,mes:mesPrev};
+    var transferencia=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
+    var debito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
+    var credito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
+    var otros=clPrev.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
+    var electronico=transferencia+debito+credito+otros;
+    return{efectivo,transferencia,debito,credito,otros,electronico,total:efectivo+electronico,mes:mesPrev};
   }
 
   function calcLocal(lid){
@@ -2882,9 +2885,9 @@ function PanelResultados(p){
 
     // Disponibilidad = ingreso corregido − gastos + traspaso
     var dispEfectivo=ingrEfectivo-gastoEfectivo+(traspaso?traspaso.efectivo:0);
-    var dispTransferencia=ingrTransferencia-gastoTransferencia;
-    var dispDebito=ingrDebito-gastoDebito;
-    var dispCredito=ingrCredito-gastoCredito;
+    var dispTransferencia=ingrTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0);
+    var dispDebito=ingrDebito-gastoDebito+(traspaso?traspaso.debito:0);
+    var dispCredito=ingrCredito-gastoCredito+(traspaso?traspaso.credito:0);
     var dispOtros=ingrOtros-gastoOtros;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
@@ -2971,8 +2974,11 @@ function PanelResultados(p){
                       )}
                       {d.traspaso&&d.traspaso.total>0&&(
                         <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>🔄 Traspaso de {d.traspaso.mes}</span><span>+{fmt(d.traspaso.total)}</span></div>
-                          <div style={{fontSize:9,color:"#555"}}>💵 {fmt(d.traspaso.efectivo)} · 📲 {fmt(d.traspaso.electronico)}</div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",fontWeight:700,marginBottom:4}}><span>🔄 Traspaso de {d.traspaso.mes}</span><span>+{fmt(d.traspaso.total)}</span></div>
+                          {[["efectivo","💵 Efectivo",d.traspaso.efectivo],["transferencia","📲 Transferencia",d.traspaso.transferencia],["debito","💳 Débito",d.traspaso.debito],["credito","💳 Crédito",d.traspaso.credito],["otros","📦 Otros",d.traspaso.otros]].map(function(m){
+                            if(!m[2]||m[2]===0)return null;
+                            return <div key={m[0]} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#666",marginBottom:2}}><span>{m[1]}</span><span>+{fmt(m[2])}</span></div>;
+                          })}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
@@ -3020,9 +3026,9 @@ function PanelResultados(p){
                 <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Disponibilidad estimada</div>
                 {[
                   {label:"💵 Efectivo",disp:d.dispEfectivo,ingreso:d.ingrEfectivo,ingresoOrig:d.ventaEfectivo,gasto:d.gastoEfectivo,corr:d.corrEfectivo,traspaso:d.traspaso?d.traspaso.efectivo:0},
-                  {label:"📲 Transferencia",disp:d.dispTransferencia,ingreso:d.ingrTransferencia,ingresoOrig:d.ventaTransferencia,gasto:d.gastoTransferencia,corr:d.corrTransferencia,traspaso:0},
-                  {label:"💳 Débito",disp:d.dispDebito,ingreso:d.ingrDebito,ingresoOrig:d.ventaDebito,gasto:d.gastoDebito,corr:d.corrDebito,traspaso:0},
-                  {label:"💳 Crédito",disp:d.dispCredito,ingreso:d.ingrCredito,ingresoOrig:d.ventaCredito,gasto:d.gastoCredito,corr:d.corrCredito,traspaso:0},
+                  {label:"📲 Transferencia",disp:d.dispTransferencia,ingreso:d.ingrTransferencia,ingresoOrig:d.ventaTransferencia,gasto:d.gastoTransferencia,corr:d.corrTransferencia,traspaso:d.traspaso?d.traspaso.transferencia:0},
+                  {label:"💳 Débito",disp:d.dispDebito,ingreso:d.ingrDebito,ingresoOrig:d.ventaDebito,gasto:d.gastoDebito,corr:d.corrDebito,traspaso:d.traspaso?d.traspaso.debito:0},
+                  {label:"💳 Crédito",disp:d.dispCredito,ingreso:d.ingrCredito,ingresoOrig:d.ventaCredito,gasto:d.gastoCredito,corr:d.corrCredito,traspaso:d.traspaso?d.traspaso.credito:0},
                 ].map(function(m){
                   if(m.ingreso===0&&m.gasto===0&&m.traspaso===0)return null;
                   return(

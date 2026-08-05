@@ -1745,6 +1745,8 @@ function PanelGastos(p) {
   var [showExportar,setShowExportar]=useState(false);
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("hoy");
+  var [vistaGrid,setVistaGrid]=useState(false);
+  var [expandidoGrid,setExpandidoGrid]=useState(null);
   var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBFORMAS={
@@ -1867,7 +1869,126 @@ function PanelGastos(p) {
         {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["all","Todo"]].map(function(opt){return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?"#1A6B8A":"#1A1A1A"),background:filtroFecha===opt[0]?"#1A6B8A22":"none",color:filtroFecha===opt[0]?"#1A6B8A":"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;})}
         <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
         {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+        <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:20,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer"}}>📊 Vista mensual</button>
       </div>
+      {vistaGrid&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Lora',serif"}}>
+          {/* Header */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>📊 Gastos por local · {filtroFecha==="hoy"?"Hoy":filtroFecha==="semana"?"7 días":filtroFecha==="mes"?"Este mes":"Todo"}</div>
+            <button onClick={function(){setVistaGrid(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif"}}>✕ Cerrar</button>
+          </div>
+          {/* Totales por local */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+            {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+              var gl=filtered.filter(function(g){return g.local===l.id;});
+              var tot=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+              return(
+                <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                  <div style={{fontSize:13,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>${tot.toLocaleString("es-AR")}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{gl.length} gasto{gl.length!==1?"s":""}</div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Grid 3 columnas */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,alignItems:"start"}}>
+            {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+              var gl=filtered.filter(function(g){return g.local===l.id;}).sort(function(a,b){return (b.fecha||"").localeCompare(a.fecha||"");});
+              var fact=gl.filter(function(g){return g.facturado;});
+              var noFact=gl.filter(function(g){return !g.facturado;});
+              // totales por forma de pago
+              var medios={};
+              gl.forEach(function(g){
+                var fp=(g.forma_pago||"Otro").split(" - ")[0];
+                medios[fp]=(medios[fp]||0)+parseFloat(g.monto||0);
+              });
+              // totales por categoría (grupo)
+              var cats={};
+              gl.forEach(function(g){
+                var cat=(g.categoria||"Otro").split(" - ")[0];
+                cats[cat]=(cats[cat]||0)+parseFloat(g.monto||0);
+              });
+              return(
+                <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:6}}>{l.emoji} {l.nombre}</div>
+                  {gl.length===0?(
+                    <div style={{fontSize:10,color:"#333",textAlign:"center",padding:"12px 0"}}>Sin gastos</div>
+                  ):(
+                    <div>
+                      {/* Lista de gastos */}
+                      <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:10}}>
+                        {gl.map(function(g){
+                          var gkey=l.id+"_gg_"+g.id;
+                          var abierto=expandidoGrid===gkey;
+                          var factObj=g.facturado&&g.facturacion?getFact(g.facturacion):null;
+                          return(
+                            <div key={g.id}>
+                              <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 4px",borderBottom:"1px solid #141414",cursor:"pointer"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:5,flex:1,minWidth:0}}>
+                                  <span style={{fontSize:9,color:"#444",flexShrink:0,transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                                  <span style={{fontSize:10,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</span>
+                                </div>
+                                <span style={{fontSize:11,fontWeight:700,color:l.color,fontFamily:"'Playfair Display',serif",flexShrink:0,marginLeft:4}}>${parseFloat(g.monto||0).toLocaleString("es-AR")}</span>
+                              </div>
+                              {abierto&&(
+                                <div style={{background:"#080808",borderRadius:6,padding:"7px 10px",margin:"2px 0 3px 0"}}>
+                                  <div style={{fontSize:10,color:"#555"}}>{fmtDate(g.fecha)} · {g.forma_pago}</div>
+                                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{g.categoria}</div>
+                                  {factObj&&<div style={{fontSize:10,color:"#D4A017",marginTop:2}}>🧾 {factObj.razonSocial}</div>}
+                                  {g.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic",marginTop:3}}>📝 {g.notas}</div>}
+                                  <div style={{fontSize:9,color:"#222",marginTop:3}}>{g.usuario}</div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Totales por forma de pago */}
+                      <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginBottom:8}}>
+                        <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Por medio de pago</div>
+                        {Object.keys(medios).map(function(mp){
+                          return(
+                            <div key={mp} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
+                              <span>{mp}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>${medios[mp].toLocaleString("es-AR")}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Totales por categoría */}
+                      <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginBottom:8}}>
+                        <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Por categoría</div>
+                        {Object.keys(cats).sort(function(a,b){return cats[b]-cats[a];}).map(function(cat){
+                          return(
+                            <div key={cat} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
+                              <span>{cat}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>${cats[cat].toLocaleString("es-AR")}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Facturado vs sin factura */}
+                      <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}>
+                          <span style={{color:"#3A7D44"}}>✅ Facturado</span>
+                          <span style={{color:"#3A7D44",fontWeight:700}}>${fact.reduce(function(a,g){return a+parseFloat(g.monto||0);},0).toLocaleString("es-AR")}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
+                          <span style={{color:"#C1440E"}}>⚠️ Sin factura</span>
+                          <span style={{color:"#C1440E",fontWeight:700}}>${noFact.reduce(function(a,g){return a+parseFloat(g.monto||0);},0).toLocaleString("es-AR")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {filtered.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}><div style={{fontSize:32,marginBottom:10}}>💰</div><div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin gastos en este período</div></div>
       ):(

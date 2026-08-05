@@ -2987,7 +2987,7 @@ function PanelResultados(p){
                     <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo</span>
                     <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
                   </div>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>
                     <span>Ingresos en efectivo</span><span style={{color:"#3A7D44"}}>+{fmt(d.ventaEfectivo)}</span>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>

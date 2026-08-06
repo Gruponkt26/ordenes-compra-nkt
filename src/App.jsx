@@ -4053,26 +4053,26 @@ function PanelStock(p) {
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {itemsBajos.map(function(item){
                       return(
-                        <div key={item.plato} style={{background:"#1A0808",border:"1px solid #C1440E88",borderRadius:12,padding:"12px 14px",animation:"nkt-blink 1.2s ease-in-out infinite"}}>
+                        <div key={item.plato} style={{background:"#000000",border:"2px solid #FFFFFF",borderRadius:12,padding:"12px 14px",animation:"nkt-blink 1.2s ease-in-out infinite"}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                             <div>
-                              <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{item.plato}</div>
-                              <div style={{fontSize:10,color:"#444",marginTop:2}}>{item.cat}</div>
+                              <div style={{fontSize:13,fontWeight:700,color:"#FFFFFF"}}>{item.plato}</div>
+                              <div style={{fontSize:10,color:"#888",marginTop:2}}>{item.cat}</div>
                             </div>
                             <div style={{textAlign:"right"}}>
-                              <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>Stock: {item.cant}</div>
-                              <div style={{fontSize:10,color:"#555"}}>Mínimo: {item.min}</div>
+                              <div style={{fontSize:11,color:"#FFFFFF",fontWeight:700}}>Stock: {item.cant}</div>
+                              <div style={{fontSize:10,color:"#888"}}>Mínimo: {item.min}</div>
                             </div>
                           </div>
-                          <div style={{background:"#1A0800",borderRadius:8,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div style={{background:"#FFFFFF",borderRadius:8,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
-                              <div style={{fontSize:11,color:"#D4A017",fontWeight:700}}>🛒 {esJueVie?"Comprar/producir (jue/vie)":"Comprar/producir"}</div>
-                              {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Mín. {item.min} × 1.4 = {item.objetivo} → reponer {item.necesario}</div>}
+                              <div style={{fontSize:11,color:"#000000",fontWeight:700}}>🛒 {esJueVie?"Comprar/producir (jue/vie)":"Comprar/producir"}</div>
+                              {esJueVie&&<div style={{fontSize:9,color:"#333",marginTop:2}}>Mín. {item.min} × 1.4 = {item.objetivo} → reponer {item.necesario}</div>}
                             </div>
                             <div style={{textAlign:"right"}}>
-                                <div style={{fontSize:20,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} <span style={{fontSize:11}}>uds</span></div>
-                                {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Objetivo: {item.objetivo} uds</div>}
-                              </div>
+                              <div style={{fontSize:20,fontWeight:800,color:"#000000",fontFamily:"'Playfair Display',serif"}}>{item.necesario} <span style={{fontSize:11}}>uds</span></div>
+                              {esJueVie&&<div style={{fontSize:9,color:"#333",marginTop:2}}>Objetivo: {item.objetivo} uds</div>}
+                            </div>
                           </div>
                         </div>
                       );
@@ -4312,10 +4312,10 @@ function getStockColor(cant, minimo) {
 }
 
 var STOCK_COLORS = {
-  ok:      { bg: "#0A1520", border: "#1A6B8A88", text: "#4FC3F7", badge: null,       blink: false },
-  proximo: { bg: "#1A0808", border: "#C1440E88", text: "#C1440E", badge: "⚠️ CERCA", blink: false },
-  critico: { bg: "#1A0808", border: "#C1440EBB", text: "#FF4444", badge: "🔴 BAJO",  blink: true  },
-  cero:    { bg: "#2A0000", border: "#C1440ECC", text: "#FF4444", badge: "❌ SIN STOCK", blink: true },
+  ok:      { bg: "#0D0D0D", border: "#333",    text: "#FFFFFF", badge: null,           blink: false },
+  proximo: { bg: "#000000", border: "#888",    text: "#AAAAAA", badge: "⚠️ CERCA",     blink: false },
+  critico: { bg: "#000000", border: "#FFFFFF", text: "#FFFFFF", badge: "🔴 BAJO",      blink: true  },
+  cero:    { bg: "#000000", border: "#FFFFFF", text: "#FFFFFF", badge: "❌ SIN STOCK", blink: true  },
 };
 
 // ─── STOCK DATA ───────────────────────────────────────────────────────────────

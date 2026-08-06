@@ -3994,8 +3994,9 @@ function PanelStock(p) {
                 var cant=getCantidad(plato);
                 var min=getMinimo(plato);
                 if(min>0&&cant<min){
-                  var necesario=esJueVie?Math.ceil(min*1.4):min;
-                  itemsBajos.push({plato,cant,min,necesario,cat});
+                  var objetivo=esJueVie?Math.ceil(min*1.4):min;
+                  var necesario=objetivo-cant;
+                  itemsBajos.push({plato,cant,min,necesario,objetivo,cat});
                 }
               });
             });
@@ -4017,7 +4018,7 @@ function PanelStock(p) {
                         itemsBajos.forEach(function(item){
                           lineas.push("🛒 *"+item.plato+"*");
                           lineas.push("   Stock actual: "+item.cant+" | Mínimo: "+item.min);
-                          lineas.push("   → Comprar/producir: *"+item.necesario+" uds*"+(esJueVie?" (×1.4)":""));
+                          lineas.push("   → Reponer: *"+item.necesario+" uds*"+(esJueVie?" (objetivo: "+item.objetivo+")":""));
                           lineas.push("");
                         });
                       }
@@ -4063,9 +4064,12 @@ function PanelStock(p) {
                           <div style={{background:"#1A0800",borderRadius:8,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                             <div>
                               <div style={{fontSize:11,color:"#D4A017",fontWeight:700}}>🛒 {esJueVie?"Comprar/producir (jue/vie)":"Comprar/producir"}</div>
-                              {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Mín. {item.min} × 1.4 = {item.necesario}</div>}
+                              {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Mín. {item.min} × 1.4 = {item.objetivo} → reponer {item.necesario}</div>}
                             </div>
-                            <div style={{fontSize:20,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} <span style={{fontSize:11}}>uds</span></div>
+                            <div style={{textAlign:"right"}}>
+                                <div style={{fontSize:20,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} <span style={{fontSize:11}}>uds</span></div>
+                                {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Objetivo: {item.objetivo} uds</div>}
+                              </div>
                           </div>
                         </div>
                       );

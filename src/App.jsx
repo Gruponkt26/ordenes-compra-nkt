@@ -4021,8 +4021,7 @@ function PanelStock(p) {
                           lineas.push("");
                         });
                       }
-                      var texto=lineas.join("
-");
+                      var texto=lineas.join("\n");
                       window.open("https://wa.me/?text="+encodeURIComponent(texto),"_blank");
                     }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #25D36644",background:"#25D36622",color:"#25D366",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif",fontWeight:700}}>📤 WhatsApp</button>
                     <button onClick={function(){setModo("ver");}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif"}}>✕ Cerrar</button>

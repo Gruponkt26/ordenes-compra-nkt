@@ -3984,7 +3984,7 @@ function PanelStock(p) {
           )}
           {modo==="informe"&&(function(){
             var hoy=new Date();
-            var diaSemana=hoy.getDay(); // 0=dom,1=lun,...,4=jue,5=vie
+            var diaSemana=hoy.getDay();
             var esJueVie=diaSemana===4||diaSemana===5;
             var diasNombre=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
             var itemsBajos=[];
@@ -3995,52 +3995,82 @@ function PanelStock(p) {
                 var min=getMinimo(plato);
                 if(min>0&&cant<min){
                   var necesario=esJueVie?Math.ceil(min*1.4):min;
-                  itemsBajos.push({plato,cant,min,necesario,cat,diferencia:necesario-cant});
+                  itemsBajos.push({plato,cant,min,necesario,cat});
                 }
               });
             });
             return(
-              <div style={{marginTop:8}}>
-                <div style={{background:"#0A0A14",border:"1px solid #1A6B8A44",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <div style={{fontSize:14}}>📋</div>
-                    <div style={{fontSize:12,fontWeight:700,color:"#1A6B8A"}}>Informe de reposición</div>
+              <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Lora',serif"}}>
+                {/* Header */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>📋 Informe de reposición</div>
+                    <div style={{fontSize:10,color:"#555",marginTop:2}}>{localNombre} · {diasNombre[diaSemana]} · {esJueVie?"Jue/Vie → mínimo +40%":"Día normal → mínimo exacto"}</div>
                   </div>
-                  <div style={{fontSize:10,color:"#555"}}>Hoy: {diasNombre[diaSemana]} · {esJueVie?"Jueves/Viernes — cantidad mínima +40%":"Día normal — cantidad mínima exacta"}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={function(){
+                      var hoyStr=new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+                      var lineas=["📋 *Informe de reposición — "+localNombre+"*","_"+hoyStr+"_"+(esJueVie?" _(Jue/Vie: mínimo +40%)_":""),""];
+                      if(itemsBajos.length===0){
+                        lineas.push("✅ Todo el stock está por encima del mínimo");
+                      } else {
+                        itemsBajos.forEach(function(item){
+                          lineas.push("🛒 *"+item.plato+"*");
+                          lineas.push("   Stock actual: "+item.cant+" | Mínimo: "+item.min);
+                          lineas.push("   → Comprar/producir: *"+item.necesario+" uds*"+(esJueVie?" (×1.4)":""));
+                          lineas.push("");
+                        });
+                      }
+                      var texto=lineas.join("
+");
+                      window.open("https://wa.me/?text="+encodeURIComponent(texto),"_blank");
+                    }} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #25D36644",background:"#25D36622",color:"#25D366",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif",fontWeight:700}}>📤 WhatsApp</button>
+                    <button onClick={function(){setModo("ver");}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Lora',serif"}}>✕ Cerrar</button>
+                  </div>
                 </div>
+
+                {/* Resumen */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+                  <div style={{background:"#111",border:"1px solid #C1440E44",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Bajo mínimo</div>
+                    <div style={{fontSize:24,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{itemsBajos.length}</div>
+                  </div>
+                  <div style={{background:"#111",border:"1px solid #D4A01744",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Multiplicador</div>
+                    <div style={{fontSize:24,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{esJueVie?"×1.4":"×1.0"}</div>
+                  </div>
+                </div>
+
                 {itemsBajos.length===0?(
-                  <div style={{textAlign:"center",padding:"30px 0"}}>
-                    <div style={{fontSize:28,marginBottom:8}}>✅</div>
-                    <div style={{fontSize:13,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>Todo el stock está por encima del mínimo</div>
+                  <div style={{textAlign:"center",padding:"60px 0"}}>
+                    <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                    <div style={{fontSize:15,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>Todo el stock está por encima del mínimo</div>
                   </div>
                 ):(
-                  <div>
-                    <div style={{fontSize:10,color:"#C1440E",marginBottom:10}}>⚠️ {itemsBajos.length} producto{itemsBajos.length!==1?"s":""} por debajo del mínimo</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {itemsBajos.map(function(item){
-                        return(
-                          <div key={item.plato} style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 13px"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                              <div>
-                                <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{item.plato}</div>
-                                <div style={{fontSize:10,color:"#444",marginTop:2}}>{item.cat}</div>
-                              </div>
-                              <div style={{textAlign:"right"}}>
-                                <div style={{fontSize:10,color:"#C1440E"}}>Stock actual: <strong>{item.cant}</strong></div>
-                                <div style={{fontSize:10,color:"#555"}}>Mínimo: {item.min}</div>
-                              </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {itemsBajos.map(function(item){
+                      return(
+                        <div key={item.plato} style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"12px 14px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                            <div>
+                              <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{item.plato}</div>
+                              <div style={{fontSize:10,color:"#444",marginTop:2}}>{item.cat}</div>
                             </div>
-                            <div style={{background:"#1A0800",borderRadius:7,padding:"7px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                              <span style={{fontSize:11,color:"#D4A017"}}>
-                                {esJueVie?"🛒 Comprar/producir (jue/vie +40%)":"🛒 Comprar/producir"}
-                              </span>
-                              <span style={{fontSize:14,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} uds</span>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>Stock: {item.cant}</div>
+                              <div style={{fontSize:10,color:"#555"}}>Mínimo: {item.min}</div>
                             </div>
-                            {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:4,textAlign:"right"}}>Mínimo {item.min} + 40% = {item.necesario}</div>}
                           </div>
-                        );
-                      })}
-                    </div>
+                          <div style={{background:"#1A0800",borderRadius:8,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <div>
+                              <div style={{fontSize:11,color:"#D4A017",fontWeight:700}}>🛒 {esJueVie?"Comprar/producir (jue/vie)":"Comprar/producir"}</div>
+                              {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:2}}>Mín. {item.min} × 1.4 = {item.necesario}</div>}
+                            </div>
+                            <div style={{fontSize:20,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} <span style={{fontSize:11}}>uds</span></div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

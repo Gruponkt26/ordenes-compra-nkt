@@ -3911,6 +3911,7 @@ function PanelStock(p) {
         <button onClick={function(){setModo("cargar");setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="cargar"?"#3A7D44":"#1E1E1E"),background:modo==="cargar"?"#3A7D4422":"#111",color:modo==="cargar"?"#3A7D44":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar stock</button>
         <button onClick={function(){setModo("descontar");setCambios({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
         <button onClick={function(){setModo("minimos");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="minimos"?"#8B2FC9":"#1E1E1E"),background:modo==="minimos"?"#8B2FC922":"#111",color:modo==="minimos"?"#8B2FC9":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚡ Mínimos</button>
+        <button onClick={function(){setModo("informe");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="informe"?"#1A6B8A":"#1E1E1E"),background:modo==="informe"?"#1A6B8A22":"#111",color:modo==="informe"?"#1A6B8A":"#555",fontFamily:"'Lora',serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Informe</button>
       </div>
 
       {/* Categorias */}
@@ -3981,6 +3982,71 @@ function PanelStock(p) {
           {modo==="descontar"&&Object.keys(descuentos).filter(function(k){return descuentos[k]>0;}).length>0&&(
             <button onClick={guardarDescuento} disabled={saving} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar descuento de cierre"}</button>
           )}
+          {modo==="informe"&&(function(){
+            var hoy=new Date();
+            var diaSemana=hoy.getDay(); // 0=dom,1=lun,...,4=jue,5=vie
+            var esJueVie=diaSemana===4||diaSemana===5;
+            var diasNombre=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+            var itemsBajos=[];
+            categorias.forEach(function(cat){
+              var platos=menu[cat]||[];
+              platos.forEach(function(plato){
+                var cant=getCantidad(plato);
+                var min=getMinimo(plato);
+                if(min>0&&cant<min){
+                  var necesario=esJueVie?Math.ceil(min*1.4):min;
+                  itemsBajos.push({plato,cant,min,necesario,cat,diferencia:necesario-cant});
+                }
+              });
+            });
+            return(
+              <div style={{marginTop:8}}>
+                <div style={{background:"#0A0A14",border:"1px solid #1A6B8A44",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                    <div style={{fontSize:14}}>📋</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1A6B8A"}}>Informe de reposición</div>
+                  </div>
+                  <div style={{fontSize:10,color:"#555"}}>Hoy: {diasNombre[diaSemana]} · {esJueVie?"Jueves/Viernes — cantidad mínima +40%":"Día normal — cantidad mínima exacta"}</div>
+                </div>
+                {itemsBajos.length===0?(
+                  <div style={{textAlign:"center",padding:"30px 0"}}>
+                    <div style={{fontSize:28,marginBottom:8}}>✅</div>
+                    <div style={{fontSize:13,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>Todo el stock está por encima del mínimo</div>
+                  </div>
+                ):(
+                  <div>
+                    <div style={{fontSize:10,color:"#C1440E",marginBottom:10}}>⚠️ {itemsBajos.length} producto{itemsBajos.length!==1?"s":""} por debajo del mínimo</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {itemsBajos.map(function(item){
+                        return(
+                          <div key={item.plato} style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 13px"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                              <div>
+                                <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{item.plato}</div>
+                                <div style={{fontSize:10,color:"#444",marginTop:2}}>{item.cat}</div>
+                              </div>
+                              <div style={{textAlign:"right"}}>
+                                <div style={{fontSize:10,color:"#C1440E"}}>Stock actual: <strong>{item.cant}</strong></div>
+                                <div style={{fontSize:10,color:"#555"}}>Mínimo: {item.min}</div>
+                              </div>
+                            </div>
+                            <div style={{background:"#1A0800",borderRadius:7,padding:"7px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                              <span style={{fontSize:11,color:"#D4A017"}}>
+                                {esJueVie?"🛒 Comprar/producir (jue/vie +40%)":"🛒 Comprar/producir"}
+                              </span>
+                              <span style={{fontSize:14,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{item.necesario} uds</span>
+                            </div>
+                            {esJueVie&&<div style={{fontSize:9,color:"#555",marginTop:4,textAlign:"right"}}>Mínimo {item.min} + 40% = {item.necesario}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {modo==="minimos"&&Object.keys(minimoEdit).length>0&&(
             <button onClick={guardarMinimos} disabled={saving} style={{...BS("#8B2FC9"),width:"100%",padding:"12px",fontSize:14}}>{saving?"⏳ Guardando...":"✓ Guardar mínimos"}</button>
           )}

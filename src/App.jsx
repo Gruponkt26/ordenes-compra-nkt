@@ -3782,6 +3782,8 @@ var RECETAS = {
 };
 
 // ─── PANEL STOCK ──────────────────────────────────────────────────────────────
+var BLINK_STYLE = `@keyframes nkt-blink { 0%,100%{opacity:1} 50%{opacity:0.25} }`;
+
 function PanelStock(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
   var menu = MENU_POR_LOCAL[localId] || {};
@@ -3929,6 +3931,7 @@ function PanelStock(p) {
       {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
         <div>
           {/* Lista de platos */}
+          <style>{BLINK_STYLE}</style>
           <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16}}>
             {platosActuales.map(function(plato){
               var cant=getCantidad(plato);
@@ -3936,12 +3939,12 @@ function PanelStock(p) {
               var stockSt=getStockStatus(cant,min);
               var sc=STOCK_COLORS[stockSt.status];
               return(
-                <div key={plato} style={{background:sc.bg,border:"1px solid "+sc.border,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,transition:"all 0.3s"}}>
+                <div key={plato} style={{background:sc.bg,border:"1px solid "+sc.border,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,transition:"all 0.3s",animation:sc.blink?"nkt-blink 1.2s ease-in-out infinite":"none"}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
                       <div style={{fontSize:12,color:sc.text,fontWeight:stockSt.status!=="ok"?700:400}}>{plato}</div>
                       {sc.badge&&<span style={{fontSize:10,fontWeight:800,color:sc.text,background:sc.border,padding:"1px 7px",borderRadius:10}}>{sc.badge}</span>}
-                      {stockSt.status==="proximo"&&<span style={{fontSize:10,fontWeight:800,color:"#5A9D44",background:"#0F2A00",padding:"1px 7px",borderRadius:10}}>📊 A {stockSt.diff} del mínimo</span>}
+                      {stockSt.status==="proximo"&&<span style={{fontSize:10,fontWeight:800,color:"#C1440E",background:"#1A0808",padding:"1px 7px",borderRadius:10}}>A {Math.abs(stockSt.diff)} del mínimo</span>}
                     </div>
                     {min>0&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Mínimo: {min}{stock[plato]&&stock[plato].updatedAt?" · "+fmtDateTime(stock[plato].updatedAt):""}</div>}
                     {!min&&stock[plato]&&stock[plato].updatedAt&&<div style={{fontSize:10,color:"#444",marginTop:2}}>Actualizado: {fmtDateTime(stock[plato].updatedAt)}</div>}
@@ -4050,7 +4053,7 @@ function PanelStock(p) {
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {itemsBajos.map(function(item){
                       return(
-                        <div key={item.plato} style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"12px 14px"}}>
+                        <div key={item.plato} style={{background:"#1A0808",border:"1px solid #C1440E88",borderRadius:12,padding:"12px 14px",animation:"nkt-blink 1.2s ease-in-out infinite"}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                             <div>
                               <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{item.plato}</div>
@@ -4299,10 +4302,9 @@ function getStockStatus(cant, minimo) {
   if (cant === 0) return { status: "cero", diff: 0 };
   if (minimo <= 0) return { status: "ok", diff: 0 };
   var diff = cant - minimo;
-  if (cant <= minimo) return { status: "critico", diff: diff };
-  if (diff <= 2) return { status: "proximo", diff: diff };
-  if (cant <= minimo * 1.5) return { status: "bajo", diff: diff };
-  return { status: "ok", diff: diff };
+  if (cant < minimo) return { status: "critico", diff: diff };   // bajo minimo → titila rojo
+  if (diff <= 2) return { status: "proximo", diff: diff };        // a 2 del minimo → rojo fijo
+  return { status: "ok", diff: diff };                            // por encima → celeste
 }
 
 function getStockColor(cant, minimo) {
@@ -4310,11 +4312,10 @@ function getStockColor(cant, minimo) {
 }
 
 var STOCK_COLORS = {
-  ok:      { bg: "#111",    border: "#1A1A1A", text: "#CCC",     badge: null },
-  proximo: { bg: "#0F1A00", border: "#3A7D4488", text: "#5A9D44", badge: null },
-  bajo:    { bg: "#1A1500", border: "#D4A01744", text: "#D4A017", badge: "⚠️ BAJO" },
-  critico: { bg: "#1A0808", border: "#C1440E88", text: "#C1440E", badge: "🔴 CRÍTICO" },
-  cero:    { bg: "#2A0000", border: "#C1440EBB", text: "#FF4444", badge: "❌ SIN STOCK" },
+  ok:      { bg: "#0A1520", border: "#1A6B8A88", text: "#4FC3F7", badge: null,       blink: false },
+  proximo: { bg: "#1A0808", border: "#C1440E88", text: "#C1440E", badge: "⚠️ CERCA", blink: false },
+  critico: { bg: "#1A0808", border: "#C1440EBB", text: "#FF4444", badge: "🔴 BAJO",  blink: true  },
+  cero:    { bg: "#2A0000", border: "#C1440ECC", text: "#FF4444", badge: "❌ SIN STOCK", blink: true },
 };
 
 // ─── STOCK DATA ───────────────────────────────────────────────────────────────

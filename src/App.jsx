@@ -1751,6 +1751,24 @@ function PanelGastos(p) {
   var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(hoy.slice(0,7))===-1)mesesDisp.unshift(hoy.slice(0,7));
   var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+  var [pagos,setPagos]=useState([{local:"l1",tipo:"Efectivo",cuenta:"",monto:""}]);
+
+  // Todos los medios disponibles por local con tipo
+  var TODOS_MEDIOS=[
+    {local:"l1",tipo:"Efectivo",cuenta:"Efectivo El Bodegón Nkt"},
+    {local:"l2",tipo:"Efectivo",cuenta:"Efectivo Kusama"},
+    {local:"l3",tipo:"Efectivo",cuenta:"Efectivo Colantonio's"},
+    {local:"l1",tipo:"Transferencia",cuenta:"Provincia Personas"},
+    {local:"l1",tipo:"Transferencia",cuenta:"Mercado Pago Nicolás"},
+    {local:"l2",tipo:"Transferencia",cuenta:"Galicia Empresas"},
+    {local:"l3",tipo:"Transferencia",cuenta:"Patagonia Empresas"},
+    {local:"l3",tipo:"Transferencia",cuenta:"Mercado Pago Calzon Gitano"},
+    {local:"l1",tipo:"Débito",cuenta:"Visa Provincia Personas"},
+    {local:"l1",tipo:"Débito",cuenta:"Mastercard Patagonia Personas"},
+    {local:"l1",tipo:"Débito",cuenta:"Visa Patagonia Personas"},
+  ];
+  function totalPagos(){return pagos.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
+  function pagosCuadran(){return !form.monto||Math.abs(totalPagos()-parseFloat(form.monto||0))<0.01;}
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBFORMAS={
     "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
@@ -1788,9 +1806,13 @@ function PanelGastos(p) {
   var totalNoFact=filtered.filter(function(g){return !g.facturado;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
-    var gasto={id:String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago+(form.subforma?" - "+form.subforma:""),facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:form.categoria,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString()};
+    // Forma de pago legacy = primer pago
+    var fpLegacy=pagos[0]?pagos[0].tipo+(pagos[0].cuenta?" - "+pagos[0].cuenta:""):form.forma_pago;
+    var pagosValidos=pagos.filter(function(p){return parseFloat(p.monto)>0;});
+    var gasto={id:String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:fpLegacy,subforma:"",facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:form.categoria,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(gasto);
     setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",subforma:"",facturado:false,facturacion:"",categoria:"Proveedores",notas:"",fecha:hoy});
+    setPagos([{local:"l1",tipo:"Efectivo",cuenta:"",monto:""}]);
     setShowForm(false);
   }
   return(
@@ -1819,19 +1841,51 @@ function PanelGastos(p) {
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label><input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Ej: Verdulería, Carnicería..." style={INP}/></div>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label><input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={INP}/></div>
           </div>
+          {/* Pagos múltiples */}
+          <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <label style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Forma de pago</label>
+              <button onClick={function(){setPagos(function(prev){return[...prev,{local:form.local,tipo:"Efectivo",cuenta:"",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar medio</button>
+            </div>
+            {pagos.map(function(pago,idx){
+              var mediosLocal=TODOS_MEDIOS.filter(function(m){return m.local===pago.local;});
+              var loc=LOCALES.find(function(l){return l.id===pago.local;});
+              return(
+                <div key={idx} style={{background:"#0F0F0F",borderRadius:8,padding:"10px",marginBottom:6,border:"1px solid #1A1A1A"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr auto",gap:7,alignItems:"center"}}>
+                    {/* Local del pago */}
+                    <select value={pago.local} onChange={function(e){setPagos(function(prev){var n=[...prev];n[idx]={...n[idx],local:e.target.value,cuenta:""};return n;});}} style={{padding:"6px 8px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:loc?loc.color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+                      {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                    </select>
+                    {/* Cuenta/medio */}
+                    <select value={pago.cuenta} onChange={function(e){
+                      var sel=TODOS_MEDIOS.find(function(m){return m.local===pago.local&&m.cuenta===e.target.value;});
+                      setPagos(function(prev){var n=[...prev];n[idx]={...n[idx],cuenta:e.target.value,tipo:sel?sel.tipo:"Efectivo"};return n;});
+                    }} style={{padding:"6px 8px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+                      <option value="">-- Cuenta --</option>
+                      {mediosLocal.map(function(m){return <option key={m.cuenta} value={m.cuenta}>{m.tipo} · {m.cuenta}</option>;})}
+                    </select>
+                    {/* Monto */}
+                    <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){setPagos(function(prev){var n=[...prev];n[idx]={...n[idx],monto:e.target.value};return n;});}} style={{padding:"6px 8px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                    {/* Quitar */}
+                    {pagos.length>1&&<button onClick={function(){setPagos(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                  </div>
+                  {/* Alerta cruzado */}
+                  {pago.local&&pago.local!==form.local&&<div style={{fontSize:9,color:"#E07B00",marginTop:4}}>⚠️ Pago cruzado — sale de {LOCALES.find(function(l){return l.id===pago.local;})?.nombre}</div>}
+                </div>
+              );
+            })}
+            {/* Diferencia */}
+            {form.monto&&(
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                <span style={{color:"#555"}}>Total asignado</span>
+                <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>${totalPagos().toLocaleString("es-AR")} / ${parseFloat(form.monto||0).toLocaleString("es-AR")}{pagosCuadran()?" ✓":" ← diferencia"}</span>
+              </div>
+            )}
+          </div>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:12}}>
             <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label>
-              <select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value,subforma:""};});}} style={INP}>
-                {FORMAS_PAGO.map(function(fp){return <option key={fp}>{fp}</option>;})}
-              </select>
-              {SUBFORMAS[form.forma_pago]&&(
-                <select value={form.subforma} onChange={function(e){setForm(function(f){return{...f,subforma:e.target.value};});}} style={{...INP,marginTop:5,color:form.subforma?"#F0EDE8":"#555"}}>
-                  <option value="">-- Seleccioná cuenta --</option>
-                  {SUBFORMAS[form.forma_pago].map(function(sf){return <option key={sf}>{sf}</option>;})}
-                </select>
-              )}
-            </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
               <select value={CATEGORIAS.includes(form.categoria)?form.categoria:"__otro__"} onChange={function(e){if(e.target.value==="__otro__"){setForm(function(f){return{...f,categoria:""};});}else{setForm(function(f){return{...f,categoria:e.target.value};});}}} style={INP}>
@@ -2865,9 +2919,19 @@ function PanelResultados(p){
     // Gastos por medio de pago (efectivo vs electrónico)
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
-      var fp=(g.forma_pago||"").toLowerCase();
-      if(fp.includes("efectivo"))gastoEfectivo+=parseFloat(g.monto||0);
-      else gastoElectronico+=parseFloat(g.monto||0);
+      if(g.pagos&&g.pagos.length>0){
+        g.pagos.forEach(function(pago){
+          if(pago.local!==lid)return;
+          var pm=parseFloat(pago.monto||0);
+          if((pago.tipo||"").toLowerCase().includes("efectivo"))gastoEfectivo+=pm;
+          else gastoElectronico+=pm;
+        });
+      } else {
+        var fp=(g.forma_pago||"").toLowerCase();
+        var gm=parseFloat(g.monto||0);
+        if(fp.includes("efectivo"))gastoEfectivo+=gm;
+        else gastoElectronico+=gm;
+      }
     });
 
     // Ingresos de cierres por medio
@@ -2880,14 +2944,29 @@ function PanelResultados(p){
     var ventaCredito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
     var ventaOtros=cl.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
 
-    // Gastos desglosados por medio
+    // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
     gl.forEach(function(g){
-      var fp=(g.forma_pago||"").toLowerCase();
-      if(fp.includes("transferencia"))gastoTransferencia+=parseFloat(g.monto||0);
-      else if(fp.includes("débito")||fp.includes("debito"))gastoDebito+=parseFloat(g.monto||0);
-      else if(fp.includes("crédito")||fp.includes("credito"))gastoCredito+=parseFloat(g.monto||0);
-      else if(!fp.includes("efectivo"))gastoOtros+=parseFloat(g.monto||0);
+      if(g.pagos&&g.pagos.length>0){
+        // Nuevo sistema: descontar por local y tipo de cada pago
+        g.pagos.forEach(function(pago){
+          if(pago.local!==lid)return; // solo pagos que salen de este local
+          var pm=parseFloat(pago.monto||0);
+          var tp=(pago.tipo||"").toLowerCase();
+          if(tp.includes("transferencia"))gastoTransferencia+=pm;
+          else if(tp.includes("débito")||tp.includes("debito"))gastoDebito+=pm;
+          else if(tp.includes("crédito")||tp.includes("credito"))gastoCredito+=pm;
+          else if(!tp.includes("efectivo"))gastoOtros+=pm;
+        });
+      } else {
+        // Legacy: forma_pago texto
+        var fp=(g.forma_pago||"").toLowerCase();
+        var gm=parseFloat(g.monto||0);
+        if(fp.includes("transferencia"))gastoTransferencia+=gm;
+        else if(fp.includes("débito")||fp.includes("debito"))gastoDebito+=gm;
+        else if(fp.includes("crédito")||fp.includes("credito"))gastoCredito+=gm;
+        else if(!fp.includes("efectivo"))gastoOtros+=gm;
+      }
     });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio

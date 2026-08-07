@@ -2976,12 +2976,17 @@ function PanelResultados(p){
     var corrCredito=parseFloat(corr.credito||0);
     var corrOtros=parseFloat(corr.otros||0);
 
-    // Ingreso corregido: si hay corrección reemplaza el valor del cierre, sino usa el original
-    var ingrEfectivo=corrEfectivo>0?corrEfectivo:ventaEfectivo;
-    var ingrTransferencia=corrTransferencia>0?corrTransferencia:ventaTransferencia;
-    var ingrDebito=corrDebito>0?corrDebito:ventaDebito;
-    var ingrCredito=corrCredito>0?corrCredito:ventaCredito;
-    var ingrOtros=corrOtros>0?corrOtros:ventaOtros;
+    // Ingreso corregido: si hay corrección guardada reemplaza el valor del cierre
+    var hasCorrEfectivo=corr.efectivo!==undefined&&corr.efectivo!==null&&corr.efectivo!=="";
+    var hasCorrTransferencia=corr.transferencia!==undefined&&corr.transferencia!==null&&corr.transferencia!=="";
+    var hasCorrDebito=corr.debito!==undefined&&corr.debito!==null&&corr.debito!=="";
+    var hasCorrCredito=corr.credito!==undefined&&corr.credito!==null&&corr.credito!=="";
+    var hasCorrOtros=corr.otros!==undefined&&corr.otros!==null&&corr.otros!=="";
+    var ingrEfectivo=hasCorrEfectivo?corrEfectivo:ventaEfectivo;
+    var ingrTransferencia=hasCorrTransferencia?corrTransferencia:ventaTransferencia;
+    var ingrDebito=hasCorrDebito?corrDebito:ventaDebito;
+    var ingrCredito=hasCorrCredito?corrCredito:ventaCredito;
+    var ingrOtros=hasCorrOtros?corrOtros:ventaOtros;
 
     // Disponibilidad = ingreso corregido − gastos + traspaso
     var dispEfectivo=ingrEfectivo-gastoEfectivo+(traspaso?traspaso.efectivo:0);

@@ -4316,8 +4316,24 @@ async function sbLoadGastos() {
 async function sbSaveGasto(gasto) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/gastos", { method: "POST", headers: h, body: JSON.stringify(gasto) });
-  } catch(e) {}
+    var payload = {
+      id: gasto.id,
+      local: gasto.local,
+      concepto: gasto.concepto,
+      monto: gasto.monto,
+      forma_pago: gasto.forma_pago||"",
+      facturado: gasto.facturado||false,
+      facturacion: gasto.facturacion||"",
+      categoria: gasto.categoria||"",
+      notas: gasto.notas||"",
+      fecha: gasto.fecha,
+      usuario: gasto.usuario,
+      created_at: gasto.created_at,
+      pagos: gasto.pagos||[]
+    };
+    var resp = await fetch(SURL + "/rest/v1/gastos", { method: "POST", headers: h, body: JSON.stringify(payload) });
+    if(!resp.ok){ var err=await resp.text(); console.error("sbSaveGasto error:", err); }
+  } catch(e){ console.error("sbSaveGasto catch:", e); }
 }
 
 async function sbDeleteGasto(id) {

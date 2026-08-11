@@ -3206,6 +3206,257 @@ function PanelResultados(p){
   );
 }
 
+
+// ─── PANEL SUELDOS ────────────────────────────────────────────────────────────
+function PanelSueldos(p){
+  var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
+  var onSaveEmpleado=p.onSaveEmpleado, onDeleteEmpleado=p.onDeleteEmpleado;
+  var onSaveSueldo=p.onSaveSueldo, onDeleteSueldo=p.onDeleteSueldo;
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [tab,setTab]=useState("estado"); // estado | empleados | historial
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [localFiltro,setLocalFiltro]=useState("all");
+  var [showFormEmp,setShowFormEmp]=useState(false);
+  var [showFormSueldo,setShowFormSueldo]=useState(false);
+  var [empEdit,setEmpEdit]=useState(null);
+  var [sueldoEdit,setSueldoEdit]=useState(null);
+  var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true});
+  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
+  var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
+  var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
+  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+  var mesesDisp=[...new Set(sueldos.map(function(s){return s.periodo;}).filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  var empleadosFiltro=localFiltro==="all"?empleados:empleados.filter(function(e){return e.local===localFiltro;});
+  var sueldosMes=sueldos.filter(function(s){return s.periodo===mesFiltro;});
+
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+
+  function doSaveEmp(){
+    if(!formEmp.nombre.trim())return;
+    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,sueldo_base:parseFloat(formEmp.sueldo_base)||0,activo:formEmp.activo,created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    onSaveEmpleado(emp);
+    setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true});
+  }
+  function doSaveSueldo(){
+    if(!formSueldo.empleado_id||!formSueldo.monto)return;
+    var s={id:sueldoEdit?sueldoEdit.id:String(Date.now()),empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:formSueldo.periodo,fecha_pago:formSueldo.fecha_pago,monto:parseFloat(formSueldo.monto)||0,estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:sueldoEdit?sueldoEdit.created_at:new Date().toISOString()};
+    onSaveSueldo(s);
+    setShowFormSueldo(false);setSueldoEdit(null);setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Sueldos</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {tab==="estado"&&<select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+            {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>}
+          <button onClick={function(){setShowFormSueldo(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
+          <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"]].map(function(t){return(
+          <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+        );})}
+        <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+          <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#555":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
+          {localesFiltro.map(function(l){return <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;})}
+        </div>
+      </div>
+
+      {/* TAB ESTADO DEL MES */}
+      {tab==="estado"&&(function(){
+        var empsActivos=empleadosFiltro.filter(function(e){return e.activo!==false;});
+        var totalMes=empsActivos.reduce(function(a,e){return a+parseFloat(e.sueldo_base||0);},0);
+        var pagadoMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+        var pendienteMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&s.estado==="pendiente";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+        return(
+          <div>
+            {/* Resumen */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+              <div style={{background:"#111",border:"1px solid #333",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Total a pagar</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(totalMes)}</div>
+                <div style={{fontSize:9,color:"#444",marginTop:2}}>{empsActivos.length} empleados</div>
+              </div>
+              <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Pagado</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(pagadoMes)}</div>
+              </div>
+              <div style={{background:"#1A1400",border:"1px solid #D4A01744",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Pendiente</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(pendienteMes)}</div>
+              </div>
+            </div>
+            {/* Lista por empleado */}
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {empsActivos.map(function(emp){
+                var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                var pagoEmp=sueldosMes.find(function(s){return s.empleado_id===emp.id;});
+                var est=pagoEmp?ESTADOS_SUELDO.find(function(e){return e[0]===pagoEmp.estado;}):null;
+                return(
+                  <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{emp.nombre}</div>
+                      <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmt(pagoEmp?pagoEmp.monto:emp.sueldo_base)}</div>
+                        <div style={{fontSize:10,color:est?est[2]:"#C1440E",marginTop:2}}>{est?est[1]:"⏳ Sin registrar"}</div>
+                      </div>
+                      <button onClick={function(){
+                        setSueldoEdit(pagoEmp||null);
+                        setFormSueldo({empleado_id:emp.id,empleado_nombre:emp.nombre,local:emp.local,periodo:mesFiltro,fecha_pago:pagoEmp?pagoEmp.fecha_pago:hoy,monto:pagoEmp?String(pagoEmp.monto):String(emp.sueldo_base),estado:pagoEmp?pagoEmp.estado:"pendiente",pagos:pagoEmp?pagoEmp.pagos||[]:[],notas:pagoEmp?pagoEmp.notas:""});
+                        setShowFormSueldo(true);
+                      }} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pagoEmp?"✏️":"+ Pagar"}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TAB EMPLEADOS */}
+      {tab==="empleados"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {empleadosFiltro.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>Sin empleados. Agregá uno con el botón +</div>}
+          {empleadosFiltro.map(function(emp){
+            var loc=LOCALES.find(function(l){return l.id===emp.local;});
+            return(
+              <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:emp.activo!==false?"#F0EDE8":"#444"}}>{emp.nombre}{emp.activo===false&&" (inactivo)"}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · Base: {fmt(emp.sueldo_base)}</div>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,sueldo_base:String(emp.sueldo_base),activo:emp.activo!==false});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){if(window.confirm("¿Eliminar a "+emp.nombre+"?"))onDeleteEmpleado(emp.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TAB HISTORIAL */}
+      {tab==="historial"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){
+            var est=ESTADOS_SUELDO.find(function(e){return e[0]===s.estado;})||ESTADOS_SUELDO[0];
+            var loc=LOCALES.find(function(l){return l.id===s.local;});
+            return(
+              <div key={s.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{s.empleado_nombre}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:s.local} · {s.periodo} · {s.fecha_pago}</div>
+                  {s.notas&&<div style={{fontSize:10,color:"#333",marginTop:2,fontStyle:"italic"}}>📝 {s.notas}</div>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{fmt(s.monto)}</div>
+                    <div style={{fontSize:10,color:est[2],marginTop:2}}>{est[1]}</div>
+                  </div>
+                  <button onClick={function(){if(window.confirm("¿Eliminar este registro?"))onDeleteSueldo(s.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODAL EMPLEADO */}
+      {showFormEmp&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:400,border:"1px solid #2A2A2A"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8",marginBottom:14}}>{empEdit?"Editar":"Nuevo"} empleado</div>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              <input placeholder="Nombre completo" value={formEmp.nombre} onChange={function(e){setFormEmp(function(f){return{...f,nombre:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <select value={formEmp.local} onChange={function(e){setFormEmp(function(f){return{...f,local:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                {localesFiltro.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+              <select value={formEmp.categoria} onChange={function(e){setFormEmp(function(f){return{...f,categoria:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
+              </select>
+              <input type="number" placeholder="Sueldo base" value={formEmp.sueldo_base} onChange={function(e){setFormEmp(function(f){return{...f,sueldo_base:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
+                <input type="checkbox" checked={formEmp.activo} onChange={function(e){setFormEmp(function(f){return{...f,activo:e.target.checked};});}}/>
+                Activo
+              </label>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={doSaveEmp} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SUELDO */}
+      {showFormSueldo&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid #2A2A2A",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8",marginBottom:14}}>Registrar pago de sueldo</div>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              {/* Empleado */}
+              <select value={formSueldo.empleado_id} onChange={function(e){
+                var emp=empleados.find(function(em){return em.id===e.target.value;});
+                setFormSueldo(function(f){return{...f,empleado_id:e.target.value,empleado_nombre:emp?emp.nombre:"",local:emp?emp.local:"l1",monto:emp?String(emp.sueldo_base):f.monto};});
+              }} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                <option value="">-- Seleccioná empleado --</option>
+                {empleados.filter(function(e){return e.activo!==false;}).map(function(emp){
+                  var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                  return <option key={emp.id} value={emp.id}>{emp.nombre} ({loc?loc.nombre:emp.local})</option>;
+                })}
+              </select>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Período</label>
+                  <input type="month" value={formSueldo.periodo} onChange={function(e){setFormSueldo(function(f){return{...f,periodo:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha de pago</label>
+                  <input type="date" value={formSueldo.fecha_pago} onChange={function(e){setFormSueldo(function(f){return{...f,fecha_pago:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto</label>
+                <input type="number" placeholder="Monto a pagar" value={formSueldo.monto} onChange={function(e){setFormSueldo(function(f){return{...f,monto:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Estado</label>
+                <select value={formSueldo.estado} onChange={function(e){setFormSueldo(function(f){return{...f,estado:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%"}}>
+                  {ESTADOS_SUELDO.map(function(e){return <option key={e[0]} value={e[0]}>{e[1]}</option>;})}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
+                <input placeholder="Adelanto, descuento, etc..." value={formSueldo.notas} onChange={function(e){setFormSueldo(function(f){return{...f,notas:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={doSaveSueldo} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              <button onClick={function(){setShowFormSueldo(false);setSueldoEdit(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PANEL IVA ────────────────────────────────────────────────────────────────
 function PanelIVA(p) {
   var gastos=p.gastos, cierres=p.cierres||[];
@@ -4342,6 +4593,41 @@ async function sbDeleteGasto(id) {
   } catch(e) {}
 }
 
+async function sbLoadEmpleados() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/empleados?order=nombre.asc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveEmpleado(emp) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/empleados", { method: "POST", headers: h, body: JSON.stringify(emp) });
+  } catch(e) {}
+}
+async function sbDeleteEmpleado(id) {
+  try {
+    await fetch(SURL + "/rest/v1/empleados?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+async function sbLoadSueldos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/sueldos?order=created_at.desc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveSueldo(sueldo) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/sueldos", { method: "POST", headers: h, body: JSON.stringify(sueldo) });
+  } catch(e) {}
+}
+async function sbDeleteSueldo(id) {
+  try {
+    await fetch(SURL + "/rest/v1/sueldos?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbLoadCorrResultados() {
   try {
     var r = await fetch(SURL + "/rest/v1/correcciones_resultados?select=*", { headers: SH });
@@ -4720,6 +5006,8 @@ export default function App() {
   var [precios,setPrecios]=useState(INIT_PRECIOS);
   var [corrResultados,setCorrResultados]=useState({});
   var [traspasos,setTraspasos]=useState({});
+  var [empleados,setEmpleados]=useState([]);
+  var [sueldos,setSueldos]=useState([]);
 
   useEffect(function(){
     if(!cu)return;
@@ -4751,6 +5039,8 @@ export default function App() {
     sbLoadPrecios().then(function(d){if(d)setPrecios(d);}).catch(function(){});
     sbLoadCorrResultados().then(function(d){setCorrResultados(d);}).catch(function(){});
     sbLoadTraspasos().then(function(d){setTraspasos(d);}).catch(function(){});
+    sbLoadEmpleados().then(function(d){setEmpleados(d||[]);}).catch(function(){});
+    sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -4873,6 +5163,9 @@ export default function App() {
               <button onClick={function(){setVista("resultados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="resultados"?"#8B2FC9":"#1E1E1E"),background:vista==="resultados"?"#8B2FC922":"#111",color:vista==="resultados"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📈 Resultados
               </button>
+              <button onClick={function(){setVista("sueldos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="sueldos"?"#2E7D32":"#1E1E1E"),background:vista==="sueldos"?"#2E7D3222":"#111",color:vista==="sueldos"?"#4CAF50":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                👥 Sueldos
+              </button>
               <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏷️ Categorías
               </button>
@@ -4920,6 +5213,16 @@ export default function App() {
                 sbSaveTraspaso(t);
                 setTraspasos(function(prev){var n={...prev};n[t.local+"_"+t.mes]=t;return n;});
               }}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="sueldos"&&(
+            <PanelSueldos
+              empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
+              onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
+              onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
+            />
           )}
 
           {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(

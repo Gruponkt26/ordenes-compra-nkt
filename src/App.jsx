@@ -1746,24 +1746,275 @@ var AREA_COLORES={
   "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44"
 };
 
+var CONCEPTOS_POR_AREA={
+  "Proveedores":{
+    grupos:["Verdulería","Fiambería","Carnicería","Pescadería","Distribuidora","Bebidas","Hielo","Papelera","Forraje","Condimentos","Empanadas","Varios","Librería","Fumigación","Internet"],
+    items:[
+      {nombre:"La Finca",sub:"Verdulería"},{nombre:"Matías Junior",sub:"Fiambería"},
+      {nombre:"Pergalac",sub:"Fiambería"},{nombre:"La Serenísima",sub:"Fiambería"},
+      {nombre:"Centro de la Carne",sub:"Carnicería"},{nombre:"Damico",sub:"Carnicería"},
+      {nombre:"Le Crevette",sub:"Pescadería"},{nombre:"Depósito Urquiza",sub:"Distribuidora"},
+      {nombre:"Moscoso",sub:"Distribuidora"},{nombre:"Gírgolas de la Granja",sub:"Distribuidora"},
+      {nombre:"Disproal",sub:"Distribuidora"},{nombre:"Coca Cola",sub:"Bebidas"},
+      {nombre:"Conurbano",sub:"Bebidas"},{nombre:"Pepsi",sub:"Bebidas"},
+      {nombre:"Regionales San Juan",sub:"Bebidas"},{nombre:"Hielos Roca",sub:"Hielo"},
+      {nombre:"San Juan",sub:"Papelera"},{nombre:"Maufran",sub:"Papelera"},
+      {nombre:"Forrajes Brown",sub:"Forraje"},{nombre:"La Casa de las Especias",sub:"Condimentos"},
+      {nombre:"Joselito",sub:"Empanadas"},{nombre:"Mauricio Oldani",sub:"Varios"},
+      {nombre:"Matilde",sub:"Librería"},{nombre:"Timi",sub:"Librería"},
+      {nombre:"Patagonika Group",sub:"Fumigación"},{nombre:"PAV",sub:"Internet"},
+      {nombre:"Punta Online",sub:"Internet"},
+    ]
+  },
+  "Mantenimiento":{
+    grupos:["Electricidad","Construcciones","Jardinería","General","Otros"],
+    items:[
+      {nombre:"Tito",sub:"Electricidad"},{nombre:"Daniel",sub:"Construcciones"},
+      {nombre:"Jorge",sub:"Jardinería"},{nombre:"Néstor",sub:"Jardinería"},
+      {nombre:"Lucho",sub:"General"},
+    ]
+  },
+  "Servicios":{
+    grupos:["Energía","Comunicaciones","Alquiler","Seguros","Otros"],
+    items:[
+      {nombre:"Luz",sub:"Energía"},{nombre:"Gas",sub:"Energía"},{nombre:"Agua",sub:"Energía"},
+      {nombre:"Teléfono",sub:"Comunicaciones"},{nombre:"Internet",sub:"Comunicaciones"},
+      {nombre:"Alquiler",sub:"Alquiler"},{nombre:"Seguro",sub:"Seguros"},
+    ]
+  },
+  "Administrativo":{
+    grupos:["Impuestos","Profesionales","Bancos","Otros"],
+    items:[
+      {nombre:"AFIP",sub:"Impuestos"},{nombre:"Ingresos Brutos",sub:"Impuestos"},
+      {nombre:"Municipal",sub:"Impuestos"},{nombre:"Contador",sub:"Profesionales"},
+      {nombre:"Gestoría",sub:"Profesionales"},{nombre:"Banco",sub:"Bancos"},
+    ]
+  },
+  "Marketing":{
+    grupos:["Digital","Impresión","Eventos","Otros"],
+    items:[
+      {nombre:"Redes sociales",sub:"Digital"},{nombre:"Google Ads",sub:"Digital"},
+      {nombre:"Flyers",sub:"Impresión"},{nombre:"Banner",sub:"Impresión"},
+    ]
+  },
+  "Obras":{
+    grupos:["Materiales","Mano de obra","Equipamiento","Otros"],
+    items:[
+      {nombre:"Materiales de construcción",sub:"Materiales"},
+      {nombre:"Pintura",sub:"Materiales"},{nombre:"Herrería",sub:"Mano de obra"},
+      {nombre:"Plomería",sub:"Mano de obra"},{nombre:"Equipamiento",sub:"Equipamiento"},
+    ]
+  },
+};
+
+function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var [showForm,setShowForm]=useState(false);
+  var [editId,setEditId]=useState(null);
+  var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""});
+  var [filtroLocal,setFiltroLocal]=useState("all");
+  var [filtroFecha,setFiltroFecha]=useState("mes");
+  var mesCurrent=hoy.slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  var areaConceptos=CONCEPTOS_POR_AREA[area]||{grupos:[],items:[]};
+  var customItems=conceptosCustom.filter(function(c){return c.area===area&&c.activo!==false;}).map(function(c){return{nombre:c.nombre,sub:c.sub,id:c.id,esCustom:true};});
+  var todosItems=[...areaConceptos.items,...customItems];
+  var todosGrupos=[...new Set([...areaConceptos.grupos,...customItems.map(function(c){return c.sub;})])];
+
+  var filtered=gastos.filter(function(g){
+    var ml=filtroLocal==="all"||g.local===filtroLocal;
+    var mf=true;
+    if(filtroFecha==="mes")mf=g.fecha&&g.fecha.slice(0,7)===mesFiltro;
+    if(filtroFecha==="hoy")mf=g.fecha===hoy;
+    if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(86400000);mf=diff<=7;}
+    return ml&&mf;
+  }).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+
+  var total=filtered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+  function getLocal(id){return LOCALES.find(function(l){return l.id===id;});}
+  function getFact(id){var FACTS=[{id:"f1",razonSocial:"Calzon Gitano SRL",cuit:"30-71844629-1"},{id:"f2",razonSocial:"Colantonio Carlos Nicolas",cuit:"20-26958479-4"}];return FACTS.find(function(f){return f.id===id;});}
+
+  function doSave(){
+    if(!form.concepto.trim()||!form.monto)return;
+    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
+    onSave(g);
+    setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""});
+    setEditId(null);setShowForm(false);
+  }
+  function abrirEditar(g){
+    setEditId(g.id);
+    setForm({local:g.local,concepto:g.concepto,monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
+    setShowForm(true);
+  }
+
+  var enLista=todosItems.find(function(i){return i.nombre===form.concepto;});
+
+  return(
+    <div>
+      {/* Filtros y botón nuevo */}
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        {[["hoy","Hoy"],["semana","7 días"],["mes","Mes"],["all","Todo"]].map(function(opt){return(
+          <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?colorAccent:"#1A1A1A"),background:filtroFecha===opt[0]?colorAccent+"22":"none",color:filtroFecha===opt[0]?colorAccent:"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>
+        );})}
+        {filtroFecha==="mes"&&<select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"3px 8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:colorAccent,fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>}
+        <div style={{width:1,height:16,background:"#222",margin:"0 2px"}}/>
+        {localesFiltro.map(function(l){return(
+          <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+        );})}
+        <button onClick={function(){setShowForm(true);setEditId(null);setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+      </div>
+
+      {/* Total */}
+      <div style={{background:"#111",border:"1px solid "+colorAccent+"33",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total {filtroFecha==="mes"?mesFiltro:filtroFecha==="hoy"?"hoy":"período"}</span>
+        <span style={{fontSize:18,fontWeight:800,color:colorAccent,fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</span>
+      </div>
+
+      {/* Lista */}
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>Sin registros en este período</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {filtered.map(function(g){
+            var loc=getLocal(g.local);
+            var fact=g.facturado&&g.facturacion?getFact(g.facturacion):null;
+            return(
+              <div key={g.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}</div>
+                  {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
+                  {g.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:10}}>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:colorAccent,fontFamily:"'Playfair Display',serif"}}>{fmt(g.monto)}</div>
+                    {g.facturado&&<div style={{fontSize:9,color:"#3A7D44"}}>✅ Fact.</div>}
+                  </div>
+                  <button onClick={function(){abrirEditar(g);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"4px 8px",color:"#555",fontSize:11,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete(g.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,padding:"4px 8px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal formulario */}
+      {showForm&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid "+colorAccent+"44",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:colorAccent}}>{editId?"Editar":"Nuevo"} — {area}</div>
+              <button onClick={function(){setShowForm(false);setEditId(null);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>✕</button>
+            </div>
+
+            {/* Local */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+              <div style={{display:"flex",gap:5}}>
+                {localesFiltro.map(function(l){return(
+                  <button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#2A2A2A"),background:form.local===l.id?l.color+"22":"#0F0F0F",color:form.local===l.id?l.color:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+                );})}
+              </div>
+            </div>
+
+            {/* Concepto */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label>
+              {todosItems.length>0?(
+                <div>
+                  <select value={enLista?form.concepto:"__otro__"} onChange={function(e){if(e.target.value!=="__otro__")setForm(function(f){return{...f,concepto:e.target.value};});else setForm(function(f){return{...f,concepto:""};});}} style={INP}>
+                    <option value="__otro__">-- Escribir manualmente --</option>
+                    {todosGrupos.map(function(grp){
+                      var its=todosItems.filter(function(i){return i.sub===grp;});
+                      if(its.length===0)return null;
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
+                    })}
+                  </select>
+                  {(!form.concepto||!enLista)&&<input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Escribí manualmente..." style={{...INP,marginTop:5}}/>}
+                </div>
+              ):(
+                <input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Descripción..." style={INP}/>
+              )}
+            </div>
+
+            {/* Monto y fecha */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label>
+                <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0" style={INP}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
+                <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+              </div>
+            </div>
+
+            {/* Forma de pago */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label>
+              <select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>
+                {["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"].map(function(fp){return <option key={fp}>{fp}</option>;})}
+              </select>
+            </div>
+
+            {/* Facturado */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
+                <input type="checkbox" checked={form.facturado} onChange={function(e){setForm(function(f){return{...f,facturado:e.target.checked};});}}/>
+                Tiene factura
+              </label>
+              {form.facturado&&(
+                <select value={form.facturacion} onChange={function(e){setForm(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:6}}>
+                  <option value="">-- Seleccioná CUIT --</option>
+                  <option value="f1">Calzon Gitano SRL — 30-71844629-1</option>
+                  <option value="f2">Colantonio Carlos Nicolas — 20-26958479-4</option>
+                </select>
+              )}
+            </div>
+
+            {/* Notas */}
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+              <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={doSave} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
+              <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelEgresos(p){
   var gastos=p.gastos||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
   var areasCustom=p.areasCustom||[], onSaveArea=p.onSaveArea;
-  var hoy=new Date().toISOString().split("T")[0];
   var todasLasAreas=[...AREAS_BASE,...areasCustom];
   var [areaActiva,setAreaActiva]=useState("Proveedores");
   var [showNuevaArea,setShowNuevaArea]=useState(false);
   var [nuevaAreaNombre,setNuevaAreaNombre]=useState("");
-
-  var color=AREA_COLORES[areaActiva]||"#555";
+  var color=AREA_COLORES[areaActiva]||"#888";
 
   function handleAgregarArea(){
     if(!nuevaAreaNombre.trim())return;
     onSaveArea(nuevaAreaNombre.trim());
     setAreaActiva(nuevaAreaNombre.trim());
-    setNuevaAreaNombre("");
-    setShowNuevaArea(false);
+    setNuevaAreaNombre("");setShowNuevaArea(false);
   }
 
   return(
@@ -1773,7 +2024,7 @@ function PanelEgresos(p){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💰 Egresos</div>
       </div>
 
-      {/* Sub-tabs de áreas */}
+      {/* Sub-tabs */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
         {todasLasAreas.map(function(area){
           var col=AREA_COLORES[area]||"#888";
@@ -1800,7 +2051,7 @@ function PanelEgresos(p){
         </div>
       )}
 
-      {/* Contenido del área activa */}
+      {/* Contenido */}
       {areaActiva==="Sueldos"?(
         <PanelSueldos
           empleados={p.empleados||[]} sueldos={p.sueldos||[]} usuario={usuario}
@@ -1808,14 +2059,10 @@ function PanelEgresos(p){
           onSaveSueldo={p.onSaveSueldo} onDeleteSueldo={p.onDeleteSueldo}
         />
       ):(
-        <PanelGastos
-          gastos={gastos.filter(function(g){
-            var areaG=g.area||g.categoria||"Proveedores";
-            return areaG===areaActiva;
-          })}
+        <PanelFormEgreso
+          area={areaActiva}
+          gastos={gastos.filter(function(g){return(g.area||g.categoria||"Proveedores")===areaActiva;})}
           usuario={usuario}
-          areaFija={areaActiva}
-          categoriasCustom={[]}
           conceptosCustom={conceptosCustom}
           onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
           onDelete={onDelete}
@@ -1827,6 +2074,7 @@ function PanelEgresos(p){
     </div>
   );
 }
+
 
 function PanelGastos(p) {
   var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario, categoriasCustom=p.categoriasCustom||[];

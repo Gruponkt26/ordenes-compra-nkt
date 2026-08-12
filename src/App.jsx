@@ -1813,7 +1813,7 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
-  var [form,setForm]=useState({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""});
+  var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("mes");
   var mesCurrent=hoy.slice(0,7);
@@ -1843,14 +1843,14 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
 
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
-    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
+    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
     onSave(g);
-    setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""});
+    setForm({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
     setEditId(g.id);
-    setForm({local:g.local,concepto:g.concepto,monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
+    setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
     setShowForm(true);
   }
 
@@ -1891,7 +1891,7 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               <div key={g.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
-                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
                   {g.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
                 </div>
@@ -1948,6 +1948,12 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               )}
             </div>
 
+            {/* Sub-rama */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Sub-rama (opcional)</label>
+              <input value={form.subramo} onChange={function(e){setForm(function(f){return{...f,subramo:e.target.value};});}} placeholder="Ej: VEP, Plan de pagos, Honorarios..." style={INP}/>
+            </div>
+
             {/* Monto y fecha */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
               <div>
@@ -1960,11 +1966,32 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               </div>
             </div>
 
-            {/* Forma de pago */}
+            {/* Forma de pago con cuenta */}
             <div style={{marginBottom:10}}>
-              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Medio de pago</label>
               <select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>
-                {["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"].map(function(fp){return <option key={fp}>{fp}</option>;})}
+                <optgroup label="── Efectivo ──">
+                  <option value="Efectivo - Bodegón">💵 Efectivo — Bodegón</option>
+                  <option value="Efectivo - Kusama">💵 Efectivo — Kusama</option>
+                  <option value="Efectivo - Colantonio's">💵 Efectivo — Colantonio's</option>
+                </optgroup>
+                <optgroup label="── Transferencia ──">
+                  <option value="Transferencia - Provincia Personas">📲 Provincia Personas</option>
+                  <option value="Transferencia - Mercado Pago Nicolás">📲 Mercado Pago Nicolás</option>
+                  <option value="Transferencia - Galicia Empresas">📲 Galicia Empresas</option>
+                  <option value="Transferencia - Patagonia Empresas">📲 Patagonia Empresas</option>
+                  <option value="Transferencia - Mercado Pago Calzon Gitano">📲 Mercado Pago Calzon Gitano</option>
+                </optgroup>
+                <optgroup label="── Tarjeta ──">
+                  <option value="Débito - Visa Provincia">💳 Débito Visa Provincia</option>
+                  <option value="Débito - Visa Patagonia">💳 Débito Visa Patagonia</option>
+                  <option value="Débito - Mastercard Patagonia">💳 Débito Mastercard Patagonia</option>
+                  <option value="Crédito">💳 Crédito</option>
+                </optgroup>
+                <optgroup label="── Otros ──">
+                  <option value="Cheque">📄 Cheque</option>
+                  <option value="Otro">Otro</option>
+                </optgroup>
               </select>
             </div>
 

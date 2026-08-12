@@ -2189,8 +2189,10 @@ function PanelEgresos(p){
       {areaActiva==="Sueldos"?(
         <PanelSueldos
           empleados={p.empleados||[]} sueldos={p.sueldos||[]} usuario={usuario}
+          cargasSociales={p.cargasSociales||[]}
           onSaveEmpleado={p.onSaveEmpleado} onDeleteEmpleado={p.onDeleteEmpleado}
           onSaveSueldo={p.onSaveSueldo} onDeleteSueldo={p.onDeleteSueldo}
+          onSaveCargaSocial={p.onSaveCargaSocial} onDeleteCargaSocial={p.onDeleteCargaSocial}
         />
       ):areaActiva==="Retiros"?(
         <PanelRetiros retiros={p.retiros||[]} usuario={usuario}
@@ -3858,11 +3860,19 @@ function PanelResultados(p){
 // ─── PANEL SUELDOS ────────────────────────────────────────────────────────────
 function PanelSueldos(p){
   var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
+  var cargasSociales=p.cargasSociales||[], onSaveCargaSocial=p.onSaveCargaSocial, onDeleteCargaSocial=p.onDeleteCargaSocial;
   var onSaveEmpleado=p.onSaveEmpleado, onDeleteEmpleado=p.onDeleteEmpleado;
   var onSaveSueldo=p.onSaveSueldo, onDeleteSueldo=p.onDeleteSueldo;
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=new Date().toISOString().slice(0,7);
-  var [tab,setTab]=useState("estado"); // estado | empleados | historial
+  var [tab,setTab]=useState("estado"); // estado | empleados | historial | cargas
+  var [showFormCarga,setShowFormCarga]=useState(false);
+  var [cargaEdit,setCargaEdit]=useState(null);
+  var CUITS=[
+    {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"Bodegón"},
+    {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"SRL (Kusama + Col.)"},
+  ];
+  var [formCarga,setFormCarga]=useState({cuit:"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [localFiltro,setLocalFiltro]=useState("all");
   var [showFormEmp,setShowFormEmp]=useState(false);
@@ -3913,7 +3923,7 @@ function PanelSueldos(p){
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"]].map(function(t){return(
+        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"],["cargas","🏛️ F.931"]].map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
         <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
@@ -4024,6 +4034,146 @@ function PanelSueldos(p){
           })}
         </div>
       )}
+
+      {/* TAB CARGAS SOCIALES F.931 */}
+      {tab==="cargas"&&(function(){
+        var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+        function totalCarga(c){return (parseFloat(c.seg_social)||0)+(parseFloat(c.obra_social)||0)+(parseFloat(c.art)||0)+(parseFloat(c.seguro_vida)||0);}
+        function doSaveCarga(){
+          var total=totalCarga(formCarga);
+          var obj={id:cargaEdit?cargaEdit.id:String(Date.now()),cuit:formCarga.cuit,periodo:formCarga.periodo,estado:formCarga.estado,total:total,seg_social:parseFloat(formCarga.seg_social)||0,obra_social:parseFloat(formCarga.obra_social)||0,art:parseFloat(formCarga.art)||0,seguro_vida:parseFloat(formCarga.seguro_vida)||0,fecha_pago:formCarga.fecha_pago,notas:formCarga.notas,usuario:usuario,created_at:cargaEdit?cargaEdit.created_at:new Date().toISOString()};
+          if(onSaveCargaSocial)onSaveCargaSocial(obj);
+          setShowFormCarga(false);setCargaEdit(null);
+          setFormCarga({cuit:"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+        }
+        var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+        return(
+          <div>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              <button onClick={function(){setShowFormCarga(true);setCargaEdit(null);setFormCarga({cuit:"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
+            </div>
+
+            {/* Cards por CUIT */}
+            {CUITS.map(function(cuitObj){
+              var registros=cargasSociales.filter(function(c){return c.cuit===cuitObj.id;}).sort(function(a,b){return(b.periodo||"").localeCompare(a.periodo||"");});
+              return(
+                <div key={cuitObj.id} style={{background:"#0F0F0F",border:"1px solid #2A2A2A",borderRadius:12,padding:"14px",marginBottom:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#4CAF50"}}>{cuitObj.label}</div>
+                      <div style={{fontSize:10,color:"#444",marginTop:2}}>CUIT {cuitObj.cuit} · {cuitObj.razon}</div>
+                    </div>
+                  </div>
+                  {registros.length===0?(
+                    <div style={{fontSize:10,color:"#333",textAlign:"center",padding:"10px 0"}}>Sin registros</div>
+                  ):(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {registros.map(function(c){
+                        var est=ESTADOS_SUELDO.find(function(e){return e[0]===c.estado;})||ESTADOS_SUELDO[0];
+                        return(
+                          <div key={c.id} style={{background:"#111",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                              <div>
+                                <div style={{fontSize:11,fontWeight:700,color:"#F0EDE8"}}>{c.periodo}</div>
+                                <div style={{fontSize:10,color:est[2],marginTop:2}}>{est[1]} · {c.fecha_pago}</div>
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <div style={{fontSize:14,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
+                                <button onClick={function(){setCargaEdit(c);setFormCarga({cuit:c.cuit,periodo:c.periodo,estado:c.estado,seg_social:String(c.seg_social),obra_social:String(c.obra_social),art:String(c.art),seguro_vida:String(c.seguro_vida),fecha_pago:c.fecha_pago,notas:c.notas||""});setShowFormCarga(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:10,cursor:"pointer"}}>✏️</button>
+                                <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
+                              </div>
+                            </div>
+                            {/* Desglose */}
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                              {[["seg_social","Seg. Social",c.seg_social],["obra_social","Obra Social",c.obra_social],["art","ART",c.art],["seguro_vida","Seguro de Vida",c.seguro_vida]].map(function(f){
+                                if(!f[2]||f[2]===0)return null;
+                                return <div key={f[0]} style={{fontSize:10,color:"#555"}}>{f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[2])}</span></div>;
+                              })}
+                            </div>
+                            {c.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:5}}>📝 {c.notas}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Modal formulario */}
+            {showFormCarga&&(
+              <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid #4CAF5044",maxHeight:"90vh",overflowY:"auto"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#4CAF50"}}>🏛️ F.931 — Cargas Sociales</div>
+                    <button onClick={function(){setShowFormCarga(false);setCargaEdit(null);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>✕</button>
+                  </div>
+
+                  {/* CUIT */}
+                  <div style={{marginBottom:10}}>
+                    <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>CUIT</label>
+                    <div style={{display:"flex",gap:6}}>
+                      {CUITS.map(function(cuitObj){return(
+                        <button key={cuitObj.id} onClick={function(){setFormCarga(function(f){return{...f,cuit:cuitObj.id};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formCarga.cuit===cuitObj.id?"#4CAF50":"#2A2A2A"),background:formCarga.cuit===cuitObj.id?"#4CAF5022":"#0F0F0F",color:formCarga.cuit===cuitObj.id?"#4CAF50":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{cuitObj.label}</button>
+                      );})}
+                    </div>
+                    <div style={{fontSize:9,color:"#444",marginTop:4}}>CUIT: {CUITS.find(function(c){return c.id===formCarga.cuit;})?.cuit}</div>
+                  </div>
+
+                  {/* Período y fecha */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                    <div>
+                      <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Período</label>
+                      <input type="month" value={formCarga.periodo} onChange={function(e){setFormCarga(function(f){return{...f,periodo:e.target.value};});}} style={INP}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha de pago</label>
+                      <input type="date" value={formCarga.fecha_pago} onChange={function(e){setFormCarga(function(f){return{...f,fecha_pago:e.target.value};});}} style={INP}/>
+                    </div>
+                  </div>
+
+                  {/* Estado */}
+                  <div style={{marginBottom:10}}>
+                    <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Estado</label>
+                    <select value={formCarga.estado} onChange={function(e){setFormCarga(function(f){return{...f,estado:e.target.value};});}} style={INP}>
+                      {ESTADOS_SUELDO.map(function(e){return <option key={e[0]} value={e[0]}>{e[1]}</option>;})}
+                    </select>
+                  </div>
+
+                  {/* Desglose */}
+                  <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:10}}>
+                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Desglose</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {[["seg_social","Aportes y Contrib. Seg. Social"],["obra_social","Obra Social"],["art","ART"],["seguro_vida","Seguro de Vida"]].map(function(f){return(
+                        <div key={f[0]}>
+                          <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>{f[1]}</label>
+                          <input type="number" placeholder="0" value={formCarga[f[0]]} onChange={function(e){var v=e.target.value;setFormCarga(function(fm){return{...fm,[f[0]]:v};});}} style={INP}/>
+                        </div>
+                      );})}
+                    </div>
+                    {/* Total calculado */}
+                    <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:8,borderTop:"1px solid #1A1A1A"}}>
+                      <span style={{fontSize:11,color:"#555"}}>Total</span>
+                      <span style={{fontSize:15,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totalCarga(formCarga))}</span>
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  <div style={{marginBottom:14}}>
+                    <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+                    <input value={formCarga.notas} onChange={function(e){setFormCarga(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+                  </div>
+
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={doSaveCarga} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
+                    <button onClick={function(){setShowFormCarga(false);setCargaEdit(null);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* MODAL EMPLEADO */}
       {showFormEmp&&(
@@ -5294,6 +5444,24 @@ async function sbDeleteSueldo(id) {
   } catch(e) {}
 }
 
+async function sbLoadCargasSociales() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/cargas_sociales?order=created_at.desc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveCargaSocial(c) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/cargas_sociales", { method: "POST", headers: h, body: JSON.stringify(c) });
+  } catch(e) {}
+}
+async function sbDeleteCargaSocial(id) {
+  try {
+    await fetch(SURL + "/rest/v1/cargas_sociales?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbLoadCorrResultados() {
   try {
     var r = await fetch(SURL + "/rest/v1/correcciones_resultados?select=*", { headers: SH });
@@ -5674,6 +5842,7 @@ export default function App() {
   var [traspasos,setTraspasos]=useState({});
   var [empleados,setEmpleados]=useState([]);
   var [sueldos,setSueldos]=useState([]);
+  var [cargasSociales,setCargasSociales]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -5709,6 +5878,7 @@ export default function App() {
     sbLoadTraspasos().then(function(d){setTraspasos(d);}).catch(function(){});
     sbLoadEmpleados().then(function(d){setEmpleados(d||[]);}).catch(function(){});
     sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
+    sbLoadCargasSociales().then(function(d){setCargasSociales(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   },[cu]);
 
@@ -5848,8 +6018,11 @@ export default function App() {
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}
               retiros={retiros}
+              cargasSociales={cargasSociales}
               onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
               onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
+              onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+              onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}

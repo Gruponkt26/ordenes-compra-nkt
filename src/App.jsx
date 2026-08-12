@@ -1783,11 +1783,17 @@ var CONCEPTOS_POR_AREA={
     ]
   },
   "Administrativo":{
-    grupos:["Impuestos","Profesionales","Bancos","Otros"],
+    grupos:["AFIP","ARBA","Municipal","Profesionales","Bancos","Otros"],
     items:[
-      {nombre:"AFIP",sub:"Impuestos"},{nombre:"Ingresos Brutos",sub:"Impuestos"},
-      {nombre:"Municipal",sub:"Impuestos"},{nombre:"Contador",sub:"Profesionales"},
-      {nombre:"Gestoría",sub:"Profesionales"},{nombre:"Banco",sub:"Bancos"},
+      {nombre:"VEP",sub:"AFIP"},{nombre:"Plan de pagos",sub:"AFIP"},
+      {nombre:"Retenciones",sub:"AFIP"},{nombre:"Monotributo",sub:"AFIP"},
+      {nombre:"VEP",sub:"ARBA"},{nombre:"Plan de pagos",sub:"ARBA"},
+      {nombre:"Retenciones",sub:"ARBA"},
+      {nombre:"Tasa comercial",sub:"Municipal"},{nombre:"Plan de pagos",sub:"Municipal"},
+      {nombre:"Habilitación",sub:"Municipal"},
+      {nombre:"Contador",sub:"Profesionales"},{nombre:"Gestoría",sub:"Profesionales"},
+      {nombre:"Honorarios",sub:"Profesionales"},
+      {nombre:"Banco",sub:"Bancos"},{nombre:"Comisión bancaria",sub:"Bancos"},
     ]
   },
   "Marketing":{
@@ -1809,7 +1815,7 @@ var CONCEPTOS_POR_AREA={
 
 function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent}){
   var hoy=new Date().toISOString().split("T")[0];
-  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+  var localesFiltro=LOCALES; // incluye Oficina (l4)
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
@@ -2147,6 +2153,7 @@ function PanelGastos(p) {
     {local:"l1",tipo:"Efectivo",cuenta:"Efectivo El Bodegón Nkt"},
     {local:"l2",tipo:"Efectivo",cuenta:"Efectivo Kusama"},
     {local:"l3",tipo:"Efectivo",cuenta:"Efectivo Colantonio's"},
+    {local:"l4",tipo:"Efectivo",cuenta:"Efectivo Oficina"},
     {local:"l1",tipo:"Transferencia",cuenta:"Provincia Personas"},
     {local:"l1",tipo:"Transferencia",cuenta:"Mercado Pago Nicolás"},
     {local:"l2",tipo:"Transferencia",cuenta:"Galicia Empresas"},

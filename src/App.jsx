@@ -1740,10 +1740,11 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
-  "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44"
+  "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
+  "Retiros":"#8B4513"
 };
 
 var CONCEPTOS_POR_AREA={
@@ -2190,6 +2191,10 @@ function PanelEgresos(p){
           empleados={p.empleados||[]} sueldos={p.sueldos||[]} usuario={usuario}
           onSaveEmpleado={p.onSaveEmpleado} onDeleteEmpleado={p.onDeleteEmpleado}
           onSaveSueldo={p.onSaveSueldo} onDeleteSueldo={p.onDeleteSueldo}
+        />
+      ):areaActiva==="Retiros"?(
+        <PanelRetiros retiros={p.retiros||[]} usuario={usuario}
+          onSave={p.onSaveRetiro} onDelete={p.onDeleteRetiro}
         />
       ):(
         <PanelFormEgreso
@@ -5812,9 +5817,7 @@ export default function App() {
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
               </button>
-              <button onClick={function(){setVista("retiros");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="retiros"?"#8B2FC9":"#1E1E1E"),background:vista==="retiros"?"#8B2FC922":"#111",color:vista==="retiros"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                💼 Retiros
-              </button>
+
               <button onClick={function(){setVista("cierres");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cierres"?"#C1440E":"#1E1E1E"),background:vista==="cierres"?"#C1440E22":"#111",color:vista==="cierres"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏪 Cierres
               </button>
@@ -5844,6 +5847,9 @@ export default function App() {
               conceptosCustom={conceptosGastos}
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}
+              retiros={retiros}
+              onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
+              onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}

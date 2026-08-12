@@ -2108,46 +2108,44 @@ function PanelEgresos(p){
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
 
-                {/* Gastos — una fila por área, expandible al detalle */}
-                {gl.length>0&&(function(){
-                  var gkey=l.id+"_gastos";
+                {/* Un bloque por cada área/tab */}
+                {[...AREAS_BASE.filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
+                  var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
+                  if(items.length===0)return null;
+                  var gkey=l.id+"_area_"+area;
                   var abierto=expandidoGrid===gkey;
+                  var totArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+                  var color=AREA_COLORES[area]||"#1A6B8A";
+                  // Agrupar por concepto (sumar repetidos)
+                  var porConcepto={};
+                  items.forEach(function(g){
+                    var k=g.concepto+(g.subramo?"|"+g.subramo:"");
+                    if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0};
+                    porConcepto[k].total+=parseFloat(g.monto||0);
+                  });
                   return(
-                    <div style={{marginBottom:6}}>
+                    <div key={area} style={{marginBottom:5}}>
                       <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontSize:8,color:"#1A6B8A",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
-                          <span style={{fontSize:11,fontWeight:700,color:"#1A6B8A"}}>💰 Gastos</span>
-                          <span style={{fontSize:9,color:"#444"}}>({gl.length})</span>
+                          <span style={{fontSize:8,color:color,transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:color}}>{area}</span>
+                          <span style={{fontSize:9,color:"#444"}}>({items.length})</span>
                         </div>
-                        <span style={{fontSize:12,fontWeight:800,color:"#1A6B8A",fontFamily:"'Playfair Display',serif"}}>{fmt(totG)}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:color,fontFamily:"'Playfair Display',serif"}}>{fmt(totArea)}</span>
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {Object.keys(porArea).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){
-                            var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
-                            var akey=l.id+"_area_"+area;
-                            var abiertoA=expandidoGrid===akey;
-                            return(
-                              <div key={area} style={{marginBottom:4}}>
-                                <div onClick={function(e){e.stopPropagation();setExpandidoGrid(function(prev){return prev===akey?gkey:akey;});}} style={{display:"flex",justifyContent:"space-between",cursor:"pointer",padding:"3px 0",borderBottom:"1px solid #111"}}>
-                                  <span style={{fontSize:10,color:AREA_COLORES[area]||"#555"}}>{area}</span>
-                                  <span style={{fontSize:10,color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>
-                                </div>
-                                {abiertoA&&items.map(function(g){return(
-                                  <div key={g.id} style={{display:"flex",justifyContent:"space-between",padding:"2px 8px",fontSize:9,color:"#555"}}>
-                                    <span>{g.concepto}{g.subramo?" · "+g.subramo:""}</span>
-                                    <span style={{color:"#888"}}>{fmt(g.monto)}</span>
-                                  </div>
-                                );})}
-                              </div>
-                            );
-                          })}
+                          {Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){return(
+                            <div key={c.concepto+(c.subramo||"")} style={{display:"flex",justifyContent:"space-between",padding:"3px 4px",fontSize:10,borderBottom:"1px solid #0F0F0F"}}>
+                              <span style={{color:"#888"}}>{c.concepto}{c.subramo?" · "+c.subramo:""}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(c.total)}</span>
+                            </div>
+                          );})}
                         </div>
                       )}
                     </div>
                   );
-                })()}
+                })}
 
                 {/* Sueldos — una fila con total, expandible al detalle */}
                 {sl.length>0&&(function(){

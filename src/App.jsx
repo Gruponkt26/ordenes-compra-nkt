@@ -1740,6 +1740,28 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 function PanelGastos(p) {
   var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario, categoriasCustom=p.categoriasCustom||[];
+  var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
+  var [showEditorConceptos,setShowEditorConceptos]=useState(false);
+  var [areaEditorSel,setAreaEditorSel]=useState("Proveedores");
+  var [nuevoConcepto,setNuevoConcepto]=useState({nombre:"",sub:""});
+
+  // Merge conceptos predefinidos + custom por área
+  function getItemsArea(area){
+    var base=(AREAS_GASTOS[area]?AREAS_GASTOS[area].items:[]).filter(function(i){return i.activo!==false;});
+    var custom=conceptosCustom.filter(function(c){return c.area===area&&c.activo!==false;}).map(function(c){return{nombre:c.nombre,sub:c.sub,id:c.id,esCustom:true};});
+    return [...base,...custom];
+  }
+  function getGruposArea(area){
+    var base=AREAS_GASTOS[area]?AREAS_GASTOS[area].grupos:[];
+    var customSubs=[...new Set(conceptosCustom.filter(function(c){return c.area===area;}).map(function(c){return c.sub;}))];
+    return [...new Set([...base,...customSubs])];
+  }
+  function doAgregarConcepto(){
+    if(!nuevoConcepto.nombre.trim()||!nuevoConcepto.sub.trim())return;
+    var c={id:String(Date.now()),area:areaEditorSel,sub:nuevoConcepto.sub.trim(),nombre:nuevoConcepto.nombre.trim(),activo:true,created_at:new Date().toISOString()};
+    if(onSaveConcepto)onSaveConcepto(c);
+    setNuevoConcepto({nombre:"",sub:""});
+  }
   var hoy=new Date().toISOString().split("T")[0];
   var [showForm,setShowForm]=useState(false);
   var [showExportar,setShowExportar]=useState(false);
@@ -1770,6 +1792,83 @@ function PanelGastos(p) {
   function totalPagos(){return pagos.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
   function pagosCuadran(){return !form.monto||Math.abs(totalPagos()-parseFloat(form.monto||0))<0.01;}
   var FORMAS_PAGO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  var AREAS_GASTOS={
+    "Proveedores":{
+      grupos:["Verdulería","Fiambería","Carnicería","Pescadería","Distribuidora","Bebidas","Hielo","Papelera","Forraje","Condimentos","Empanadas","Varios","Librería","Fumigación","Internet"],
+      items:[
+        {nombre:"La Finca",sub:"Verdulería"},
+        {nombre:"Matías Junior",sub:"Fiambería"},
+        {nombre:"Pergalac",sub:"Fiambería"},
+        {nombre:"La Serenísima",sub:"Fiambería"},
+        {nombre:"Centro de la Carne",sub:"Carnicería"},
+        {nombre:"Damico",sub:"Carnicería"},
+        {nombre:"Le Crevette",sub:"Pescadería"},
+        {nombre:"Depósito Urquiza",sub:"Distribuidora"},
+        {nombre:"Moscoso",sub:"Distribuidora"},
+        {nombre:"Gírgolas de la Granja",sub:"Distribuidora"},
+        {nombre:"Disproal",sub:"Distribuidora"},
+        {nombre:"Coca Cola",sub:"Bebidas"},
+        {nombre:"Conurbano",sub:"Bebidas"},
+        {nombre:"Pepsi",sub:"Bebidas"},
+        {nombre:"Regionales San Juan",sub:"Bebidas"},
+        {nombre:"Hielos Roca",sub:"Hielo"},
+        {nombre:"San Juan",sub:"Papelera"},
+        {nombre:"Maufran",sub:"Papelera"},
+        {nombre:"Forrajes Brown",sub:"Forraje"},
+        {nombre:"La Casa de las Especias",sub:"Condimentos"},
+        {nombre:"Joselito",sub:"Empanadas"},
+        {nombre:"Mauricio Oldani",sub:"Varios"},
+        {nombre:"Matilde",sub:"Librería"},
+        {nombre:"Timi",sub:"Librería"},
+        {nombre:"Patagonika Group",sub:"Fumigación"},
+        {nombre:"PAV",sub:"Internet"},
+        {nombre:"Punta Online",sub:"Internet"},
+      ]
+    },
+    "Mantenimiento":{
+      grupos:["Electricidad","Construcciones","Jardinería","General","Otros"],
+      items:[
+        {nombre:"Tito",sub:"Electricidad"},
+        {nombre:"Daniel",sub:"Construcciones"},
+        {nombre:"Jorge",sub:"Jardinería"},
+        {nombre:"Néstor",sub:"Jardinería"},
+        {nombre:"Lucho",sub:"General"},
+      ]
+    },
+    "Servicios":{
+      grupos:["Energía","Comunicaciones","Alquiler","Seguros","Otros"],
+      items:[
+        {nombre:"Luz",sub:"Energía"},
+        {nombre:"Gas",sub:"Energía"},
+        {nombre:"Agua",sub:"Energía"},
+        {nombre:"Teléfono",sub:"Comunicaciones"},
+        {nombre:"Internet",sub:"Comunicaciones"},
+        {nombre:"Alquiler",sub:"Alquiler"},
+        {nombre:"Seguro",sub:"Seguros"},
+      ]
+    },
+    "Administrativo":{
+      grupos:["Impuestos","Profesionales","Bancos","Otros"],
+      items:[
+        {nombre:"AFIP",sub:"Impuestos"},
+        {nombre:"Ingresos Brutos",sub:"Impuestos"},
+        {nombre:"Municipal",sub:"Impuestos"},
+        {nombre:"Contador",sub:"Profesionales"},
+        {nombre:"Gestoría",sub:"Profesionales"},
+        {nombre:"Banco",sub:"Bancos"},
+      ]
+    },
+    "Personal":{
+      grupos:["Sueldos","Adelantos","Viáticos","Otros"],
+      items:[
+        {nombre:"Adelanto de sueldo",sub:"Adelantos"},
+        {nombre:"Viático",sub:"Viáticos"},
+        {nombre:"Uniforme",sub:"Otros"},
+      ]
+    },
+  };
+  // compatibilidad legacy
+  var PROVEEDORES_GASTOS=(AREAS_GASTOS["Proveedores"].items||[]).map(function(i){return{nombre:i.nombre,area:i.sub};});
   var SUBFORMAS={
     "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
     "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
@@ -1838,7 +1937,32 @@ function PanelGastos(p) {
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:9,marginBottom:12}}>
-            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label><input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Ej: Verdulería, Carnicería..." style={INP}/></div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label>
+              {AREAS_GASTOS[form.categoria]?(function(){
+                var items=getItemsArea(form.categoria);
+                var grupos=getGruposArea(form.categoria);
+                var enLista=items.find(function(i){return i.nombre===form.concepto;});
+                return(
+                  <div>
+                    <div style={{display:"flex",gap:6,marginBottom:5}}>
+                      <select value={enLista?form.concepto:"__otro__"} onChange={function(e){if(e.target.value!=="__otro__")setForm(function(f){return{...f,concepto:e.target.value};});else setForm(function(f){return{...f,concepto:""};});}} style={{...INP,flex:1}}>
+                        <option value="__otro__">-- Escribir manualmente --</option>
+                        {grupos.map(function(grp){
+                          var its=items.filter(function(i){return i.sub===grp;});
+                          if(its.length===0)return null;
+                          return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
+                        })}
+                      </select>
+                      <button onClick={function(){setAreaEditorSel(form.categoria);setShowEditorConceptos(true);}} style={{padding:"0 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#555",fontSize:11,cursor:"pointer",flexShrink:0}} title="Editar lista">✏️</button>
+                    </div>
+                    {(!form.concepto||!enLista)&&<input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder={"Escribí el concepto..."} style={{...INP}}/>}
+                  </div>
+                );
+              })():(
+                <input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Descripción del gasto..." style={INP}/>
+              )}
+            </div>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label><input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={INP}/></div>
           </div>
           {/* Pagos múltiples */}
@@ -1887,11 +2011,16 @@ function PanelGastos(p) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
-              <select value={CATEGORIAS.includes(form.categoria)?form.categoria:"__otro__"} onChange={function(e){if(e.target.value==="__otro__"){setForm(function(f){return{...f,categoria:""};});}else{setForm(function(f){return{...f,categoria:e.target.value};});}}} style={INP}>
-                {CATEGORIAS.map(function(c){return <option key={c} value={c}>{c}</option>;})}
-                <option value="__otro__">+ Escribir otra...</option>
+              <select value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value,concepto:""};});}} style={INP}>
+                <optgroup label="── Áreas principales ──">
+                  {["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                </optgroup>
+                <optgroup label="── Otras ──">
+                  {CATEGORIAS.filter(function(c){return!["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].includes(c);}).map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                  <option value="__otra__">+ Escribir otra...</option>
+                </optgroup>
               </select>
-              {!CATEGORIAS.includes(form.categoria)&&<input value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} placeholder="Escribí la categoría..." style={{...INP,marginTop:5}}/>}
+              {form.categoria==="__otra__"&&<input value={""} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} placeholder="Escribí la categoría..." style={{...INP,marginTop:5}}/>}
             </div>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
           </div>
@@ -1916,6 +2045,46 @@ function PanelGastos(p) {
           </div>
         </div>
       )}
+      {/* Modal editor de conceptos */}
+      {showEditorConceptos&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid #2A2A2A",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>✏️ Editar conceptos</div>
+              <button onClick={function(){setShowEditorConceptos(false);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>✕</button>
+            </div>
+            {/* Selector de área */}
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
+              {Object.keys(AREAS_GASTOS).map(function(a){return(
+                <button key={a} onClick={function(){setAreaEditorSel(a);setNuevoConcepto({nombre:"",sub:""}); }} style={{padding:"5px 10px",borderRadius:7,border:"1px solid "+(areaEditorSel===a?"#1A6B8A":"#2A2A2A"),background:areaEditorSel===a?"#1A6B8A22":"none",color:areaEditorSel===a?"#1A6B8A":"#555",fontSize:11,cursor:"pointer"}}>{a}</button>
+              );})}
+            </div>
+            {/* Lista de items del área */}
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:12}}>
+              {getItemsArea(areaEditorSel).map(function(item){return(
+                <div key={item.nombre+(item.id||"")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#0F0F0F",borderRadius:7,padding:"7px 10px"}}>
+                  <div>
+                    <span style={{fontSize:12,color:"#F0EDE8"}}>{item.nombre}</span>
+                    <span style={{fontSize:10,color:"#555",marginLeft:6}}>{item.sub}</span>
+                    {item.esCustom&&<span style={{fontSize:9,color:"#D4A017",marginLeft:6}}>custom</span>}
+                  </div>
+                  {item.esCustom&&item.id&&<button onClick={function(){if(window.confirm("¿Eliminar "+item.nombre+"?"))onDeleteConcepto(item.id);}} style={{background:"none",border:"none",color:"#C1440E",fontSize:12,cursor:"pointer"}}>🗑️</button>}
+                </div>
+              );})}
+            </div>
+            {/* Agregar nuevo */}
+            <div style={{borderTop:"1px solid #1A1A1A",paddingTop:12}}>
+              <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:8}}>Agregar nuevo</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:7}}>
+                <input placeholder="Nombre" value={nuevoConcepto.nombre} onChange={function(e){setNuevoConcepto(function(n){return{...n,nombre:e.target.value};});}} style={{padding:"8px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                <input placeholder="Subcategoría" value={nuevoConcepto.sub} onChange={function(e){setNuevoConcepto(function(n){return{...n,sub:e.target.value};});}} style={{padding:"8px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+              </div>
+              <button onClick={doAgregarConcepto} style={{width:"100%",padding:"9px",borderRadius:7,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:16}}>
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Total período</div><div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#1A6B8A"}}>${totalFiltered.toLocaleString("es-AR")}</div><div style={{fontSize:10,color:"#444",marginTop:3}}>{filtered.length} gastos</div></div>
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}><div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",marginBottom:4}}>Facturado</div><div style={{fontSize:16,fontWeight:800,color:"#3A7D44"}}>${totalFact.toLocaleString("es-AR")}</div><div style={{fontSize:10,color:"#C1440E",marginTop:3}}>Sin factura: ${totalNoFact.toLocaleString("es-AR")}</div></div>
@@ -4593,6 +4762,24 @@ async function sbDeleteGasto(id) {
   } catch(e) {}
 }
 
+async function sbLoadConceptosGastos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/conceptos_gastos?order=area.asc,nombre.asc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveConcepto(c) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/conceptos_gastos", { method: "POST", headers: h, body: JSON.stringify(c) });
+  } catch(e) {}
+}
+async function sbDeleteConcepto(id) {
+  try {
+    await fetch(SURL + "/rest/v1/conceptos_gastos?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbLoadEmpleados() {
   try {
     var r = await fetch(SURL + "/rest/v1/empleados?order=nombre.asc", { headers: SH });
@@ -5008,6 +5195,7 @@ export default function App() {
   var [traspasos,setTraspasos]=useState({});
   var [empleados,setEmpleados]=useState([]);
   var [sueldos,setSueldos]=useState([]);
+  var [conceptosGastos,setConceptosGastos]=useState([]);
 
   useEffect(function(){
     if(!cu)return;
@@ -5041,6 +5229,7 @@ export default function App() {
     sbLoadTraspasos().then(function(d){setTraspasos(d);}).catch(function(){});
     sbLoadEmpleados().then(function(d){setEmpleados(d||[]);}).catch(function(){});
     sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
+    sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   },[cu]);
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
@@ -5179,8 +5368,11 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="gastos"&&(
             <PanelGastos gastos={gastos} usuario={cu.nombre} categoriasCustom={categoriasGastos}
+              conceptosCustom={conceptosGastos}
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
+              onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+              onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}
             />
           )}
 

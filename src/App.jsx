@@ -1801,18 +1801,29 @@ function PanelEgresos(p){
       )}
 
       {/* Contenido del área activa */}
-      <PanelGastos
-        gastos={gastos.filter(function(g){return(g.area||g.categoria||"Proveedores")===areaActiva;})}
-        usuario={usuario}
-        areaFija={areaActiva}
-        categoriasCustom={[]}
-        conceptosCustom={conceptosCustom}
-        onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
-        onDelete={onDelete}
-        onSaveConcepto={onSaveConcepto}
-        onDeleteConcepto={onDeleteConcepto}
-        colorAccent={color}
-      />
+      {areaActiva==="Sueldos"?(
+        <PanelSueldos
+          empleados={p.empleados||[]} sueldos={p.sueldos||[]} usuario={usuario}
+          onSaveEmpleado={p.onSaveEmpleado} onDeleteEmpleado={p.onDeleteEmpleado}
+          onSaveSueldo={p.onSaveSueldo} onDeleteSueldo={p.onDeleteSueldo}
+        />
+      ):(
+        <PanelGastos
+          gastos={gastos.filter(function(g){
+            var areaG=g.area||g.categoria||"Proveedores";
+            return areaG===areaActiva;
+          })}
+          usuario={usuario}
+          areaFija={areaActiva}
+          categoriasCustom={[]}
+          conceptosCustom={conceptosCustom}
+          onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
+          onDelete={onDelete}
+          onSaveConcepto={onSaveConcepto}
+          onDeleteConcepto={onDeleteConcepto}
+          colorAccent={color}
+        />
+      )}
     </div>
   );
 }
@@ -5434,9 +5445,7 @@ export default function App() {
               <button onClick={function(){setVista("resultados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="resultados"?"#8B2FC9":"#1E1E1E"),background:vista==="resultados"?"#8B2FC922":"#111",color:vista==="resultados"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📈 Resultados
               </button>
-              <button onClick={function(){setVista("sueldos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="sueldos"?"#2E7D32":"#1E1E1E"),background:vista==="sueldos"?"#2E7D3222":"#111",color:vista==="sueldos"?"#4CAF50":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                👥 Sueldos
-              </button>
+
               <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 🏷️ Categorías
               </button>
@@ -5452,6 +5461,11 @@ export default function App() {
             <PanelEgresos gastos={gastos} usuario={cu.nombre}
               conceptosCustom={conceptosGastos}
               areasCustom={areasCustomGastos}
+              empleados={empleados} sueldos={sueldos}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
+              onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
+              onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}

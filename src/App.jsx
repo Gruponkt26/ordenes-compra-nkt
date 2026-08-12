@@ -2108,78 +2108,106 @@ function PanelEgresos(p){
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
 
-                {/* Gastos operativos */}
-                {gl.length>0&&(
-                  <div style={{marginBottom:8}}>
-                    <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>💰 Gastos</div>
-                    {gl.map(function(g){
-                      var gkey=l.id+"_eg_"+g.id;
-                      var abierto=expandidoGrid===gkey;
-                      var aColor=AREA_COLORES[g.area||g.categoria]||"#555";
-                      return(
-                        <div key={g.id}>
-                          <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 2px",borderBottom:"1px solid #141414",cursor:"pointer"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}>
-                              <span style={{fontSize:8,color:"#444",transform:abierto?"rotate(90deg)":"none",display:"inline-block",flexShrink:0}}>▶</span>
-                              <span style={{fontSize:10,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</span>
-                            </div>
-                            <span style={{fontSize:10,fontWeight:700,color:aColor,flexShrink:0,marginLeft:4}}>{fmt(g.monto)}</span>
-                          </div>
-                          {abierto&&(
-                            <div style={{background:"#080808",borderRadius:5,padding:"5px 7px",margin:"2px 0"}}>
-                              <div style={{fontSize:9,color:"#555"}}>{g.fecha} · {g.area||g.categoria}</div>
-                              {g.forma_pago&&<div style={{fontSize:9,color:"#444"}}>{g.forma_pago}</div>}
-                              {g.subramo&&<div style={{fontSize:9,color:"#666"}}>{g.subramo}</div>}
-                              {g.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic"}}>📝 {g.notas}</div>}
-                            </div>
-                          )}
+                {/* Gastos — una fila por área, expandible al detalle */}
+                {gl.length>0&&(function(){
+                  var gkey=l.id+"_gastos";
+                  var abierto=expandidoGrid===gkey;
+                  return(
+                    <div style={{marginBottom:6}}>
+                      <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:8,color:"#1A6B8A",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#1A6B8A"}}>💰 Gastos</span>
+                          <span style={{fontSize:9,color:"#444"}}>({gl.length})</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <span style={{fontSize:12,fontWeight:800,color:"#1A6B8A",fontFamily:"'Playfair Display',serif"}}>{fmt(totG)}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {Object.keys(porArea).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){
+                            var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
+                            var akey=l.id+"_area_"+area;
+                            var abiertoA=expandidoGrid===akey;
+                            return(
+                              <div key={area} style={{marginBottom:4}}>
+                                <div onClick={function(e){e.stopPropagation();setExpandidoGrid(function(prev){return prev===akey?gkey:akey;});}} style={{display:"flex",justifyContent:"space-between",cursor:"pointer",padding:"3px 0",borderBottom:"1px solid #111"}}>
+                                  <span style={{fontSize:10,color:AREA_COLORES[area]||"#555"}}>{area}</span>
+                                  <span style={{fontSize:10,color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>
+                                </div>
+                                {abiertoA&&items.map(function(g){return(
+                                  <div key={g.id} style={{display:"flex",justifyContent:"space-between",padding:"2px 8px",fontSize:9,color:"#555"}}>
+                                    <span>{g.concepto}{g.subramo?" · "+g.subramo:""}</span>
+                                    <span style={{color:"#888"}}>{fmt(g.monto)}</span>
+                                  </div>
+                                );})}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {/* Sueldos */}
-                {sl.length>0&&(
-                  <div style={{marginBottom:8}}>
-                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>👥 Sueldos</div>
-                    {sl.map(function(s){
-                      var gkey=l.id+"_sl_"+s.id;
-                      var abierto=expandidoGrid===gkey;
-                      var est=s.estado==="pagado"?"✅":"⏳";
-                      return(
-                        <div key={s.id}>
-                          <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 2px",borderBottom:"1px solid #141414",cursor:"pointer"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:0}}>
-                              <span style={{fontSize:8,color:"#444",transform:abierto?"rotate(90deg)":"none",display:"inline-block",flexShrink:0}}>▶</span>
-                              <span style={{fontSize:10,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.empleado_nombre}</span>
-                            </div>
-                            <span style={{fontSize:10,fontWeight:700,color:"#4CAF50",flexShrink:0,marginLeft:4}}>{est} {fmt(s.monto)}</span>
-                          </div>
-                          {abierto&&<div style={{background:"#080808",borderRadius:5,padding:"5px 7px",margin:"2px 0"}}>
-                            <div style={{fontSize:9,color:"#555"}}>{s.fecha_pago} · {s.periodo}</div>
-                            {s.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic"}}>📝 {s.notas}</div>}
-                          </div>}
+                {/* Sueldos — una fila con total, expandible al detalle */}
+                {sl.length>0&&(function(){
+                  var gkey=l.id+"_sueldos";
+                  var abierto=expandidoGrid===gkey;
+                  return(
+                    <div style={{marginBottom:6}}>
+                      <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:8,color:"#4CAF50",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#4CAF50"}}>👥 Sueldos</span>
+                          <span style={{fontSize:9,color:"#444"}}>({sl.length})</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <span style={{fontSize:12,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totS)}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {sl.map(function(s){
+                            var est=s.estado==="pagado"?"✅":"⏳";
+                            return(
+                              <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                                <span style={{color:"#888"}}>{est} {s.empleado_nombre}</span>
+                                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.monto)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
-                {/* Retiros */}
-                {rl.length>0&&(
-                  <div style={{marginBottom:8}}>
-                    <div style={{fontSize:9,color:"#8B4513",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>💼 Retiros</div>
-                    {rl.map(function(r){
-                      return(
-                        <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"4px 2px",borderBottom:"1px solid #141414"}}>
-                          <span style={{fontSize:10,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis"}}>{r.concepto||r.socio||"Retiro"}</span>
-                          <span style={{fontSize:10,fontWeight:700,color:"#8B4513",flexShrink:0,marginLeft:4}}>{fmt(r.monto)}</span>
+                {/* Retiros — una fila con total, expandible al detalle */}
+                {rl.length>0&&(function(){
+                  var gkey=l.id+"_retiros";
+                  var abierto=expandidoGrid===gkey;
+                  var totRl=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
+                  return(
+                    <div style={{marginBottom:6}}>
+                      <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:8,color:"#8B4513",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#8B4513"}}>💼 Retiros</span>
+                          <span style={{fontSize:9,color:"#444"}}>({rl.length})</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <span style={{fontSize:12,fontWeight:800,color:"#8B4513",fontFamily:"'Playfair Display',serif"}}>{fmt(totRl)}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {rl.map(function(r){return(
+                            <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                              <span style={{color:"#888"}}>{r.concepto||r.socio||"Retiro"}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(r.monto)}</span>
+                            </div>
+                          );})}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {gl.length===0&&sl.length===0&&rl.length===0&&(
                   <div style={{fontSize:10,color:"#333",textAlign:"center",padding:"10px 0"}}>Sin egresos</div>

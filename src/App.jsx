@@ -1961,18 +1961,31 @@ function PanelGastos(p) {
                 var enLista=items.find(function(i){return i.nombre===form.concepto;});
                 return(
                   <div>
-                    <div style={{display:"flex",gap:6,marginBottom:5}}>
-                      <select value={enLista?form.concepto:"__otro__"} onChange={function(e){if(e.target.value!=="__otro__")setForm(function(f){return{...f,concepto:e.target.value};});else setForm(function(f){return{...f,concepto:""};});}} style={{...INP,flex:1}}>
-                        <option value="__otro__">-- Escribir manualmente --</option>
-                        {grupos.map(function(grp){
-                          var its=items.filter(function(i){return i.sub===grp;});
-                          if(its.length===0)return null;
-                          return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
-                        })}
-                      </select>
-                      <button onClick={function(){setAreaEditorSel(form.categoria);setShowEditorConceptos(true);}} style={{padding:"0 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#555",fontSize:11,cursor:"pointer",flexShrink:0}} title="Editar lista">✏️</button>
+                    <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
+                      <button onClick={function(){setAreaEditorSel(form.categoria);setShowEditorConceptos(true);}} style={{fontSize:10,color:"#555",background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>✏️ Editar lista</button>
                     </div>
-                    {(!form.concepto||!enLista)&&<input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder={"Escribí el concepto..."} style={{...INP}}/>}
+                    {grupos.map(function(grp){
+                      var its=items.filter(function(i){return i.sub===grp;});
+                      if(its.length===0)return null;
+                      return(
+                        <div key={grp} style={{marginBottom:8}}>
+                          <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{grp}</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                            {its.map(function(i){
+                              var sel=form.concepto===i.nombre;
+                              return(
+                                <button key={i.nombre} onClick={function(){setForm(function(f){return{...f,concepto:sel?"":i.nombre};});}} style={{padding:"6px 12px",borderRadius:20,border:"2px solid "+(sel?"#1A6B8A":"#222"),background:sel?"#1A6B8A22":"#111",color:sel?"#1A6B8A":"#888",fontSize:11,fontWeight:sel?700:400,cursor:"pointer",transition:"all 0.15s"}}>
+                                  {i.nombre}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div style={{marginTop:4}}>
+                      <input value={enLista?"":form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder={"Otro (escribí manualmente)..."} style={{...INP,fontSize:11,color:"#888"}}/>
+                    </div>
                   </div>
                 );
               })():(

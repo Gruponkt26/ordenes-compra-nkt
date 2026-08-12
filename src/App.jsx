@@ -1738,8 +1738,89 @@ function EditorCategoriasGastos(p) {
 }
 
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
+
+// ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras"];
+var AREA_COLORES={
+  "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
+  "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44"
+};
+
+function PanelEgresos(p){
+  var gastos=p.gastos||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
+  var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
+  var areasCustom=p.areasCustom||[], onSaveArea=p.onSaveArea;
+  var hoy=new Date().toISOString().split("T")[0];
+  var todasLasAreas=[...AREAS_BASE,...areasCustom];
+  var [areaActiva,setAreaActiva]=useState("Proveedores");
+  var [showNuevaArea,setShowNuevaArea]=useState(false);
+  var [nuevaAreaNombre,setNuevaAreaNombre]=useState("");
+
+  var color=AREA_COLORES[areaActiva]||"#555";
+
+  function handleAgregarArea(){
+    if(!nuevaAreaNombre.trim())return;
+    onSaveArea(nuevaAreaNombre.trim());
+    setAreaActiva(nuevaAreaNombre.trim());
+    setNuevaAreaNombre("");
+    setShowNuevaArea(false);
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💰 Egresos</div>
+      </div>
+
+      {/* Sub-tabs de áreas */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        {todasLasAreas.map(function(area){
+          var col=AREA_COLORES[area]||"#888";
+          return(
+            <button key={area} onClick={function(){setAreaActiva(area);}} style={{padding:"7px 14px",borderRadius:20,border:"2px solid "+(areaActiva===area?col:"#1E1E1E"),background:areaActiva===area?col+"22":"#111",color:areaActiva===area?col:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+              {area}
+            </button>
+          );
+        })}
+        <button onClick={function(){setShowNuevaArea(true);}} style={{padding:"7px 12px",borderRadius:20,border:"1px dashed #333",background:"none",color:"#444",fontSize:11,cursor:"pointer"}}>+ Nueva área</button>
+      </div>
+
+      {/* Modal nueva área */}
+      {showNuevaArea&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:340,border:"1px solid #2A2A2A"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8",marginBottom:12}}>Nueva área de egreso</div>
+            <input value={nuevaAreaNombre} onChange={function(e){setNuevaAreaNombre(e.target.value);}} placeholder="Ej: Publicidad, Logística..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:10}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleAgregarArea} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Agregar</button>
+              <button onClick={function(){setShowNuevaArea(false);setNuevaAreaNombre("");}} style={{padding:"9px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contenido del área activa */}
+      <PanelGastos
+        gastos={gastos.filter(function(g){return(g.area||g.categoria||"Proveedores")===areaActiva;})}
+        usuario={usuario}
+        areaFija={areaActiva}
+        categoriasCustom={[]}
+        conceptosCustom={conceptosCustom}
+        onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
+        onDelete={onDelete}
+        onSaveConcepto={onSaveConcepto}
+        onDeleteConcepto={onDeleteConcepto}
+        colorAccent={color}
+      />
+    </div>
+  );
+}
+
 function PanelGastos(p) {
   var gastos=p.gastos, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario, categoriasCustom=p.categoriasCustom||[];
+  var areaFija=p.areaFija||null;
+  var colorAccent=p.colorAccent||"#1A6B8A";
   var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
   var [showEditorConceptos,setShowEditorConceptos]=useState(false);
   var [areaEditorSel,setAreaEditorSel]=useState("Proveedores");
@@ -1961,31 +2042,18 @@ function PanelGastos(p) {
                 var enLista=items.find(function(i){return i.nombre===form.concepto;});
                 return(
                   <div>
-                    <div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>
-                      <button onClick={function(){setAreaEditorSel(form.categoria);setShowEditorConceptos(true);}} style={{fontSize:10,color:"#555",background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>✏️ Editar lista</button>
+                    <div style={{display:"flex",gap:6}}>
+                      <select value={enLista?form.concepto:"__otro__"} onChange={function(e){if(e.target.value!=="__otro__")setForm(function(f){return{...f,concepto:e.target.value};});else setForm(function(f){return{...f,concepto:""};});}} style={{...INP,flex:1}}>
+                        <option value="__otro__">-- Escribir manualmente --</option>
+                        {grupos.map(function(grp){
+                          var its=items.filter(function(i){return i.sub===grp;});
+                          if(its.length===0)return null;
+                          return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
+                        })}
+                      </select>
+                      <button onClick={function(){setAreaEditorSel(form.categoria);setShowEditorConceptos(true);}} style={{padding:"0 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#555",fontSize:11,cursor:"pointer",flexShrink:0}} title="Editar lista">✏️</button>
                     </div>
-                    {grupos.map(function(grp){
-                      var its=items.filter(function(i){return i.sub===grp;});
-                      if(its.length===0)return null;
-                      return(
-                        <div key={grp} style={{marginBottom:8}}>
-                          <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{grp}</div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                            {its.map(function(i){
-                              var sel=form.concepto===i.nombre;
-                              return(
-                                <button key={i.nombre} onClick={function(){setForm(function(f){return{...f,concepto:sel?"":i.nombre};});}} style={{padding:"6px 12px",borderRadius:20,border:"2px solid "+(sel?"#1A6B8A":"#222"),background:sel?"#1A6B8A22":"#111",color:sel?"#1A6B8A":"#888",fontSize:11,fontWeight:sel?700:400,cursor:"pointer",transition:"all 0.15s"}}>
-                                  {i.nombre}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div style={{marginTop:4}}>
-                      <input value={enLista?"":form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder={"Otro (escribí manualmente)..."} style={{...INP,fontSize:11,color:"#888"}}/>
-                    </div>
+                    {(!form.concepto||!enLista)&&<input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Escribí el concepto..." style={{...INP,marginTop:5}}/>}
                   </div>
                 );
               })():(
@@ -5209,6 +5277,7 @@ export default function App() {
   var [empleados,setEmpleados]=useState([]);
   var [sueldos,setSueldos]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
+  var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
   useEffect(function(){
     if(!cu)return;
@@ -5344,8 +5413,8 @@ export default function App() {
           {/* TABS MÓDULO ADMINISTRACIÓN */}
           {esSofia&&modulo==="admin"&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-              <button onClick={function(){setVista("gastos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="gastos"?"#1A6B8A":"#1E1E1E"),background:vista==="gastos"?"#1A6B8A22":"#111",color:vista==="gastos"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                💰 Gastos
+              <button onClick={function(){setVista("egresos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="egresos"?"#1A6B8A":"#1E1E1E"),background:vista==="egresos"?"#1A6B8A22":"#111",color:vista==="egresos"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                💰 Egresos
               </button>
               <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                 📊 Análisis
@@ -5379,13 +5448,15 @@ export default function App() {
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
-          {esSofia&&modulo==="admin"&&vista==="gastos"&&(
-            <PanelGastos gastos={gastos} usuario={cu.nombre} categoriasCustom={categoriasGastos}
+          {esSofia&&modulo==="admin"&&vista==="egresos"&&(
+            <PanelEgresos gastos={gastos} usuario={cu.nombre}
               conceptosCustom={conceptosGastos}
+              areasCustom={areasCustomGastos}
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}
+              onSaveArea={function(a){setAreasCustomGastos(function(p){return p.includes(a)?p:[...p,a];});}}
             />
           )}
 

@@ -1776,10 +1776,13 @@ var CONCEPTOS_POR_AREA={
     ]
   },
   "Servicios":{
-    grupos:["Energía","Comunicaciones","Alquiler","Seguros","Otros"],
+    grupos:["Energía","Comunicaciones","Suscripciones","Alquiler","Seguros","Otros"],
     items:[
       {nombre:"Luz",sub:"Energía"},{nombre:"Gas",sub:"Energía"},{nombre:"Agua",sub:"Energía"},
       {nombre:"Teléfono",sub:"Comunicaciones"},{nombre:"Internet",sub:"Comunicaciones"},
+      {nombre:"Punta Online",sub:"Suscripciones"},{nombre:"Naaloo",sub:"Suscripciones"},
+      {nombre:"Maxirest",sub:"Suscripciones"},{nombre:"Flow",sub:"Suscripciones"},
+      {nombre:"Spotify",sub:"Suscripciones"},{nombre:"PAD",sub:"Suscripciones"},
       {nombre:"Alquiler",sub:"Alquiler"},{nombre:"Seguro",sub:"Seguros"},
     ]
   },

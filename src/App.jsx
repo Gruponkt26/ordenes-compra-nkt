@@ -1936,6 +1936,22 @@ function PanelGastos(p) {
               {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
           </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
+              <select value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value,concepto:""};});}} style={INP}>
+                <optgroup label="── Áreas principales ──">
+                  {["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                </optgroup>
+                <optgroup label="── Otras ──">
+                  {CATEGORIAS.filter(function(c){return!["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].includes(c);}).map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                  <option value="__otra__">+ Escribir otra...</option>
+                </optgroup>
+              </select>
+              {form.categoria==="__otra__"&&<input value={""} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} placeholder="Escribí la categoría..." style={{...INP,marginTop:5}}/>}
+            </div>
+            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:9,marginBottom:12}}>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label>
@@ -2008,22 +2024,6 @@ function PanelGastos(p) {
             )}
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
-            <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Categoría</label>
-              <select value={form.categoria} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value,concepto:""};});}} style={INP}>
-                <optgroup label="── Áreas principales ──">
-                  {["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].map(function(c){return <option key={c} value={c}>{c}</option>;})}
-                </optgroup>
-                <optgroup label="── Otras ──">
-                  {CATEGORIAS.filter(function(c){return!["Proveedores","Mantenimiento","Servicios","Administrativo","Personal"].includes(c);}).map(function(c){return <option key={c} value={c}>{c}</option>;})}
-                  <option value="__otra__">+ Escribir otra...</option>
-                </optgroup>
-              </select>
-              {form.categoria==="__otra__"&&<input value={""} onChange={function(e){setForm(function(f){return{...f,categoria:e.target.value};});}} placeholder="Escribí la categoría..." style={{...INP,marginTop:5}}/>}
-            </div>
-            <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
-          </div>
           <div style={{marginBottom:12}}>
             <label style={{fontSize:11,color:"#555",display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
               <input type="checkbox" checked={form.facturado} onChange={function(e){setForm(function(f){return{...f,facturado:e.target.checked};});}}/>

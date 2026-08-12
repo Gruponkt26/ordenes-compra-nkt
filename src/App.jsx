@@ -3873,7 +3873,7 @@ function PanelSueldos(p){
   var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
   var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
   var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
-  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+  var localesFiltro=LOCALES; // incluye Oficina (l4)
   var mesesDisp=[...new Set(sueldos.map(function(s){return s.periodo;}).filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 

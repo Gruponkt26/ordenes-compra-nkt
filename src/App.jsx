@@ -1,5 +1,6 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import { useState, useEffect } from "react";
+import { jsPDF } from "jspdf";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 var SURL = "https://qcfwqnqtrqyjdfvakwxt.supabase.co";
@@ -281,30 +282,12 @@ function Login(p) {
 
 // ─── PDF ──────────────────────────────────────────────────────────────────────
 async function loadJsPDF() {
-  if (!window.jspdf) {
-    await new Promise(function(res,rej){
-      var urls = [
-        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
-        "https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js",
-        "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
-      ];
-      var idx = 0;
-      function tryNext() {
-        if (idx >= urls.length) { rej(new Error("No se pudo cargar jsPDF")); return; }
-        var s = document.createElement("script");
-        s.src = urls[idx++];
-        s.onload = res;
-        s.onerror = function() { tryNext(); };
-        document.head.appendChild(s);
-      }
-      tryNext();
-    });
-  }
+  // jsPDF ya está importado como módulo — no necesita carga dinámica
 }
 
 async function makePDF(orden, local, prov, items, fact) {
   await loadJsPDF();
-  var doc=new window.jspdf.jsPDF({unit:"mm",format:"a4"});
+  var doc=new jsPDF({unit:"mm",format:"a4"});
   var W=210,m=18,cW=W-m*2;
   doc.setFillColor(193,68,14);doc.rect(0,0,W,38,"F");
   doc.setTextColor(255,255,255);doc.setFontSize(20);doc.setFont("helvetica","bold");doc.text("ORDEN DE COMPRA",m,18);
@@ -351,7 +334,7 @@ async function makePDF(orden, local, prov, items, fact) {
 // PDF COMPLETO - todos los proveedores en uno
 async function makePDFCompleto(orden, local, proveedores, fact) {
   await loadJsPDF();
-  var doc = new window.jspdf.jsPDF({unit:"mm",format:"a4"});
+  var doc = new jsPDF({unit:"mm",format:"a4"});
   var W=210, m=18, cW=W-m*2;
 
   // Header

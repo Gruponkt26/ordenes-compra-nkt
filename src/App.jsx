@@ -6036,18 +6036,31 @@ export default function App() {
 
           {/* TABS MÓDULO COMPRAS */}
           {esAdmin&&(!esSofia||modulo==="compras")&&(
-            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-              <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
-              <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
-              <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
-              </button>
-              <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                📦 Stock Platos
-              </button>
-              <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                🥩 Materia Prima
-              </button>
+            <div>
+              <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+                <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
+                <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+                <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
+                </button>
+                <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  📦 Stock Platos
+                </button>
+                <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  🥩 Materia Prima
+                </button>
+                <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ⚙️ Config
+                </button>
+              </div>
+              {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
+                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+                  {[["proveedores","🏭 Proveedores","#D4A017"],["precios","💲 Precios","#3A7D44"]].map(function(t){return(
+                    <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+                  );})}
+                  <button onClick={function(){setShowEditorCats(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏷️ Categorías</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -6059,22 +6072,29 @@ export default function App() {
               {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
               {id:"config",label:"⚙️ Config",color:"#555"},
             ];
-            var vistaFinanzas=["cierres","iva","cruzados","resultados","analytics"].includes(vista);
-            var vistaConfig=["config"].includes(vista);
-            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vistaFinanzas?"finanzas":vistaConfig?"config":"egresos";
+            var vistaFinanzas=["iva","cruzados","resultados","analytics"].includes(vista);
+            var vistaConfigAdmin=["configadmin","personal","usuarios"].includes(vista);
+            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vistaFinanzas?"finanzas":vistaConfigAdmin?"configadmin":"egresos";
             return(
               <div>
-                {/* Barra de sub-módulos */}
-                <div style={{display:"flex",gap:5,marginBottom:12,background:"#0D0D0D",padding:"8px 0",borderRadius:10}}>
-                  {SUBMODS.map(function(sm){
+                {/* Barra de sub-módulos admin */}
+                <div style={{display:"flex",gap:5,marginBottom:12,background:"#0D0D0D",padding:"8px",borderRadius:10}}>
+                  {[
+                    {id:"dashboard",label:"📊 Dashboard",color:"#D4A017"},
+                    {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
+                    {id:"cierres",label:"🏪 Cierres",color:"#C1440E"},
+                    {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
+                    {id:"configadmin",label:"⚙️ Config",color:"#555"},
+                  ].map(function(sm){
                     var activo=modActivo===sm.id;
                     return(
                       <button key={sm.id} onClick={function(){
                         if(sm.id==="dashboard")setVista("dashboard");
                         else if(sm.id==="egresos")setVista("egresos");
+                        else if(sm.id==="cierres")setVista("cierres");
                         else if(sm.id==="finanzas")setVista("resultados");
-                        else if(sm.id==="config")setVista("config");
-                      }} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                        else if(sm.id==="configadmin")setVista("configadmin");
+                      }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
                         {sm.label}
                       </button>
                     );
@@ -6084,19 +6104,18 @@ export default function App() {
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["resultados","📈 Resultados","#8B2FC9"],["cierres","🏪 Cierres","#C1440E"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"]].map(function(t){return(
+                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
                   </div>
                 )}
 
-                {/* Sub-tabs de Config */}
-                {modActivo==="config"&&(
+                {/* Sub-tabs de Config Admin */}
+                {modActivo==="configadmin"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["stock","📦 Stock Platos","#8B2FC9"],["stockmp","🥩 Materia Prima","#1A6B8A"]].map(function(t){return(
+                    {[["personal","👥 Personal","#4CAF50"],["usuarios","👤 Usuarios","#1A6B8A"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
-                    <button onClick={function(){setShowEditorCats(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏷️ Categorías</button>
                   </div>
                 )}
               </div>
@@ -6169,14 +6188,67 @@ export default function App() {
             );
           })()}
 
-          {/* CONFIG */}
-          {esSofia&&modulo==="admin"&&vista==="config"&&(
+          {/* CONFIG ADMIN */}
+          {esSofia&&modulo==="admin"&&vista==="configadmin"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+              <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Configuración</div>
               </div>
-              <div style={{fontSize:11,color:"#444"}}>Seleccioná una opción del menú de arriba.</div>
+              <div style={{fontSize:11,color:"#444"}}>Seleccioná Personal o Usuarios del menú.</div>
+            </div>
+          )}
+
+          {/* PERSONAL */}
+          {esSofia&&modulo==="admin"&&vista==="personal"&&(
+            <PanelSueldos
+              empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
+              cargasSociales={cargasSociales}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
+              onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
+              onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
+              onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+              onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+            />
+          )}
+
+          {/* USUARIOS */}
+          {esSofia&&modulo==="admin"&&vista==="usuarios"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:12}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
+              </div>
+              <div style={{fontSize:11,color:"#444"}}>Gestión de usuarios — próximamente.</div>
+            </div>
+          )}
+
+          {/* CONFIG COMPRAS */}
+          {modulo==="compras"&&vista==="configcompras"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:12}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
+              </div>
+              <div style={{fontSize:11,color:"#444"}}>Seleccioná Proveedores o Precios del menú.</div>
+            </div>
+          )}
+
+          {/* PRECIOS */}
+          {modulo==="compras"&&vista==="precios"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:12}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
+              </div>
+              <PanelPrecios precios={precios} onSave={function(p){sbSavePrecios(p);setPrecios(p);}}/>
+            </div>
+          )}
+
+          {/* PROVEEDORES */}
+          {modulo==="compras"&&vista==="proveedores"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:12}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
+              </div>
+              <PanelProveedores proveedores={proveedores} onSave={function(pv){sbSaveProv(pv);setProveedores(function(prev){var f=prev.filter(function(x){return x.id!==pv.id;});return[pv,...f];});}} onDelete={function(id){sbDeleteProv(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}/>
             </div>
           )}
 

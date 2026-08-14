@@ -6007,16 +6007,16 @@ export default function App() {
           </div>
         </div>
 
-        {/* MÓDULOS */}
+        {/* MÓDULOS PRINCIPALES — solo Compras y Administración */}
         {esSofia&&(
-          <div style={{borderBottom:"1px solid #111",background:"#0A0A0A",padding:"10px 20px",display:"flex",gap:6}}>
+          <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:6}}>
             <button onClick={function(){setModulo("compras");setVista("despacho");}}
-              style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"transparent",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              📋 Compras
+              style={{padding:"10px 24px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"#111",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+              🛒 Compras
             </button>
-            <button onClick={function(){setModulo("admin");setVista("gastos");}}
-              style={{padding:"8px 20px",borderRadius:10,border:"none",background:modulo==="admin"?"#1A6B8A":"transparent",color:modulo==="admin"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              💰 Administración
+            <button onClick={function(){setModulo("admin");setVista("dashboard");}}
+              style={{padding:"10px 24px",borderRadius:10,border:"none",background:modulo==="admin"?"#1A6B8A":"#111",color:modulo==="admin"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+              ⚙️ Administración
             </button>
           </div>
         )}
@@ -6051,38 +6051,133 @@ export default function App() {
             </div>
           )}
 
-          {/* TABS MÓDULO ADMINISTRACIÓN */}
-          {esSofia&&modulo==="admin"&&(
-            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-              <button onClick={function(){setVista("egresos");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="egresos"?"#1A6B8A":"#1E1E1E"),background:vista==="egresos"?"#1A6B8A22":"#111",color:vista==="egresos"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                💰 Egresos
-              </button>
-              <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#D4A017":"#1E1E1E"),background:vista==="analytics"?"#D4A01722":"#111",color:vista==="analytics"?"#D4A017":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                📊 Análisis
-              </button>
+          {/* SUB-MÓDULOS DE ADMINISTRACIÓN */}
+          {esSofia&&modulo==="admin"&&(function(){
+            var SUBMODS=[
+              {id:"dashboard",label:"📊 Dashboard",color:"#D4A017"},
+              {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
+              {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
+              {id:"config",label:"⚙️ Config",color:"#555"},
+            ];
+            var vistaFinanzas=["cierres","iva","cruzados","resultados","analytics"].includes(vista);
+            var vistaConfig=["config"].includes(vista);
+            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vistaFinanzas?"finanzas":vistaConfig?"config":"egresos";
+            return(
+              <div>
+                {/* Barra de sub-módulos */}
+                <div style={{display:"flex",gap:5,marginBottom:12,background:"#0D0D0D",padding:"8px 0",borderRadius:10}}>
+                  {SUBMODS.map(function(sm){
+                    var activo=modActivo===sm.id;
+                    return(
+                      <button key={sm.id} onClick={function(){
+                        if(sm.id==="dashboard")setVista("dashboard");
+                        else if(sm.id==="egresos")setVista("egresos");
+                        else if(sm.id==="finanzas")setVista("resultados");
+                        else if(sm.id==="config")setVista("config");
+                      }} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                        {sm.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-              <button onClick={function(){setVista("cierres");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cierres"?"#C1440E":"#1E1E1E"),background:vista==="cierres"?"#C1440E22":"#111",color:vista==="cierres"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                🏪 Cierres
-              </button>
-              <button onClick={function(){setVista("iva");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="iva"?"#3A7D44":"#1E1E1E"),background:vista==="iva"?"#3A7D4422":"#111",color:vista==="iva"?"#3A7D44":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                🧾 IVA
-              </button>
-              <button onClick={function(){setVista("cruzados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="cruzados"?"#E07B00":"#1E1E1E"),background:vista==="cruzados"?"#E07B0022":"#111",color:vista==="cruzados"?"#E07B00":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                🔀 Cruzados
-              </button>
-              <button onClick={function(){setVista("resultados");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="resultados"?"#8B2FC9":"#1E1E1E"),background:vista==="resultados"?"#8B2FC922":"#111",color:vista==="resultados"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                📈 Resultados
-              </button>
+                {/* Sub-tabs de Finanzas */}
+                {modActivo==="finanzas"&&(
+                  <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+                    {[["resultados","📈 Resultados","#8B2FC9"],["cierres","🏪 Cierres","#C1440E"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"]].map(function(t){return(
+                      <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+                    );})}
+                  </div>
+                )}
 
-              <button onClick={function(){setShowEditorCats(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #555",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                🏷️ Categorías
-              </button>
-            </div>
-          )}
+                {/* Sub-tabs de Config */}
+                {modActivo==="config"&&(
+                  <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+                    {[["stock","📦 Stock Platos","#8B2FC9"],["stockmp","🥩 Materia Prima","#1A6B8A"]].map(function(t){return(
+                      <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+                    );})}
+                    <button onClick={function(){setShowEditorCats(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏷️ Categorías</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* PANEL DESPACHO */}
           {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
+          )}
+
+          {/* DASHBOARD */}
+          {esSofia&&modulo==="admin"&&vista==="dashboard"&&(function(){
+            var hoy=new Date().toISOString().split("T")[0];
+            var mesCurrent=new Date().toISOString().slice(0,7);
+            var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+            var cierresToday=cierres.filter(function(c){return c.fecha===hoy;});
+            var localesConCierre=cierresToday.map(function(c){return c.local;});
+            var localesSinCierre=LOCALES.filter(function(l){return l.id!=="l4"&&!localesConCierre.includes(l.id);});
+            var ventasHoy=cierresToday.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+            var gastosMes=gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+            var ventasMes=cierres.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+            return(
+              <div style={{fontFamily:"'Inter',sans-serif"}}>
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📊 Dashboard</div>
+                </div>
+
+                {/* Alertas */}
+                {localesSinCierre.length>0&&(
+                  <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+                    <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>⚠️ Cierres faltantes hoy</div>
+                    <div style={{fontSize:10,color:"#888",marginTop:4}}>{localesSinCierre.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}</div>
+                  </div>
+                )}
+
+                {/* Cards resumen */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                  <div style={{background:"#111",border:"1px solid #C1440E33",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:9,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Ventas hoy</div>
+                    <div style={{fontSize:22,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(ventasHoy)}</div>
+                    <div style={{fontSize:10,color:"#444",marginTop:2}}>{cierresToday.length} cierre{cierresToday.length!==1?"s":""} cargado{cierresToday.length!==1?"s":""}</div>
+                  </div>
+                  <div style={{background:"#111",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Ventas del mes</div>
+                    <div style={{fontSize:22,fontWeight:800,color:"#1A6B8A",fontFamily:"'Playfair Display',serif"}}>{fmt(ventasMes)}</div>
+                    <div style={{fontSize:10,color:"#444",marginTop:2}}>{mesCurrent}</div>
+                  </div>
+                  <div style={{background:"#111",border:"1px solid #D4A01733",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Egresos del mes</div>
+                    <div style={{fontSize:22,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(gastosMes)}</div>
+                  </div>
+                  <div style={{background:"#111",border:"1px solid #3A7D4433",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Resultado estimado</div>
+                    <div style={{fontSize:22,fontWeight:800,color:ventasMes-gastosMes>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(ventasMes-gastosMes)}</div>
+                  </div>
+                </div>
+
+                {/* Accesos rápidos */}
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Accesos rápidos</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                  {[["egresos","💰 Egresos","#1A6B8A"],["resultados","📈 Resultados","#8B2FC9"],["cierres","🏪 Cierres","#C1440E"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["stock","📦 Stock","#8B2FC9"]].map(function(t){return(
+                    <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"12px 8px",borderRadius:10,border:"1px solid "+t[2]+"33",background:t[2]+"11",color:t[2],fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>
+                      {t[1]}
+                    </button>
+                  );})}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* CONFIG */}
+          {esSofia&&modulo==="admin"&&vista==="config"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Configuración</div>
+              </div>
+              <div style={{fontSize:11,color:"#444"}}>Seleccioná una opción del menú de arriba.</div>
+            </div>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="egresos"&&(

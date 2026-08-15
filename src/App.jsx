@@ -1807,6 +1807,28 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+  var [pagosEgreso,setPagosEgreso]=useState([{medio:"Efectivo - Bodegón",monto:""}]);
+
+  var MEDIOS_EGRESO=[
+    {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
+    {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
+    {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
+    {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
+    {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
+    {grupo:"Transferencia",label:"📲 Mercado Pago Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
+    {grupo:"Tarjeta",label:"💳 Débito Visa Provincia",value:"Débito - Visa Provincia"},
+    {grupo:"Tarjeta",label:"💳 Débito Visa Patagonia",value:"Débito - Visa Patagonia"},
+    {grupo:"Tarjeta",label:"💳 Débito Mastercard Patagonia",value:"Débito - Mastercard Patagonia"},
+    {grupo:"Tarjeta",label:"💳 Crédito",value:"Crédito"},
+    {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
+    {grupo:"Otros",label:"Otro",value:"Otro"},
+  ];
+  var grupos_medios=["Efectivo","Transferencia","Tarjeta","Otros"];
+  function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
+  function pagosCuadranEgreso(){return !form.monto||Math.abs(totalPagosEgreso()-parseFloat(form.monto||0))<0.01;}
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroFecha,setFiltroFecha]=useState("mes");
   var mesCurrent=hoy.slice(0,7);
@@ -1836,14 +1858,18 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
 
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
-    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",monto:parseFloat(form.monto),forma_pago:form.forma_pago,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
+    var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0;});
+    var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
+    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
     setForm({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+    setPagosEgreso([{medio:"Efectivo - Bodegón",monto:""}]);
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
     setEditId(g.id);
     setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
+    setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Efectivo - Bodegón",monto:String(g.monto||"")}]);
     setShowForm(true);
   }
 
@@ -1959,33 +1985,30 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               </div>
             </div>
 
-            {/* Forma de pago con cuenta */}
-            <div style={{marginBottom:10}}>
-              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Medio de pago</label>
-              <select value={form.forma_pago} onChange={function(e){setForm(function(f){return{...f,forma_pago:e.target.value};});}} style={INP}>
-                <optgroup label="── Efectivo ──">
-                  <option value="Efectivo - Bodegón">💵 Efectivo — Bodegón</option>
-                  <option value="Efectivo - Kusama">💵 Efectivo — Kusama</option>
-                  <option value="Efectivo - Colantonio's">💵 Efectivo — Colantonio's</option>
-                </optgroup>
-                <optgroup label="── Transferencia ──">
-                  <option value="Transferencia - Provincia Personas">📲 Provincia Personas</option>
-                  <option value="Transferencia - Mercado Pago Nicolás">📲 Mercado Pago Nicolás</option>
-                  <option value="Transferencia - Galicia Empresas">📲 Galicia Empresas</option>
-                  <option value="Transferencia - Patagonia Empresas">📲 Patagonia Empresas</option>
-                  <option value="Transferencia - Mercado Pago Calzon Gitano">📲 Mercado Pago Calzon Gitano</option>
-                </optgroup>
-                <optgroup label="── Tarjeta ──">
-                  <option value="Débito - Visa Provincia">💳 Débito Visa Provincia</option>
-                  <option value="Débito - Visa Patagonia">💳 Débito Visa Patagonia</option>
-                  <option value="Débito - Mastercard Patagonia">💳 Débito Mastercard Patagonia</option>
-                  <option value="Crédito">💳 Crédito</option>
-                </optgroup>
-                <optgroup label="── Otros ──">
-                  <option value="Cheque">📄 Cheque</option>
-                  <option value="Otro">Otro</option>
-                </optgroup>
-              </select>
+            {/* Medios de pago múltiples */}
+            <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
+                <button onClick={function(){setPagosEgreso(function(prev){return[...prev,{medio:"Efectivo - Bodegón",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
+              </div>
+              {pagosEgreso.map(function(pago,idx){return(
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <select value={pago.medio} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],medio:e.target.value};return n;});}} style={{...INP,fontSize:11}}>
+                    {grupos_medios.map(function(grp){
+                      var items=MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;});
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                    })}
+                  </select>
+                  <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],monto:e.target.value};return n;});}} style={{...INP,width:90}}/>
+                  {pagosEgreso.length>1&&<button onClick={function(){setPagosEgreso(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                </div>
+              );})}
+              {form.monto&&(
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadranEgreso()?"#0A1A0A":"#1A0A0A"}}>
+                  <span style={{color:"#555"}}>Total asignado</span>
+                  <span style={{color:pagosCuadranEgreso()?"#3A7D44":"#C1440E",fontWeight:700}}>${totalPagosEgreso().toLocaleString("es-AR")} / ${parseFloat(form.monto||0).toLocaleString("es-AR")}{pagosCuadranEgreso()?" ✓":" ← diferencia"}</span>
+                </div>
+              )}
             </div>
 
             {/* Facturado */}
@@ -3952,7 +3975,7 @@ function PanelSueldos(p){
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
-  var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true});
+  var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true,convenio:"sin_convenio"});
   var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
   var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
   var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
@@ -3967,9 +3990,9 @@ function PanelSueldos(p){
 
   function doSaveEmp(){
     if(!formEmp.nombre.trim())return;
-    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,sueldo_base:parseFloat(formEmp.sueldo_base)||0,activo:formEmp.activo,created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,sueldo_base:parseFloat(formEmp.sueldo_base)||0,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",created_at:empEdit?empEdit.created_at:new Date().toISOString()};
     onSaveEmpleado(emp);
-    setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true});
+    setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true,convenio:"sin_convenio"});
   }
   function doSaveSueldo(){
     if(!formSueldo.empleado_id||!formSueldo.monto)return;
@@ -3996,7 +4019,7 @@ function PanelSueldos(p){
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"],["cargas","🏛️ F.931"]].map(function(t){return(
+        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
         <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
@@ -4070,10 +4093,10 @@ function PanelSueldos(p){
               <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:700,color:emp.activo!==false?"#F0EDE8":"#444"}}>{emp.nombre}{emp.activo===false&&" (inactivo)"}</div>
-                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · Base: {fmt(emp.sueldo_base)}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"} · Base: {fmt(emp.sueldo_base)}</div>
                 </div>
                 <div style={{display:"flex",gap:6}}>
-                  <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,sueldo_base:String(emp.sueldo_base),activo:emp.activo!==false});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,sueldo_base:String(emp.sueldo_base),activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio"});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar a "+emp.nombre+"?"))onDeleteEmpleado(emp.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
@@ -4262,6 +4285,14 @@ function PanelSueldos(p){
                 {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
               </select>
               <input type="number" placeholder="Sueldo base" value={formEmp.sueldo_base} onChange={function(e){setFormEmp(function(f){return{...f,sueldo_base:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:6}}>Situación laboral</label>
+                <div style={{display:"flex",gap:6}}>
+                  {[["convenio","📋 Con convenio"],["sin_convenio","Sin convenio"]].map(function(op){return(
+                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
+                  );})}
+                </div>
+              </div>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
                 <input type="checkbox" checked={formEmp.activo} onChange={function(e){setFormEmp(function(f){return{...f,activo:e.target.checked};});}}/>
                 Activo
@@ -6198,10 +6229,11 @@ export default function App() {
             </div>
           )}
 
-          {/* PERSONAL */}
+          {/* PERSONAL — sin tab F.931 */}
           {esSofia&&modulo==="admin"&&vista==="personal"&&(
             <PanelSueldos
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
+              showF931={false}
               cargasSociales={cargasSociales}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}

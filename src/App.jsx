@@ -2862,6 +2862,8 @@ function PanelCruzados(p){
   var gastos=p.gastos;
   var [mesFiltro,setMesFiltro]=useState(new Date().toISOString().slice(0,7));
   var [soloProblemas,setSoloProblemas]=useState(true);
+  var [vistaDeudas,setVistaDeudas]=useState(false);
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
 
   var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
 
@@ -2877,6 +2879,111 @@ function PanelCruzados(p){
 
   var totalCruzado=gastosFiltrados.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
+  // Calcular deudas entre locales por medio de pago
+  function calcDeudas(){
+    var deudas={}; // {deudor_acreedor_medio: {deudor, acreedor, medio, total}}
+    gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltro&&g.pagos&&g.pagos.length>0;}).forEach(function(g){
+      g.pagos.forEach(function(pago){
+        var medioLocal=null;
+        var medio=pago.medio||pago.tipo||"";
+        // Detectar a qué local pertenece el medio de pago
+        if(medio.includes("Bodegón")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))medioLocal="l1";
+        else if(medio.includes("Kusama")||medio.includes("Galicia"))medioLocal="l2";
+        else if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano"))medioLocal="l3";
+        else if(medio.includes("Oficina"))medioLocal="l4";
+        // Si el medio es de otro local → el local del gasto le debe al local del medio
+        if(medioLocal&&medioLocal!==g.local){
+          var tipoMedio=medio.startsWith("Efectivo")?"Efectivo":medio.startsWith("Transferencia")?"Transferencia":medio.startsWith("Débito")?"Débito":"Otro";
+          var key=g.local+"_"+medioLocal+"_"+tipoMedio;
+          if(!deudas[key])deudas[key]={deudor:g.local,acreedor:medioLocal,medio:tipoMedio,cuentas:[],total:0};
+          deudas[key].total+=parseFloat(pago.monto||0);
+          var cuentaLabel=medio.replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","");
+          if(!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
+        }
+      });
+    });
+    return Object.values(deudas).filter(function(d){return d.total>0;});
+  }
+  var deudas=calcDeudas();
+
+  if(vistaDeudas){
+    var localesPrincipales=LOCALES.filter(function(l){return l.id!=="l4";});
+    return(
+      <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Inter',sans-serif"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>🔀 Saldos entre locales</div>
+            <div style={{fontSize:10,color:"#555",marginTop:2}}>{mesFiltro} — pagos realizados con medios de otro local</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+              {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+            </select>
+            <button onClick={function(){setVistaDeudas(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer"}}>✕ Cerrar</button>
+          </div>
+        </div>
+
+        {deudas.length===0?(
+          <div style={{textAlign:"center",padding:"60px 0"}}>
+            <div style={{fontSize:40,marginBottom:12}}>✅</div>
+            <div style={{fontSize:15,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>Sin pagos cruzados en {mesFiltro}</div>
+          </div>
+        ):(
+          <div>
+            {/* Resumen de deudas */}
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+              {deudas.sort(function(a,b){return b.total-a.total;}).map(function(d){
+                var locD=LOCALES.find(function(l){return l.id===d.deudor;});
+                var locA=LOCALES.find(function(l){return l.id===d.acreedor;});
+                var iconoMedio=d.medio==="Efectivo"?"💵":d.medio==="Transferencia"?"📲":"💳";
+                return(
+                  <div key={d.deudor+d.acreedor+d.medio} style={{background:"#0F0F0F",border:"1px solid #E07B0044",borderRadius:12,padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:13,fontWeight:700,color:locD?locD.color:"#F0EDE8"}}>{locD?locD.emoji+" "+locD.nombre:d.deudor}</span>
+                        <span style={{fontSize:11,color:"#555"}}>le debe a</span>
+                        <span style={{fontSize:13,fontWeight:700,color:locA?locA.color:"#F0EDE8"}}>{locA?locA.emoji+" "+locA.nombre:d.acreedor}</span>
+                      </div>
+                      <span style={{fontSize:18,fontWeight:800,color:"#E07B00",fontFamily:"'Playfair Display',serif"}}>{fmt(d.total)}</span>
+                    </div>
+                    <div style={{fontSize:11,color:"#555"}}>{iconoMedio} {d.medio} · {d.cuentas.join(", ")}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Tabla de saldos netos por par de locales */}
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Saldo neto entre locales</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {localesPrincipales.map(function(l1){
+                return localesPrincipales.filter(function(l2){return l2.id>l1.id;}).map(function(l2){
+                  var debe_1_2=deudas.filter(function(d){return d.deudor===l1.id&&d.acreedor===l2.id;}).reduce(function(a,d){return a+d.total;},0);
+                  var debe_2_1=deudas.filter(function(d){return d.deudor===l2.id&&d.acreedor===l1.id;}).reduce(function(a,d){return a+d.total;},0);
+                  var neto=debe_1_2-debe_2_1;
+                  if(debe_1_2===0&&debe_2_1===0)return null;
+                  return(
+                    <div key={l1.id+l2.id} style={{background:"#111",border:"1px solid #2A2A2A",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:12}}>
+                        <span style={{color:l1.color,fontWeight:700}}>{l1.emoji} {l1.nombre}</span>
+                        <span style={{color:"#555",margin:"0 8px"}}>↔</span>
+                        <span style={{color:l2.color,fontWeight:700}}>{l2.emoji} {l2.nombre}</span>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        {neto>0&&<div style={{fontSize:12,fontWeight:700,color:l2.color}}>{l1.emoji} le debe {fmt(neto)} a {l2.emoji}</div>}
+                        {neto<0&&<div style={{fontSize:12,fontWeight:700,color:l1.color}}>{l2.emoji} le debe {fmt(Math.abs(neto))} a {l1.emoji}</div>}
+                        {neto===0&&<div style={{fontSize:12,color:"#3A7D44"}}>✅ Saldados</div>}
+                      </div>
+                    </div>
+                  );
+                });
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
@@ -2884,9 +2991,12 @@ function PanelCruzados(p){
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Pagos cruzados</div>
           <div style={{fontSize:11,color:"#444",marginTop:3}}>Gastos pagados con un medio que no corresponde al local</div>
         </div>
-        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
-          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
-        </select>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={function(){setVistaDeudas(true);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #E07B0044",background:"#E07B0011",color:"#E07B00",fontSize:11,cursor:"pointer",fontWeight:700}}>📊 Saldos</button>
+          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+            {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>
+        </div>
       </div>
 
       {/* Toggle */}

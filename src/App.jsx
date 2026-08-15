@@ -2880,27 +2880,45 @@ function PanelCruzados(p){
   var totalCruzado=gastosFiltrados.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
   // Calcular deudas entre locales por medio de pago
+  function detectarLocalMedio(medio){
+    if(!medio)return null;
+    if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))return "l1";
+    if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
+    if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano")||medio.includes("Calzon"))return "l3";
+    if(medio.includes("Oficina"))return "l4";
+    return null;
+  }
+  function tipoMedio(medio){
+    if(!medio)return "Otro";
+    if(medio.toLowerCase().includes("efectivo"))return "Efectivo";
+    if(medio.toLowerCase().includes("transferencia"))return "Transferencia";
+    if(medio.toLowerCase().includes("débito")||medio.toLowerCase().includes("debito"))return "Débito";
+    if(medio.toLowerCase().includes("crédito")||medio.toLowerCase().includes("credito"))return "Crédito";
+    return "Otro";
+  }
+  function registrarDeuda(deudas,localGasto,medio,monto){
+    var medioLocal=detectarLocalMedio(medio);
+    if(!medioLocal||medioLocal===localGasto)return;
+    var tipo=tipoMedio(medio);
+    var key=localGasto+"_"+medioLocal+"_"+tipo;
+    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:medioLocal,medio:tipo,cuentas:[],total:0};
+    deudas[key].total+=parseFloat(monto||0);
+    var cuentaLabel=medio.replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
+    if(!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
+  }
   function calcDeudas(){
-    var deudas={}; // {deudor_acreedor_medio: {deudor, acreedor, medio, total}}
-    gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltro&&g.pagos&&g.pagos.length>0;}).forEach(function(g){
-      g.pagos.forEach(function(pago){
-        var medioLocal=null;
-        var medio=pago.medio||pago.tipo||"";
-        // Detectar a qué local pertenece el medio de pago
-        if(medio.includes("Bodegón")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))medioLocal="l1";
-        else if(medio.includes("Kusama")||medio.includes("Galicia"))medioLocal="l2";
-        else if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano"))medioLocal="l3";
-        else if(medio.includes("Oficina"))medioLocal="l4";
-        // Si el medio es de otro local → el local del gasto le debe al local del medio
-        if(medioLocal&&medioLocal!==g.local){
-          var tipoMedio=medio.startsWith("Efectivo")?"Efectivo":medio.startsWith("Transferencia")?"Transferencia":medio.startsWith("Débito")?"Débito":"Otro";
-          var key=g.local+"_"+medioLocal+"_"+tipoMedio;
-          if(!deudas[key])deudas[key]={deudor:g.local,acreedor:medioLocal,medio:tipoMedio,cuentas:[],total:0};
-          deudas[key].total+=parseFloat(pago.monto||0);
-          var cuentaLabel=medio.replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","");
-          if(!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
-        }
-      });
+    var deudas={};
+    gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltro&&g.local!=="l4";}).forEach(function(g){
+      if(g.pagos&&g.pagos.length>0){
+        // Nuevo sistema con pagos[]
+        g.pagos.forEach(function(pago){
+          var medio=pago.medio||pago.tipo||pago.forma_pago||"";
+          registrarDeuda(deudas,g.local,medio,pago.monto);
+        });
+      } else {
+        // Legacy: forma_pago simple
+        registrarDeuda(deudas,g.local,g.forma_pago,g.monto);
+      }
     });
     return Object.values(deudas).filter(function(d){return d.total>0;});
   }

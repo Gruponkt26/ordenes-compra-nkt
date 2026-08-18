@@ -1807,7 +1807,7 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
-  var [pagosEgreso,setPagosEgreso]=useState([{medio:"Efectivo - Bodegón",monto:""}]);
+  var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
 
   var MEDIOS_EGRESO=[
     {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
@@ -1858,12 +1858,13 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
 
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
-    var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0;});
+    var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
+    if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
     setForm({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
-    setPagosEgreso([{medio:"Efectivo - Bodegón",monto:""}]);
+    setPagosEgreso([{medio:"",monto:""}]);
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
@@ -1993,7 +1994,8 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               </div>
               {pagosEgreso.map(function(pago,idx){return(
                 <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
-                  <select value={pago.medio} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],medio:e.target.value};return n;});}} style={{...INP,fontSize:11}}>
+                  <select value={pago.medio} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],medio:e.target.value};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                    <option value="">-- Seleccioná medio --</option>
                     {grupos_medios.map(function(grp){
                       var items=MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;});
                       return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;

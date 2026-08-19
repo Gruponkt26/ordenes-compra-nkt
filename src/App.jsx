@@ -1544,46 +1544,7 @@ function GestProveedoresPanel(p) {
               var prodsProv=prods[sel]||[];
               return(
                 <div>
-                  {/* Sub-tabs */}
-                  <div style={{display:"flex",gap:5,marginBottom:12}}>
-                    {[["saldo","💰 Cuenta corriente"],["precios","💲 Precios"]].map(function(t){return(
-                      <button key={t[0]} onClick={function(){setTabSaldoSub(t[0]);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid "+(tabSaldoSub===t[0]?"#D4A017":"#1E1E1E"),background:tabSaldoSub===t[0]?"#D4A01722":"#111",color:tabSaldoSub===t[0]?"#D4A017":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
-                    );})}
-                  </div>
-
-                  {/* Sub-tab: Precios */}
-                  {tabSaldoSub==="precios"&&(
-                    <div>
-                      <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Precios por producto</div>
-                      {prodsProv.length===0?(
-                        <div style={{fontSize:11,color:"#333",textAlign:"center",padding:"20px 0"}}>Agregá productos primero en el tab Productos</div>
-                      ):(
-                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {prodsProv.map(function(prod,idx){
-                            var nombre=typeof prod==="string"?prod:prod.nombre;
-                            var unidad=typeof prod==="string"?"unidad":(prod.unidad||"unidad");
-                            var precio=preciosProv[nombre]||"";
-                            return(
-                              <div key={idx} style={{display:"flex",alignItems:"center",gap:8,background:"#0F0F0F",borderRadius:8,padding:"8px 12px",border:"1px solid #1A1A1A"}}>
-                                <div style={{flex:1}}>
-                                  <div style={{fontSize:12,color:"#F0EDE8"}}>{nombre}</div>
-                                  <div style={{fontSize:10,color:"#555"}}>{unidad}</div>
-                                </div>
-                                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:"#555"}}>$</span>
-                                  <input type="number" value={precio} placeholder="0" onChange={function(e){var v=e.target.value;if(onSaveMov)p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:80,padding:"5px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
-                                  <span style={{fontSize:10,color:"#444"}}>/{unidad}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Sub-tab: Cuenta corriente */}
-                  {tabSaldoSub==="saldo"&&(
+                  {/* Cuenta corriente */}
                   <div>
                   {/* Saldo por local */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
@@ -1718,11 +1679,12 @@ function GestProveedoresPanel(p) {
                 var nombre=getProdNombre(prod);
                 var unidad=getProdUnidad(prod);
                 var editando=edProd&&edProd.idx===idx;
+                var precioActual=(p.precios&&p.precios[sel])?p.precios[sel][nombre]||"":"";
                 return(
                   <div key={idx} style={{background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",padding:"7px 10px"}}>
                     {editando?(
-                      <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                        <input value={edProd.nombre} onChange={function(e){setEdProd(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,flex:1,fontSize:12,padding:"5px 8px"}}/>
+                      <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
+                        <input value={edProd.nombre} onChange={function(e){setEdProd(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,flex:1,fontSize:12,padding:"5px 8px",minWidth:80}}/>
                         <select value={edProd.unidad} onChange={function(e){setEdProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:75,fontSize:12,padding:"5px 8px"}}>
                           {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
                         </select>
@@ -1730,11 +1692,17 @@ function GestProveedoresPanel(p) {
                         <button onClick={function(){setEdProd(null);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #333",background:"none",color:"#555",fontSize:11,cursor:"pointer"}}>✕</button>
                       </div>
                     ):(
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre} <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 6px",marginLeft:4}}>{unidad}</span></span>
-                        <div style={{display:"flex",gap:4}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre}</span>
+                          <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 5px",marginLeft:5}}>{unidad}</span>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                          <span style={{fontSize:10,color:"#555"}}>$</span>
+                          <input type="number" value={precioActual} placeholder="—" onChange={function(e){p.onSavePrecio&&p.onSavePrecio(sel,nombre,e.target.value);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
+                          <span style={{fontSize:9,color:"#444"}}>/{unidad}</span>
                           <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
-                          <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
+                          <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#C1440E55",cursor:"pointer",fontSize:13}}>✕</button>
                         </div>
                       </div>
                     )}
@@ -6587,7 +6555,7 @@ export default function App() {
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {esAdmin&&<button onClick={function(){setShowGest(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>⚙️ Proveedores</button>}
-            {esAdmin&&<button onClick={function(){setShowPrecios(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>💲 Precios</button>}
+
             {esAdmin&&<button onClick={function(){setShowEditorMenu(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>🍽️ Menú Stock</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
@@ -6765,6 +6733,7 @@ export default function App() {
                 onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
                 onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
                 onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
+                onSavePrecio={function(provId,nombre,valor){sbSavePrecios({...precios,[provId]:{...(precios[provId]||{}),[nombre]:parseFloat(valor)||0}});setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
               />
             </div>
           )}

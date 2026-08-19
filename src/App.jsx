@@ -1381,12 +1381,24 @@ function MisProductosModal(p) {
 }
 
 // ─── GESTIÓN PROVEEDORES ──────────────────────────────────────────────────────
+var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
+
 function GestProveedores(p) {
-  var [provs,setProvs]=useState(p.proveedores), [prods,setProds]=useState(p.productos), [sel,setSel]=useState(null), [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""}), [newProd,setNewProd]=useState(""), [showAdd,setShowAdd]=useState(false), [ed,setEd]=useState(null);
+  var [provs,setProvs]=useState(p.proveedores);
+  var [prods,setProds]=useState(p.productos);
+  var [sel,setSel]=useState(null);
+  var [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});
+  var [newProd,setNewProd]=useState({nombre:"",unidad:"kg"});
+  var [showAdd,setShowAdd]=useState(false);
+  var [ed,setEd]=useState(null);
+  var [edProd,setEdProd]=useState(null);
   function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
   function delProv(id){setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
-  function addProd(){if(!newProd.trim()||!sel)return;setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),newProd.trim()];return n;});setNewProd("");}
-  function delProd(pid,prod){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(x){return x!==prod;});return n;});}
+  function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad"};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg"});}
+  function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
+  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
+  function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
+  function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
   var sp=provs.find(function(x){return x.id===sel;})||null;
   return(
@@ -1443,14 +1455,43 @@ function GestProveedores(p) {
                   )}
                 </div>
                 <div style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Productos ({(prods[sel]||[]).length})</div>
-                <div style={{display:"flex",gap:6,marginBottom:10}}><input placeholder="Nombre del producto... (Enter)" value={newProd} onChange={function(e){setNewProd(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/><button onClick={addProd} style={{...BS("#C1440E"),padding:"9px 12px",flexShrink:0}}>+</button></div>
+                {/* Agregar producto */}
+                <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
+                  <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
+                  <select value={newProd.unidad} onChange={function(e){setNewProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:80,flexShrink:0}}>
+                    {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
+                  </select>
+                  <button onClick={addProd} style={{...BS("#C1440E"),padding:"9px 12px",flexShrink:0}}>+</button>
+                </div>
+                {/* Lista de productos */}
                 <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {(prods[sel]||[]).length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"12px 0"}}>Sin productos.</div>:(prods[sel]||[]).map(function(prod,idx){return(
-                    <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
-                      <span style={{fontSize:12,color:"#BBB"}}>📦 {prod}</span>
-                      <button onClick={function(){delProd(sel,prod);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
-                    </div>
-                  );})}
+                  {(prods[sel]||[]).length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"12px 0"}}>Sin productos.</div>:(prods[sel]||[]).map(function(prod,idx){
+                    var nombre=getProdNombre(prod);
+                    var unidad=getProdUnidad(prod);
+                    var editando=edProd&&edProd.idx===idx;
+                    return(
+                      <div key={idx} style={{background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",padding:"7px 10px"}}>
+                        {editando?(
+                          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                            <input value={edProd.nombre} onChange={function(e){setEdProd(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,flex:1,fontSize:12,padding:"5px 8px"}}/>
+                            <select value={edProd.unidad} onChange={function(e){setEdProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:75,fontSize:12,padding:"5px 8px"}}>
+                              {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
+                            </select>
+                            <button onClick={saveEdProd} style={{...BS("#3A7D44"),padding:"5px 9px",fontSize:11}}>✓</button>
+                            <button onClick={function(){setEdProd(null);}} style={{...GH,padding:"5px 9px",fontSize:11}}>✕</button>
+                          </div>
+                        ):(
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre} <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 6px",marginLeft:4}}>{unidad}</span></span>
+                            <div style={{display:"flex",gap:4}}>
+                              <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                              <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

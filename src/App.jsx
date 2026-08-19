@@ -3096,6 +3096,12 @@ function PanelCruzados(p){
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
   var hoy=new Date().toISOString().split("T")[0];
+  var CAMPOS_CIERRE={
+    "l1":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Provincia"],["tarjeta_debito","💳","Débito Provincia"],["tarjeta_credito","💳","Crédito Provincia"],["otros","📱","QR Provincia"]],
+    "l2":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Galicia"],["tarjeta_debito","💳","Débito Galicia"],["tarjeta_credito","💳","Crédito Galicia"],["otros","📱","QR Galicia"]],
+    "l3":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Patagonia"],["tarjeta_debito","💳","Débito Patagonia"],["tarjeta_credito","💳","Crédito Patagonia"],["otros","📱","QR MP"]],
+  };
+  function getCampos(lid){return CAMPOS_CIERRE[lid]||[["efectivo","💵","Efectivo"],["transferencia","📲","Transf."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]];}
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [expandido,setExpandido]=useState(null);
   var [localActivo,setLocalActivo]=useState("all");
@@ -3179,12 +3185,12 @@ function PanelCierresSofia(p) {
                           </div>
                           {abierto&&(
                             <div style={{background:"#080808",borderRadius:6,padding:"8px 10px",margin:"3px 0 4px 0"}}>
-                              {[["efectivo","💵"],["transferencia","📲"],["tarjeta_debito","💳db"],["tarjeta_credito","💳cr"],["otros","📦"]].map(function(f){
+                              {getCampos(c.local).map(function(f){
                                 var v=parseFloat(c[f[0]]||0);
                                 if(v===0)return null;
                                 return(
                                   <div key={f[0]} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
-                                    <span>{f[1]} {f[0].replace("_"," ")}</span>
+                                    <span>{f[1]} {f[2]}</span>
                                     <span style={{color:"#F0EDE8",fontWeight:600}}>${v.toLocaleString("es-AR")}</span>
                                   </div>
                                 );
@@ -3199,7 +3205,7 @@ function PanelCierresSofia(p) {
                     {/* Totales por medio de pago al final de la columna */}
                     <div style={{marginTop:8,borderTop:"1px solid "+l.color+"33",paddingTop:8}}>
                       <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Total del mes</div>
-                      {[["efectivo","💵","Efectivo"],["transferencia","📲","Transfer."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]].map(function(f){
+                      {getCampos(l.id).map(function(f){
                         var tot=cl.reduce(function(a,c){return a+parseFloat(c[f[0]]||0);},0);
                         if(tot===0)return null;
                         return(
@@ -3267,12 +3273,12 @@ function PanelCierresSofia(p) {
             {/* Totales por medio de pago del mes */}
             {cl.length>0&&(
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:10}}>
-                {[["efectivo","💵"],["transferencia","📲"],["tarjeta_debito","💳db"],["tarjeta_credito","💳cr"],["otros","📦"]].map(function(f){
+                {getCampos(l.id).map(function(f){
                   var tot=cl.reduce(function(a,c){return a+parseFloat(c[f[0]]||0);},0);
                   if(tot===0)return null;
                   return(
                     <div key={f[0]} style={{background:"#0F0F0F",borderRadius:7,padding:"6px 9px"}}>
-                      <div style={{fontSize:9,color:"#444",marginBottom:2}}>{f[1]} {f[0].replace("_"," ")}</div>
+                      <div style={{fontSize:9,color:"#444",marginBottom:2}}>{f[1]} {f[2]}</div>
                       <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>${tot.toLocaleString("es-AR")}</div>
                     </div>
                   );
@@ -3301,12 +3307,12 @@ function PanelCierresSofia(p) {
                       </div>
                       {abierto&&(
                         <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",margin:"4px 0 6px 0",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                          {[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].map(function(f){
+                          {getCampos(c.local).map(function(f){
                             var v=parseFloat(c[f[0]]||0);
                             if(v===0)return null;
                             return(
                               <div key={f[0]} style={{fontSize:11,color:"#555"}}>
-                                {f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>${v.toLocaleString("es-AR")}</span>
+                                {f[1]} {f[2]}: <span style={{color:"#F0EDE8",fontWeight:600}}>${v.toLocaleString("es-AR")}</span>
                               </div>
                             );
                           })}

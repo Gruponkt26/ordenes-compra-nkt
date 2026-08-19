@@ -3441,14 +3441,22 @@ function PanelCierre(p) {
             <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
-            {[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Tarjeta débito"],["tarjeta_credito","💳 Tarjeta crédito"],["otros","📦 Otros"]].map(function(field){
-              return(
-                <div key={field[0]}>
-                  <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{field[1]}</label>
-                  <input type="number" placeholder="0" value={form[field[0]]} onChange={function(e){var v=e.target.value;setForm(function(f){var n={...f};n[field[0]]=v;return n;});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-                </div>
-              );
-            })}
+            {(function(){
+              var campos={
+                "l1":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Provincia"],["tarjeta_debito","💳 Débito Provincia"],["tarjeta_credito","💳 Crédito Provincia"],["otros","📱 QR Provincia"]],
+                "l2":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Galicia"],["tarjeta_debito","💳 Débito Galicia"],["tarjeta_credito","💳 Crédito Galicia"],["otros","📱 QR Galicia"]],
+                "l3":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Patagonia"],["tarjeta_debito","💳 Débito Patagonia"],["tarjeta_credito","💳 Crédito Patagonia"],["otros","📱 QR Mercado Pago"]],
+              };
+              var fields=campos[localId]||[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]];
+              return fields.map(function(field){
+                return(
+                  <div key={field[0]}>
+                    <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{field[1]}</label>
+                    <input type="number" placeholder="0" value={form[field[0]]} onChange={function(e){var v=e.target.value;setForm(function(f){var n={...f};n[field[0]]=v;return n;});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                  </div>
+                );
+              });
+            })()}
           </div>
           {/* Retiro de socio y egresos diarios */}
           <div style={{background:"#1A0A0A",border:"1px solid #C1440E22",borderRadius:10,padding:"12px",marginBottom:12}}>

@@ -107,15 +107,17 @@ async function sbLoadProductos() {
     return result;
   } catch(e) { return null; }
 }
-async function sbSaveProducto(provId, nombre) {
+async function sbSaveProducto(provId, prod) {
   try {
+    var nombre=typeof prod==="string"?prod:prod.nombre;
+    var unidad=typeof prod==="string"?"unidad":(prod.unidad||"unidad");
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre }) });
+    await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre, unidad: unidad }) });
   } catch(e) {}
 }
 async function sbDeleteProducto(provId, nombre) {
   try {
-    await fetch(SURL + "/rest/v1/productos?id=eq." + provId+"_"+nombre.replace(/\s+/g,"_"), { method: "DELETE", headers: SH });
+    await fetch(SURL + "/rest/v1/productos?prov_id=eq."+provId, { method: "DELETE", headers: SH });
   } catch(e) {}
 }
 
@@ -6670,17 +6672,18 @@ export default function App() {
 
       {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){
-        // Save all proveedores to Supabase
         pv.forEach(function(p){ sbSaveProveedor(p); });
-        // Save all productos to Supabase
         Object.keys(pd).forEach(function(provId){
-          pd[provId].forEach(function(nombre){ sbSaveProducto(provId, nombre); });
+          // Borrar productos viejos y guardar los nuevos con unidad
+          sbDeleteProducto(provId, null);
+          pd[provId].forEach(function(prod){ sbSaveProducto(provId, prod); });
         });
         setProveedores(pv);setProductos(pd);setShowGest(false);
       }}/>}
       {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){
         Object.keys(pd).forEach(function(provId){
-          pd[provId].forEach(function(nombre){ sbSaveProducto(provId, nombre); });
+          sbDeleteProducto(provId, null);
+          pd[provId].forEach(function(prod){ sbSaveProducto(provId, prod); });
         });
         setProductos(pd);setShowMisProds(false);
       }}/>}

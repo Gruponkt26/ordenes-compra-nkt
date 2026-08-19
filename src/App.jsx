@@ -1423,17 +1423,31 @@ function GestProveedoresPanel(p) {
   var onSaveMov=p.onSaveMov, onDeleteMov=p.onDeleteMov;
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var localesProv=LOCALES.filter(function(l){return l.id!=="l4";}).concat([LOCALES.find(function(l){return l.id==="l4";})]).filter(Boolean);
+  var [editSaldoInicial,setEditSaldoInicial]=useState(null); // {local, monto}
+  var precios=p.precios||{};
+  var [tabSaldoSub,setTabSaldoSub]=useState("saldo"); // saldo | precios
 
   function getSaldoPorLocal(provId){
     var movs=saldos.filter(function(m){return m.prov_id===provId;});
     var porLocal={};
     localesProv.forEach(function(l){
       var movL=movs.filter(function(m){return m.local===l.id;});
+      var saldoInicial=movL.filter(function(m){return m.tipo==="saldo_inicial";}).reduce(function(a,m){return a+parseFloat(m.monto||0);},0);
       var compras=movL.filter(function(m){return m.tipo==="compra";}).reduce(function(a,m){return a+parseFloat(m.monto||0);},0);
       var pagos=movL.filter(function(m){return m.tipo==="pago";}).reduce(function(a,m){return a+parseFloat(m.monto||0);},0);
-      porLocal[l.id]={saldo:compras-pagos,compras,pagos};
+      porLocal[l.id]={saldo:saldoInicial+compras-pagos,saldoInicial,compras,pagos};
     });
     return porLocal;
+  }
+  function saveSaldoInicial(localId, monto){
+    // Eliminar saldo inicial anterior del mismo local/proveedor
+    var existente=saldos.find(function(m){return m.prov_id===sel&&m.local===localId&&m.tipo==="saldo_inicial";});
+    if(existente&&onDeleteMov)onDeleteMov(existente.id);
+    if(parseFloat(monto)!==0){
+      var mov={id:String(Date.now()),prov_id:sel,local:localId,tipo:"saldo_inicial",monto:parseFloat(monto),medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:"Saldo inicial",usuario:p.usuario||"",created_at:new Date().toISOString()};
+      if(onSaveMov)onSaveMov(mov);
+    }
+    setEditSaldoInicial(null);
   }
 
   function doSaveMov(){
@@ -1525,18 +1539,74 @@ function GestProveedoresPanel(p) {
             {/* Tab: Saldos */}
             {tabSel==="saldos"&&(function(){
               var saldoPorLocal=getSaldoPorLocal(sel);
-              var movsProv=saldos.filter(function(m){return m.prov_id===sel;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+              var movsProv=saldos.filter(function(m){return m.prov_id===sel&&m.tipo!=="saldo_inicial";}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+              var preciosProv=precios[sel]||{};
+              var prodsProv=prods[sel]||[];
               return(
                 <div>
+                  {/* Sub-tabs */}
+                  <div style={{display:"flex",gap:5,marginBottom:12}}>
+                    {[["saldo","💰 Cuenta corriente"],["precios","💲 Precios"]].map(function(t){return(
+                      <button key={t[0]} onClick={function(){setTabSaldoSub(t[0]);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid "+(tabSaldoSub===t[0]?"#D4A017":"#1E1E1E"),background:tabSaldoSub===t[0]?"#D4A01722":"#111",color:tabSaldoSub===t[0]?"#D4A017":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+                    );})}
+                  </div>
+
+                  {/* Sub-tab: Precios */}
+                  {tabSaldoSub==="precios"&&(
+                    <div>
+                      <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Precios por producto</div>
+                      {prodsProv.length===0?(
+                        <div style={{fontSize:11,color:"#333",textAlign:"center",padding:"20px 0"}}>Agregá productos primero en el tab Productos</div>
+                      ):(
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {prodsProv.map(function(prod,idx){
+                            var nombre=typeof prod==="string"?prod:prod.nombre;
+                            var unidad=typeof prod==="string"?"unidad":(prod.unidad||"unidad");
+                            var precio=preciosProv[nombre]||"";
+                            return(
+                              <div key={idx} style={{display:"flex",alignItems:"center",gap:8,background:"#0F0F0F",borderRadius:8,padding:"8px 12px",border:"1px solid #1A1A1A"}}>
+                                <div style={{flex:1}}>
+                                  <div style={{fontSize:12,color:"#F0EDE8"}}>{nombre}</div>
+                                  <div style={{fontSize:10,color:"#555"}}>{unidad}</div>
+                                </div>
+                                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <span style={{fontSize:11,color:"#555"}}>$</span>
+                                  <input type="number" value={precio} placeholder="0" onChange={function(e){var v=e.target.value;if(onSaveMov)p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:80,padding:"5px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                                  <span style={{fontSize:10,color:"#444"}}>/{unidad}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sub-tab: Cuenta corriente */}
+                  {tabSaldoSub==="saldo"&&(
+                  <div>
                   {/* Saldo por local */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
                     {localesProv.map(function(l){
-                      var s=saldoPorLocal[l.id]||{saldo:0};
+                      var s=saldoPorLocal[l.id]||{saldo:0,saldoInicial:0};
                       return(
                         <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+(s.saldo>0?"#C1440E44":s.saldo<0?"#3A7D4444":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
-                          <div style={{fontSize:11,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre}</div>
-                          <div style={{fontSize:16,fontWeight:800,color:s.saldo>0?"#C1440E":s.saldo<0?"#3A7D44":"#555",fontFamily:"'Playfair Display',serif"}}>{fmt(Math.abs(s.saldo))}</div>
-                          <div style={{fontSize:9,color:"#555",marginTop:2}}>{s.saldo>0?"Debe":s.saldo<0?"A favor":"Saldado"}</div>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                            <div>
+                              <div style={{fontSize:11,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre}</div>
+                              <div style={{fontSize:16,fontWeight:800,color:s.saldo>0?"#C1440E":s.saldo<0?"#3A7D44":"#555",fontFamily:"'Playfair Display',serif"}}>{fmt(Math.abs(s.saldo))}</div>
+                              <div style={{fontSize:9,color:"#555",marginTop:2}}>{s.saldo>0?"Debe":s.saldo<0?"A favor":"Saldado"}</div>
+                              {s.saldoInicial!==0&&<div style={{fontSize:9,color:"#444",marginTop:2}}>Inicial: {fmt(s.saldoInicial)}</div>}
+                            </div>
+                            <button onClick={function(){setEditSaldoInicial({local:l.id,monto:String(s.saldoInicial||"")});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:10,cursor:"pointer"}} title="Editar saldo inicial">✏️</button>
+                          </div>
+                          {editSaldoInicial&&editSaldoInicial.local===l.id&&(
+                            <div style={{marginTop:8,display:"flex",gap:5,alignItems:"center"}}>
+                              <input type="number" value={editSaldoInicial.monto} placeholder="Saldo inicial" onChange={function(e){setEditSaldoInicial(function(n){return{...n,monto:e.target.value};});}} style={{flex:1,padding:"5px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                              <button onClick={function(){saveSaldoInicial(l.id,editSaldoInicial.monto);}} style={{padding:"5px 10px",borderRadius:6,border:"none",background:"#D4A017",color:"#000",fontWeight:700,fontSize:11,cursor:"pointer"}}>✓</button>
+                              <button onClick={function(){setEditSaldoInicial(null);}} style={{padding:"5px 8px",borderRadius:6,border:"1px solid #333",background:"none",color:"#555",fontSize:11,cursor:"pointer"}}>✕</button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1571,6 +1641,8 @@ function GestProveedoresPanel(p) {
                       })}
                     </div>
                   )}
+                  </div>
+                  )} {/* fin sub-tab saldo */}
 
                   {/* Modal nuevo movimiento */}
                   {showFormMov&&(

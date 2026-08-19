@@ -1386,6 +1386,135 @@ function MisProductosModal(p) {
 }
 
 // ─── GESTIÓN PROVEEDORES ──────────────────────────────────────────────────────
+
+// ─── GESTOR PROVEEDORES PANEL (inline, sin modal) ─────────────────────────────
+function GestProveedoresPanel(p) {
+  var [provs,setProvs]=useState(p.proveedores||[]);
+  var [prods,setProds]=useState(p.productos||{});
+  var [sel,setSel]=useState(null);
+  var [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});
+  var [newProd,setNewProd]=useState({nombre:"",unidad:"kg"});
+  var [showAdd,setShowAdd]=useState(false);
+  var [ed,setEd]=useState(null);
+  var [edProd,setEdProd]=useState(null);
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
+  function delProv(id){if(!window.confirm("¿Eliminar proveedor?"))return;setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
+  function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad"};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg"});}
+  function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
+  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
+  function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
+  function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
+  function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
+  var sp=provs.find(function(x){return x.id===sel;})||null;
+
+  return(
+    <div style={{display:"flex",gap:12,fontFamily:"'Inter',sans-serif"}}>
+      {/* Lista proveedores */}
+      <div style={{width:200,flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Proveedores ({provs.length})</div>
+          <button onClick={function(){setShowAdd(function(v){return !v;});}} style={{fontSize:11,color:"#D4A017",background:"none",border:"1px solid #D4A01744",borderRadius:6,padding:"3px 9px",cursor:"pointer"}}>+ Nuevo</button>
+        </div>
+        {showAdd&&(
+          <div style={{background:"#0A0A0A",border:"1px solid #2A2A2A",borderRadius:10,padding:"10px",marginBottom:8}}>
+            <input placeholder="Nombre" value={newP.nombre} onChange={function(e){setNewP(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,marginBottom:6}}/>
+            <select value={newP.categoria} onChange={function(e){setNewP(function(n){return{...n,categoria:e.target.value};});}} style={{...INP,marginBottom:6}}>{CATEGORIAS.map(function(c){return <option key={c}>{c}</option>;})}</select>
+            <input placeholder="WhatsApp" value={newP.whatsapp} onChange={function(e){setNewP(function(n){return{...n,whatsapp:e.target.value};});}} style={{...INP,marginBottom:6}}/>
+            <div style={{display:"flex",gap:5}}>
+              <button onClick={addProv} style={{flex:1,padding:"7px",borderRadius:7,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",fontSize:12}}>Agregar</button>
+              <button onClick={function(){setShowAdd(false);}} style={{padding:"7px 10px",borderRadius:7,border:"1px solid #333",background:"none",color:"#555",cursor:"pointer",fontSize:12}}>✕</button>
+            </div>
+          </div>
+        )}
+        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+          {provs.map(function(pv){return(
+            <div key={pv.id} onClick={function(){setSel(pv.id);setEd(null);}} style={{padding:"9px 11px",borderRadius:8,cursor:"pointer",background:sel===pv.id?"#1C1C1C":"#0F0F0F",border:"1px solid "+(sel===pv.id?"#D4A01744":"#1A1A1A"),borderLeft:"3px solid "+(sel===pv.id?"#D4A017":"transparent")}}>
+              <div style={{fontSize:12,fontWeight:600,color:sel===pv.id?"#F0EDE8":"#888"}}>{pv.nombre}</div>
+              <div style={{fontSize:10,color:"#444"}}>{pv.categoria} · {(prods[pv.id]||[]).length} productos</div>
+            </div>
+          );})}
+        </div>
+        {sel&&<button onClick={function(){p.onSave(provs,prods);}} style={{marginTop:12,width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Guardar cambios</button>}
+      </div>
+
+      {/* Panel derecho */}
+      <div style={{flex:1}}>
+        {!sel?(
+          <div style={{textAlign:"center",padding:"40px 0",color:"#333"}}>
+            <div style={{fontSize:28,marginBottom:8}}>👈</div>
+            <div style={{fontSize:13,color:"#444"}}>Seleccioná un proveedor</div>
+          </div>
+        ):(
+          <div>
+            {/* Info proveedor */}
+            <div style={{background:"#0F0F0F",borderRadius:10,padding:"12px",marginBottom:12,border:"1px solid #1E1E1E"}}>
+              {ed?(
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  <input value={ed.nombre} onChange={function(e){setEd(function(n){return{...n,nombre:e.target.value};});}} style={INP}/>
+                  <select value={ed.categoria} onChange={function(e){setEd(function(n){return{...n,categoria:e.target.value};});}} style={INP}>{CATEGORIAS.map(function(c){return <option key={c}>{c}</option>;})}</select>
+                  <input placeholder="WhatsApp" value={ed.whatsapp||""} onChange={function(e){setEd(function(n){return{...n,whatsapp:e.target.value};});}} style={INP}/>
+                  <div style={{display:"flex",gap:7}}><button onClick={saveEd} style={{flex:1,padding:"8px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontWeight:700,cursor:"pointer"}}>Guardar</button><button onClick={function(){setEd(null);}} style={{padding:"8px 12px",borderRadius:7,border:"1px solid #333",background:"none",color:"#555",cursor:"pointer"}}>Cancelar</button></div>
+                </div>
+              ):(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700}}>{sp?sp.nombre:""}</div>
+                    <div style={{fontSize:12,color:"#555",marginTop:3}}>{sp?sp.categoria:""}{sp&&sp.whatsapp&&<span style={{color:"#25D366",marginLeft:6}}>📱 {sp.whatsapp}</span>}</div>
+                  </div>
+                  <div style={{display:"flex",gap:5}}>
+                    <button onClick={function(){setEd(sp);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#555",cursor:"pointer",fontSize:11}}>✏️</button>
+                    <button onClick={function(){delProv(sel);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",cursor:"pointer",fontSize:11}}>🗑️</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Productos */}
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Productos ({(prods[sel]||[]).length})</div>
+            <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
+              <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
+              <select value={newProd.unidad} onChange={function(e){setNewProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:80,flexShrink:0}}>
+                {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
+              </select>
+              <button onClick={addProd} style={{padding:"9px 14px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",flexShrink:0}}>+</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {(prods[sel]||[]).length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"10px 0"}}>Sin productos.</div>:(prods[sel]||[]).map(function(prod,idx){
+                var nombre=getProdNombre(prod);
+                var unidad=getProdUnidad(prod);
+                var editando=edProd&&edProd.idx===idx;
+                return(
+                  <div key={idx} style={{background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",padding:"7px 10px"}}>
+                    {editando?(
+                      <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                        <input value={edProd.nombre} onChange={function(e){setEdProd(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,flex:1,fontSize:12,padding:"5px 8px"}}/>
+                        <select value={edProd.unidad} onChange={function(e){setEdProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:75,fontSize:12,padding:"5px 8px"}}>
+                          {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
+                        </select>
+                        <button onClick={saveEdProd} style={{padding:"5px 9px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:11,cursor:"pointer"}}>✓</button>
+                        <button onClick={function(){setEdProd(null);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #333",background:"none",color:"#555",fontSize:11,cursor:"pointer"}}>✕</button>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre} <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 6px",marginLeft:4}}>{unidad}</span></span>
+                        <div style={{display:"flex",gap:4}}>
+                          <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                          <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
 
 function GestProveedores(p) {
@@ -6230,18 +6359,21 @@ export default function App() {
 
         {/* MÓDULOS PRINCIPALES — solo Compras y Administración */}
         {esSofia&&modulo&&(
-          <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:6,alignItems:"center"}}>
+          <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
             <button onClick={function(){setModulo(null);}}
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
-            <button onClick={function(){setModulo("compras");setVista("despacho");}}
-              style={{padding:"10px 24px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"#111",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
-              🛒 Compras
-            </button>
-            <button onClick={function(){setModulo("admin");setVista("dashboard");}}
-              style={{padding:"10px 24px",borderRadius:10,border:"none",background:modulo==="admin"?"#1A6B8A":"#111",color:modulo==="admin"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
-              ⚙️ Administración
-            </button>
+            {[
+              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
+              {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
+              {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
+              {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
+            ].map(function(m){return(
+              <button key={m.id} onClick={m.action}
+                style={{padding:"9px 18px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+                {m.emoji} {m.label}
+              </button>
+            );})}
           </div>
         )}
 
@@ -6254,15 +6386,18 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>Grupo NKT</div>
                 <div style={{fontSize:12,color:"#444",textTransform:"uppercase",letterSpacing:2}}>Panel de gestión</div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,width:"100%",maxWidth:400}}>
-                <button onClick={function(){setModulo("compras");setVista("despacho");}} style={{padding:"28px 20px",borderRadius:16,border:"2px solid #C1440E33",background:"#C1440E11",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
-                  <div style={{fontSize:32,marginBottom:10}}>🛒</div>
-                  <div>Compras</div>
-                </button>
-                <button onClick={function(){setModulo("admin");setVista("dashboard");}} style={{padding:"28px 20px",borderRadius:16,border:"2px solid #1A6B8A33",background:"#1A6B8A11",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
-                  <div style={{fontSize:32,marginBottom:10}}>⚙️</div>
-                  <div>Administración</div>
-                </button>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,width:"100%",maxWidth:420}}>
+                {[
+                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
+                  {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
+                  {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
+                  {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
+                ].map(function(m){return(
+                  <button key={m.id} onClick={m.action} style={{padding:"28px 20px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                    <div style={{fontSize:32,marginBottom:10}}>{m.emoji}</div>
+                    <div>{m.label}</div>
+                  </button>
+                );})}
               </div>
             </div>
           )}
@@ -6374,6 +6509,44 @@ export default function App() {
           )}
 
           {/* DASHBOARD */}
+          {/* MÓDULO PROVEEDORES */}
+          {esSofia&&modulo==="proveedores"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
+              </div>
+              <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
+                onSave={function(pv,pd){
+                  pv.forEach(function(p){sbSaveProveedor(p);});
+                  async function saveP(){var ids=Object.keys(pd);for(var i=0;i<ids.length;i++){var pid=ids[i];await sbDeleteProducto(pid);for(var j=0;j<pd[pid].length;j++){await sbSaveProducto(pid,pd[pid][j]);}}}
+                  saveP();
+                  setProveedores(pv);setProductos(pd);
+                }}
+                onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
+              />
+            </div>
+          )}
+
+          {/* MÓDULO LOCALES */}
+          {esSofia&&modulo==="locales"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏪 Locales</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                {LOCALES.map(function(l){return(
+                  <div key={l.id} style={{background:"#0F0F0F",border:"2px solid "+l.color+"44",borderRadius:14,padding:"20px",textAlign:"center"}}>
+                    <div style={{fontSize:36,marginBottom:8}}>{l.emoji}</div>
+                    <div style={{fontSize:15,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{l.nombre}</div>
+                    <div style={{fontSize:10,color:"#444",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Local {l.id.toUpperCase()}</div>
+                  </div>
+                );})}
+              </div>
+            </div>
+          )}
+
           {esSofia&&modulo==="admin"&&vista==="dashboard"&&(function(){
             var hoy=new Date().toISOString().split("T")[0];
             var mesCurrent=new Date().toISOString().slice(0,7);

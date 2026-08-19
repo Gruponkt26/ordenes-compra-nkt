@@ -6223,7 +6223,7 @@ export default function App() {
             {esAdmin&&<button onClick={function(){setShowPrecios(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>💲 Precios</button>}
             {esAdmin&&<button onClick={function(){setShowEditorMenu(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>🍽️ Menú Stock</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            <button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>
+            {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
         </div>
@@ -6244,7 +6244,8 @@ export default function App() {
 
         <div style={{padding:"14px 20px",maxWidth:900,margin:"0 auto"}}>
 
-          {/* STATS */}
+          {/* STATS — solo en módulo compras */}
+          {(!esSofia||modulo==="compras")&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
             {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
               <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
@@ -6254,6 +6255,7 @@ export default function App() {
               </div>
             );})}
           </div>
+          )}
 
           {/* TABS MÓDULO COMPRAS */}
           {esAdmin&&(!esSofia||modulo==="compras")&&(

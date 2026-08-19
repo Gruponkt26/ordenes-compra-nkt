@@ -103,7 +103,10 @@ async function sbLoadProductos() {
     var d = await r.json();
     if (!Array.isArray(d) || d.length === 0) return null;
     var result = {};
-    d.forEach(function(p){ if(!result[p.prov_id]) result[p.prov_id]=[]; result[p.prov_id].push(p.nombre); });
+    d.forEach(function(p){
+      if(!result[p.prov_id]) result[p.prov_id]=[];
+      result[p.prov_id].push({nombre:p.nombre, unidad:p.unidad||"unidad"});
+    });
     return result;
   } catch(e) { return null; }
 }
@@ -115,7 +118,7 @@ async function sbSaveProducto(provId, prod) {
     await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre, unidad: unidad }) });
   } catch(e) {}
 }
-async function sbDeleteProducto(provId, nombre) {
+async function sbDeleteProducto(provId) {
   try {
     await fetch(SURL + "/rest/v1/productos?prov_id=eq."+provId, { method: "DELETE", headers: SH });
   } catch(e) {}
@@ -6673,18 +6676,32 @@ export default function App() {
       {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){
         pv.forEach(function(p){ sbSaveProveedor(p); });
-        Object.keys(pd).forEach(function(provId){
-          // Borrar productos viejos y guardar los nuevos con unidad
-          sbDeleteProducto(provId, null);
-          pd[provId].forEach(function(prod){ sbSaveProducto(provId, prod); });
-        });
+        // Para cada proveedor: borrar primero, luego guardar
+        var provIds=Object.keys(pd);
+        async function saveProds(){
+          for(var i=0;i<provIds.length;i++){
+            var provId=provIds[i];
+            await sbDeleteProducto(provId);
+            for(var j=0;j<pd[provId].length;j++){
+              await sbSaveProducto(provId, pd[provId][j]);
+            }
+          }
+        }
+        saveProds();
         setProveedores(pv);setProductos(pd);setShowGest(false);
       }}/>}
       {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){
-        Object.keys(pd).forEach(function(provId){
-          sbDeleteProducto(provId, null);
-          pd[provId].forEach(function(prod){ sbSaveProducto(provId, prod); });
-        });
+        async function saveProds2(){
+          var ids=Object.keys(pd);
+          for(var i=0;i<ids.length;i++){
+            var provId=ids[i];
+            await sbDeleteProducto(provId);
+            for(var j=0;j<pd[provId].length;j++){
+              await sbSaveProducto(provId, pd[provId][j]);
+            }
+          }
+        }
+        saveProds2();
         setProductos(pd);setShowMisProds(false);
       }}/>}
       {showExportarGastos&&<ExportarGastosModal gastos={gastos} onClose={function(){setShowExportarGastos(false);}}/>}

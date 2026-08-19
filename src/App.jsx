@@ -1417,6 +1417,7 @@ function GestProveedoresPanel(p) {
   var [edProd,setEdProd]=useState(null);
   var [tabSel,setTabSel]=useState("productos"); // productos | saldos
   var [showFormMov,setShowFormMov]=useState(false);
+  var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
   var [formMov,setFormMov]=useState({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var saldos=p.saldos||[];
@@ -1679,7 +1680,7 @@ function GestProveedoresPanel(p) {
                 var nombre=getProdNombre(prod);
                 var unidad=getProdUnidad(prod);
                 var editando=edProd&&edProd.idx===idx;
-                var precioActual=(p.precios&&p.precios[sel])?p.precios[sel][nombre]||"":"";
+                var precioActual=(preciosLocal[sel])?preciosLocal[sel][nombre]||"":"";
                 return(
                   <div key={idx} style={{background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",padding:"7px 10px"}}>
                     {editando?(
@@ -1699,7 +1700,7 @@ function GestProveedoresPanel(p) {
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
                           <span style={{fontSize:10,color:"#555"}}>$</span>
-                          <input type="number" value={precioActual} placeholder="—" onChange={function(e){p.onSavePrecio&&p.onSavePrecio(sel,nombre,e.target.value);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
+                          <input type="number" value={precioActual} placeholder="—" onChange={function(e){var v=e.target.value;setPreciosLocal(function(prev){var n={...prev};if(!n[sel])n[sel]={};n[sel][nombre]=v;return n;});p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
                           <span style={{fontSize:9,color:"#444"}}>/{unidad}</span>
                           <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
                           <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#C1440E55",cursor:"pointer",fontSize:13}}>✕</button>

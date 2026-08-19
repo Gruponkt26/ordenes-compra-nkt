@@ -6120,7 +6120,7 @@ export default function App() {
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [loading,setLoading]=useState(false);
-  var [modulo,setModulo]=useState("compras"); // compras | admin
+  var [modulo,setModulo]=useState(null); // null | compras | admin
   // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
@@ -6229,8 +6229,11 @@ export default function App() {
         </div>
 
         {/* MÓDULOS PRINCIPALES — solo Compras y Administración */}
-        {esSofia&&(
-          <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:6}}>
+        {esSofia&&modulo&&(
+          <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:6,alignItems:"center"}}>
+            <button onClick={function(){setModulo(null);}}
+              style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
+            <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             <button onClick={function(){setModulo("compras");setVista("despacho");}}
               style={{padding:"10px 24px",borderRadius:10,border:"none",background:modulo==="compras"?"#C1440E":"#111",color:modulo==="compras"?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
               🛒 Compras
@@ -6243,6 +6246,26 @@ export default function App() {
         )}
 
         <div style={{padding:"14px 20px",maxWidth:900,margin:"0 auto"}}>
+
+          {/* PANTALLA DE INICIO — cuando no hay módulo seleccionado */}
+          {esSofia&&!modulo&&(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:20}}>
+              <div style={{textAlign:"center",marginBottom:8}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>Grupo NKT</div>
+                <div style={{fontSize:12,color:"#444",textTransform:"uppercase",letterSpacing:2}}>Panel de gestión</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,width:"100%",maxWidth:400}}>
+                <button onClick={function(){setModulo("compras");setVista("despacho");}} style={{padding:"28px 20px",borderRadius:16,border:"2px solid #C1440E33",background:"#C1440E11",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                  <div style={{fontSize:32,marginBottom:10}}>🛒</div>
+                  <div>Compras</div>
+                </button>
+                <button onClick={function(){setModulo("admin");setVista("dashboard");}} style={{padding:"28px 20px",borderRadius:16,border:"2px solid #1A6B8A33",background:"#1A6B8A11",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                  <div style={{fontSize:32,marginBottom:10}}>⚙️</div>
+                  <div>Administración</div>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* STATS — solo en módulo compras */}
           {(!esSofia||modulo==="compras")&&(

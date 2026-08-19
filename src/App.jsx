@@ -118,6 +118,24 @@ async function sbSaveProducto(provId, prod) {
     await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre, unidad: unidad }) });
   } catch(e) {}
 }
+async function sbLoadSaldosProveedores() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/saldos_proveedores?order=created_at.desc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveSaldoProv(mov) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/saldos_proveedores", { method: "POST", headers: h, body: JSON.stringify(mov) });
+  } catch(e) {}
+}
+async function sbDeleteSaldoProv(id) {
+  try {
+    await fetch(SURL + "/rest/v1/saldos_proveedores?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbDeleteProducto(provId) {
   try {
     await fetch(SURL + "/rest/v1/productos?prov_id=eq."+provId, { method: "DELETE", headers: SH });
@@ -1397,7 +1415,34 @@ function GestProveedoresPanel(p) {
   var [showAdd,setShowAdd]=useState(false);
   var [ed,setEd]=useState(null);
   var [edProd,setEdProd]=useState(null);
+  var [tabSel,setTabSel]=useState("productos"); // productos | saldos
+  var [showFormMov,setShowFormMov]=useState(false);
+  var [formMov,setFormMov]=useState({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var saldos=p.saldos||[];
+  var onSaveMov=p.onSaveMov, onDeleteMov=p.onDeleteMov;
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var localesProv=LOCALES.filter(function(l){return l.id!=="l4";}).concat([LOCALES.find(function(l){return l.id==="l4";})]).filter(Boolean);
+
+  function getSaldoPorLocal(provId){
+    var movs=saldos.filter(function(m){return m.prov_id===provId;});
+    var porLocal={};
+    localesProv.forEach(function(l){
+      var movL=movs.filter(function(m){return m.local===l.id;});
+      var compras=movL.filter(function(m){return m.tipo==="compra";}).reduce(function(a,m){return a+parseFloat(m.monto||0);},0);
+      var pagos=movL.filter(function(m){return m.tipo==="pago";}).reduce(function(a,m){return a+parseFloat(m.monto||0);},0);
+      porLocal[l.id]={saldo:compras-pagos,compras,pagos};
+    });
+    return porLocal;
+  }
+
+  function doSaveMov(){
+    if(!formMov.monto||!sel)return;
+    var mov={id:String(Date.now()),prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.medio_pago,fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
+    if(onSaveMov)onSaveMov(mov);
+    setShowFormMov(false);
+    setFormMov({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
+  }
 
   function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
   function delProv(id){if(!window.confirm("¿Eliminar proveedor?"))return;setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
@@ -1448,6 +1493,13 @@ function GestProveedoresPanel(p) {
           </div>
         ):(
           <div>
+            {/* Tabs productos / saldos */}
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {[["productos","📦 Productos"],["saldos","💰 Saldos"]].map(function(t){return(
+                <button key={t[0]} onClick={function(){setTabSel(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tabSel===t[0]?"#D4A017":"#1E1E1E"),background:tabSel===t[0]?"#D4A01722":"#111",color:tabSel===t[0]?"#D4A017":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+              );})}
+            </div>
+
             {/* Info proveedor */}
             <div style={{background:"#0F0F0F",borderRadius:10,padding:"12px",marginBottom:12,border:"1px solid #1E1E1E"}}>
               {ed?(
@@ -1470,6 +1522,116 @@ function GestProveedoresPanel(p) {
                 </div>
               )}
             </div>
+            {/* Tab: Saldos */}
+            {tabSel==="saldos"&&(function(){
+              var saldoPorLocal=getSaldoPorLocal(sel);
+              var movsProv=saldos.filter(function(m){return m.prov_id===sel;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+              return(
+                <div>
+                  {/* Saldo por local */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                    {localesProv.map(function(l){
+                      var s=saldoPorLocal[l.id]||{saldo:0};
+                      return(
+                        <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+(s.saldo>0?"#C1440E44":s.saldo<0?"#3A7D4444":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+                          <div style={{fontSize:11,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre}</div>
+                          <div style={{fontSize:16,fontWeight:800,color:s.saldo>0?"#C1440E":s.saldo<0?"#3A7D44":"#555",fontFamily:"'Playfair Display',serif"}}>{fmt(Math.abs(s.saldo))}</div>
+                          <div style={{fontSize:9,color:"#555",marginTop:2}}>{s.saldo>0?"Debe":s.saldo<0?"A favor":"Saldado"}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Botón nuevo movimiento */}
+                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+                    <button onClick={function(){setShowFormMov(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar movimiento</button>
+                  </div>
+                  {/* Historial */}
+                  {movsProv.length===0?(
+                    <div style={{fontSize:11,color:"#333",textAlign:"center",padding:"20px 0"}}>Sin movimientos</div>
+                  ):(
+                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                      {movsProv.map(function(m){
+                        var loc=LOCALES.find(function(l){return l.id===m.local;});
+                        return(
+                          <div key={m.id} style={{background:"#0F0F0F",border:"1px solid "+(m.tipo==="compra"?"#C1440E22":"#3A7D4422"),borderRadius:8,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{fontSize:10,fontWeight:700,color:m.tipo==="compra"?"#C1440E":"#3A7D44"}}>{m.tipo==="compra"?"📦 Compra":"💸 Pago"}</span>
+                                <span style={{fontSize:10,color:loc?loc.color:"#555"}}>{loc?loc.emoji+" "+loc.nombre:m.local}</span>
+                              </div>
+                              <div style={{fontSize:10,color:"#444",marginTop:2}}>{m.fecha} · {m.medio_pago}</div>
+                              {m.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic",marginTop:2}}>📝 {m.notas}</div>}
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{fontSize:13,fontWeight:800,color:m.tipo==="compra"?"#C1440E":"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{m.tipo==="compra"?"+":"-"}{fmt(m.monto)}</span>
+                              <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteMov(m.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Modal nuevo movimiento */}
+                  {showFormMov&&(
+                    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                      <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #D4A01744"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#D4A017",marginBottom:14}}>Registrar movimiento</div>
+                        {/* Tipo */}
+                        <div style={{display:"flex",gap:6,marginBottom:10}}>
+                          {[["compra","📦 Compra","#C1440E"],["pago","💸 Pago","#3A7D44"]].map(function(t){return(
+                            <button key={t[0]} onClick={function(){setFormMov(function(f){return{...f,tipo:t[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formMov.tipo===t[0]?t[2]:"#2A2A2A"),background:formMov.tipo===t[0]?t[2]+"22":"#0F0F0F",color:formMov.tipo===t[0]?t[2]:"#555",fontWeight:700,cursor:"pointer",fontSize:12}}>{t[1]}</button>
+                          );})}
+                        </div>
+                        {/* Local */}
+                        <div style={{marginBottom:10}}>
+                          <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+                          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                            {localesProv.map(function(l){return(
+                              <button key={l.id} onClick={function(){setFormMov(function(f){return{...f,local:l.id};});}} style={{padding:"6px 10px",borderRadius:7,border:"2px solid "+(formMov.local===l.id?l.color:"#2A2A2A"),background:formMov.local===l.id?l.color+"22":"#0F0F0F",color:formMov.local===l.id?l.color:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+                            );})}
+                          </div>
+                        </div>
+                        {/* Monto y fecha */}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                          <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto</label><input type="number" placeholder="0" value={formMov.monto} onChange={function(e){setFormMov(function(f){return{...f,monto:e.target.value};});}} style={INP}/></div>
+                          <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha</label><input type="date" value={formMov.fecha} onChange={function(e){setFormMov(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
+                        </div>
+                        {/* Medio de pago */}
+                        <div style={{marginBottom:10}}>
+                          <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
+                          <select value={formMov.medio_pago} onChange={function(e){setFormMov(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
+                            <option value="">-- Seleccioná --</option>
+                            <optgroup label="Efectivo">
+                              <option>Efectivo - Bodegón</option><option>Efectivo - Kusama</option><option>Efectivo - Colantonio's</option>
+                            </optgroup>
+                            <optgroup label="Transferencia">
+                              <option>Transferencia - Provincia Personas</option><option>Transferencia - Galicia Empresas</option>
+                              <option>Transferencia - Patagonia Empresas</option><option>Transferencia - Mercado Pago Nicolás</option>
+                              <option>Transferencia - Mercado Pago Calzon Gitano</option>
+                            </optgroup>
+                            <optgroup label="Otros"><option>Cheque</option><option>Otro</option></optgroup>
+                          </select>
+                        </div>
+                        {/* Notas */}
+                        <div style={{marginBottom:14}}>
+                          <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
+                          <input value={formMov.notas} onChange={function(e){setFormMov(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={doSaveMov} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
+                          <button onClick={function(){setShowFormMov(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Tab: Productos */}
+            {tabSel==="productos"&&(
+            <div>
             {/* Productos */}
             <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Productos ({(prods[sel]||[]).length})</div>
             <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
@@ -1508,6 +1670,8 @@ function GestProveedoresPanel(p) {
                 );
               })}
             </div>
+            </div>
+            )}
           </div>
         )}
       </div>
@@ -6266,6 +6430,7 @@ export default function App() {
   var [empleados,setEmpleados]=useState([]);
   var [sueldos,setSueldos]=useState([]);
   var [cargasSociales,setCargasSociales]=useState([]);
+  var [saldosProveedores,setSaldosProveedores]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -6302,6 +6467,7 @@ export default function App() {
     sbLoadEmpleados().then(function(d){setEmpleados(d||[]);}).catch(function(){});
     sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
     sbLoadCargasSociales().then(function(d){setCargasSociales(d||[]);}).catch(function(){});
+    sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   },[cu]);
 
@@ -6517,6 +6683,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
               <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
+                saldos={saldosProveedores} usuario={cu.nombre}
                 onSave={function(pv,pd){
                   pv.forEach(function(p){sbSaveProveedor(p);});
                   async function saveP(){var ids=Object.keys(pd);for(var i=0;i<ids.length;i++){var pid=ids[i];await sbDeleteProducto(pid);for(var j=0;j<pd[pid].length;j++){await sbSaveProducto(pid,pd[pid][j]);}}}
@@ -6524,6 +6691,8 @@ export default function App() {
                   setProveedores(pv);setProductos(pd);
                 }}
                 onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
+                onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
+                onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
               />
             </div>
           )}

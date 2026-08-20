@@ -6734,7 +6734,7 @@ export default function App() {
                 onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
                 onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
                 onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
-                onSavePrecio={function(provId,nombre,valor){sbSavePrecios({...precios,[provId]:{...(precios[provId]||{}),[nombre]:parseFloat(valor)||0}});setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
+                onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
               />
             </div>
           )}

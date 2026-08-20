@@ -6572,9 +6572,6 @@ export default function App() {
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
-            {esAdmin&&<button onClick={function(){setShowGest(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>⚙️ Proveedores</button>}
-
-            {esAdmin&&<button onClick={function(){setShowEditorMenu(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>🍽️ Menú Stock</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>

@@ -1700,7 +1700,7 @@ function GestProveedoresPanel(p) {
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
                           <span style={{fontSize:10,color:"#555"}}>$</span>
-                          <input type="number" value={precioActual} placeholder="—" onChange={function(e){var v=e.target.value;setPreciosLocal(function(prev){var n={...prev};if(!n[sel])n[sel]={};n[sel][nombre]=v;return n;});p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
+                          <input type="number" defaultValue={precioActual} placeholder="—" key={sel+"_"+nombre} onBlur={function(e){var v=e.target.value;setPreciosLocal(function(prev){var n={...prev};if(!n[sel])n[sel]={};n[sel][nombre]=v;return n;});p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
                           <span style={{fontSize:9,color:"#444"}}>/{unidad}</span>
                           <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
                           <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#C1440E55",cursor:"pointer",fontSize:13}}>✕</button>

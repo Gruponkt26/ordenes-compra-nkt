@@ -149,7 +149,10 @@ async function sbLoadPrecios() {
     var d = await r.json();
     if (!Array.isArray(d) || d.length === 0) return null;
     var result = {};
-    d.forEach(function(p){ result[p.prov_id+"_"+p.producto] = String(p.precio); });
+    d.forEach(function(p){
+      if(!result[p.prov_id])result[p.prov_id]={};
+      result[p.prov_id][p.producto]=String(p.precio);
+    });
     return result;
   } catch(e) { return null; }
 }
@@ -1680,7 +1683,7 @@ function GestProveedoresPanel(p) {
                 var nombre=getProdNombre(prod);
                 var unidad=getProdUnidad(prod);
                 var editando=edProd&&edProd.idx===idx;
-                var precioActual=(preciosLocal[sel])?preciosLocal[sel][nombre]||"":"";
+                var precioActual=(preciosLocal&&preciosLocal[sel]&&preciosLocal[sel][nombre])?String(preciosLocal[sel][nombre]):"";
                 return(
                   <div key={idx} style={{background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A",padding:"7px 10px"}}>
                     {editando?(
@@ -6725,10 +6728,16 @@ export default function App() {
               </div>
               <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
                 saldos={saldosProveedores} usuario={cu.nombre}
-                onSave={function(pv,pd){
+                onSave={async function(pv,pd){
                   pv.forEach(function(p){sbSaveProveedor(p);});
-                  async function saveP(){var ids=Object.keys(pd);for(var i=0;i<ids.length;i++){var pid=ids[i];await sbDeleteProducto(pid);for(var j=0;j<pd[pid].length;j++){await sbSaveProducto(pid,pd[pid][j]);}}}
-                  saveP();
+                  var ids=Object.keys(pd);
+                  for(var i=0;i<ids.length;i++){
+                    var pid=ids[i];
+                    await sbDeleteProducto(pid);
+                    for(var j=0;j<pd[pid].length;j++){
+                      await sbSaveProducto(pid,pd[pid][j]);
+                    }
+                  }
                   setProveedores(pv);setProductos(pd);
                 }}
                 onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}

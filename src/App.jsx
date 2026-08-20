@@ -616,7 +616,13 @@ function NuevaOrden(p) {
   var lc=local?local.color:"#C1440E";
   var precios=p.precios||{};
   var provsDisponibles = orden.local ? p.proveedores.filter(function(pv){ return !pv.locales || pv.locales.includes(orden.local); }) : p.proveedores;
-  function getPrecio(provId, prod){ return precios[provId+"_"+prod]||""; }
+  function getPrecio(provId, prod){
+    var pn=typeof prod==="string"?prod:(prod.nombre||"");
+    // Nuevo formato: precios[provId][producto]
+    if(precios[provId]&&precios[provId][pn])return String(precios[provId][pn]);
+    // Fallback formato viejo: precios[provId_producto]
+    return precios[provId+"_"+pn]||"";
+  }
   var tot=orden.provSections.reduce(function(a,s){return a+s.items.reduce(function(b,i){return b+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);
   var has=orden.provSections.some(function(s){return s.items.length>0;});
 
@@ -698,7 +704,10 @@ function NuevaOrden(p) {
               </div>
             </div>
             <div><label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label><textarea value={orden.notas} onChange={function(e){setOrden(function(o){return{...o,notas:e.target.value};});}} rows={2} placeholder="Indicaciones..." style={{...INP,resize:"vertical"}}/></div>
-            <button onClick={function(){setStep(2);}} disabled={!orden.local} style={{...BS(!orden.local?"#1A1A1A":"#C1440E",!orden.local?"#333":"#fff"),padding:"11px",fontSize:13,cursor:!orden.local?"not-allowed":"pointer"}}>Siguiente → Proveedores y Productos</button>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={p.onClose} style={{...GH,flex:1}}>← Cancelar</button>
+              <button onClick={function(){setStep(2);}} disabled={!orden.local} style={{...BS(!orden.local?"#1A1A1A":"#C1440E",!orden.local?"#333":"#fff"),padding:"11px",fontSize:13,cursor:!orden.local?"not-allowed":"pointer",flex:2}}>Siguiente →</button>
+            </div>
           </div>
         )}
 
@@ -872,6 +881,7 @@ function NuevaOrden(p) {
 
             <div style={{display:"flex",gap:6}}>
               <button onClick={function(){setStep(1);}} style={GH}>← Atrás</button>
+              <button onClick={p.onClose} style={{...GH,flex:1}}>← Cancelar</button>
               <button onClick={function(){doSave("borrador");}} disabled={!has} style={{...BS(!has?"#1A1A1A":"#1E1E1E",!has?"#444":"#CCC"),flex:1,cursor:!has?"not-allowed":"pointer",border:"1px solid #333"}}>Borrador</button>
               <button onClick={function(){doSave("pendiente");}} disabled={!has} style={{...BS(!has?"#1A1A1A":"#C1440E",!has?"#444":"#fff"),flex:2,cursor:!has?"not-allowed":"pointer"}}>✓ Emitir Orden</button>
             </div>

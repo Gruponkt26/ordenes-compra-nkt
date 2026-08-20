@@ -767,7 +767,7 @@ function NuevaOrden(p) {
                           <label style={{fontSize:10,color:"#444",display:"block",marginBottom:4}}>Producto</label>
                           <select value={ni.producto} onChange={function(e){var prod=e.target.value;var precio=getPrecio(actProv,prod);setNi(function(n){return{...n,producto:prod,precio:precio};});}} style={INP}>
                             <option value="">Seleccionar...</option>
-                            {prods.map(function(pr){return <option key={pr} value={pr}>{pr}</option>;})}
+                            {prods.map(function(pr,i){var pn=typeof pr==="string"?pr:(pr.nombre||"");return <option key={i} value={pn}>{pn}</option>;})}
                             <option value="__custom__">+ Otro</option>
                           </select>
                           {ni.producto==="__custom__"&&<input placeholder="Escribir producto..." value={cp} onChange={function(e){setCp(e.target.value);}} style={{...INP,marginTop:5}}/>}
@@ -1288,7 +1288,7 @@ function GestPreciosModal(p) {
             <div style={{padding:"9px 11px",borderBottom:"1px solid #1A1A1A"}}><span style={{fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase"}}>Proveedor</span></div>
             <div style={{overflowY:"auto",flex:1}}>
               {proveedores.map(function(pv){
-                var cnt = (productos[pv.id]||[]).filter(function(prod){ return getPrice(pv.id,prod)!==""; }).length;
+                var cnt = (productos[pv.id]||[]).filter(function(prod){ var pn=typeof prod==="string"?prod:(prod.nombre||""); return getPrice(pv.id,pn)!==""; }).length;
                 return(
                   <div key={pv.id} onClick={function(){setSel(pv.id);}} style={{padding:"10px 12px",borderBottom:"1px solid #161616",cursor:"pointer",background:sel===pv.id?"#1C1C1C":"transparent",borderLeft:"3px solid "+(sel===pv.id?"#D4A017":"transparent")}}>
                     <div style={{fontSize:12,fontWeight:600,color:sel===pv.id?"#F0EDE8":"#999"}}>{pv.nombre}</div>
@@ -1312,17 +1312,19 @@ function GestPreciosModal(p) {
                   {(productos[sel]||[]).length===0?(
                     <div style={{fontSize:12,color:"#333",fontStyle:"italic"}}>Sin productos cargados.</div>
                   ):(productos[sel]||[]).map(function(prod,idx){
+                    var pNombre=typeof prod==="string"?prod:(prod.nombre||"");
+                    var pUnidad=typeof prod==="string"?"":(" / "+(prod.unidad||"unidad"));
                     return(
                       <div key={idx} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
-                        <div style={{flex:1,fontSize:12,color:"#CCC"}}>{prod}</div>
+                        <div style={{flex:1,fontSize:12,color:"#CCC"}}>{pNombre}<span style={{fontSize:10,color:"#555"}}>{pUnidad}</span></div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                           <span style={{fontSize:12,color:"#555"}}>$</span>
                           <input
                             type="number"
                             placeholder="0.00"
-                            value={getPrice(sel,prod)}
-                            onChange={function(e){setPrice(sel,prod,e.target.value);}}
-                            style={{width:90,padding:"5px 8px",borderRadius:6,border:"1px solid "+(getPrice(sel,prod)?"#D4A017":"#2A2A2A"),background:"#141414",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"right"}}
+                            value={getPrice(sel,pNombre)}
+                            onChange={function(e){setPrice(sel,pNombre,e.target.value);}}
+                            style={{width:90,padding:"5px 8px",borderRadius:6,border:"1px solid "+(getPrice(sel,pNombre)?"#D4A017":"#2A2A2A"),background:"#141414",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"right"}}
                           />
                         </div>
                       </div>
@@ -1389,12 +1391,14 @@ function MisProductosModal(p) {
                 <div style={{display:"flex",flexDirection:"column",gap:4}}>
                   {(prods[sel]||[]).length===0
                     ?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"12px 0"}}>Sin productos.</div>
-                    :(prods[sel]||[]).map(function(prod,idx){return(
+                    :(prods[sel]||[]).map(function(prod,idx){
+                      var pn=typeof prod==="string"?prod:(prod.nombre||"");
+                      return(
                       <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",background:"#0F0F0F",borderRadius:8,border:"1px solid #1A1A1A"}}>
-                        <span style={{fontSize:12,color:"#BBB"}}>📦 {prod}</span>
-                        <button onClick={function(){delProd(sel,prod);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
+                        <span style={{fontSize:12,color:"#BBB"}}>📦 {pn}</span>
+                        <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:13}}>✕</button>
                       </div>
-                    )})
+                    );})
                   }
                 </div>
               </div>

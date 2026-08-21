@@ -2719,7 +2719,17 @@ function PanelEgresos(p){
           usuario={usuario}
           conceptosCustom={conceptosCustom}
           proveedores={p.proveedores||[]}
-          onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
+          onSave={function(g){
+            // Si es Proveedores y el concepto no existe, lo agrega automáticamente
+            if(areaActiva==="Proveedores"&&g.concepto&&p.onSaveProveedor){
+              var existe=(p.proveedores||[]).find(function(pv){return pv.nombre===g.concepto;});
+              if(!existe){
+                var nuevoProv={id:"prov_"+String(Date.now()),nombre:g.concepto,categoria:"Proveedor",compartido:true,whatsapp:""};
+                p.onSaveProveedor(nuevoProv);
+              }
+            }
+            onSave({...g,area:areaActiva,categoria:areaActiva});
+          }}
           onDelete={onDelete}
           onSaveConcepto={onSaveConcepto}
           onDeleteConcepto={onDeleteConcepto}
@@ -6512,7 +6522,9 @@ export default function App() {
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
-  useEffect(function(){
+  var [refrescando,setRefrescando]=useState(false);
+
+  function cargarDatos(){
     if(!cu)return;
     setLoading(true);
     sbLoad().then(function(d){setOrdenes(d);initContadores(d);setLoading(false);}).catch(function(){setLoading(false);});
@@ -6524,10 +6536,8 @@ export default function App() {
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
       if(d && Object.keys(d.l1||{}).length>0){
-        // Supabase has data - use it completely (respects deletions)
         Object.keys(d).forEach(function(k){ MENU_POR_LOCAL[k]=d[k]; });
       } else {
-        // No Supabase data yet - use default menu and save it
         MENU_POR_LOCAL["l1"] = MENU_BODEGON;
         Object.keys(MENU_BODEGON).forEach(function(cat){
           sbSaveMenuStock("l1", cat, MENU_BODEGON[cat]);
@@ -6547,7 +6557,15 @@ export default function App() {
     sbLoadCargasSociales().then(function(d){setCargasSociales(d||[]);}).catch(function(){});
     sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
-  },[cu]);
+  }
+
+  useEffect(function(){cargarDatos();},[cu]);
+
+  function handleRefresh(){
+    setRefrescando(true);
+    cargarDatos();
+    setTimeout(function(){setRefrescando(false);},1500);
+  }
 
   if(!cu)return <Login users={users} onLogin={setCu}/>;
 
@@ -6594,6 +6612,7 @@ export default function App() {
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
         </div>
@@ -6944,6 +6963,7 @@ export default function App() {
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}
               onSaveArea={function(a){setAreasCustomGastos(function(p){return p.includes(a)?p:[...p,a];});}}
+              onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
             />
           )}
 

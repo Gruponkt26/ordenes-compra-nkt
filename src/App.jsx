@@ -77,7 +77,7 @@ async function sbDeleteFaltante(id) {
 // Proveedores
 async function sbLoadProveedores() {
   try {
-    var r = await fetch(SURL + "/rest/v1/proveedores?order=nombre", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/proveedores?order=nombre", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) && d.length > 0 ? d : null;
   } catch(e) { return null; }
@@ -99,7 +99,7 @@ async function sbDeleteProveedor(id) {
 // Productos
 async function sbLoadProductos() {
   try {
-    var r = await fetch(SURL + "/rest/v1/productos?order=nombre", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/productos?order=nombre", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     var d = await r.json();
     if (!Array.isArray(d) || d.length === 0) return null;
     var result = {};
@@ -5960,7 +5960,7 @@ async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usua
 // ─── CIERRES CAJA SUPABASE ────────────────────────────────────────────────────
 async function sbLoadCierres() {
   try {
-    var r = await fetch(SURL + "/rest/v1/cierres_caja?order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/cierres_caja?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
@@ -6031,7 +6031,7 @@ async function sbDeleteCategoriaGasto(id) {
 // ─── GASTOS SUPABASE ──────────────────────────────────────────────────────────
 async function sbLoadGastos() {
   try {
-    var r = await fetch(SURL + "/rest/v1/gastos?order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/gastos?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }

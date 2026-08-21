@@ -2210,7 +2210,7 @@ var CONCEPTOS_POR_AREA={
   },
 };
 
-function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent}){
+function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent, proveedores}){
   var hoy=new Date().toISOString().split("T")[0];
   var localesFiltro=LOCALES; // incluye Oficina (l4)
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
@@ -2248,8 +2248,11 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
 
   var areaConceptos=CONCEPTOS_POR_AREA[area]||{grupos:[],items:[]};
   var customItems=conceptosCustom.filter(function(c){return c.area===area&&c.activo!==false;}).map(function(c){return{nombre:c.nombre,sub:c.sub,id:c.id,esCustom:true};});
-  var todosItems=[...areaConceptos.items,...customItems];
-  var todosGrupos=[...new Set([...areaConceptos.grupos,...customItems.map(function(c){return c.sub;})])];
+  // Para Proveedores, usar lista de Supabase plana
+  var todosItems=area==="Proveedores"
+    ? (proveedores||[]).sort(function(a,b){return a.nombre.localeCompare(b.nombre);}).map(function(pv){return{nombre:pv.nombre,sub:"",id:pv.id};})
+    : [...areaConceptos.items,...customItems];
+  var todosGrupos=area==="Proveedores"?[]:([...new Set([...areaConceptos.grupos,...customItems.map(function(c){return c.sub;})])]);
 
   var filtered=gastos.filter(function(g){
     var ml=filtroLocal==="all"||g.local===filtroLocal;
@@ -2365,11 +2368,14 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
                 <div>
                   <select value={enLista?form.concepto:"__otro__"} onChange={function(e){if(e.target.value!=="__otro__")setForm(function(f){return{...f,concepto:e.target.value};});else setForm(function(f){return{...f,concepto:""};});}} style={INP}>
                     <option value="__otro__">-- Escribir manualmente --</option>
-                    {todosGrupos.map(function(grp){
-                      var its=todosItems.filter(function(i){return i.sub===grp;});
-                      if(its.length===0)return null;
-                      return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
-                    })}
+                    {area==="Proveedores"
+                      ? todosItems.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})
+                      : todosGrupos.map(function(grp){
+                          var its=todosItems.filter(function(i){return i.sub===grp;});
+                          if(its.length===0)return null;
+                          return <optgroup key={grp} label={"── "+grp+" ──"}>{its.map(function(i){return <option key={i.nombre} value={i.nombre}>{i.nombre}</option>;})}</optgroup>;
+                        })
+                    }
                   </select>
                   {(!form.concepto||!enLista)&&<input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Escribí manualmente..." style={{...INP,marginTop:5}}/>}
                 </div>
@@ -2712,6 +2718,7 @@ function PanelEgresos(p){
           gastos={gastos.filter(function(g){return(g.area||g.categoria||"Proveedores")===areaActiva;})}
           usuario={usuario}
           conceptosCustom={conceptosCustom}
+          proveedores={p.proveedores||[]}
           onSave={function(g){onSave({...g,area:areaActiva,categoria:areaActiva});}}
           onDelete={onDelete}
           onSaveConcepto={onSaveConcepto}
@@ -6918,7 +6925,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="egresos"&&(
-            <PanelEgresos gastos={gastos} usuario={cu.nombre}
+            <PanelEgresos gastos={gastos} usuario={cu.nombre} proveedores={proveedores}
               conceptosCustom={conceptosGastos}
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}

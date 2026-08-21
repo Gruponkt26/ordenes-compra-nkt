@@ -1435,6 +1435,8 @@ function GestProveedoresPanel(p) {
   var [tabSel,setTabSel]=useState("productos"); // productos | saldos
   var [showFormMov,setShowFormMov]=useState(false);
   var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
+  var [guardando,setGuardando]=useState(false);
+  var [guardadoOk,setGuardadoOk]=useState(false);
   var [formMov,setFormMov]=useState({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var saldos=p.saldos||[];
@@ -1513,7 +1515,14 @@ function GestProveedoresPanel(p) {
             </div>
           );})}
         </div>
-        {sel&&<button onClick={function(){p.onSave(provs,prods);}} style={{marginTop:12,width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Guardar cambios</button>}
+        {sel&&<button onClick={async function(){
+          setGuardando(true);setGuardadoOk(false);
+          await p.onSave(provs,prods);
+          setGuardando(false);setGuardadoOk(true);
+          setTimeout(function(){setGuardadoOk(false);},2500);
+        }} disabled={guardando} style={{marginTop:12,width:"100%",padding:"10px",borderRadius:8,border:"none",background:guardadoOk?"#1A6B8A":guardando?"#2A2A2A":"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:guardando?"wait":"pointer",transition:"background 0.3s"}}>
+          {guardando?"⏳ Guardando...":guardadoOk?"✅ Guardado!":"💾 Guardar cambios"}
+        </button>}
       </div>
 
       {/* Panel derecho */}
@@ -6740,7 +6749,7 @@ export default function App() {
               <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
                 saldos={saldosProveedores} usuario={cu.nombre}
                 onSave={async function(pv,pd){
-                  pv.forEach(function(p){sbSaveProveedor(p);});
+                  for(var i=0;i<pv.length;i++){await sbSaveProveedor(pv[i]);}
                   var ids=Object.keys(pd);
                   for(var i=0;i<ids.length;i++){
                     var pid=ids[i];

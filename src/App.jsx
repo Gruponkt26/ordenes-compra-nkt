@@ -114,9 +114,12 @@ async function sbSaveProducto(provId, prod) {
   try {
     var nombre=typeof prod==="string"?prod:prod.nombre;
     var unidad=typeof prod==="string"?"unidad":(prod.unidad||"unidad");
-    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id: provId+"_"+nombre.replace(/\s+/g,"_"), prov_id: provId, nombre: nombre, unidad: unidad }) });
-  } catch(e) {}
+    if(!nombre||!nombre.trim())return;
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=minimal"};
+    var id = provId+"_"+nombre.trim().replace(/\s+/g,"_").toLowerCase();
+    var r = await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id, prov_id: provId, nombre: nombre.trim(), unidad: unidad }) });
+    return r;
+  } catch(e) { console.error("sbSaveProducto error:", e); }
 }
 async function sbLoadSaldosProveedores() {
   try {
@@ -138,8 +141,9 @@ async function sbDeleteSaldoProv(id) {
 
 async function sbDeleteProducto(provId) {
   try {
-    await fetch(SURL + "/rest/v1/productos?prov_id=eq."+provId, { method: "DELETE", headers: SH });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/productos?prov_id=eq."+provId, { method: "DELETE", headers: {...SH, "Prefer": "return=minimal"} });
+    return r;
+  } catch(e) { console.error("sbDeleteProducto error:", e); }
 }
 
 // Precios
@@ -1517,7 +1521,7 @@ function GestProveedoresPanel(p) {
         </div>
         {sel&&<button onClick={async function(){
           setGuardando(true);setGuardadoOk(false);
-          await p.onSave(provs,prods);
+          await p.onSave(provs,prods,sel);
           setGuardando(false);setGuardadoOk(true);
           setTimeout(function(){setGuardadoOk(false);},2500);
         }} disabled={guardando} style={{marginTop:12,width:"100%",padding:"10px",borderRadius:8,border:"none",background:guardadoOk?"#1A6B8A":guardando?"#2A2A2A":"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:guardando?"wait":"pointer",transition:"background 0.3s"}}>
@@ -6748,14 +6752,15 @@ export default function App() {
               </div>
               <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
                 saldos={saldosProveedores} usuario={cu.nombre}
-                onSave={async function(pv,pd){
-                  for(var i=0;i<pv.length;i++){await sbSaveProveedor(pv[i]);}
-                  var ids=Object.keys(pd);
-                  for(var i=0;i<ids.length;i++){
-                    var pid=ids[i];
-                    await sbDeleteProducto(pid);
-                    for(var j=0;j<pd[pid].length;j++){
-                      await sbSaveProducto(pid,pd[pid][j]);
+                onSave={async function(pv,pd,provIdActivo){
+                  // Solo guardar el proveedor activo y sus productos
+                  var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
+                  if(pvActivo)await sbSaveProveedor(pvActivo);
+                  if(provIdActivo&&pd[provIdActivo]){
+                    await sbDeleteProducto(provIdActivo);
+                    var prods=pd[provIdActivo]||[];
+                    for(var j=0;j<prods.length;j++){
+                      await sbSaveProducto(provIdActivo,prods[j]);
                     }
                   }
                   setProveedores(pv);setProductos(pd);

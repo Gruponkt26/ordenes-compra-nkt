@@ -4175,6 +4175,7 @@ function PanelResultados(p){
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [corrLocal,setCorrLocal]=useState({});
   var [traspLocal,setTraspLocal]=useState({});
+  var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
 
   function getCorr(lid){
@@ -4364,6 +4365,113 @@ function PanelResultados(p){
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
+  // Vista detalle por local
+  if(vistaLocal){
+    var l=LOCALES.find(function(x){return x.id===vistaLocal;});
+    var d=datos[vistaLocal];
+    var cl=cierres.filter(function(c){return c.local===vistaLocal&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+    var gl=gastos.filter(function(g){return g.local===vistaLocal&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif"}}>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={function(){setVistaLocal(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:vistaLocal}</div>
+            <div style={{fontSize:11,color:"#444"}}>{mesFiltro}</div>
+          </div>
+          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+            {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>
+        </div>
+
+        {/* Resultado grande */}
+        <div style={{background:"#111",border:"2px solid "+(d.resultado>=0?"#3A7D44":"#C1440E"),borderRadius:14,padding:"18px",marginBottom:14,textAlign:"center"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Resultado del mes</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:36,fontWeight:800,color:d.resultado>=0?"#3A7D44":"#C1440E"}}>{fmt(d.resultado)}</div>
+          <div style={{fontSize:11,color:"#444",marginTop:4}}>Ventas {fmt(d.ventasCorregidas)} — Egresos {fmt(d.totalGastos)}</div>
+        </div>
+
+        {/* Ventas por medio */}
+        <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"14px",marginBottom:10}}>
+          <div style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:700}}>💰 Ventas ({d.diasCierre} cierres)</div>
+          {[["💵 Efectivo",d.ingrEfectivo],["📲 Transferencia",d.ingrTransferencia],["💳 Débito",d.ingrDebito],["💳 Crédito",d.ingrCredito],["📦 Otros/QR",d.ingrOtros]].map(function(f){
+            var pct=d.ventasCorregidas>0?Math.round(f[1]/d.ventasCorregidas*100):0;
+            return(
+              <div key={f[0]} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                  <span style={{color:"#888"}}>{f[0]}</span>
+                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[1])} <span style={{color:"#444",fontWeight:400,fontSize:10}}>({pct}%)</span></span>
+                </div>
+                <div style={{height:4,background:"#1A1A1A",borderRadius:2}}>
+                  <div style={{height:4,background:"#1A6B8A",borderRadius:2,width:pct+"%",transition:"width 0.3s"}}/>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{borderTop:"1px solid #1A6B8A22",paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700}}>
+            <span style={{color:"#1A6B8A"}}>Total ventas</span>
+            <span style={{color:"#1A6B8A",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}</span>
+          </div>
+          {cl.length===0&&<div style={{fontSize:10,color:"#555",marginTop:6,textAlign:"center"}}>⚠️ Sin cierres cargados</div>}
+        </div>
+
+        {/* Egresos por área */}
+        <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"14px",marginBottom:10}}>
+          <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:700}}>💸 Egresos</div>
+          {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(cat){
+            var monto=d.porCat[cat]||0;
+            var color=AREA_COLORES[cat]||"#555";
+            var pct=d.totalGastos>0?Math.round(monto/d.totalGastos*100):0;
+            return(
+              <div key={cat} style={{marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                  <span style={{color:monto>0?color:"#333"}}>{cat}</span>
+                  <span style={{color:monto>0?"#F0EDE8":"#2A2A2A",fontWeight:monto>0?600:400}}>{fmt(monto)}{monto>0&&<span style={{color:"#444",fontWeight:400,fontSize:10}}> ({pct}%)</span>}</span>
+                </div>
+                {monto>0&&<div style={{height:3,background:"#1A1A1A",borderRadius:2}}><div style={{height:3,background:color,borderRadius:2,width:pct+"%"}}/></div>}
+              </div>
+            );
+          })}
+          <div style={{borderTop:"1px solid #C1440E22",paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700}}>
+            <span style={{color:"#C1440E"}}>Total egresos</span>
+            <span style={{color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</span>
+          </div>
+        </div>
+
+        {/* Detalle de cierres */}
+        {cl.length>0&&(
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px",marginBottom:10}}>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>📋 Cierres del mes</div>
+            {cl.sort(function(a,b){return a.fecha.localeCompare(b.fecha);}).map(function(c){return(
+              <div key={c.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #141414",fontSize:11}}>
+                <span style={{color:"#555"}}>{c.fecha}</span>
+                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(parseFloat(c.total_ventas||0)||((parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0))+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0))))}</span>
+              </div>
+            );})}
+          </div>
+        )}
+
+        {/* Detalle de gastos */}
+        {gl.length>0&&(
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px"}}>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>📝 Detalle egresos ({gl.length})</div>
+            {gl.sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");}).map(function(g){return(
+              <div key={g.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #141414",fontSize:11}}>
+                <div>
+                  <span style={{color:"#888"}}>{g.concepto}</span>
+                  {g.subramo&&<span style={{color:"#555",fontSize:10}}> · {g.subramo}</span>}
+                  <span style={{color:"#444",fontSize:10}}> · {g.fecha}</span>
+                </div>
+                <span style={{color:AREA_COLORES[g.area||g.categoria]||"#555",fontWeight:600,flexShrink:0,marginLeft:8}}>{fmt(g.monto)}</span>
+              </div>
+            );})}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:16}}>
@@ -4402,9 +4510,12 @@ function PanelResultados(p){
               {/* Header local */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                 <div style={{fontSize:14,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:18,fontWeight:800,color:d.resultado>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{d.resultado>=0?"":"-"}{fmt(Math.abs(d.resultado))}</div>
-                  {margen!==null&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Margen: {margen}%</div>}
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={function(){setVistaLocal(l.id);}} style={{fontSize:11,color:l.color,background:"none",border:"1px solid "+l.color+"44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>Ver detalle →</button>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:18,fontWeight:800,color:d.resultado>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{d.resultado>=0?"":"-"}{fmt(Math.abs(d.resultado))}</div>
+                    {margen!==null&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Margen: {margen}%</div>}
+                  </div>
                 </div>
               </div>
 

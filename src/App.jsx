@@ -7037,7 +7037,7 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
               </div>
-              <GestUsuarios usuarios={usuarios} onSave={function(u){sbSaveUser(u);setUsuarios(function(prev){var f=prev.filter(function(x){return x.id!==u.id;});return[u,...f];});}} onDelete={function(id){sbDeleteUser(id);setUsuarios(function(prev){return prev.filter(function(u){return u.id!==id;});});}}/>
+              <GestUsuarios users={users} onClose={function(){setModulo(null);}} onSave={function(u){setUsers(u);}}/>
             </div>
           )}
 

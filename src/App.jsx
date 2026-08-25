@@ -121,6 +121,39 @@ async function sbSaveProducto(provId, prod) {
     return r;
   } catch(e) { console.error("sbSaveProducto error:", e); }
 }
+async function sbLoadLocalesDatos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/locales_datos", { headers: SH });
+    var d = await r.json();
+    var result={};
+    (Array.isArray(d)?d:[]).forEach(function(x){result[x.local]=x;});
+    return result;
+  } catch(e) { return {}; }
+}
+async function sbSaveLocalDatos(datos) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    await fetch(SURL+"/rest/v1/locales_datos",{method:"POST",headers:h,body:JSON.stringify({...datos,updated_at:new Date().toISOString()})});
+  } catch(e) {}
+}
+async function sbLoadLocalesObras() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/locales_obras?order=created_at.desc", { headers: SH });
+    return await r.json();
+  } catch(e) { return []; }
+}
+async function sbSaveLocalObra(obra) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    await fetch(SURL+"/rest/v1/locales_obras",{method:"POST",headers:h,body:JSON.stringify(obra)});
+  } catch(e) {}
+}
+async function sbDeleteLocalObra(id) {
+  try {
+    await fetch(SURL+"/rest/v1/locales_obras?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e) {}
+}
+
 async function sbLoadSaldosProveedores() {
   try {
     var r = await fetch(SURL + "/rest/v1/saldos_proveedores?order=created_at.desc", { headers: SH });
@@ -1775,6 +1808,214 @@ function GestProveedoresPanel(p) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+
+// ─── PANEL LOCALES ────────────────────────────────────────────────────────────
+function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos, onSaveObra, onDeleteObra}){
+  var [localSel,setLocalSel]=useState(null);
+  var [tab,setTab]=useState("datos");
+  var hoy=new Date().toISOString().split("T")[0];
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  // Estados formulario datos
+  var [formDatos,setFormDatos]=useState({});
+  var [guardandoDatos,setGuardandoDatos]=useState(false);
+  var [guardadoDatos,setGuardadoDatos]=useState(false);
+
+  // Estados obras
+  var [showFormObra,setShowFormObra]=useState(false);
+  var [editObra,setEditObra]=useState(null);
+  var [formObra,setFormObra]=useState({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""});
+
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+
+  function abrirLocal(l){
+    setLocalSel(l);
+    setTab("datos");
+    var d=localesDatos[l.id]||{};
+    setFormDatos({id:l.id+"_datos",local:l.id,direccion:d.direccion||"",telefono:d.telefono||"",encargado:d.encargado||"",horarios:d.horarios||"",notas:d.notas||""});
+  }
+
+  function doSaveDatos(){
+    setGuardandoDatos(true);
+    onSaveDatos(formDatos);
+    setTimeout(function(){setGuardandoDatos(false);setGuardadoDatos(true);setTimeout(function(){setGuardadoDatos(false);},2000);},800);
+  }
+
+  function doSaveObra(){
+    if(!formObra.titulo.trim())return;
+    var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
+    onSaveObra(obra);
+    setShowFormObra(false);setEditObra(null);
+    setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""});
+  }
+
+  if(!localSel){
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif"}}>
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏪 Locales</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          {locales.map(function(l){return(
+            <button key={l.id} onClick={function(){abrirLocal(l);}} style={{background:"#0F0F0F",border:"2px solid "+l.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+              <div style={{fontSize:36,marginBottom:8}}>{l.emoji}</div>
+              <div style={{fontSize:15,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{l.nombre}</div>
+              <div style={{fontSize:10,color:"#444",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Ver detalle →</div>
+            </button>
+          );})}
+        </div>
+      </div>
+    );
+  }
+
+  var obrasFiltradas=localesObras.filter(function(o){return o.local===localSel.id;});
+  var totalObras=obrasFiltradas.reduce(function(a,o){return a+(parseFloat(o.mano_obra)||0)+(parseFloat(o.materiales)||0)+(parseFloat(o.servicios)||0);},0);
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <button onClick={function(){setLocalSel(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:localSel.color}}>{localSel.emoji} {localSel.nombre}</div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:5,marginBottom:14}}>
+        {[["datos","📋 Datos"],["obras","🏗️ Obras"],["historial","📝 Historial"]].map(function(t){return(
+          <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+        );})}
+      </div>
+
+      {/* Tab Datos */}
+      {tab==="datos"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {[["direccion","Dirección","Ej: Villanueva 35"],["telefono","Teléfono","Ej: 291-4123456"],["encargado","Encargado/a","Nombre del responsable"],["horarios","Horarios","Ej: Lun-Vie 12-24hs"]].map(function(f){return(
+            <div key={f[0]}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5,letterSpacing:1}}>{f[1]}</label>
+              <input value={formDatos[f[0]]||""} onChange={function(e){var v=e.target.value;setFormDatos(function(prev){var n={...prev};n[f[0]]=v;return n;});}} placeholder={f[2]} style={INP}/>
+            </div>
+          );})}
+          <div>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5,letterSpacing:1}}>Notas generales</label>
+            <textarea value={formDatos.notas||""} onChange={function(e){var v=e.target.value;setFormDatos(function(prev){return{...prev,notas:v};});}} placeholder="Observaciones, descripción del local..." rows={3} style={{...INP,resize:"vertical"}}/>
+          </div>
+          <button onClick={doSaveDatos} disabled={guardandoDatos} style={{padding:"11px",borderRadius:8,border:"none",background:guardadoDatos?"#1A6B8A":guardandoDatos?"#2A2A2A":localSel.color,color:guardandoDatos?"#555":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:guardandoDatos?"wait":"pointer",transition:"background 0.3s"}}>
+            {guardandoDatos?"⏳ Guardando...":guardadoDatos?"✅ Guardado!":"💾 Guardar datos"}
+          </button>
+        </div>
+      )}
+
+      {/* Tab Obras */}
+      {tab==="obras"&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:11,color:"#555"}}>Total invertido: <span style={{color:localSel.color,fontWeight:700}}>{fmt(totalObras)}</span></div>
+            <button onClick={function(){setShowFormObra(true);setEditObra(null);setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:localSel.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nueva obra</button>
+          </div>
+          {obrasFiltradas.length===0?(
+            <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>Sin obras registradas</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {obrasFiltradas.map(function(o){
+                var total=(parseFloat(o.mano_obra)||0)+(parseFloat(o.materiales)||0)+(parseFloat(o.servicios)||0);
+                var estColor=o.estado==="finalizada"?"#3A7D44":o.estado==="pausada"?"#D4A017":"#1A6B8A";
+                return(
+                  <div key={o.id} style={{background:"#0F0F0F",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{o.titulo}</div>
+                        <div style={{fontSize:10,color:estColor,marginTop:2}}>{o.estado} · {o.fecha}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:8}}>
+                        <div style={{fontSize:14,fontWeight:800,color:localSel.color,fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</div>
+                        <button onClick={function(){setEditObra(o);setFormObra({titulo:o.titulo,descripcion:o.descripcion||"",mano_obra:String(o.mano_obra||""),materiales:String(o.materiales||""),servicios:String(o.servicios||""),fecha:o.fecha,estado:o.estado,notas:o.notas||""});setShowFormObra(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:11,cursor:"pointer"}}>✏️</button>
+                        <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteObra(o.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                      </div>
+                    </div>
+                    {o.descripcion&&<div style={{fontSize:11,color:"#555",marginBottom:6}}>{o.descripcion}</div>}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                      {[["Mano de obra",o.mano_obra,"#C1440E"],["Materiales",o.materiales,"#D4A017"],["Servicios",o.servicios,"#8B2FC9"]].map(function(f){return(
+                        <div key={f[0]} style={{background:"#080808",borderRadius:6,padding:"6px 8px",textAlign:"center"}}>
+                          <div style={{fontSize:9,color:"#444",textTransform:"uppercase",marginBottom:2}}>{f[0]}</div>
+                          <div style={{fontSize:11,fontWeight:700,color:f[2]}}>{fmt(f[1])}</div>
+                        </div>
+                      );})}
+                    </div>
+                    {o.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:6}}>📝 {o.notas}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Modal obra */}
+          {showFormObra&&(
+            <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+              <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid "+localSel.color+"44",maxHeight:"90vh",overflowY:"auto"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{fontSize:13,fontWeight:700,color:localSel.color}}>🏗️ {editObra?"Editar":"Nueva"} obra — {localSel.nombre}</div>
+                  <button onClick={function(){setShowFormObra(false);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>✕</button>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Título</label>
+                  <input value={formObra.titulo} onChange={function(e){setFormObra(function(f){return{...f,titulo:e.target.value};});}} placeholder="Ej: Ampliación cocina" style={INP}/>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Descripción</label>
+                  <textarea value={formObra.descripcion} onChange={function(e){setFormObra(function(f){return{...f,descripcion:e.target.value};});}} placeholder="Detalle de la obra..." rows={2} style={{...INP,resize:"vertical"}}/>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label><input type="date" value={formObra.fecha} onChange={function(e){setFormObra(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
+                  <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Estado</label>
+                    <select value={formObra.estado} onChange={function(e){setFormObra(function(f){return{...f,estado:e.target.value};});}} style={INP}>
+                      <option value="en curso">En curso</option>
+                      <option value="pausada">Pausada</option>
+                      <option value="finalizada">Finalizada</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:10}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Costos</div>
+                  {[["mano_obra","Mano de obra","#C1440E"],["materiales","Materiales","#D4A017"],["servicios","Servicios","#8B2FC9"]].map(function(f){return(
+                    <div key={f[0]} style={{marginBottom:8}}>
+                      <label style={{display:"block",fontSize:9,color:f[2],textTransform:"uppercase",marginBottom:4}}>{f[1]}</label>
+                      <input type="number" placeholder="0" value={formObra[f[0]]} onChange={function(e){var v=e.target.value;setFormObra(function(fm){var n={...fm};n[f[0]]=v;return n;});}} style={INP}/>
+                    </div>
+                  );})}
+                  <div style={{display:"flex",justifyContent:"space-between",marginTop:6,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+                    <span style={{fontSize:11,color:"#555"}}>Total</span>
+                    <span style={{fontSize:14,fontWeight:800,color:localSel.color,fontFamily:"'Playfair Display',serif"}}>{fmt((parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0))}</span>
+                  </div>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+                  <input value={formObra.notas} onChange={function(e){setFormObra(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={doSaveObra} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:localSel.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
+                  <button onClick={function(){setShowFormObra(false);setEditObra(null);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Historial */}
+      {tab==="historial"&&(
+        <div>
+          <div style={{fontSize:11,color:"#444",marginBottom:10}}>Registro automático de cambios — próximamente</div>
+          <div style={{background:"#0F0F0F",borderRadius:10,padding:"14px",textAlign:"center",color:"#333"}}>
+            <div style={{fontSize:28,marginBottom:8}}>🕐</div>
+            <div style={{fontSize:12}}>El historial se irá completando con los cambios realizados en el local</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6725,6 +6966,8 @@ export default function App() {
   var [sueldos,setSueldos]=useState([]);
   var [cargasSociales,setCargasSociales]=useState([]);
   var [saldosProveedores,setSaldosProveedores]=useState([]);
+  var [localesDatos,setLocalesDatos]=useState({});
+  var [localesObras,setLocalesObras]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -6762,6 +7005,8 @@ export default function App() {
     sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
     sbLoadCargasSociales().then(function(d){setCargasSociales(d||[]);}).catch(function(){});
     sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
+    sbLoadLocalesDatos().then(function(d){setLocalesDatos(d||{});}).catch(function(){});
+    sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   }
 
@@ -7043,21 +7288,15 @@ export default function App() {
 
           {/* MÓDULO LOCALES */}
           {esSofia&&modulo==="locales"&&(
-            <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏪 Locales</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                {LOCALES.map(function(l){return(
-                  <div key={l.id} style={{background:"#0F0F0F",border:"2px solid "+l.color+"44",borderRadius:14,padding:"20px",textAlign:"center"}}>
-                    <div style={{fontSize:36,marginBottom:8}}>{l.emoji}</div>
-                    <div style={{fontSize:15,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{l.nombre}</div>
-                    <div style={{fontSize:10,color:"#444",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Local {l.id.toUpperCase()}</div>
-                  </div>
-                );})}
-              </div>
-            </div>
+            <PanelLocales
+              locales={LOCALES}
+              localesDatos={localesDatos}
+              localesObras={localesObras}
+              usuario={cu.nombre}
+              onSaveDatos={function(datos){sbSaveLocalDatos(datos);setLocalesDatos(function(prev){var n={...prev};n[datos.local]=datos;return n;});}}
+              onSaveObra={function(obra){sbSaveLocalObra(obra);setLocalesObras(function(prev){var f=prev.filter(function(x){return x.id!==obra.id;});return[obra,...f];});}}
+              onDeleteObra={function(id){sbDeleteLocalObra(id);setLocalesObras(function(prev){return prev.filter(function(o){return o.id!==id;});});}}
+            />
           )}
 
           {esSofia&&modulo==="admin"&&vista==="dashboard"&&(function(){

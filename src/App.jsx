@@ -2245,7 +2245,7 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
-  var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+  var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
 
   var MEDIOS_EGRESO=[
@@ -2303,15 +2303,15 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
     var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
-    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
+    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
-    setForm({local:"l1",concepto:"",subramo:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+    setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
     setEditId(g.id);
-    setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
+    setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
     setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Efectivo - Bodegón",monto:String(g.monto||"")}]);
     setShowForm(true);
   }
@@ -2355,6 +2355,7 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
                   <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
                   <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
+                  {g.detalle&&<div style={{fontSize:10,color:"#3A7D44",marginTop:1}}>🛒 {g.detalle}</div>}
                   {g.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:10}}>
@@ -2417,6 +2418,12 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Sub-rama (opcional)</label>
               <input value={form.subramo} onChange={function(e){setForm(function(f){return{...f,subramo:e.target.value};});}} placeholder="Ej: VEP, Plan de pagos, Honorarios..." style={INP}/>
+            </div>
+
+            {/* Detalle de productos */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Detalle productos (opcional)</label>
+              <input value={form.detalle} onChange={function(e){setForm(function(f){return{...f,detalle:e.target.value};});}} placeholder="Ej: Salmón 5kg, Langostinos 2kg..." style={INP}/>
             </div>
 
             {/* Monto y fecha */}
@@ -4504,6 +4511,7 @@ function PanelResultados(p){
                                   </div>
                                   {g.forma_pago&&<div style={{color:"#444"}}>💳 {g.forma_pago}</div>}
                                   {g.subramo&&<div style={{color:"#444"}}>📋 {g.subramo}</div>}
+                                  {g.detalle&&<div style={{color:"#3A7D44"}}>🛒 {g.detalle}</div>}
                                   {g.notas&&<div style={{color:"#333",fontStyle:"italic"}}>📝 {g.notas}</div>}
                                 </div>
                               );})}

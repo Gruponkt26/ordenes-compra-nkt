@@ -1476,8 +1476,30 @@ function GestProveedoresPanel(p) {
 
   function doSaveMov(){
     if(!formMov.monto||!sel)return;
-    var mov={id:String(Date.now()),prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.medio_pago,fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
+    var mov={id:String(Date.now()),prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
     if(onSaveMov)onSaveMov(mov);
+    // Si es pago, generar egreso automático en Egresos → Proveedores
+    if(formMov.tipo==="pago"&&p.onSaveEgreso){
+      var provNombre=provs.find(function(pv){return pv.id===sel;})?provs.find(function(pv){return pv.id===sel;}).nombre:"Proveedor";
+      var egreso={
+        id:"egr_prov_"+String(Date.now()),
+        local:formMov.local,
+        concepto:provNombre,
+        subramo:"Pago cuenta corriente",
+        monto:parseFloat(formMov.monto),
+        forma_pago:formMov.medio_pago,
+        pagos:[{medio:formMov.medio_pago,monto:parseFloat(formMov.monto)}],
+        facturado:false,
+        facturacion:"",
+        categoria:"Proveedores",
+        area:"Proveedores",
+        notas:formMov.notas||"Pago automático desde cuenta corriente",
+        fecha:formMov.fecha,
+        usuario:p.usuario||"",
+        created_at:new Date().toISOString()
+      };
+      p.onSaveEgreso(egreso);
+    }
     setShowFormMov(false);
     setFormMov({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
   }
@@ -1661,7 +1683,8 @@ function GestProveedoresPanel(p) {
                           <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto</label><input type="number" placeholder="0" value={formMov.monto} onChange={function(e){setFormMov(function(f){return{...f,monto:e.target.value};});}} style={INP}/></div>
                           <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha</label><input type="date" value={formMov.fecha} onChange={function(e){setFormMov(function(f){return{...f,fecha:e.target.value};});}} style={INP}/></div>
                         </div>
-                        {/* Medio de pago */}
+                        {/* Medio de pago — solo para pagos */}
+                        {formMov.tipo==="pago"&&(
                         <div style={{marginBottom:10}}>
                           <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
                           <select value={formMov.medio_pago} onChange={function(e){setFormMov(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
@@ -1677,6 +1700,12 @@ function GestProveedoresPanel(p) {
                             <optgroup label="Otros"><option>Cheque</option><option>Otro</option></optgroup>
                           </select>
                         </div>
+                        )}
+                        {formMov.tipo==="compra"&&(
+                          <div style={{marginBottom:10,background:"#0A1A0A",border:"1px solid #3A7D4422",borderRadius:8,padding:"8px 12px"}}>
+                            <div style={{fontSize:10,color:"#3A7D44"}}>📋 Cuenta corriente — sin medio de pago</div>
+                          </div>
+                        )}
                         {/* Notas */}
                         <div style={{marginBottom:14}}>
                           <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
@@ -6795,6 +6824,8 @@ export default function App() {
                 onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
                 onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
                 onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
+                onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
+                onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
               />
             </div>
           )}

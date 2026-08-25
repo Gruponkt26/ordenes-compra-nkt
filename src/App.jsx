@@ -4238,8 +4238,15 @@ function PanelResultados(p){
 
   function calcLocal(lid){
     var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    // Ventas netas = total_ventas ya incluye retiro/egresos restados en el cierre
-    var ventas=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+    // Ventas netas — si total_ventas es 0 o null, calcularlo desde campos individuales
+    var ventas=cl.reduce(function(a,c){
+      var tv=parseFloat(c.total_ventas||0);
+      if(tv===0){
+        var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));
+        tv=ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
+      }
+      return a+tv;
+    },0);
     var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
     var egresos=cl.reduce(function(a,c){return a+parseFloat(c.egresos_diarios||0);},0);
     var ventasPorMedio={};

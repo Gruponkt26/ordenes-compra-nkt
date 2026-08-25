@@ -4170,6 +4170,7 @@ function PanelRetiros(p) {
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
+  var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [corrLocal,setCorrLocal]=useState({});
@@ -4450,19 +4451,19 @@ function PanelResultados(p){
                     <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1}}>Gastos</div>
                     <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</div>
                   </div>
-                  {d.cantGastos===0?(
-                    <div style={{fontSize:10,color:"#333"}}>Sin gastos cargados</div>
-                  ):(
-                    <div>
-                      {Object.keys(d.porCat).sort(function(a,b){return d.porCat[b]-d.porCat[a];}).map(function(cat){return(
-                        <div key={cat} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",marginBottom:3}}>
-                          <span>{cat}</span>
-                          <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.porCat[cat])}</span>
+                  <div>
+                    {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(cat){
+                      var monto=d.porCat[cat]||0;
+                      var color=AREA_COLORES[cat]||"#555";
+                      return(
+                        <div key={cat} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}>
+                          <span style={{color:monto>0?color:"#333"}}>{cat}</span>
+                          <span style={{color:monto>0?"#F0EDE8":"#2A2A2A",fontWeight:monto>0?600:400}}>{fmt(monto)}</span>
                         </div>
-                      );})}
-                      <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.cantGastos} gasto{d.cantGastos!==1?"s":""}</div>
-                    </div>
-                  )}
+                      );
+                    })}
+                    {d.cantGastos>0&&<div style={{fontSize:9,color:"#333",marginTop:6}}>{d.cantGastos} gasto{d.cantGastos!==1?"s":""}</div>}
+                  </div>
                 </div>
               </div>
 
@@ -7033,7 +7034,7 @@ export default function App() {
               onSaveTraspaso={function(t){
                 sbSaveTraspaso(t);
                 setTraspasos(function(prev){var n={...prev};n[t.local+"_"+t.mes]=t;return n;});
-              }}/>
+              }} areasCustomGastos={areasCustomGastos}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="sueldos"&&(

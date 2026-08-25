@@ -4452,20 +4452,46 @@ function PanelResultados(p){
           </div>
         )}
 
-        {/* Detalle de gastos */}
+        {/* Detalle de gastos por área */}
         {gl.length>0&&(
-          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px"}}>
-            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>📝 Detalle egresos ({gl.length})</div>
-            {gl.sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");}).map(function(g){return(
-              <div key={g.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #141414",fontSize:11}}>
-                <div>
-                  <span style={{color:"#888"}}>{g.concepto}</span>
-                  {g.subramo&&<span style={{color:"#555",fontSize:10}}> · {g.subramo}</span>}
-                  <span style={{color:"#444",fontSize:10}}> · {g.fecha}</span>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(area){
+              var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
+              if(items.length===0)return null;
+              var totalArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+              var color=AREA_COLORES[area]||"#555";
+              return(
+                <div key={area} style={{background:"#0F0F0F",border:"1px solid "+color+"22",borderRadius:12,padding:"12px 14px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:6,borderBottom:"1px solid "+color+"22"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:color}}>{area}</span>
+                    <span style={{fontSize:13,fontWeight:800,color:color,fontFamily:"'Playfair Display',serif"}}>{fmt(totalArea)}</span>
+                  </div>
+                  {items.sort(function(a,b){return b.monto-a.monto;}).map(function(g){
+                    // Agrupar por concepto (sumar repetidos)
+                    return null; // placeholder — se reemplaza abajo
+                  })}
+                  {(function(){
+                    var porConcepto={};
+                    items.forEach(function(g){
+                      var k=(g.concepto||"")+(g.subramo?"|"+g.subramo:"");
+                      if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0,count:0};
+                      porConcepto[k].total+=parseFloat(g.monto||0);
+                      porConcepto[k].count++;
+                    });
+                    return Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){return(
+                      <div key={c.concepto+(c.subramo||"")} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #0A0A0A",fontSize:11}}>
+                        <div>
+                          <span style={{color:"#888"}}>{c.concepto}</span>
+                          {c.subramo&&<span style={{color:"#555",fontSize:10}}> · {c.subramo}</span>}
+                          {c.count>1&&<span style={{color:"#444",fontSize:9}}> ({c.count}x)</span>}
+                        </div>
+                        <span style={{color:"#F0EDE8",fontWeight:600,flexShrink:0,marginLeft:8}}>{fmt(c.total)}</span>
+                      </div>
+                    );});
+                  })()}
                 </div>
-                <span style={{color:AREA_COLORES[g.area||g.categoria]||"#555",fontWeight:600,flexShrink:0,marginLeft:8}}>{fmt(g.monto)}</span>
-              </div>
-            );})}
+              );
+            })}
           </div>
         )}
       </div>

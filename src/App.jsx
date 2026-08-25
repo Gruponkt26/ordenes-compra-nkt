@@ -4176,6 +4176,7 @@ function PanelResultados(p){
   var [corrLocal,setCorrLocal]=useState({});
   var [traspLocal,setTraspLocal]=useState({});
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
+  var [expandidoLocal,setExpandidoLocal]=useState(null);
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
 
   function getCorr(lid){
@@ -4474,20 +4475,43 @@ function PanelResultados(p){
                     var porConcepto={};
                     items.forEach(function(g){
                       var k=(g.concepto||"")+(g.subramo?"|"+g.subramo:"");
-                      if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0,count:0};
+                      if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0,count:0,movs:[]};
                       porConcepto[k].total+=parseFloat(g.monto||0);
                       porConcepto[k].count++;
+                      porConcepto[k].movs.push(g);
                     });
-                    return Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){return(
-                      <div key={c.concepto+(c.subramo||"")} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"1px solid #0A0A0A",fontSize:11}}>
-                        <div>
-                          <span style={{color:"#888"}}>{c.concepto}</span>
-                          {c.subramo&&<span style={{color:"#555",fontSize:10}}> · {c.subramo}</span>}
-                          {c.count>1&&<span style={{color:"#444",fontSize:9}}> ({c.count}x)</span>}
+                    return Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){
+                      var keyExp=area+"_"+c.concepto+(c.subramo||"");
+                      var abierto=expandidoLocal===keyExp;
+                      return(
+                        <div key={keyExp}>
+                          <div onClick={function(){setExpandidoLocal(function(prev){return prev===keyExp?null:keyExp;});}} style={{display:"flex",justifyContent:"space-between",padding:"6px 4px",borderBottom:"1px solid #0A0A0A",fontSize:11,cursor:"pointer",borderRadius:4}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5}}>
+                              <span style={{fontSize:8,color:color,transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                              <span style={{color:"#888"}}>{c.concepto}</span>
+                              {c.subramo&&<span style={{color:"#555",fontSize:10}}>· {c.subramo}</span>}
+                              {c.count>1&&<span style={{color:"#444",fontSize:9}}>({c.count}x)</span>}
+                            </div>
+                            <span style={{color:"#F0EDE8",fontWeight:600,flexShrink:0,marginLeft:8}}>{fmt(c.total)}</span>
+                          </div>
+                          {abierto&&(
+                            <div style={{background:"#080808",borderRadius:6,padding:"8px",margin:"2px 0 4px 12px"}}>
+                              {c.movs.sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");}).map(function(g){return(
+                                <div key={g.id} style={{padding:"5px 0",borderBottom:"1px solid #0F0F0F",fontSize:10}}>
+                                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                                    <span style={{color:"#555"}}>{g.fecha}</span>
+                                    <span style={{color:color,fontWeight:700}}>{fmt(g.monto)}</span>
+                                  </div>
+                                  {g.forma_pago&&<div style={{color:"#444"}}>💳 {g.forma_pago}</div>}
+                                  {g.subramo&&<div style={{color:"#444"}}>📋 {g.subramo}</div>}
+                                  {g.notas&&<div style={{color:"#333",fontStyle:"italic"}}>📝 {g.notas}</div>}
+                                </div>
+                              );})}
+                            </div>
+                          )}
                         </div>
-                        <span style={{color:"#F0EDE8",fontWeight:600,flexShrink:0,marginLeft:8}}>{fmt(c.total)}</span>
-                      </div>
-                    );});
+                      );
+                    });
                   })()}
                 </div>
               );

@@ -6831,12 +6831,14 @@ export default function App() {
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             {[
               {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
-              {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
+              {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
+              {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
+              {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
-                style={{padding:"9px 18px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
+                style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
                 {m.emoji} {m.label}
               </button>
             );})}
@@ -6852,15 +6854,17 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>Grupo NKT</div>
                 <div style={{fontSize:12,color:"#444",textTransform:"uppercase",letterSpacing:2}}>Panel de gestión</div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,width:"100%",maxWidth:420}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
                   {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
+                  {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
+                  {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
                 ].map(function(m){return(
-                  <button key={m.id} onClick={m.action} style={{padding:"28px 20px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:15,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
-                    <div style={{fontSize:32,marginBottom:10}}>{m.emoji}</div>
+                  <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                    <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
                     <div>{m.label}</div>
                   </button>
                 );})}
@@ -6920,8 +6924,7 @@ export default function App() {
               {id:"config",label:"⚙️ Config",color:"#555"},
             ];
             var vistaFinanzas=["iva","cruzados","resultados","analytics"].includes(vista);
-            var vistaConfigAdmin=["configadmin","personal","usuarios"].includes(vista);
-            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vistaFinanzas?"finanzas":vistaConfigAdmin?"configadmin":"egresos";
+            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vistaFinanzas?"finanzas":"egresos";
             return(
               <div>
                 {/* Barra de sub-módulos admin */}
@@ -6931,7 +6934,6 @@ export default function App() {
                     {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
                     {id:"cierres",label:"🏪 Cierres",color:"#C1440E"},
                     {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
-                    {id:"configadmin",label:"⚙️ Config",color:"#555"},
                   ].map(function(sm){
                     var activo=modActivo===sm.id;
                     return(
@@ -7004,6 +7006,38 @@ export default function App() {
                 onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
                 onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
               />
+            </div>
+          )}
+
+          {/* MÓDULO PERSONAL */}
+          {esSofia&&modulo==="personal"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
+              </div>
+              <PanelSueldos
+                empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
+                showF931={false}
+                cargasSociales={cargasSociales}
+                onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+                onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
+                onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
+                onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
+                onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+                onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+              />
+            </div>
+          )}
+
+          {/* MÓDULO USUARIOS */}
+          {esSofia&&modulo==="usuarios"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
+              </div>
+              <GestUsuarios usuarios={usuarios} onSave={function(u){sbSaveUser(u);setUsuarios(function(prev){var f=prev.filter(function(x){return x.id!==u.id;});return[u,...f];});}} onDelete={function(id){sbDeleteUser(id);setUsuarios(function(prev){return prev.filter(function(u){return u.id!==id;});});}}/>
             </div>
           )}
 

@@ -1814,7 +1814,7 @@ function GestProveedoresPanel(p) {
 
 
 // ─── PANEL LOCALES ────────────────────────────────────────────────────────────
-function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos, onSaveObra, onDeleteObra}){
+function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -1828,7 +1828,23 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
   // Estados obras
   var [showFormObra,setShowFormObra]=useState(false);
   var [editObra,setEditObra]=useState(null);
-  var [formObra,setFormObra]=useState({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""});
+  var [formObra,setFormObra]=useState({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]});
+  var MEDIOS_OBRA=[
+    {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
+    {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
+    {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
+    {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
+    {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
+    {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
+    {grupo:"Transferencia",label:"📲 MP Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
+    {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
+    {grupo:"Otros",label:"Otro",value:"Otro"},
+  ];
+  function totalPagosObra(){return(formObra.pagos||[]).reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
+  function totalObra(){return(parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0);}
+  function pagosObraCuadran(){return !totalObra()||Math.abs(totalPagosObra()-totalObra())<0.01;}
 
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
 
@@ -1847,10 +1863,18 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
 
   function doSaveObra(){
     if(!formObra.titulo.trim())return;
-    var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
+    var pagosValidos=(formObra.pagos||[]).filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
+    var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:"";
+    var totalObraVal=(parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0);
+    var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,forma_pago:fpLegacy,pagos:pagosValidos,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
     onSaveObra(obra);
+    // Generar egreso automático en Obras si tiene pagos
+    if(pagosValidos.length>0&&totalObraVal>0&&onSaveEgreso){
+      var egreso={id:"egr_obra_"+(editObra?editObra.id:String(Date.now())),local:localSel.id,concepto:formObra.titulo.trim(),subramo:formObra.descripcion||"",detalle:"Mano de obra: "+fmt(parseFloat(formObra.mano_obra)||0)+", Materiales: "+fmt(parseFloat(formObra.materiales)||0)+", Servicios: "+fmt(parseFloat(formObra.servicios)||0),monto:totalObraVal,forma_pago:fpLegacy,facturado:false,facturacion:"",categoria:"Obras",area:"Obras",notas:formObra.notas||"",fecha:formObra.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
+      onSaveEgreso(egreso);
+    }
     setShowFormObra(false);setEditObra(null);
-    setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""});
+    setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]});
   }
 
   if(!localSel){
@@ -1933,7 +1957,7 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:8}}>
                         <div style={{fontSize:14,fontWeight:800,color:localSel.color,fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</div>
-                        <button onClick={function(){setEditObra(o);setFormObra({titulo:o.titulo,descripcion:o.descripcion||"",mano_obra:String(o.mano_obra||""),materiales:String(o.materiales||""),servicios:String(o.servicios||""),fecha:o.fecha,estado:o.estado,notas:o.notas||""});setShowFormObra(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:11,cursor:"pointer"}}>✏️</button>
+                        <button onClick={function(){setEditObra(o);setFormObra({titulo:o.titulo,descripcion:o.descripcion||"",mano_obra:String(o.mano_obra||""),materiales:String(o.materiales||""),servicios:String(o.servicios||""),fecha:o.fecha,estado:o.estado,notas:o.notas||"",pagos:o.pagos&&o.pagos.length>0?o.pagos:[{medio:o.forma_pago||"",monto:String((parseFloat(o.mano_obra)||0)+(parseFloat(o.materiales)||0)+(parseFloat(o.servicios)||0))}]});setShowFormObra(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:11,cursor:"pointer"}}>✏️</button>
                         <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteObra(o.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
                       </div>
                     </div>
@@ -1992,6 +2016,33 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
                     <span style={{fontSize:14,fontWeight:800,color:localSel.color,fontFamily:"'Playfair Display',serif"}}>{fmt((parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0))}</span>
                   </div>
                 </div>
+                {/* Medios de pago */}
+                <div style={{background:"#0A0A0A",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
+                    <button onClick={function(){setFormObra(function(f){return{...f,pagos:[...(f.pagos||[]),{medio:"",monto:""}]};});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
+                  </div>
+                  {(formObra.pagos||[]).map(function(pago,idx){return(
+                    <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                      <select value={pago.medio} onChange={function(e){var v=e.target.value;setFormObra(function(f){var n=[...(f.pagos||[])];n[idx]={...n[idx],medio:v};return{...f,pagos:n};});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                        <option value="">-- Medio --</option>
+                        {["Efectivo","Transferencia","Otros"].map(function(grp){
+                          var items=MEDIOS_OBRA.filter(function(m){return m.grupo===grp;});
+                          return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                        })}
+                      </select>
+                      <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setFormObra(function(f){var n=[...(f.pagos||[])];n[idx]={...n[idx],monto:v};return{...f,pagos:n};});}} style={{...INP,width:90}}/>
+                      {(formObra.pagos||[]).length>1&&<button onClick={function(){setFormObra(function(f){return{...f,pagos:f.pagos.filter(function(_,i){return i!==idx;})};});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer"}}>✕</button>}
+                    </div>
+                  );})}
+                  {totalObra()>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosObraCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                      <span style={{color:"#555"}}>Asignado</span>
+                      <span style={{color:pagosObraCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosObra())} / {fmt(totalObra())}{pagosObraCuadran()?" ✓":" ← diferencia"}</span>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{marginBottom:14}}>
                   <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
                   <input value={formObra.notas} onChange={function(e){setFormObra(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
@@ -7296,6 +7347,7 @@ export default function App() {
               onSaveDatos={function(datos){sbSaveLocalDatos(datos);setLocalesDatos(function(prev){var n={...prev};n[datos.local]=datos;return n;});}}
               onSaveObra={function(obra){sbSaveLocalObra(obra);setLocalesObras(function(prev){var f=prev.filter(function(x){return x.id!==obra.id;});return[obra,...f];});}}
               onDeleteObra={function(id){sbDeleteLocalObra(id);setLocalesObras(function(prev){return prev.filter(function(o){return o.id!==id;});});}}
+              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
             />
           )}
 

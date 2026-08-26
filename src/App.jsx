@@ -5604,8 +5604,11 @@ function PanelSueldos(p){
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
-  var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true,convenio:"sin_convenio"});
-  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
+  var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
+  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",estado:"pendiente",pagos:[],notas:""});
+  var [preCargar,setPreCargar]=useState(false);
+  var [mesDesde,setMesDesde]=useState(mesCurrent);
+  var [mesHasta,setMesHasta]=useState(mesCurrent);
   var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
   var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
   var localesFiltro=LOCALES; // incluye Oficina (l4)
@@ -5619,15 +5622,42 @@ function PanelSueldos(p){
 
   function doSaveEmp(){
     if(!formEmp.nombre.trim())return;
-    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,sueldo_base:parseFloat(formEmp.sueldo_base)||0,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formEmp.enfermedad_congenita||false,fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
     onSaveEmpleado(emp);
-    setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",sueldo_base:"",activo:true,convenio:"sin_convenio"});
+    setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   }
   function doSaveSueldo(){
     if(!formSueldo.empleado_id||!formSueldo.monto)return;
-    var s={id:sueldoEdit?sueldoEdit.id:String(Date.now()),empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:formSueldo.periodo,fecha_pago:formSueldo.fecha_pago,monto:parseFloat(formSueldo.monto)||0,estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:sueldoEdit?sueldoEdit.created_at:new Date().toISOString()};
-    onSaveSueldo(s);
-    setShowFormSueldo(false);setSueldoEdit(null);setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",estado:"pendiente",pagos:[],notas:""});
+    var montoFinal=parseFloat(formSueldo.monto)||0;
+    var montoParcial=formSueldo.estado==="parcial"?(parseFloat(formSueldo.monto_parcial)||0):0;
+    // Generar lista de meses a cargar
+    var mesesACargar=[];
+    if(preCargar&&mesDesde&&mesHasta&&mesDesde<=mesHasta){
+      var cur=mesDesde;
+      while(cur<=mesHasta){
+        mesesACargar.push(cur);
+        var parts=cur.split("-");var y=parseInt(parts[0]);var m=parseInt(parts[1]);
+        m++;if(m>12){m=1;y++;}
+        cur=y+"-"+(m<10?"0"+m:String(m));
+      }
+    } else {
+      mesesACargar=[formSueldo.periodo];
+    }
+    mesesACargar.forEach(function(periodo){
+      var sid=sueldoEdit&&mesesACargar.length===1?sueldoEdit.id:(String(Date.now())+Math.floor(Math.random()*9999));
+      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_parcial:montoParcial,estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
+      onSaveSueldo(s);
+      // Egreso automático si pagado o parcial
+      if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
+        var montoEgreso=formSueldo.estado==="parcial"?montoParcial:montoFinal;
+        if(montoEgreso>0){
+          var egreso={id:"egr_sueldo_"+sid,local:formSueldo.local,concepto:formSueldo.empleado_nombre,subramo:"Sueldo "+periodo,detalle:formSueldo.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:formSueldo.notas||"",fecha:formSueldo.fecha_pago,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
+          p.onSaveEgresoSueldo(egreso);
+        }
+      }
+    });
+    setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
+    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",estado:"pendiente",pagos:[],notas:""});
   }
 
   return(
@@ -5725,7 +5755,7 @@ function PanelSueldos(p){
                   <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"} · Base: {fmt(emp.sueldo_base)}</div>
                 </div>
                 <div style={{display:"flex",gap:6}}>
-                  <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,sueldo_base:String(emp.sueldo_base),activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio"});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio",cuil:emp.cuil||"",direccion:emp.direccion||"",telefono:emp.telefono||"",telefono_emergencia:emp.telefono_emergencia||"",enfermedad_congenita:emp.enfermedad_congenita||false,fecha_alta:emp.fecha_alta||"",fecha_baja:emp.fecha_baja||"",motivo_baja:emp.motivo_baja||"",monto_convenio:String(emp.monto_convenio||""),monto_sin_convenio:String(emp.monto_sin_convenio||"")});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar a "+emp.nombre+"?"))onDeleteEmpleado(emp.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
@@ -5925,32 +5955,72 @@ function PanelSueldos(p){
       {/* MODAL EMPLEADO */}
       {showFormEmp&&(
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:400,border:"1px solid #2A2A2A"}}>
-            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8",marginBottom:14}}>{empEdit?"Editar":"Nuevo"} empleado</div>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:440,border:"1px solid #4CAF5033",maxHeight:"92vh",overflowY:"auto"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#4CAF50",marginBottom:14}}>{empEdit?"Editar":"Nueva"} ficha — Empleado</div>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              <input placeholder="Nombre completo" value={formEmp.nombre} onChange={function(e){setFormEmp(function(f){return{...f,nombre:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              {/* Datos básicos */}
+              <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Datos personales</div>
+              <input placeholder="Nombre completo *" value={formEmp.nombre} onChange={function(e){setFormEmp(function(f){return{...f,nombre:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <input placeholder="CUIL (ej: 20-12345678-9)" value={formEmp.cuil} onChange={function(e){setFormEmp(function(f){return{...f,cuil:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <input placeholder="Dirección" value={formEmp.direccion} onChange={function(e){setFormEmp(function(f){return{...f,direccion:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <input placeholder="Teléfono" value={formEmp.telefono} onChange={function(e){setFormEmp(function(f){return{...f,telefono:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+                <input placeholder="Tel. emergencia" value={formEmp.telefono_emergencia} onChange={function(e){setFormEmp(function(f){return{...f,telefono_emergencia:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              </div>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",padding:"8px 12px",background:"#0F0F0F",borderRadius:8,border:"1px solid #2A2A2A"}}>
+                <input type="checkbox" checked={formEmp.enfermedad_congenita||false} onChange={function(e){setFormEmp(function(f){return{...f,enfermedad_congenita:e.target.checked};});}}/>
+                Enfermedad congénita
+              </label>
+
+              {/* Datos laborales */}
+              <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginTop:6,marginBottom:2}}>Datos laborales</div>
               <select value={formEmp.local} onChange={function(e){setFormEmp(function(f){return{...f,local:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
                 {localesFiltro.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
               </select>
               <select value={formEmp.categoria} onChange={function(e){setFormEmp(function(f){return{...f,categoria:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
                 {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
               </select>
-              <input type="number" placeholder="Sueldo base" value={formEmp.sueldo_base} onChange={function(e){setFormEmp(function(f){return{...f,sueldo_base:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+
+              {/* Situación laboral */}
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:6}}>Situación laboral</label>
                 <div style={{display:"flex",gap:6}}>
-                  {[["convenio","📋 Con convenio"],["sin_convenio","Sin convenio"]].map(function(op){return(
-                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
+                  {[["convenio","📋 Convenio"],["sin_convenio","Sin convenio"],["mixto","📋 + Sin conv."]].map(function(op){return(
+                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#555",fontSize:10,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
                   );})}
                 </div>
               </div>
+
+              {/* Montos según convenio */}
+              {(formEmp.convenio==="convenio"||formEmp.convenio==="mixto")&&(
+                <input type="number" placeholder="Monto convenio $" value={formEmp.monto_convenio} onChange={function(e){setFormEmp(function(f){return{...f,monto_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #4CAF5033",background:"#0F0F0F",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              )}
+              {(formEmp.convenio==="sin_convenio"||formEmp.convenio==="mixto")&&(
+                <input type="number" placeholder="Monto sin convenio $" value={formEmp.monto_sin_convenio} onChange={function(e){setFormEmp(function(f){return{...f,monto_sin_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #1A6B8A33",background:"#0F0F0F",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              )}
+
+              {/* Fechas */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha de alta</label>
+                  <input type="date" value={formEmp.fecha_alta} onChange={function(e){setFormEmp(function(f){return{...f,fecha_alta:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha de baja</label>
+                  <input type="date" value={formEmp.fecha_baja} onChange={function(e){setFormEmp(function(f){return{...f,fecha_baja:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+              {formEmp.fecha_baja&&(
+                <input placeholder="Motivo de baja" value={formEmp.motivo_baja} onChange={function(e){setFormEmp(function(f){return{...f,motivo_baja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              )}
+
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
                 <input type="checkbox" checked={formEmp.activo} onChange={function(e){setFormEmp(function(f){return{...f,activo:e.target.checked};});}}/>
-                Activo
+                Empleado activo
               </label>
             </div>
             <div style={{display:"flex",gap:8,marginTop:14}}>
-              <button onClick={doSaveEmp} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              <button onClick={doSaveEmp} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar ficha</button>
               <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
             </div>
           </div>
@@ -5993,6 +6063,25 @@ function PanelSueldos(p){
                 <select value={formSueldo.estado} onChange={function(e){setFormSueldo(function(f){return{...f,estado:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%"}}>
                   {ESTADOS_SUELDO.map(function(e){return <option key={e[0]} value={e[0]}>{e[1]}</option>;})}
                 </select>
+              </div>
+              {formSueldo.estado==="parcial"&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#E07B00",textTransform:"uppercase",marginBottom:4}}>Monto del pago parcial $</label>
+                  <input type="number" placeholder="Cuánto se pagó..." value={formSueldo.monto_parcial} onChange={function(e){setFormSueldo(function(f){return{...f,monto_parcial:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #E07B0033",background:"#0F0F0F",color:"#E07B00",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              )}
+              {/* Pre-carga múltiples meses */}
+              <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",border:"1px solid #1A1A1A"}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"#888",cursor:"pointer",marginBottom:preCargar?8:0}}>
+                  <input type="checkbox" checked={preCargar} onChange={function(e){setPreCargar(e.target.checked);}}/>
+                  Pre-cargar varios meses
+                </label>
+                {preCargar&&(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Desde</label><input type="month" value={mesDesde} onChange={function(e){setMesDesde(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
+                    <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Hasta</label><input type="month" value={mesHasta} onChange={function(e){setMesHasta(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/></div>
+                  </div>
+                )}
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
@@ -7906,6 +7995,7 @@ export default function App() {
                 onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
                 onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+                onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
               />
             </div>
           )}

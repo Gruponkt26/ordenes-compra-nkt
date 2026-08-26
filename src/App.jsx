@@ -5047,6 +5047,22 @@ function PanelCuit(props){
   var pendientes=registros.filter(function(c){return c.estado==="pendiente";});
   var totalPagado=registros.filter(function(c){return c.estado==="pagado";}).reduce(function(a,c){return a+parseFloat(c.total||0);},0);
 
+  var hoy=new Date().toISOString().split("T")[0];
+  var [showModal,setShowModal]=useState(false);
+  var [editReg,setEditReg]=useState(null);
+  var [form,setForm]=useState({cuit:"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  function totalCargaLocal(f){return(parseFloat(f.seg_social)||0)+(parseFloat(f.obra_social)||0)+(parseFloat(f.art)||0)+(parseFloat(f.seguro_vida)||0);}
+
+  function doSave(){
+    var total=totalCargaLocal(form);
+    var obj={id:editReg?editReg.id:String(Date.now()),cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
+    if(props.onSaveCargaSocial)props.onSaveCargaSocial(obj);
+    setShowModal(false);setEditReg(null);
+    setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+  }
+
   return(
     <div>
       {/* Selector CUIT */}
@@ -5073,8 +5089,59 @@ function PanelCuit(props){
 
       {/* Botón nuevo */}
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-        <button onClick={function(){setShowFormCarga(true);setCargaEdit(null);setFormCarga({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:new Date().toISOString().split("T")[0],notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
+        <button onClick={function(){setShowModal(true);setEditReg(null);setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
       </div>
+
+      {/* Modal */}
+      {showModal&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:420,border:"1px solid #4CAF5044",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#4CAF50"}}>🏛️ F.931 — Cargas Sociales</div>
+              <button onClick={function(){setShowModal(false);}} style={{background:"none",border:"none",color:"#555",fontSize:18,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>CUIT</label>
+              <div style={{display:"flex",gap:6}}>
+                {CUITS_LIST.map(function(c){return(
+                  <button key={c.id} onClick={function(){setForm(function(f){return{...f,cuit:c.id};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(form.cuit===c.id?c.color:"#2A2A2A"),background:form.cuit===c.id?c.color+"22":"#0F0F0F",color:form.cuit===c.id?c.color:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{c.label}</button>
+                );})}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Período</label><input type="month" value={form.periodo} onChange={function(e){setForm(function(f){return{...f,periodo:e.target.value};});}} style={INP}/></div>
+              <div><label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha pago</label><input type="date" value={form.fecha_pago} onChange={function(e){setForm(function(f){return{...f,fecha_pago:e.target.value};});}} style={INP}/></div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Estado</label>
+              <select value={form.estado} onChange={function(e){setForm(function(f){return{...f,estado:e.target.value};});}} style={INP}>
+                {ESTADOS_SUELDO.map(function(e){return <option key={e[0]} value={e[0]}>{e[1]}</option>;})}
+              </select>
+            </div>
+            <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:10}}>
+              <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Desglose</div>
+              {[["seg_social","Aportes y Contrib. Seg. Social"],["obra_social","Obra Social"],["art","ART"],["seguro_vida","Seguro de Vida"]].map(function(f){return(
+                <div key={f[0]} style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>{f[1]}</label>
+                  <input type="number" placeholder="0" value={form[f[0]]} onChange={function(e){var v=e.target.value;setForm(function(fm){var n={...fm};n[f[0]]=v;return n;});}} style={INP}/>
+                </div>
+              );})}
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:8,borderTop:"1px solid #1A1A1A"}}>
+                <span style={{fontSize:11,color:"#555"}}>Total</span>
+                <span style={{fontSize:15,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totalCargaLocal(form))}</span>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+              <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={doSave} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
+              <button onClick={function(){setShowModal(false);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Historial */}
       {registros.length===0?(
@@ -5437,6 +5504,7 @@ function PanelSueldos(p){
         cargaEdit={cargaEdit} setCargaEdit={setCargaEdit}
         formCarga={formCarga} setFormCarga={setFormCarga}
         onDeleteCargaSocial={onDeleteCargaSocial}
+        onSaveCargaSocial={onSaveCargaSocial}
         ESTADOS_SUELDO={ESTADOS_SUELDO}
       />}
 

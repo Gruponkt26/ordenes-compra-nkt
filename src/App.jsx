@@ -1868,8 +1868,8 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
     var totalObraVal=(parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0);
     var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,forma_pago:fpLegacy,pagos:pagosValidos,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
     onSaveObra(obra);
-    // Generar/actualizar egreso automático en Obras si tiene pagos
-    if(pagosValidos.length>0&&totalObraVal>0&&onSaveEgreso){
+    // Generar/actualizar egreso automático en Obras solo si está en curso o finalizada (no pendiente)
+    if(pagosValidos.length>0&&totalObraVal>0&&onSaveEgreso&&formObra.estado!=="pendiente"){
       // Usar siempre el mismo ID basado en la obra para evitar duplicados
       var obraIdBase=(editObra?editObra.id:obra.id).replace("obra_","");
       var egresoId="egr_obra_"+obraIdBase;
@@ -2068,6 +2068,164 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
             <div style={{fontSize:28,marginBottom:8}}>🕐</div>
             <div style={{fontSize:12}}>El historial se irá completando con los cambios realizados en el local</div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── PANEL INFORME ────────────────────────────────────────────────────────────
+function PanelInforme({gastos, sueldos, cargasSociales, localesObras, empleados}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [localFiltro,setLocalFiltro]=useState("all");
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var localesPrincipales=LOCALES.filter(function(l){return l.id!=="l4";});
+
+  // Meses disponibles
+  var mesesDisp=[...new Set([
+    ...sueldos.map(function(s){return s.periodo;}),
+    ...gastos.filter(function(g){return g.area==="F.931";}).map(function(g){return g.fecha?g.fecha.slice(0,7):null;}),
+    ...localesObras.map(function(o){return o.fecha?o.fecha.slice(0,7):null;})
+  ].filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  // Filtrar por mes y local
+  function filtrarLocal(items, localField){
+    var byMes=items.filter(function(x){
+      var fecha=x.fecha||x.periodo||"";
+      return fecha.slice(0,7)===mesFiltro;
+    });
+    if(localFiltro==="all")return byMes;
+    return byMes.filter(function(x){return(x[localField]||x.local)===localFiltro;});
+  }
+
+  // Sueldos del mes
+  var sueldosMes=filtrarLocal(sueldos.filter(function(s){return s.estado!=="pendiente";}), "local");
+  var totalSueldos=sueldosMes.reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+
+  // F.931 del mes (gastos con area F.931)
+  var f931Mes=filtrarLocal(gastos.filter(function(g){return g.area==="F.931";}), "local");
+  var totalF931=f931Mes.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+
+  // Obras del mes
+  var obrasMes=localesObras.filter(function(o){
+    var ok=o.fecha&&o.fecha.slice(0,7)===mesFiltro&&o.estado!=="pendiente";
+    if(localFiltro!=="all")ok=ok&&o.local===localFiltro;
+    return ok;
+  });
+  var totalObras=obrasMes.reduce(function(a,o){return a+(parseFloat(o.mano_obra)||0)+(parseFloat(o.materiales)||0)+(parseFloat(o.servicios)||0);},0);
+
+  var totalGeneral=totalSueldos+totalF931+totalObras;
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Informe</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📋 Sueldos, F.931 y Obras</div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#F0EDE8":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
+        {localesPrincipales.map(function(l){return(
+          <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+        );})}
+      </div>
+
+      {/* Totales generales */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+        {[["👥 Sueldos",totalSueldos,"#4CAF50"],["🏛️ F.931",totalF931,"#4CAF50"],["🏗️ Obras",totalObras,"#E07B00"]].map(function(t){return(
+          <div key={t[0]} style={{background:"#111",border:"1px solid "+t[2]+"33",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+            <div style={{fontSize:10,color:t[2],marginBottom:4}}>{t[0]}</div>
+            <div style={{fontSize:16,fontWeight:800,color:t[2],fontFamily:"'Playfair Display',serif"}}>{fmt(t[1])}</div>
+          </div>
+        );})}
+      </div>
+      <div style={{background:"#111",border:"1px solid #D4A01733",borderRadius:10,padding:"12px",marginBottom:14,textAlign:"center"}}>
+        <div style={{fontSize:10,color:"#D4A017",marginBottom:4}}>Total del mes</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(totalGeneral)}</div>
+      </div>
+
+      {/* Sueldos */}
+      {sueldosMes.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #4CAF5022",borderRadius:12,padding:"14px",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#4CAF50",marginBottom:10}}>👥 Sueldos — {fmt(totalSueldos)}</div>
+          {localesPrincipales.map(function(l){
+            var sl=sueldosMes.filter(function(s){return s.local===l.id;});
+            if(sl.length===0)return null;
+            var tot=sl.reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+            return(
+              <div key={l.id} style={{marginBottom:8}}>
+                <div style={{fontSize:10,color:l.color,fontWeight:700,marginBottom:4}}>{l.emoji} {l.nombre} — {fmt(tot)}</div>
+                {sl.map(function(s){return(
+                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",padding:"2px 8px",borderBottom:"1px solid #111"}}>
+                    <span>{s.empleado_nombre}</span>
+                    <span style={{color:"#F0EDE8"}}>{fmt(s.monto)}</span>
+                  </div>
+                );})}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* F.931 */}
+      {f931Mes.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #4CAF5022",borderRadius:12,padding:"14px",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#4CAF50",marginBottom:10}}>🏛️ F.931 — {fmt(totalF931)}</div>
+          {f931Mes.map(function(g){
+            var loc=LOCALES.find(function(l){return l.id===g.local;});
+            return(
+              <div key={g.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#555",padding:"4px 0",borderBottom:"1px solid #111"}}>
+                <div>
+                  <span style={{color:loc?loc.color:"#888"}}>{loc?loc.emoji+" "+loc.nombre:g.local}</span>
+                  {g.subramo&&<span style={{color:"#444"}}> · {g.subramo}</span>}
+                </div>
+                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Obras */}
+      {obrasMes.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #E07B0022",borderRadius:12,padding:"14px",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#E07B00",marginBottom:10}}>🏗️ Obras — {fmt(totalObras)}</div>
+          {obrasMes.map(function(o){
+            var tot=(parseFloat(o.mano_obra)||0)+(parseFloat(o.materiales)||0)+(parseFloat(o.servicios)||0);
+            var loc=LOCALES.find(function(l){return l.id===o.local;});
+            return(
+              <div key={o.id} style={{marginBottom:8,padding:"6px 0",borderBottom:"1px solid #111"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
+                  <div>
+                    <span style={{color:"#F0EDE8",fontWeight:600}}>{o.titulo}</span>
+                    <span style={{fontSize:10,color:loc?loc.color:"#555",marginLeft:6}}>{loc?loc.emoji+" "+loc.nombre:o.local}</span>
+                  </div>
+                  <span style={{color:"#E07B00",fontWeight:700}}>{fmt(tot)}</span>
+                </div>
+                {o.descripcion&&<div style={{fontSize:10,color:"#444",marginTop:2}}>{o.descripcion}</div>}
+                <div style={{display:"flex",gap:10,fontSize:9,color:"#555",marginTop:3}}>
+                  {o.mano_obra>0&&<span>MO: {fmt(o.mano_obra)}</span>}
+                  {o.materiales>0&&<span>Mat: {fmt(o.materiales)}</span>}
+                  {o.servicios>0&&<span>Serv: {fmt(o.servicios)}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {totalGeneral===0&&(
+        <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>
+          <div style={{fontSize:24,marginBottom:8}}>📭</div>
+          <div>Sin datos para {mesFiltro}{localFiltro!=="all"?" en el local seleccionado":""}</div>
         </div>
       )}
     </div>
@@ -5085,8 +5243,8 @@ function PanelCuit(props){
     var distribucion=calcDistribucion(form.cuit,total);
     var obj={id,cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,distribucion:distribucion,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
     if(props.onSaveCargaSocial)props.onSaveCargaSocial(obj);
-    // Generar egresos por local
-    if(total>0&&props.onSaveEgresoF931){
+    // Generar egresos por local — solo si está pagado o parcial
+    if(total>0&&props.onSaveEgresoF931&&(form.estado==="pagado"||form.estado==="parcial")){
       distribucion.forEach(function(d){
         var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:"F.931 "+form.periodo,subramo:d.nombre+" ("+d.pct+"%)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:[]};
         props.onSaveEgresoF931(egreso);
@@ -7347,6 +7505,7 @@ export default function App() {
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
+              {id:"informe",emoji:"📋",label:"Informe",color:"#D4A017",action:function(){setModulo("informe");setVista("informe_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -7373,6 +7532,7 @@ export default function App() {
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
+                  {id:"informe",emoji:"📋",label:"Informe",color:"#D4A017",action:function(){setModulo("informe");setVista("informe_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -7551,6 +7711,17 @@ export default function App() {
               </div>
               <GestUsuarios users={users} onClose={function(){setModulo(null);}} onSave={function(u){setUsers(u);}}/>
             </div>
+          )}
+
+          {/* MÓDULO INFORME */}
+          {esSofia&&modulo==="informe"&&(
+            <PanelInforme
+              gastos={gastos}
+              sueldos={sueldos}
+              cargasSociales={cargasSociales}
+              localesObras={localesObras}
+              empleados={empleados}
+            />
           )}
 
           {/* MÓDULO LOCALES */}

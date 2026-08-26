@@ -2457,11 +2457,12 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros","F.931"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
   "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
-  "Retiros":"#8B4513"
+  "Retiros":"#8B4513",
+  "F.931":"#4CAF50"
 };
 
 var CONCEPTOS_POR_AREA={
@@ -5047,6 +5048,7 @@ function PanelCuit(props){
   var pendientes=registros.filter(function(c){return c.estado==="pendiente";});
   var totalPagado=registros.filter(function(c){return c.estado==="pagado";}).reduce(function(a,c){return a+parseFloat(c.total||0);},0);
 
+  var empleados=props.empleados||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [showModal,setShowModal]=useState(false);
   var [editReg,setEditReg]=useState(null);
@@ -5055,10 +5057,41 @@ function PanelCuit(props){
 
   function totalCargaLocal(f){return(parseFloat(f.seg_social)||0)+(parseFloat(f.obra_social)||0)+(parseFloat(f.art)||0)+(parseFloat(f.seguro_vida)||0);}
 
+  // Calcular distribución proporcional por empleados activos
+  function calcDistribucion(cuitId, total){
+    if(cuitId==="c1"){
+      // Solo Bodegón
+      return[{local:"l1",nombre:"Bodegón",monto:total,pct:100}];
+    } else {
+      // SRL — Kusama (l2) y Colantonio's (l3) proporcional a empleados activos
+      var empKusama=empleados.filter(function(e){return e.local==="l2"&&e.activo!==false;}).length;
+      var empColant=empleados.filter(function(e){return e.local==="l3"&&e.activo!==false;}).length;
+      var total_emp=empKusama+empColant;
+      if(total_emp===0)return[{local:"l2",nombre:"Kusama",monto:total/2,pct:50},{local:"l3",nombre:"Colantonio's",monto:total/2,pct:50}];
+      var pctK=Math.round(empKusama/total_emp*100);
+      var pctC=100-pctK;
+      var montoK=Math.round(total*empKusama/total_emp);
+      var montoC=total-montoK;
+      return[
+        {local:"l2",nombre:"Kusama",monto:montoK,pct:pctK,empleados:empKusama},
+        {local:"l3",nombre:"Colantonio's",monto:montoC,pct:pctC,empleados:empColant}
+      ];
+    }
+  }
+
   function doSave(){
     var total=totalCargaLocal(form);
-    var obj={id:editReg?editReg.id:String(Date.now()),cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
+    var id=editReg?editReg.id:String(Date.now());
+    var distribucion=calcDistribucion(form.cuit,total);
+    var obj={id,cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,distribucion:distribucion,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
     if(props.onSaveCargaSocial)props.onSaveCargaSocial(obj);
+    // Generar egresos por local
+    if(total>0&&props.onSaveEgresoF931){
+      distribucion.forEach(function(d){
+        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:"F.931 "+form.periodo,subramo:d.nombre+" ("+d.pct+"%)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:[]};
+        props.onSaveEgresoF931(egreso);
+      });
+    }
     setShowModal(false);setEditReg(null);
     setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
   }
@@ -5169,6 +5202,18 @@ function PanelCuit(props){
                     return <div key={f[0]} style={{fontSize:10,color:"#555"}}>{f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[2])}</span></div>;
                   })}
                 </div>
+                {/* Distribución por local */}
+                {c.distribucion&&c.distribucion.length>0&&(
+                  <div style={{marginTop:6,padding:"6px 8px",background:"#080808",borderRadius:6}}>
+                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Distribución</div>
+                    {c.distribucion.map(function(d){return(
+                      <div key={d.local} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
+                        <span style={{color:"#888"}}>{d.nombre} {d.empleados!==undefined?"("+d.empleados+" emp.)":""} — {d.pct}%</span>
+                        <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(d.monto)}</span>
+                      </div>
+                    );})}
+                  </div>
+                )}
                 {c.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:5}}>📝 {c.notas}</div>}
               </div>
             );
@@ -5499,12 +5544,14 @@ function PanelSueldos(p){
       {/* TAB CUIT */}
       {tab==="cuit"&&<PanelCuit
         cargasSociales={cargasSociales}
+        empleados={empleados}
         mesCurrent={mesCurrent}
         showFormCarga={showFormCarga} setShowFormCarga={setShowFormCarga}
         cargaEdit={cargaEdit} setCargaEdit={setCargaEdit}
         formCarga={formCarga} setFormCarga={setFormCarga}
         onDeleteCargaSocial={onDeleteCargaSocial}
         onSaveCargaSocial={onSaveCargaSocial}
+        onSaveEgresoF931={p.onSaveEgresoF931}
         ESTADOS_SUELDO={ESTADOS_SUELDO}
       />}
 
@@ -7490,6 +7537,7 @@ export default function App() {
                 onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
                 onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
                 onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+                onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
               />
             </div>
           )}

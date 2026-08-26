@@ -121,6 +121,25 @@ async function sbSaveProducto(provId, prod) {
     return r;
   } catch(e) { console.error("sbSaveProducto error:", e); }
 }
+async function sbLoadVacaciones() {
+  try {
+    var r=await fetch(SURL+"/rest/v1/vacaciones?order=fecha_desde.desc",{headers:{...SH,"Cache-Control":"no-cache"}});
+    var d=await r.json();
+    return Array.isArray(d)?d:[];
+  } catch(e){return [];}
+}
+async function sbSaveVacacion(v) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    await fetch(SURL+"/rest/v1/vacaciones",{method:"POST",headers:h,body:JSON.stringify(v)});
+  } catch(e){}
+}
+async function sbDeleteVacacion(id) {
+  try {
+    await fetch(SURL+"/rest/v1/vacaciones?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e){}
+}
+
 async function sbLoadLocalesDatos() {
   try {
     var r = await fetch(SURL + "/rest/v1/locales_datos", { headers: SH });
@@ -2428,6 +2447,192 @@ function PanelInformePersonal({sueldos, gastos, cargasSociales, empleados}){
 
       {totalSueldos===0&&totalF931===0&&(
         <div style={{textAlign:"center",padding:"20px 0",color:"#333"}}>Sin datos para {mesFiltro}</div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── PANEL VACACIONES ─────────────────────────────────────────────────────────
+function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
+  var [anio,setAnio]=useState(2025);
+  var [mes,setMes]=useState(6); // 0-based, 6=julio
+  var [showForm,setShowForm]=useState(false);
+  var [form,setForm]=useState({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""});
+  var [editVac,setEditVac]=useState(null);
+  var [localFiltro,setLocalFiltro]=useState("all");
+
+  var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  var DIAS=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+  var COLORES_EMP=["#C1440E","#1A6B8A","#D4A017","#4CAF50","#8B2FC9","#E07B00","#3A7D44","#E91E63","#00BCD4","#FF5722"];
+
+  // Primer día del mes y cantidad de días
+  var primerDia=new Date(anio,mes,1).getDay();
+  var diasMes=new Date(anio,mes+1,0).getDate();
+
+  // Empleados activos filtrados
+  var empsActivos=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);});
+
+  // Colores por empleado
+  var colorEmp={};
+  empsActivos.forEach(function(e,i){colorEmp[e.id]=COLORES_EMP[i%COLORES_EMP.length];});
+
+  // Vacaciones del mes visible
+  function vacEnDia(dia){
+    var fecha=anio+"-"+(mes+1<10?"0"+(mes+1):mes+1)+"-"+(dia<10?"0"+dia:dia);
+    return vacaciones.filter(function(v){
+      var ok=v.fecha_desde<=fecha&&v.fecha_hasta>=fecha;
+      if(localFiltro!=="all"){
+        var emp=empleados.find(function(e){return e.id===v.empleado_id;});
+        ok=ok&&emp&&emp.local===localFiltro;
+      }
+      return ok;
+    });
+  }
+
+  function doSave(){
+    if(!form.empleado_id||!form.fecha_desde||!form.fecha_hasta)return;
+    var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:form.notas,created_at:editVac?editVac.created_at:new Date().toISOString()};
+    if(onSave)onSave(v);
+    setShowForm(false);setEditVac(null);
+    setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""});
+  }
+
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  // Lista de vacaciones del mes
+  var vacMes=vacaciones.filter(function(v){
+    var mesStr=anio+"-"+(mes+1<10?"0"+(mes+1):mes+1);
+    var ok=(v.fecha_desde||"").slice(0,7)<=mesStr&&(v.fecha_hasta||"").slice(0,7)>=mesStr;
+    if(localFiltro!=="all"){
+      var emp=empleados.find(function(e){return e.id===v.empleado_id;});
+      ok=ok&&emp&&emp.local===localFiltro;
+    }
+    return ok;
+  });
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {/* Header navegación */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={function(){var m=mes-1;var a=anio;if(m<0){m=11;a--;}setMes(m);setAnio(a);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"5px 10px",color:"#888",cursor:"pointer",fontSize:14}}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800,color:"#F0EDE8",minWidth:140,textAlign:"center"}}>{MESES[mes]} {anio}</div>
+          <button onClick={function(){var m=mes+1;var a=anio;if(m>11){m=0;a++;}setMes(m);setAnio(a);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"5px 10px",color:"#888",cursor:"pointer",fontSize:14}}>›</button>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <select value={localFiltro} onChange={function(e){setLocalFiltro(e.target.value);}} style={{padding:"5px 8px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+            <option value="all">Todos los locales</option>
+            {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+          </select>
+          <button onClick={function(){setShowForm(true);setEditVac(null);setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""}); }} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Vacaciones</button>
+        </div>
+      </div>
+
+      {/* Calendario */}
+      <div style={{background:"#0F0F0F",borderRadius:12,padding:"12px",marginBottom:12,border:"1px solid #1A1A1A"}}>
+        {/* Días de la semana */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+          {DIAS.map(function(d){return <div key={d} style={{textAlign:"center",fontSize:9,color:"#444",fontWeight:700,padding:"4px 0"}}>{d}</div>;})}
+        </div>
+        {/* Días del mes */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+          {Array(primerDia).fill(null).map(function(_,i){return <div key={"e"+i}/>;} )}
+          {Array(diasMes).fill(null).map(function(_,i){
+            var dia=i+1;
+            var vacs=vacEnDia(dia);
+            var esHoy=new Date().getDate()===dia&&new Date().getMonth()===mes&&new Date().getFullYear()===anio;
+            return(
+              <div key={dia} style={{minHeight:36,background:esHoy?"#1A1A0A":"#111",border:"1px solid "+(esHoy?"#D4A01755":"#1A1A1A"),borderRadius:6,padding:"2px 3px",position:"relative"}}>
+                <div style={{fontSize:9,color:esHoy?"#D4A017":"#444",fontWeight:esHoy?700:400,marginBottom:2}}>{dia}</div>
+                {vacs.slice(0,3).map(function(v){
+                  var color=colorEmp[v.empleado_id]||"#555";
+                  return <div key={v.id} style={{background:color,borderRadius:3,height:4,marginBottom:1}} title={v.empleado_nombre}/>;
+                })}
+                {vacs.length>3&&<div style={{fontSize:7,color:"#555"}}>+{vacs.length-3}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Leyenda de empleados */}
+      {empsActivos.length>0&&(
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+          {empsActivos.map(function(e){return(
+            <div key={e.id} style={{display:"flex",alignItems:"center",gap:4,background:"#111",borderRadius:6,padding:"3px 8px",border:"1px solid #1A1A1A"}}>
+              <div style={{width:8,height:8,borderRadius:2,background:colorEmp[e.id],flexShrink:0}}/>
+              <span style={{fontSize:10,color:"#888"}}>{e.nombre}</span>
+            </div>
+          );})}
+        </div>
+      )}
+
+      {/* Lista vacaciones del mes */}
+      {vacMes.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A22",borderRadius:12,padding:"12px"}}>
+          <div style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>🏖️ Vacaciones en {MESES[mes]}</div>
+          {vacMes.map(function(v){
+            var emp=empleados.find(function(e){return e.id===v.empleado_id;});
+            var loc=emp?LOCALES.find(function(l){return l.id===emp.local;}):null;
+            var color=colorEmp[v.empleado_id]||"#555";
+            return(
+              <div key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #141414"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:color,flexShrink:0}}/>
+                  <div>
+                    <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{v.empleado_nombre}</div>
+                    <div style={{fontSize:9,color:"#555"}}>{v.fecha_desde} → {v.fecha_hasta}{loc?" · "+loc.emoji+" "+loc.nombre:""}</div>
+                    {v.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic"}}>{v.notas}</div>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:v.notas||""});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:10,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete&&onDelete(v.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal nueva vacación */}
+      {showForm&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:400,border:"1px solid #1A6B8A44"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#1A6B8A",marginBottom:14}}>🏖️ {editVac?"Editar":"Registrar"} vacaciones</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Empleado</label>
+                <select value={form.empleado_id} onChange={function(e){var emp=empleados.find(function(em){return em.id===e.target.value;});setForm(function(f){return{...f,empleado_id:e.target.value,empleado_nombre:emp?emp.nombre:""};});}} style={INP}>
+                  <option value="">-- Seleccioná --</option>
+                  {empleados.filter(function(e){return e.activo!==false;}).map(function(emp){
+                    var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                    return <option key={emp.id} value={emp.id}>{emp.nombre} {loc?"("+loc.nombre+")":""}</option>;
+                  })}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Desde</label>
+                  <input type="date" value={form.fecha_desde} onChange={function(e){setForm(function(f){return{...f,fecha_desde:e.target.value};});}} style={INP}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Hasta</label>
+                  <input type="date" value={form.fecha_hasta} onChange={function(e){setForm(function(f){return{...f,fecha_hasta:e.target.value};});}} style={INP}/>
+                </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas (opcional)</label>
+                <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Ej: vacaciones anuales, licencia..." style={INP}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={doSave} disabled={!form.empleado_id||!form.fecha_desde||!form.fecha_hasta} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              <button onClick={function(){setShowForm(false);setEditVac(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -5679,7 +5884,7 @@ function PanelSueldos(p){
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
+        {[["estado","📊 Estado del mes"],["empleados","👤 Empleados"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
         <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
@@ -5945,6 +6150,9 @@ function PanelSueldos(p){
         ESTADOS_SUELDO={ESTADOS_SUELDO}
       />}
 
+      {/* TAB VACACIONES */}
+      {tab==="vacaciones"&&<PanelVacaciones empleados={empleados} vacaciones={p.vacaciones||[]} onSave={p.onSaveVacacion} onDelete={p.onDeleteVacacion}/>}
+
       {/* TAB INFORME PERSONAL */}
       {tab==="informe"&&<PanelInformePersonal
         sueldos={sueldos}
@@ -5992,13 +6200,7 @@ function PanelSueldos(p){
                 </div>
               </div>
 
-              {/* Montos según convenio */}
-              {(formEmp.convenio==="convenio"||formEmp.convenio==="mixto")&&(
-                <input type="number" placeholder="Monto convenio $" value={formEmp.monto_convenio} onChange={function(e){setFormEmp(function(f){return{...f,monto_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #4CAF5033",background:"#0F0F0F",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
-              )}
-              {(formEmp.convenio==="sin_convenio"||formEmp.convenio==="mixto")&&(
-                <input type="number" placeholder="Monto sin convenio $" value={formEmp.monto_sin_convenio} onChange={function(e){setFormEmp(function(f){return{...f,monto_sin_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #1A6B8A33",background:"#0F0F0F",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
-              )}
+
 
               {/* Fechas */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -7716,6 +7918,7 @@ export default function App() {
   var [saldosProveedores,setSaldosProveedores]=useState([]);
   var [localesDatos,setLocalesDatos]=useState({});
   var [localesObras,setLocalesObras]=useState([]);
+  var [vacaciones,setVacaciones]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -7755,6 +7958,7 @@ export default function App() {
     sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
     sbLoadLocalesDatos().then(function(d){setLocalesDatos(d||{});}).catch(function(){});
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
+    sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   }
 
@@ -8022,6 +8226,9 @@ export default function App() {
                 onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+                vacaciones={vacaciones}
+                onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
+                onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
               />
             </div>
           )}

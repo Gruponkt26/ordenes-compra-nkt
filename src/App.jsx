@@ -7346,7 +7346,14 @@ export default function App() {
               usuario={cu.nombre}
               onSaveDatos={function(datos){sbSaveLocalDatos(datos);setLocalesDatos(function(prev){var n={...prev};n[datos.local]=datos;return n;});}}
               onSaveObra={function(obra){sbSaveLocalObra(obra);setLocalesObras(function(prev){var f=prev.filter(function(x){return x.id!==obra.id;});return[obra,...f];});}}
-              onDeleteObra={function(id){sbDeleteLocalObra(id);setLocalesObras(function(prev){return prev.filter(function(o){return o.id!==id;});});}}
+              onDeleteObra={function(id){
+                sbDeleteLocalObra(id);
+                setLocalesObras(function(prev){return prev.filter(function(o){return o.id!==id;});});
+                // Eliminar el egreso automático asociado
+                var egresoId="egr_obra_"+id;
+                sbDeleteGasto(egresoId);
+                setGastos(function(prev){return prev.filter(function(g){return g.id!==egresoId;});});
+              }}
               onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
             />
           )}

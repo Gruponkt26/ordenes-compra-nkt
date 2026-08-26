@@ -5605,7 +5605,7 @@ function PanelSueldos(p){
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
   var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
-  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",estado:"pendiente",pagos:[],notas:""});
+  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",medio_pago:"",estado:"pendiente",pagos:[],notas:""});
   var [preCargar,setPreCargar]=useState(false);
   var [mesDesde,setMesDesde]=useState(mesCurrent);
   var [mesHasta,setMesHasta]=useState(mesCurrent);
@@ -5645,19 +5645,19 @@ function PanelSueldos(p){
     }
     mesesACargar.forEach(function(periodo){
       var sid=sueldoEdit&&mesesACargar.length===1?sueldoEdit.id:(String(Date.now())+Math.floor(Math.random()*9999));
-      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_parcial:montoParcial,estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
+      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_parcial:montoParcial,medio_pago:formSueldo.medio_pago||"",estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
       onSaveSueldo(s);
       // Egreso automático si pagado o parcial
       if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
         var montoEgreso=formSueldo.estado==="parcial"?montoParcial:montoFinal;
         if(montoEgreso>0){
-          var egreso={id:"egr_sueldo_"+sid,local:formSueldo.local,concepto:formSueldo.empleado_nombre,subramo:"Sueldo "+periodo,detalle:formSueldo.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:formSueldo.notas||"",fecha:formSueldo.fecha_pago,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
+          var egreso={id:"egr_sueldo_"+sid,local:formSueldo.local,concepto:formSueldo.empleado_nombre,subramo:"Sueldo "+periodo,detalle:formSueldo.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:formSueldo.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:formSueldo.notas||"",fecha:formSueldo.fecha_pago,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
           p.onSaveEgresoSueldo(egreso);
         }
       }
     });
     setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
-    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",estado:"pendiente",pagos:[],notas:""});
+    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",medio_pago:"",estado:"pendiente",pagos:[],notas:""});
   }
 
   return(
@@ -5673,6 +5673,7 @@ function PanelSueldos(p){
           </select>}
           <button onClick={function(){setShowFormSueldo(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
           <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
+          {tab==="estado"&&<button onClick={function(){if(window.confirm("¿Borrar todos los sueldos de "+mesFiltro+"?")){{var ids=sueldosMes.map(function(s){return s.id;});ids.forEach(function(id){onDeleteSueldo(id);});};}}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}} title="Resetear sueldos del mes">🗑️ Resetear mes</button>}
         </div>
       </div>
 
@@ -6068,6 +6069,31 @@ function PanelSueldos(p){
                 <div>
                   <label style={{display:"block",fontSize:9,color:"#E07B00",textTransform:"uppercase",marginBottom:4}}>Monto del pago parcial $</label>
                   <input type="number" placeholder="Cuánto se pagó..." value={formSueldo.monto_parcial} onChange={function(e){setFormSueldo(function(f){return{...f,monto_parcial:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #E07B0033",background:"#0F0F0F",color:"#E07B00",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              )}
+              {(formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
+                  <select value={formSueldo.medio_pago} onChange={function(e){setFormSueldo(function(f){return{...f,medio_pago:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%"}}>
+                    <option value="">-- Seleccioná --</option>
+                    <optgroup label="── Efectivo ──">
+                      <option value="Efectivo - Bodegón">💵 Bodegón</option>
+                      <option value="Efectivo - Kusama">💵 Kusama</option>
+                      <option value="Efectivo - Colantonio's">💵 Colantonio's</option>
+                      <option value="Efectivo - Oficina">💵 Oficina</option>
+                    </optgroup>
+                    <optgroup label="── Transferencia ──">
+                      <option value="Transferencia - Provincia Personas">📲 Provincia Personas</option>
+                      <option value="Transferencia - Mercado Pago Nicolás">📲 Mercado Pago Nicolás</option>
+                      <option value="Transferencia - Galicia Empresas">📲 Galicia Empresas</option>
+                      <option value="Transferencia - Patagonia Empresas">📲 Patagonia Empresas</option>
+                      <option value="Transferencia - Mercado Pago Calzon Gitano">📲 MP Calzon Gitano</option>
+                    </optgroup>
+                    <optgroup label="── Otros ──">
+                      <option value="Cheque">📄 Cheque</option>
+                      <option value="Otro">Otro</option>
+                    </optgroup>
+                  </select>
                 </div>
               )}
               {/* Pre-carga múltiples meses */}

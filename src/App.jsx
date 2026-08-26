@@ -7350,7 +7350,8 @@ export default function App() {
                 sbDeleteLocalObra(id);
                 setLocalesObras(function(prev){return prev.filter(function(o){return o.id!==id;});});
                 // Eliminar el egreso automático asociado
-                var egresoId="egr_obra_"+id;
+                // El ID del egreso es egr_obra_ + id de obra (que puede incluir prefijo "obra_")
+                var egresoId="egr_obra_"+id.replace("obra_","");
                 sbDeleteGasto(egresoId);
                 setGastos(function(prev){return prev.filter(function(g){return g.id!==egresoId;});});
               }}

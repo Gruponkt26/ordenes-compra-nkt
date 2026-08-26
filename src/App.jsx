@@ -1868,9 +1868,12 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
     var totalObraVal=(parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0);
     var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,forma_pago:fpLegacy,pagos:pagosValidos,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
     onSaveObra(obra);
-    // Generar egreso automático en Obras si tiene pagos
+    // Generar/actualizar egreso automático en Obras si tiene pagos
     if(pagosValidos.length>0&&totalObraVal>0&&onSaveEgreso){
-      var egreso={id:"egr_obra_"+(editObra?editObra.id:String(Date.now())),local:localSel.id,concepto:formObra.titulo.trim(),subramo:formObra.descripcion||"",detalle:"Mano de obra: "+fmt(parseFloat(formObra.mano_obra)||0)+", Materiales: "+fmt(parseFloat(formObra.materiales)||0)+", Servicios: "+fmt(parseFloat(formObra.servicios)||0),monto:totalObraVal,forma_pago:fpLegacy,facturado:false,facturacion:"",categoria:"Obras",area:"Obras",notas:formObra.notas||"",fecha:formObra.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
+      // Usar siempre el mismo ID basado en la obra para evitar duplicados
+      var obraIdBase=(editObra?editObra.id:obra.id).replace("obra_","");
+      var egresoId="egr_obra_"+obraIdBase;
+      var egreso={id:egresoId,local:localSel.id,concepto:formObra.titulo.trim(),subramo:formObra.descripcion||"",detalle:"Mano de obra: "+fmt(parseFloat(formObra.mano_obra)||0)+", Materiales: "+fmt(parseFloat(formObra.materiales)||0)+", Servicios: "+fmt(parseFloat(formObra.servicios)||0),monto:totalObraVal,forma_pago:fpLegacy,facturado:false,facturacion:"",categoria:"Obras",area:"Obras",notas:formObra.notas||"",fecha:formObra.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
       onSaveEgreso(egreso);
     }
     setShowFormObra(false);setEditObra(null);

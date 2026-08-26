@@ -7517,7 +7517,7 @@ async function sbDeleteConcepto(id) {
 
 async function sbLoadEmpleados() {
   try {
-    var r = await fetch(SURL + "/rest/v1/empleados?order=nombre.asc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/empleados?order=nombre.asc", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     return await r.json();
   } catch(e) { return []; }
 }

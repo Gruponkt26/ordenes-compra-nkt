@@ -5026,6 +5026,85 @@ function PanelResultados(p){
 
 
 // ─── PANEL SUELDOS ────────────────────────────────────────────────────────────
+
+// ─── PANEL CUIT F.931 ─────────────────────────────────────────────────────────
+function PanelCuit({cargasSociales, mesCurrent, showFormCarga, setShowFormCarga, cargaEdit, setCargaEdit, formCarga, setFormCarga, onDeleteCargaSocial, ESTADOS_SUELDO}){
+  var [cuitActivo,setCuitActivo]=useState("c1");
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var CUITS_LIST=[
+    {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"Bodegón",color:"#C1440E"},
+    {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"SRL (Kusama + Col.)",color:"#1A6B8A"},
+  ];
+  var cuitObj=CUITS_LIST.find(function(c){return c.id===cuitActivo;})||CUITS_LIST[0];
+  var registros=(cargasSociales||[]).filter(function(c){return c.cuit===cuitActivo;}).sort(function(a,b){return(b.periodo||"").localeCompare(a.periodo||"");});
+  var pendientes=registros.filter(function(c){return c.estado==="pendiente";});
+  var totalPagado=registros.filter(function(c){return c.estado==="pagado";}).reduce(function(a,c){return a+parseFloat(c.total||0);},0);
+
+  return(
+    <div>
+      {/* Selector CUIT */}
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        {CUITS_LIST.map(function(c){return(
+          <button key={c.id} onClick={function(){setCuitActivo(c.id);}} style={{flex:1,padding:"12px",borderRadius:10,border:"2px solid "+(cuitActivo===c.id?c.color:"#1E1E1E"),background:cuitActivo===c.id?c.color+"22":"#111",color:cuitActivo===c.id?c.color:"#555",fontFamily:"'Inter',sans-serif",fontWeight:700,cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:11,marginBottom:3}}>{c.label}</div>
+            <div style={{fontSize:9,color:cuitActivo===c.id?c.color+"99":"#444"}}>{c.cuit}</div>
+          </button>
+        );})}
+      </div>
+
+      {/* Resumen */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        <div style={{background:"#111",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+          <div style={{fontSize:9,color:"#C1440E",textTransform:"uppercase",marginBottom:3}}>Pendientes</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{pendientes.length}</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+          <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",marginBottom:3}}>Total pagado</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(totalPagado)}</div>
+        </div>
+      </div>
+
+      {/* Botón nuevo */}
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+        <button onClick={function(){setShowFormCarga(true);setCargaEdit(null);setFormCarga({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:new Date().toISOString().split("T")[0],notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
+      </div>
+
+      {/* Historial */}
+      {registros.length===0?(
+        <div style={{textAlign:"center",padding:"20px 0",color:"#333"}}>Sin registros para {cuitObj.razon}</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {registros.map(function(c){
+            var est=(ESTADOS_SUELDO||[]).find(function(e){return e[0]===c.estado;})||["pendiente","⏳ Pendiente","#D4A017"];
+            return(
+              <div key={c.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{c.periodo}</div>
+                    <div style={{fontSize:10,color:est[2],marginTop:2}}>{est[1]} · {c.fecha_pago}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:15,fontWeight:800,color:cuitObj.color,fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
+                    <button onClick={function(){setCargaEdit(c);setFormCarga({cuit:c.cuit,periodo:c.periodo,estado:c.estado,seg_social:String(c.seg_social),obra_social:String(c.obra_social),art:String(c.art),seguro_vida:String(c.seguro_vida),fecha_pago:c.fecha_pago,notas:c.notas||""});setShowFormCarga(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:10,cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+                  {[["seg_social","Seg. Social",c.seg_social],["obra_social","Obra Social",c.obra_social],["art","ART",c.art],["seguro_vida","Seguro de Vida",c.seguro_vida]].map(function(f){
+                    if(!f[2]||f[2]===0)return null;
+                    return <div key={f[0]} style={{fontSize:10,color:"#555"}}>{f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[2])}</span></div>;
+                  })}
+                </div>
+                {c.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:5}}>📝 {c.notas}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelSueldos(p){
   var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
   var cargasSociales=p.cargasSociales||[], onSaveCargaSocial=p.onSaveCargaSocial, onDeleteCargaSocial=p.onDeleteCargaSocial;
@@ -5344,83 +5423,15 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB CUIT */}
-      {tab==="cuit"&&(function(){
-        var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
-        var CUITS_LIST=[
-          {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"Bodegón",color:"#C1440E"},
-          {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"SRL (Kusama + Col.)",color:"#1A6B8A"},
-        ];
-        var [cuitActivo,setCuitActivo]=useState("c1");
-        var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
-        var cuitObj=CUITS_LIST.find(function(c){return c.id===cuitActivo;})||CUITS_LIST[0];
-        var registros=(cargasSociales||[]).filter(function(c){return c.cuit===cuitActivo;}).sort(function(a,b){return(b.periodo||"").localeCompare(a.periodo||"");});
-        var pendientes=registros.filter(function(c){return c.estado==="pendiente";});
-        var totalPagado=registros.filter(function(c){return c.estado==="pagado";}).reduce(function(a,c){return a+parseFloat(c.total||0);},0);
-
-        return(
-          <div>
-            {/* Selector CUIT */}
-            <div style={{display:"flex",gap:8,marginBottom:14}}>
-              {CUITS_LIST.map(function(c){return(
-                <button key={c.id} onClick={function(){setCuitActivo(c.id);}} style={{flex:1,padding:"12px",borderRadius:10,border:"2px solid "+(cuitActivo===c.id?c.color:"#1E1E1E"),background:cuitActivo===c.id?c.color+"22":"#111",color:cuitActivo===c.id?c.color:"#555",fontFamily:"'Inter',sans-serif",fontWeight:700,cursor:"pointer",textAlign:"center"}}>
-                  <div style={{fontSize:11,marginBottom:3}}>{c.label}</div>
-                  <div style={{fontSize:9,color:cuitActivo===c.id?c.color+"99":"#444"}}>{c.cuit}</div>
-                </button>
-              );})}
-            </div>
-
-            {/* Resumen */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-              <div style={{background:"#111",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-                <div style={{fontSize:9,color:"#C1440E",textTransform:"uppercase",marginBottom:3}}>Pendientes</div>
-                <div style={{fontSize:20,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{pendientes.length}</div>
-              </div>
-              <div style={{background:"#111",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-                <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",marginBottom:3}}>Total pagado</div>
-                <div style={{fontSize:20,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(totalPagado)}</div>
-              </div>
-            </div>
-
-            {/* Botón nuevo */}
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-              <button onClick={function(){setShowFormCarga(true);setCargaEdit(null);setFormCarga({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:new Date().toISOString().split("T")[0],notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
-            </div>
-
-            {/* Historial */}
-            {registros.length===0?(
-              <div style={{textAlign:"center",padding:"20px 0",color:"#333"}}>Sin registros para {cuitObj.razon}</div>
-            ):(
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {registros.map(function(c){
-                  var est=ESTADOS_SUELDO.find(function(e){return e[0]===c.estado;})||ESTADOS_SUELDO[0];
-                  return(
-                    <div key={c.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                        <div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{c.periodo}</div>
-                          <div style={{fontSize:10,color:est[2],marginTop:2}}>{est[1]} · {c.fecha_pago}</div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <div style={{fontSize:15,fontWeight:800,color:cuitObj.color,fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
-                          <button onClick={function(){setCargaEdit(c);setFormCarga({cuit:c.cuit,periodo:c.periodo,estado:c.estado,seg_social:String(c.seg_social),obra_social:String(c.obra_social),art:String(c.art),seguro_vida:String(c.seguro_vida),fecha_pago:c.fecha_pago,notas:c.notas||""});setShowFormCarga(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#555",fontSize:10,cursor:"pointer"}}>✏️</button>
-                          <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
-                        </div>
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                        {[["seg_social","Seg. Social",c.seg_social],["obra_social","Obra Social",c.obra_social],["art","ART",c.art],["seguro_vida","Seguro de Vida",c.seguro_vida]].map(function(f){
-                          if(!f[2]||f[2]===0)return null;
-                          return <div key={f[0]} style={{fontSize:10,color:"#555"}}>{f[1]}: <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[2])}</span></div>;
-                        })}
-                      </div>
-                      {c.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:5}}>📝 {c.notas}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {tab==="cuit"&&<PanelCuit
+        cargasSociales={cargasSociales}
+        mesCurrent={mesCurrent}
+        showFormCarga={showFormCarga} setShowFormCarga={setShowFormCarga}
+        cargaEdit={cargaEdit} setCargaEdit={setCargaEdit}
+        formCarga={formCarga} setFormCarga={setFormCarga}
+        onDeleteCargaSocial={onDeleteCargaSocial}
+        ESTADOS_SUELDO={ESTADOS_SUELDO}
+      />}
 
       {/* MODAL EMPLEADO */}
       {showFormEmp&&(

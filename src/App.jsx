@@ -6260,6 +6260,7 @@ function PanelSueldos(p){
                   return <option key={emp.id} value={emp.id}>{emp.nombre} ({loc?loc.nombre:emp.local})</option>;
                 })}
               </select>
+              {formSueldo.empleado_id&&<div style={{fontSize:9,color:"#555",padding:"3px 8px",background:"#0A0A0A",borderRadius:5}}>Situación: <span style={{color:"#D4A017"}}>{formSueldo.convenio||"sin_convenio"}</span></div>}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
                   <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Período</label>

@@ -5028,7 +5028,14 @@ function PanelResultados(p){
 // ─── PANEL SUELDOS ────────────────────────────────────────────────────────────
 
 // ─── PANEL CUIT F.931 ─────────────────────────────────────────────────────────
-function PanelCuit({cargasSociales, mesCurrent, showFormCarga, setShowFormCarga, cargaEdit, setCargaEdit, formCarga, setFormCarga, onDeleteCargaSocial, ESTADOS_SUELDO}){
+function PanelCuit(props){
+  var cargasSociales=props.cargasSociales||[];
+  var mesCurrent=props.mesCurrent||"";
+  var showFormCarga=props.showFormCarga, setShowFormCarga=props.setShowFormCarga;
+  var cargaEdit=props.cargaEdit, setCargaEdit=props.setCargaEdit;
+  var formCarga=props.formCarga||{}, setFormCarga=props.setFormCarga;
+  var onDeleteCargaSocial=props.onDeleteCargaSocial;
+  var ESTADOS_SUELDO=props.ESTADOS_SUELDO||[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
   var [cuitActivo,setCuitActivo]=useState("c1");
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var CUITS_LIST=[

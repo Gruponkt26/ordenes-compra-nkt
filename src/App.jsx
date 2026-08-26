@@ -3487,11 +3487,21 @@ function PanelEgresos(p){
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
                           {sl.map(function(s){
-                            var est=s.estado==="pagado"?"✅":"⏳";
+                            var est=s.estado==="pagado"?"✅":s.estado==="parcial"?"🔸":"⏳";
+                            var esMixto=s.convenio==="mixto"&&(s.monto_convenio>0||s.monto_sin_convenio>0);
                             return(
-                              <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #111",fontSize:10}}>
-                                <span style={{color:"#888"}}>{est} {s.empleado_nombre}</span>
-                                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.monto)}</span>
+                              <div key={s.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                                <div style={{display:"flex",justifyContent:"space-between"}}>
+                                  <span style={{color:"#888"}}>{est} {s.empleado_nombre}</span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
+                                </div>
+                                {esMixto&&(
+                                  <div style={{display:"flex",gap:8,marginTop:2,paddingLeft:14}}>
+                                    {s.monto_convenio>0&&<span style={{color:"#4CAF50",fontSize:9}}>📋 Conv: {fmt(s.monto_convenio)}</span>}
+                                    {s.monto_sin_convenio>0&&<span style={{color:"#1A6B8A",fontSize:9}}>💼 S/conv: {fmt(s.monto_sin_convenio)}</span>}
+                                  </div>
+                                )}
+                                {s.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total: {fmt(s.monto)}</div>}
                               </div>
                             );
                           })}
@@ -5810,7 +5820,7 @@ function PanelSueldos(p){
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
   var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
-  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",medio_pago:"",estado:"pendiente",pagos:[],notas:""});
+  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[],notas:""});
   var [preCargar,setPreCargar]=useState(false);
   var [mesDesde,setMesDesde]=useState(mesCurrent);
   var [mesHasta,setMesHasta]=useState(mesCurrent);
@@ -5833,7 +5843,10 @@ function PanelSueldos(p){
   }
   function doSaveSueldo(){
     if(!formSueldo.empleado_id||!formSueldo.monto)return;
-    var montoFinal=parseFloat(formSueldo.monto)||0;
+    var esConvenioMixto=formSueldo.convenio==="mixto";
+    var montoConvenio=esConvenioMixto?(parseFloat(formSueldo.monto_convenio)||0):0;
+    var montoSinConvenio=esConvenioMixto?(parseFloat(formSueldo.monto_sin_convenio)||0):0;
+    var montoFinal=esConvenioMixto?(montoConvenio+montoSinConvenio):(parseFloat(formSueldo.monto)||0);
     var montoParcial=formSueldo.estado==="parcial"?(parseFloat(formSueldo.monto_parcial)||0):0;
     // Generar lista de meses a cargar
     var mesesACargar=[];
@@ -5850,7 +5863,7 @@ function PanelSueldos(p){
     }
     mesesACargar.forEach(function(periodo){
       var sid=sueldoEdit&&mesesACargar.length===1?sueldoEdit.id:(String(Date.now())+Math.floor(Math.random()*9999));
-      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_parcial:montoParcial,medio_pago:formSueldo.medio_pago||"",estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
+      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_convenio:montoConvenio,monto_sin_convenio:montoSinConvenio,convenio:formSueldo.convenio||"sin_convenio",monto_parcial:montoParcial,medio_pago:formSueldo.medio_pago||"",estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
       onSaveSueldo(s);
       // Egreso automático si pagado o parcial
       if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
@@ -5862,7 +5875,7 @@ function PanelSueldos(p){
       }
     });
     setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
-    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_parcial:"",medio_pago:"",estado:"pendiente",pagos:[],notas:""});
+    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[],notas:""});
   }
 
   return(
@@ -6239,7 +6252,7 @@ function PanelSueldos(p){
               {/* Empleado */}
               <select value={formSueldo.empleado_id} onChange={function(e){
                 var emp=empleados.find(function(em){return em.id===e.target.value;});
-                setFormSueldo(function(f){return{...f,empleado_id:e.target.value,empleado_nombre:emp?emp.nombre:"",local:emp?emp.local:"l1",monto:emp?String(emp.sueldo_base):f.monto};});
+                setFormSueldo(function(f){return{...f,empleado_id:e.target.value,empleado_nombre:emp?emp.nombre:"",local:emp?emp.local:"l1",convenio:emp?emp.convenio||"sin_convenio":"sin_convenio",monto:"",monto_convenio:"",monto_sin_convenio:""};});
               }} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
                 <option value="">-- Seleccioná empleado --</option>
                 {empleados.filter(function(e){return e.activo!==false;}).map(function(emp){
@@ -6259,7 +6272,27 @@ function PanelSueldos(p){
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto</label>
-                <input type="number" placeholder="Monto a pagar" value={formSueldo.monto} onChange={function(e){setFormSueldo(function(f){return{...f,monto:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                {formSueldo.convenio==="mixto"?(
+                  <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",border:"1px solid #4CAF5022"}}>
+                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Desglose sueldo mixto</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div>
+                        <label style={{display:"block",fontSize:9,color:"#4CAF50",textTransform:"uppercase",marginBottom:4}}>📋 Monto convenio $</label>
+                        <input type="number" placeholder="0" value={formSueldo.monto_convenio} onChange={function(e){setFormSueldo(function(f){return{...f,monto_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #4CAF5033",background:"#0F0F0F",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                      <div>
+                        <label style={{display:"block",fontSize:9,color:"#1A6B8A",textTransform:"uppercase",marginBottom:4}}>💼 Monto sin convenio $</label>
+                        <input type="number" placeholder="0" value={formSueldo.monto_sin_convenio} onChange={function(e){setFormSueldo(function(f){return{...f,monto_sin_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #1A6B8A33",background:"#0F0F0F",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+                        <span style={{fontSize:11,color:"#555"}}>Total</span>
+                        <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>${((parseFloat(formSueldo.monto_convenio)||0)+(parseFloat(formSueldo.monto_sin_convenio)||0)).toLocaleString("es-AR")}</span>
+                      </div>
+                    </div>
+                  </div>
+                ):(
+                  <input type="number" placeholder="Monto a pagar" value={formSueldo.monto} onChange={function(e){setFormSueldo(function(f){return{...f,monto:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                )}
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Estado</label>

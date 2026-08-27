@@ -2876,7 +2876,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
 
 // ─── PLANILLA INLINE ──────────────────────────────────────────────────────────
-function PlanillaInline({empleados, planilla, onSave, onDelete}){
+function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
   var [showModal,setShowModal]=useState(false);
@@ -2971,12 +2971,18 @@ function PlanillaInline({empleados, planilla, onSave, onDelete}){
                       var conv=plan?(parseFloat(plan.monto_convenio)||0):0;
                       var sinc=plan?(parseFloat(plan.monto_sin_convenio)||0):0;
                       anualTotal+=tot;
+                      // Estado de pago para este mes
+                      var mesStr=anio+"-"+(mesIdx+1<10?"0"+(mesIdx+1):String(mesIdx+1));
+                      var pago=(sueldos||[]).find(function(s){return s.empleado_id===emp.id&&s.periodo===mesStr;});
+                      var bgColor=tot>0?(pago&&pago.estado==="pagado"?"#0A1A0A":pago&&pago.estado==="parcial"?"#1A1000":"#101000"):"transparent";
+                      var textColor=tot>0?(pago&&pago.estado==="pagado"?"#4CAF50":pago&&pago.estado==="parcial"?"#E07B00":"#D4A017"):"#1A1A1A";
                       return(
-                        <td key={mesIdx} onClick={function(){abrirModal(emp,mesIdx);}} style={{padding:"3px",textAlign:"center",cursor:"pointer",background:tot>0?"#0A1A0A":"transparent",borderRadius:3}}>
+                        <td key={mesIdx} onClick={function(){abrirModal(emp,mesIdx);}} style={{padding:"3px",textAlign:"center",cursor:"pointer",background:bgColor,borderRadius:3,border:tot>0?"1px solid "+(pago&&pago.estado==="pagado"?"#3A7D4433":pago&&pago.estado==="parcial"?"#E07B0033":"#D4A01733"):"none"}}>
                           {tot>0?(
                             <div>
-                              <div style={{fontSize:9,fontWeight:700,color:"#4CAF50"}}>${Math.round(tot/1000).toFixed(0)}k</div>
+                              <div style={{fontSize:9,fontWeight:700,color:textColor}}>${Math.round(tot/1000).toFixed(0)}k</div>
                               {conv>0&&sinc>0&&<div style={{fontSize:7,color:"#555"}}><span style={{color:"#4CAF5088"}}>C</span><span style={{color:"#1A6B8A88"}}>+S</span></div>}
+                              {pago&&<div style={{fontSize:7,color:textColor}}>{pago.estado==="pagado"?"✅":pago.estado==="parcial"?"🔸":"⏳"}</div>}
                             </div>
                           ):(
                             <div style={{color:"#1A1A1A",fontSize:14}}>+</div>
@@ -6490,10 +6496,9 @@ function PanelSueldos(p){
           <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
           {tab==="estado"&&<button onClick={function(){
             var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
-            if(!window.confirm("¿Resetear todos los pagos de "+mesFiltro+" en "+loc+"?"))return;
-            var aEliminar=sueldosMes.filter(function(s){
-              return localFiltro==="all"||s.local===localFiltro;
-            });
+            var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
+            if(aEliminar.length===0){alert("No hay pagos registrados en "+mesFiltro+" para "+loc);return;}
+            if(!window.confirm("¿Resetear "+aEliminar.length+" pago(s) de "+mesFiltro+" en "+loc+"?"))return;
             aEliminar.forEach(function(s){
               onDeleteSueldo(s.id);
               if(p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo("egr_sueldo_"+s.id);
@@ -6576,26 +6581,6 @@ function PanelSueldos(p){
                             <div style={{fontSize:10,color:est?est[2]:"#D4A017",marginTop:2}}>{est?est[1]:"⏳ Pendiente"}</div>
                             {pagoEmp&&pagoEmp.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Pagado: {fmt(pagoEmp.monto_parcial)}</div>}
                           </div>
-                          <button onClick={function(){
-                            setSueldoEdit(pagoEmp||null);
-                            setFormSueldo({
-                              empleado_id:pl.empleado_id,
-                              empleado_nombre:pl.empleado_nombre,
-                              local:pl.local,
-                              periodo:mesFiltro,
-                              fecha_pago:pagoEmp?pagoEmp.fecha_pago:hoy,
-                              monto:String(pl.monto||""),
-                              monto_convenio:String(pl.monto_convenio||""),
-                              monto_sin_convenio:String(pl.monto_sin_convenio||""),
-                              monto_parcial:pagoEmp?String(pagoEmp.monto_parcial||""):"",
-                              medio_pago:pagoEmp?pagoEmp.medio_pago||"":"",
-                              estado:pagoEmp?pagoEmp.estado:"pendiente",
-                              convenio:pl.tipo||"sin_convenio",
-                              pagos:pagoEmp?pagoEmp.pagos||[]:[],
-                              notas:pagoEmp?pagoEmp.notas||"":""
-                            });
-                            setShowFormSueldo(true);
-                          }} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pagoEmp?"✏️ Editar":"💳 Pagar"}</button>
                         </div>
                       </div>
                     </div>
@@ -6814,6 +6799,7 @@ function PanelSueldos(p){
       {tab==="planilla"&&<PlanillaInline
         empleados={empleados}
         planilla={p.planillaSueldos||[]}
+        sueldos={sueldos}
         onSave={p.onSavePlanilla}
         onDelete={p.onDeletePlanilla}
       />}

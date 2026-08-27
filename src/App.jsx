@@ -130,9 +130,10 @@ async function sbLoadPlanillaSueldos() {
 }
 async function sbSavePlanillaSueldo(item) {
   try {
-    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/planilla_sueldos",{method:"POST",headers:h,body:JSON.stringify(item)});
-  } catch(e){}
+    var h={"Content-Type":"application/json","apikey":SKEY,"Authorization":"Bearer "+SKEY,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r=await fetch(SURL+"/rest/v1/planilla_sueldos",{method:"POST",headers:h,body:JSON.stringify(item)});
+    if(!r.ok){var err=await r.text();console.error("planilla save error:",r.status,err);alert("Error guardando planilla: "+r.status+" "+err);}
+  } catch(e){console.error("sbSavePlanillaSueldo error:",e);}
 }
 async function sbDeletePlanillaSueldo(id) {
   try {

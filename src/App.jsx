@@ -2883,6 +2883,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
   var [modalEmp,setModalEmp]=useState(null);
   var [modalMes,setModalMes]=useState(0);
   var [modalForm,setModalForm]=useState({tipo:"sin_convenio",monto_convenio:"",monto_sin_convenio:""});
+  var [mesReset,setMesReset]=useState(6); // julio = índice 6
 
   var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
@@ -2941,6 +2942,20 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
         {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
+        <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+          <select value={mesReset} onChange={function(e){setMesReset(parseInt(e.target.value));}} style={{padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+            {["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"].map(function(m,i){return <option key={i} value={i}>{m}</option>;})}
+          </select>
+          <button onClick={function(){
+            var mesNombres=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+            var loc=localFiltro;
+            var locNombre=loc==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===loc;})||{nombre:loc}).nombre;
+            var aEliminar=(planilla||[]).filter(function(x){return parseInt(x.mes)===mesReset&&parseInt(x.anio)===anio&&(loc==="all"||x.local===loc);});
+            if(aEliminar.length===0){alert("No hay planilla en "+mesNombres[mesReset]+" "+anio+" para "+locNombre);return;}
+            if(!window.confirm("¿Borrar "+aEliminar.length+" registro(s) de "+mesNombres[mesReset]+" "+anio+" en "+locNombre+"?"))return;
+            aEliminar.forEach(function(x){if(onDelete)onDelete(x.id);});
+          }} style={{padding:"5px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️ Resetear</button>
+        </div>
       </div>
 
       {/* Tabla */}

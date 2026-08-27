@@ -8497,7 +8497,15 @@ export default function App() {
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
                 planillaSueldos={planillaSueldos}
-                onSavePlanilla={function(item){sbSavePlanillaSueldo(item).then(function(){sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);});});setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==item.id;});return[item,...f];});}}
+                onSavePlanilla={async function(item){
+                  // Actualizar estado local inmediatamente
+                  setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==item.id;});return[item,...f];});
+                  // Guardar en Supabase
+                  await sbSavePlanillaSueldo(item);
+                  // Recargar desde Supabase para confirmar
+                  var d=await sbLoadPlanillaSueldos();
+                  if(d&&d.length>0)setPlanillaSueldos(d);
+                }}
                 onDeletePlanilla={function(id){sbDeletePlanillaSueldo(id);setPlanillaSueldos(function(prev){return prev.filter(function(item){return item.id!==id;});});}}
               />
             </div>

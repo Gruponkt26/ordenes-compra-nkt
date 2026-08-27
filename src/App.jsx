@@ -2663,22 +2663,18 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
 function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
-  var [planillaLocal,setPlanillaLocal]=useState(planilla||[]);
+  var [planillaLocal,setPlanillaLocal]=useState([]);
+  var [cargando,setCargando]=useState(true);
 
-  // Sincronizar cuando llegan datos del padre
+  // Siempre cargar desde Supabase al montar — no depender del prop
   useEffect(function(){
-    if(planilla&&planilla.length>0){
-      setPlanillaLocal(planilla);
-    }
-  },[planilla]);
-
-  // Siempre recargar desde Supabase al montar
-  useEffect(function(){
+    setCargando(true);
     sbLoadPlanillaSueldos().then(function(d){
-      if(d&&d.length>0)setPlanillaLocal(d);
-      else if(planilla&&planilla.length>0)setPlanillaLocal(planilla);
+      setPlanillaLocal(Array.isArray(d)?d:[]);
+      setCargando(false);
     }).catch(function(){
-      if(planilla&&planilla.length>0)setPlanillaLocal(planilla);
+      setPlanillaLocal(planilla||[]);
+      setCargando(false);
     });
   },[]);
   var [editando,setEditando]=useState(null); // {empId, mes, campo}
@@ -2688,6 +2684,8 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
   var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
   var fmt=function(n){return n?("$"+(Math.round(n)||0).toLocaleString("es-AR")):"—";};
+
+  if(cargando)return <div style={{textAlign:"center",padding:"30px",color:"#555",fontFamily:"'Inter',sans-serif"}}>⏳ Cargando planilla...</div>;
 
   var emps=empleados.filter(function(e){return e.activo!==false&&e.local===localFiltro;});
 

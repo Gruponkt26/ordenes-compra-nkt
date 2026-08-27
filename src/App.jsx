@@ -5843,10 +5843,9 @@ function PanelSueldos(p){
   }
   function doSaveSueldo(){
     if(!formSueldo.empleado_id||!formSueldo.monto)return;
-    var esConvenioMixto=formSueldo.convenio==="mixto";
-    var montoConvenio=esConvenioMixto?(parseFloat(formSueldo.monto_convenio)||0):0;
-    var montoSinConvenio=esConvenioMixto?(parseFloat(formSueldo.monto_sin_convenio)||0):0;
-    var montoFinal=esConvenioMixto?(montoConvenio+montoSinConvenio):(parseFloat(formSueldo.monto)||0);
+    var montoConvenio=parseFloat(formSueldo.monto_convenio)||0;
+    var montoSinConvenio=parseFloat(formSueldo.monto_sin_convenio)||0;
+    var montoFinal=montoConvenio+montoSinConvenio>0?montoConvenio+montoSinConvenio:(parseFloat(formSueldo.monto)||0);
     var montoParcial=formSueldo.estado==="parcial"?(parseFloat(formSueldo.monto_parcial)||0):0;
     // Generar lista de meses a cargar
     var mesesACargar=[];
@@ -6273,27 +6272,23 @@ function PanelSueldos(p){
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto</label>
-                {formSueldo.convenio==="mixto"?(
-                  <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",border:"1px solid #4CAF5022"}}>
-                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Desglose sueldo mixto</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                      <div>
-                        <label style={{display:"block",fontSize:9,color:"#4CAF50",textTransform:"uppercase",marginBottom:4}}>📋 Monto convenio $</label>
-                        <input type="number" placeholder="0" value={formSueldo.monto_convenio} onChange={function(e){setFormSueldo(function(f){return{...f,monto_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #4CAF5033",background:"#0F0F0F",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-                      </div>
-                      <div>
-                        <label style={{display:"block",fontSize:9,color:"#1A6B8A",textTransform:"uppercase",marginBottom:4}}>💼 Monto sin convenio $</label>
-                        <input type="number" placeholder="0" value={formSueldo.monto_sin_convenio} onChange={function(e){setFormSueldo(function(f){return{...f,monto_sin_convenio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #1A6B8A33",background:"#0F0F0F",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-                      </div>
-                      <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
-                        <span style={{fontSize:11,color:"#555"}}>Total</span>
-                        <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>${((parseFloat(formSueldo.monto_convenio)||0)+(parseFloat(formSueldo.monto_sin_convenio)||0)).toLocaleString("es-AR")}</span>
-                      </div>
+                <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",border:"1px solid #4CAF5022"}}>
+                  <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Desglose del pago</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div>
+                      <label style={{display:"block",fontSize:9,color:"#4CAF50",textTransform:"uppercase",marginBottom:4}}>📋 Monto convenio $</label>
+                      <input type="number" placeholder="0" value={formSueldo.monto_convenio} onChange={function(e){var v=e.target.value;setFormSueldo(function(f){var conv=parseFloat(v)||0;var sinconv=parseFloat(f.monto_sin_convenio)||0;return{...f,monto_convenio:v,monto:String(conv+sinconv)};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #4CAF5033",background:"#0F0F0F",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                    <div>
+                      <label style={{display:"block",fontSize:9,color:"#1A6B8A",textTransform:"uppercase",marginBottom:4}}>💼 Monto sin convenio $</label>
+                      <input type="number" placeholder="0" value={formSueldo.monto_sin_convenio} onChange={function(e){var v=e.target.value;setFormSueldo(function(f){var conv=parseFloat(f.monto_convenio)||0;var sinconv=parseFloat(v)||0;return{...f,monto_sin_convenio:v,monto:String(conv+sinconv)};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #1A6B8A33",background:"#0F0F0F",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+                      <span style={{fontSize:11,color:"#555"}}>Total</span>
+                      <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>${((parseFloat(formSueldo.monto_convenio)||0)+(parseFloat(formSueldo.monto_sin_convenio)||0)).toLocaleString("es-AR")}</span>
                     </div>
                   </div>
-                ):(
-                  <input type="number" placeholder="Monto a pagar" value={formSueldo.monto} onChange={function(e){setFormSueldo(function(f){return{...f,monto:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-                )}
+                </div>
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Estado</label>

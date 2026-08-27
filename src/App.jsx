@@ -2672,13 +2672,14 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
     }
   },[planilla]);
 
-  // Si planilla está vacía, cargar directamente desde Supabase
+  // Siempre recargar desde Supabase al montar
   useEffect(function(){
-    if(!planilla||planilla.length===0){
-      sbLoadPlanillaSueldos().then(function(d){
-        if(d&&d.length>0)setPlanillaLocal(d);
-      }).catch(function(){});
-    }
+    sbLoadPlanillaSueldos().then(function(d){
+      if(d&&d.length>0)setPlanillaLocal(d);
+      else if(planilla&&planilla.length>0)setPlanillaLocal(planilla);
+    }).catch(function(){
+      if(planilla&&planilla.length>0)setPlanillaLocal(planilla);
+    });
   },[]);
   var [editando,setEditando]=useState(null); // {empId, mes, campo}
   var [valEdit,setValEdit]=useState("");
@@ -8494,6 +8495,7 @@ export default function App() {
           )}
 
           {/* MÓDULO PERSONAL */}
+          {esSofia&&modulo==="personal"&&planillaSueldos.length===0&&sbLoadPlanillaSueldos().then(function(d){if(d&&d.length>0)setPlanillaSueldos(d);})}
           {esSofia&&modulo==="personal"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:14}}>

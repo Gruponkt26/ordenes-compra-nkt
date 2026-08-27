@@ -4046,7 +4046,7 @@ function PanelEgresos(p){
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
 
                 {/* Un bloque por cada área/tab */}
-                {[...AREAS_BASE.filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
+                {[...AREAS_BASE.filter(function(a){return a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
                   var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
                   if(items.length===0)return null;
                   var gkey=l.id+"_area_"+area;
@@ -5915,7 +5915,7 @@ function PanelResultados(p){
         {/* Egresos por área */}
         <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"14px",marginBottom:10}}>
           <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:700}}>💸 Egresos</div>
-          {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(cat){
+          {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
             var monto=d.porCat[cat]||0;
             var color=AREA_COLORES[cat]||"#555";
             var pct=d.totalGastos>0?Math.round(monto/d.totalGastos*100):0;
@@ -5951,7 +5951,7 @@ function PanelResultados(p){
         {/* Detalle de gastos por área */}
         {gl.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(area){
+            {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(area){
               var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
               if(items.length===0)return null;
               var totalArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
@@ -6109,7 +6109,7 @@ function PanelResultados(p){
                     <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</div>
                   </div>
                   <div>
-                    {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Sueldos"&&a!=="Retiros";}).map(function(cat){
+                    {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
                       var monto=d.porCat[cat]||0;
                       var color=AREA_COLORES[cat]||"#555";
                       return(

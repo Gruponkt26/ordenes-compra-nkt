@@ -123,9 +123,9 @@ async function sbSaveProducto(provId, prod) {
 }
 async function sbLoadPlanillaSueldos() {
   try {
-    var r=await fetch(SURL+"/rest/v1/planilla_sueldos?order=anio.desc,mes.asc&_t="+Date.now(),{headers:{...SH,"Cache-Control":"no-cache","Pragma":"no-cache"}});
+    var r=await fetch(SURL+"/rest/v1/planilla_sueldos?order=anio.desc,mes.asc",{headers:{...SH,"Cache-Control":"no-cache","Pragma":"no-cache"}});
     var d=await r.json();
-    console.log("sbLoadPlanillaSueldos result:", r.status, JSON.stringify(d).slice(0,200));
+    console.log("sbLoadPlanillaSueldos result:", r.status, Array.isArray(d)?d.length+" registros":JSON.stringify(d).slice(0,100));
     return Array.isArray(d)?d:[];
   } catch(e){console.error("sbLoadPlanillaSueldos error:",e);return [];}
 }

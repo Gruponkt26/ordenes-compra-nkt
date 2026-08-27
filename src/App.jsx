@@ -8495,7 +8495,6 @@ export default function App() {
           )}
 
           {/* MÓDULO PERSONAL */}
-          {esSofia&&modulo==="personal"&&planillaSueldos.length===0&&sbLoadPlanillaSueldos().then(function(d){if(d&&d.length>0)setPlanillaSueldos(d);})}
           {esSofia&&modulo==="personal"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:14}}>

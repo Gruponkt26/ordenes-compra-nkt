@@ -2663,10 +2663,23 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
 function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
-  // DEBUG
-  console.log("PlanillaSueldos render — planilla.length:", (planilla||[]).length, "anio:", new Date().getFullYear(), "sample:", JSON.stringify((planilla||[]).slice(0,2)));
-  console.log("emps l1:", empleados.filter(function(e){return e.activo!==false&&e.local==="l1";}).map(function(e){return e.id+"_"+e.nombre;}));
-  console.log("planilla l1:", (planilla||[]).filter(function(p){return p.local==="l1";}).map(function(p){return p.empleado_nombre+"_mes"+p.mes;}));
+  var [planillaLocal,setPlanillaLocal]=useState(planilla||[]);
+
+  // Sincronizar cuando llegan datos del padre
+  useEffect(function(){
+    if(planilla&&planilla.length>0){
+      setPlanillaLocal(planilla);
+    }
+  },[planilla]);
+
+  // Si planilla está vacía, cargar directamente desde Supabase
+  useEffect(function(){
+    if(!planilla||planilla.length===0){
+      sbLoadPlanillaSueldos().then(function(d){
+        if(d&&d.length>0)setPlanillaLocal(d);
+      }).catch(function(){});
+    }
+  },[]);
   var [editando,setEditando]=useState(null); // {empId, mes, campo}
   var [valEdit,setValEdit]=useState("");
   var [guardando,setGuardando]=useState(false);
@@ -2679,7 +2692,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
   // Obtener valor de planilla para empleado/mes
   function getPlan(empId, mes){
-    return planilla.find(function(p){return p.empleado_id===empId&&parseInt(p.mes)===parseInt(mes)&&parseInt(p.anio)===parseInt(anio);})||null;
+    return planillaLocal.find(function(p){return p.empleado_id===empId&&parseInt(p.mes)===parseInt(mes)&&parseInt(p.anio)===parseInt(anio);})||null;
   }
 
   function getMontoDisplay(plan){
@@ -2722,6 +2735,8 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
     var total=modalForm.tipo==="mixto"?(montoConv+montoSin):modalForm.tipo==="convenio"?montoConv:modalForm.tipo==="sin_convenio"?montoSin||montoSimple:montoSimple;
     var id="plan_"+modalEmp.id+"_"+anio+"_"+modalMes;
     var obj={id,empleado_id:modalEmp.id,empleado_nombre:modalEmp.nombre,local:modalEmp.local,anio,mes:modalMes,tipo:modalForm.tipo,monto:total,monto_convenio:modalForm.tipo==="convenio"||modalForm.tipo==="mixto"?montoConv:0,monto_sin_convenio:modalForm.tipo==="sin_convenio"||modalForm.tipo==="mixto"?montoSin||montoSimple:0};
+    // Actualizar estado local inmediatamente
+    setPlanillaLocal(function(prev){var f=prev.filter(function(x){return x.id!==obj.id;});return[obj,...f];});
     if(onSave)onSave(obj);
     setShowModal(false);
   }
@@ -2849,7 +2864,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
             <div style={{display:"flex",gap:8}}>
               <button onClick={doSaveModal} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
-              {getPlan(modalEmp.id,modalMes)&&<button onClick={function(){if(onDelete)onDelete("plan_"+modalEmp.id+"_"+anio+"_"+modalMes);setShowModal(false);}} style={{padding:"10px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",cursor:"pointer",fontSize:12}}>🗑️</button>}
+              {getPlan(modalEmp.id,modalMes)&&<button onClick={function(){var delId="plan_"+modalEmp.id+"_"+anio+"_"+modalMes;setPlanillaLocal(function(prev){return prev.filter(function(x){return x.id!==delId;});});if(onDelete)onDelete(delId);setShowModal(false);}} style={{padding:"10px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",cursor:"pointer",fontSize:12}}>🗑️</button>}
               <button onClick={function(){setShowModal(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
             </div>
           </div>

@@ -2677,10 +2677,14 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
       setCargando(false);
     });
   },[]);
-  var [editando,setEditando]=useState(null); // {empId, mes, campo}
+  var [editando,setEditando]=useState(null);
   var [valEdit,setValEdit]=useState("");
   var [guardando,setGuardando]=useState(false);
   var [guardadoOk,setGuardadoOk]=useState(false);
+  var [showModal,setShowModal]=useState(false);
+  var [modalEmp,setModalEmp]=useState(null);
+  var [modalMes,setModalMes]=useState(0);
+  var [modalForm,setModalForm]=useState({tipo:"sin_convenio",monto:"",monto_convenio:"",monto_sin_convenio:""});
 
   var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
   var fmt=function(n){return n?("$"+(Math.round(n)||0).toLocaleString("es-AR")):"—";};
@@ -2704,10 +2708,6 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   }
 
   // Modal edición de celda
-  var [showModal,setShowModal]=useState(false);
-  var [modalEmp,setModalEmp]=useState(null);
-  var [modalMes,setModalMes]=useState(0);
-  var [modalForm,setModalForm]=useState({tipo:"sin_convenio",monto:"",monto_convenio:"",monto_sin_convenio:""});
 
   function abrirModal(emp, mesIdx){
     var plan=getPlan(emp.id, mesIdx);

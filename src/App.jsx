@@ -2663,6 +2663,8 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
 function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
+  // DEBUG
+  console.log("PlanillaSueldos render — planilla.length:", (planilla||[]).length, "anio:", new Date().getFullYear(), "sample:", JSON.stringify((planilla||[]).slice(0,2)));
   var [editando,setEditando]=useState(null); // {empId, mes, campo}
   var [valEdit,setValEdit]=useState("");
   var [guardando,setGuardando]=useState(false);

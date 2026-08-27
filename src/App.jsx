@@ -6421,8 +6421,11 @@ function PanelSueldos(p){
   var [mesHasta,setMesHasta]=useState(mesCurrent);
   var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
   var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
-  var localesFiltro=LOCALES; // incluye Oficina (l4)
-  var mesesDisp=[...new Set(sueldos.map(function(s){return s.periodo;}).filter(Boolean))].sort().reverse();
+  var localesFiltro=LOCALES;
+  // Meses disponibles desde la planilla de sueldos
+  var mesesDisp=[...new Set((p.planillaSueldos||[]).map(function(pl){
+    var m=parseInt(pl.mes)+1;return pl.anio+"-"+(m<10?"0"+m:String(m));
+  }).filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
   var empleadosFiltro=localFiltro==="all"?empleados:empleados.filter(function(e){return e.local===localFiltro;});
@@ -6488,10 +6491,11 @@ function PanelSueldos(p){
           {tab==="estado"&&<button onClick={function(){
             var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
             if(!window.confirm("¿Resetear todos los pagos de "+mesFiltro+" en "+loc+"?"))return;
-            var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
+            var aEliminar=sueldosMes.filter(function(s){
+              return localFiltro==="all"||s.local===localFiltro;
+            });
             aEliminar.forEach(function(s){
               onDeleteSueldo(s.id);
-              // Borrar egreso asociado
               if(p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo("egr_sueldo_"+s.id);
             });
           }} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>🗑️ Resetear mes</button>}

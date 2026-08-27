@@ -2873,6 +2873,165 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   );
 }
 
+
+// ─── PLANILLA INLINE ──────────────────────────────────────────────────────────
+function PlanillaInline({empleados, planilla, onSave, onDelete}){
+  var [anio,setAnio]=useState(new Date().getFullYear());
+  var [localFiltro,setLocalFiltro]=useState("l1");
+  var [showModal,setShowModal]=useState(false);
+  var [modalEmp,setModalEmp]=useState(null);
+  var [modalMes,setModalMes]=useState(0);
+  var [modalForm,setModalForm]=useState({tipo:"sin_convenio",monto_convenio:"",monto_sin_convenio:""});
+
+  var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+
+  var emps=empleados.filter(function(e){return e.activo!==false&&e.local===localFiltro;});
+
+  function getPlan(empId,mes){
+    return (planilla||[]).find(function(x){
+      return x.empleado_id===empId&&parseInt(x.mes)===mes&&parseInt(x.anio)===anio;
+    })||null;
+  }
+
+  function abrirModal(emp,mes){
+    var plan=getPlan(emp.id,mes);
+    setModalEmp(emp);setModalMes(mes);
+    if(plan){
+      var tipo="sin_convenio";
+      if(plan.monto_convenio>0&&plan.monto_sin_convenio>0)tipo="mixto";
+      else if(plan.monto_convenio>0)tipo="convenio";
+      setModalForm({tipo,monto_convenio:String(plan.monto_convenio||""),monto_sin_convenio:String(plan.monto_sin_convenio||plan.monto||"")});
+    } else {
+      setModalForm({tipo:"sin_convenio",monto_convenio:"",monto_sin_convenio:""});
+    }
+    setShowModal(true);
+  }
+
+  function doGuardar(){
+    if(!modalEmp)return;
+    var conv=parseFloat(modalForm.monto_convenio)||0;
+    var sinc=parseFloat(modalForm.monto_sin_convenio)||0;
+    var total=modalForm.tipo==="mixto"?conv+sinc:modalForm.tipo==="convenio"?conv:sinc;
+    if(total===0){setShowModal(false);return;}
+    var id="plan_"+modalEmp.id+"_"+anio+"_"+modalMes;
+    var obj={id,empleado_id:modalEmp.id,empleado_nombre:modalEmp.nombre,local:modalEmp.local,anio,mes:modalMes,tipo:modalForm.tipo,monto:total,monto_convenio:modalForm.tipo==="convenio"||modalForm.tipo==="mixto"?conv:0,monto_sin_convenio:modalForm.tipo==="sin_convenio"||modalForm.tipo==="mixto"?sinc:0};
+    if(onSave)onSave(obj);
+    setShowModal(false);
+  }
+
+  function doEliminar(){
+    if(!modalEmp)return;
+    var id="plan_"+modalEmp.id+"_"+anio+"_"+modalMes;
+    if(onDelete)onDelete(id);
+    setShowModal(false);
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {/* Header */}
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={function(){setAnio(anio-1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>‹</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800,color:"#F0EDE8",minWidth:50,textAlign:"center"}}>{anio}</div>
+          <button onClick={function(){setAnio(anio+1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>›</button>
+        </div>
+        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
+          <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+        );})}
+      </div>
+
+      {/* Tabla */}
+      {emps.length===0?(
+        <div style={{textAlign:"center",padding:"20px",color:"#333"}}>Sin empleados activos en este local</div>
+      ):(
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+            <thead>
+              <tr>
+                <th style={{textAlign:"left",padding:"6px 8px",color:"#555",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:110,position:"sticky",left:0,background:"#111"}}>Empleado</th>
+                {MESES.map(function(m,i){return <th key={i} style={{padding:"4px",color:"#555",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:58,textAlign:"center"}}>{m}</th>;})}
+                <th style={{padding:"4px",color:"#D4A017",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:60,textAlign:"center"}}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {emps.map(function(emp){
+                var anualTotal=0;
+                return(
+                  <tr key={emp.id} style={{borderBottom:"1px solid #0F0F0F"}}>
+                    <td style={{padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:11,position:"sticky",left:0,background:"#111"}}>
+                      <div>{emp.nombre}</div>
+                      <div style={{fontSize:9,color:"#444"}}>{emp.convenio||"sin_convenio"}</div>
+                    </td>
+                    {MESES.map(function(m,mesIdx){
+                      var plan=getPlan(emp.id,mesIdx);
+                      var tot=plan?(parseFloat(plan.monto)||0):0;
+                      var conv=plan?(parseFloat(plan.monto_convenio)||0):0;
+                      var sinc=plan?(parseFloat(plan.monto_sin_convenio)||0):0;
+                      anualTotal+=tot;
+                      return(
+                        <td key={mesIdx} onClick={function(){abrirModal(emp,mesIdx);}} style={{padding:"3px",textAlign:"center",cursor:"pointer",background:tot>0?"#0A1A0A":"transparent",borderRadius:3}}>
+                          {tot>0?(
+                            <div>
+                              <div style={{fontSize:9,fontWeight:700,color:"#4CAF50"}}>${Math.round(tot/1000).toFixed(0)}k</div>
+                              {conv>0&&sinc>0&&<div style={{fontSize:7,color:"#555"}}><span style={{color:"#4CAF5088"}}>C</span><span style={{color:"#1A6B8A88"}}>+S</span></div>}
+                            </div>
+                          ):(
+                            <div style={{color:"#1A1A1A",fontSize:14}}>+</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td style={{padding:"4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:10,fontFamily:"'Playfair Display',serif"}}>
+                      {anualTotal>0?"$"+Math.round(anualTotal/1000)+"k":"—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal&&modalEmp&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:360,border:"1px solid #4CAF5033"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalEmp.nombre}</div>
+            <div style={{fontSize:10,color:"#555",marginBottom:14}}>{MESES[modalMes]} {anio}</div>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {[["convenio","📋 Convenio"],["sin_convenio","💼 Sin conv."],["mixto","📋+💼 Mixto"]].map(function(t){return(
+                <button key={t[0]} onClick={function(){setModalForm(function(f){return{...f,tipo:t[0]};});}} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"2px solid "+(modalForm.tipo===t[0]?"#4CAF50":"#2A2A2A"),background:modalForm.tipo===t[0]?"#4CAF5022":"#0F0F0F",color:modalForm.tipo===t[0]?"#4CAF50":"#555",fontSize:10,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+              );})}
+            </div>
+            {(modalForm.tipo==="convenio"||modalForm.tipo==="mixto")&&(
+              <div style={{marginBottom:8}}>
+                <label style={{display:"block",fontSize:9,color:"#4CAF50",textTransform:"uppercase",marginBottom:4}}>📋 Monto convenio $</label>
+                <input type="number" placeholder="0" value={modalForm.monto_convenio} onChange={function(e){setModalForm(function(f){return{...f,monto_convenio:e.target.value};});}} style={{...INP,color:"#4CAF50",border:"1px solid #4CAF5033"}}/>
+              </div>
+            )}
+            {(modalForm.tipo==="sin_convenio"||modalForm.tipo==="mixto")&&(
+              <div style={{marginBottom:8}}>
+                <label style={{display:"block",fontSize:9,color:"#1A6B8A",textTransform:"uppercase",marginBottom:4}}>💼 Monto sin convenio $</label>
+                <input type="number" placeholder="0" value={modalForm.monto_sin_convenio} onChange={function(e){setModalForm(function(f){return{...f,monto_sin_convenio:e.target.value};});}} style={{...INP,color:"#1A6B8A",border:"1px solid #1A6B8A33"}}/>
+              </div>
+            )}
+            {modalForm.tipo==="mixto"&&(
+              <div style={{fontSize:11,color:"#555",textAlign:"right",marginBottom:10}}>Total: <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt((parseFloat(modalForm.monto_convenio)||0)+(parseFloat(modalForm.monto_sin_convenio)||0))}</span></div>
+            )}
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={doGuardar} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              {getPlan(modalEmp.id,modalMes)&&<button onClick={doEliminar} style={{padding:"10px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",cursor:"pointer"}}>🗑️</button>}
+              <button onClick={function(){setShowModal(false);}} style={{padding:"10px 12px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
 
 function GestProveedores(p) {
@@ -6397,8 +6556,8 @@ function PanelSueldos(p){
         ESTADOS_SUELDO={ESTADOS_SUELDO}
       />}
 
-      {/* TAB PLANILLA ANUAL */}
-      {tab==="planilla"&&<PanelPlanillaSueldos
+      {/* TAB PLANILLA ANUAL — inline, sin componente hijo */}
+      {tab==="planilla"&&<PlanillaInline
         empleados={empleados}
         planilla={p.planillaSueldos||[]}
         onSave={p.onSavePlanilla}

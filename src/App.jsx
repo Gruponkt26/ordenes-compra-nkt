@@ -3035,9 +3035,9 @@ function PlanillaInline({empleados, planilla, onSave, onDelete}){
 
 
 // ─── PANEL EGRESOS SUELDOS ────────────────────────────────────────────────────
-function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuario, onSaveSueldo, onSaveEgresoSueldo}){
+function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuario, onSaveSueldo, onSaveEgresoSueldo, onDeleteSueldo, p}){
   var hoy=new Date().toISOString().split("T")[0];
-  var mesCurrent=new Date().toISOString().slice(0,7);
+  var mesCurrent="2026-07";
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [localFiltro,setLocalFiltro]=useState("all");
   var [showModal,setShowModal]=useState(false);
@@ -3148,6 +3148,23 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
           <div style={{fontSize:16,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(totalPagado)}</div>
         </div>
       </div>
+
+      {/* Botón resetear pagos */}
+      {planillaMes.length>0&&(
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+          <button onClick={function(){
+            var loc=localFiltro==="all"?"todos los locales":LOCALES.find(function(l){return l.id===localFiltro;})?LOCALES.find(function(l){return l.id===localFiltro;}).nombre:localFiltro;
+            if(!window.confirm("¿Resetear todos los pagos de "+mesFiltro+" en "+loc+"?"))return;
+            var sueldosABorrar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
+            sueldosABorrar.forEach(function(s){
+              if(p&&p.onDeleteSueldo)p.onDeleteSueldo(s.id);
+              // También borrar el egreso asociado
+              var egId="egr_sueldo_"+s.id;
+              if(p&&p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo(egId);
+            });
+          }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>🗑️ Resetear {localFiltro==="all"?"todos":""} pagos</button>
+        </div>
+      )}
 
       {planillaMes.length===0?(
         <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>
@@ -4205,6 +4222,8 @@ function PanelEgresos(p){
           usuario={usuario}
           onSaveSueldo={p.onSaveSueldo}
           onSaveEgresoSueldo={p.onSaveEgresoSueldo}
+          onDeleteSueldo={p.onDeleteSueldo}
+          p={p}
         />
       ):areaActiva==="Retiros"?(
         <PanelRetiros retiros={p.retiros||[]} usuario={usuario}

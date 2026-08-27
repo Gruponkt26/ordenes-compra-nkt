@@ -123,15 +123,15 @@ async function sbSaveProducto(provId, prod) {
 }
 async function sbLoadPlanillaSueldos() {
   try {
-    var r=await fetch(SURL+"/rest/v1/planilla_sueldos?order=anio.desc,mes.asc",{headers:{...SH,"Cache-Control":"no-cache"}});
+    var r=await fetch(SURL+"/rest/v1/planilla_sueldos?order=anio.desc,mes.asc&_t="+Date.now(),{headers:{...SH,"Cache-Control":"no-cache","Pragma":"no-cache"}});
     var d=await r.json();
     return Array.isArray(d)?d:[];
   } catch(e){return [];}
 }
-async function sbSavePlanillaSueldo(p) {
+async function sbSavePlanillaSueldo(item) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/planilla_sueldos",{method:"POST",headers:h,body:JSON.stringify(p)});
+    await fetch(SURL+"/rest/v1/planilla_sueldos",{method:"POST",headers:h,body:JSON.stringify(item)});
   } catch(e){}
 }
 async function sbDeletePlanillaSueldo(id) {
@@ -2750,6 +2750,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
                 {MESES.map(function(m,i){return(
                   <th key={i} style={{padding:"6px 4px",color:"#555",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:65,textAlign:"center"}}>{m}</th>
                 );})}
+                <th style={{padding:"6px 4px",color:"#D4A017",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:65,textAlign:"center"}}>Anual</th>
               </tr>
             </thead>
             <tbody>
@@ -2783,6 +2784,9 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
                         </td>
                       );
                     })}
+                    <td style={{padding:"6px 4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:11,fontFamily:"'Playfair Display',serif"}}>
+                      {anualTotal>0?"$"+(Math.round(anualTotal/1000))+"k":"—"}
+                    </td>
                   </tr>
                 );
               })}
@@ -8493,8 +8497,8 @@ export default function App() {
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
                 planillaSueldos={planillaSueldos}
-                onSavePlanilla={function(p){sbSavePlanillaSueldo(p);setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==p.id;});return[p,...f];});}}
-                onDeletePlanilla={function(id){sbDeletePlanillaSueldo(id);setPlanillaSueldos(function(prev){return prev.filter(function(p){return p.id!==id;});});}}
+                onSavePlanilla={function(item){sbSavePlanillaSueldo(item).then(function(){sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);});});setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==item.id;});return[item,...f];});}}
+                onDeletePlanilla={function(id){sbDeletePlanillaSueldo(id);setPlanillaSueldos(function(prev){return prev.filter(function(item){return item.id!==id;});});}}
               />
             </div>
           )}

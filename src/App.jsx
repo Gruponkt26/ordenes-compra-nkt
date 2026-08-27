@@ -3033,6 +3033,201 @@ function PlanillaInline({empleados, planilla, onSave, onDelete}){
   );
 }
 
+
+// ─── PANEL EGRESOS SUELDOS ────────────────────────────────────────────────────
+function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuario, onSaveSueldo, onSaveEgresoSueldo}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [localFiltro,setLocalFiltro]=useState("all");
+  var [showModal,setShowModal]=useState(false);
+  var [modalPl,setModalPl]=useState(null);
+  var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",medio_pago:"",notas:"",fecha_pago:hoy});
+  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var ESTADOS_S=[["pagado","✅ Pagado","#3A7D44"],["parcial","🔸 Pago parcial","#E07B00"]];
+  var MEDIOS=[
+    {g:"Efectivo",v:"Efectivo - Bodegón"},{g:"Efectivo",v:"Efectivo - Kusama"},{g:"Efectivo",v:"Efectivo - Colantonio's"},{g:"Efectivo",v:"Efectivo - Oficina"},
+    {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
+    {g:"Otros",v:"Cheque"},{g:"Otros",v:"Otro"}
+  ];
+
+  var mesFiltroNum=parseInt(mesFiltro.split("-")[1]||0)-1;
+  var anioFiltroNum=parseInt(mesFiltro.split("-")[0]||0);
+
+  var planillaMes=(planillaSueldos||[]).filter(function(pl){
+    return parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
+  });
+
+  var sueldosMes=(sueldos||[]).filter(function(s){return s.periodo===mesFiltro;});
+
+  var totalPlanilla=planillaMes.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
+  var totalPagado=planillaMes.reduce(function(a,pl){
+    var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+    if(!pago||(pago.estado!=="pagado"&&pago.estado!=="parcial"))return a;
+    return a+parseFloat(pago.estado==="parcial"?pago.monto_parcial||0:pago.monto||0);
+  },0);
+
+  // Meses disponibles desde planilla
+  var mesesDisp=[...new Set((planillaSueldos||[]).map(function(pl){
+    var m=parseInt(pl.mes)+1;return pl.anio+"-"+(m<10?"0"+m:String(m));
+  }))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  function abrirModal(pl){
+    var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+    setModalPl(pl);
+    setModalForm({
+      estado:pago?pago.estado:"pagado",
+      monto_parcial:pago?String(pago.monto_parcial||""):"",
+      medio_pago:pago?pago.medio_pago||"":"",
+      notas:pago?pago.notas||"":"",
+      fecha_pago:pago?pago.fecha_pago:hoy
+    });
+    setShowModal(true);
+  }
+
+  function doGuardar(){
+    if(!modalPl)return;
+    var montoFinal=parseFloat(modalPl.monto)||0;
+    var montoParcial=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):0;
+    var sid=String(Date.now());
+    var pagoExistente=sueldosMes.find(function(s){return s.empleado_id===modalPl.empleado_id;});
+    var s={
+      id:pagoExistente?pagoExistente.id:sid,
+      empleado_id:modalPl.empleado_id,
+      empleado_nombre:modalPl.empleado_nombre,
+      local:modalPl.local,
+      periodo:mesFiltro,
+      fecha_pago:modalForm.fecha_pago,
+      monto:montoFinal,
+      monto_convenio:parseFloat(modalPl.monto_convenio)||0,
+      monto_sin_convenio:parseFloat(modalPl.monto_sin_convenio)||0,
+      monto_parcial:montoParcial,
+      medio_pago:modalForm.medio_pago||"",
+      estado:modalForm.estado,
+      convenio:modalPl.tipo||"sin_convenio",
+      pagos:[],
+      notas:modalForm.notas||"",
+      usuario:usuario||"",
+      created_at:pagoExistente?pagoExistente.created_at:new Date().toISOString()
+    };
+    if(onSaveSueldo)onSaveSueldo(s);
+    // Egreso automático
+    if(onSaveEgresoSueldo){
+      var montoEgreso=modalForm.estado==="parcial"?montoParcial:montoFinal;
+      if(montoEgreso>0){
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:"Sueldo "+mesFiltro,detalle:modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
+        onSaveEgresoSueldo(eg);
+      }
+    }
+    setShowModal(false);
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {/* Filtros */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#F0EDE8":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
+        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
+          <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>
+        );})}
+      </div>
+
+      {/* Resumen */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px",textAlign:"center"}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:3}}>Total planilla</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(totalPlanilla)}</div>
+        </div>
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px",textAlign:"center"}}>
+          <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",marginBottom:3}}>Pagado</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(totalPagado)}</div>
+        </div>
+      </div>
+
+      {planillaMes.length===0?(
+        <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {planillaMes.map(function(pl){
+            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+            var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
+            var loc=LOCALES.find(function(l){return l.id===pl.local;});
+            return(
+              <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pago&&pago.estado==="pagado"?"#3A7D4433":pago&&pago.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:pl.local}</div>
+                  {pl.monto_convenio>0&&pl.monto_sin_convenio>0&&(
+                    <div style={{fontSize:9,marginTop:2}}>
+                      <span style={{color:"#4CAF50"}}>📋 {fmt(pl.monto_convenio)}</span>
+                      <span style={{color:"#1A6B8A",marginLeft:6}}>💼 {fmt(pl.monto_sin_convenio)}</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{fmt(pl.monto)}</div>
+                    {est?<div style={{fontSize:10,color:est[2]}}>{est[1]}</div>:<div style={{fontSize:10,color:"#D4A017"}}>⏳ Pendiente</div>}
+                    {pago&&pago.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Abonado: {fmt(pago.monto_parcial)}</div>}
+                  </div>
+                  <button onClick={function(){abrirModal(pl);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pago?"✏️":"💳 Pagar"}</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal pago */}
+      {showModal&&modalPl&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:14}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {ESTADOS_S.map(function(e){return(
+                <button key={e[0]} onClick={function(){setModalForm(function(f){return{...f,estado:e[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(modalForm.estado===e[0]?e[2]:"#2A2A2A"),background:modalForm.estado===e[0]?e[2]+"22":"#0F0F0F",color:modalForm.estado===e[0]?e[2]:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{e[1]}</button>
+              );})}
+            </div>
+            {modalForm.estado==="parcial"&&(
+              <div style={{marginBottom:10}}>
+                <label style={{display:"block",fontSize:9,color:"#E07B00",textTransform:"uppercase",marginBottom:4}}>Monto abonado $</label>
+                <input type="number" placeholder="0" value={modalForm.monto_parcial} onChange={function(e){setModalForm(function(f){return{...f,monto_parcial:e.target.value};});}} style={{...INP,color:"#E07B00",border:"1px solid #E07B0033"}}/>
+              </div>
+            )}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
+              <select value={modalForm.medio_pago} onChange={function(e){setModalForm(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
+                <option value="">-- Seleccioná --</option>
+                {["Efectivo","Transferencia","Otros"].map(function(g){return(
+                  <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                );})}
+              </select>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha de pago</label>
+              <input type="date" value={modalForm.fecha_pago} onChange={function(e){setModalForm(function(f){return{...f,fecha_pago:e.target.value};});}} style={INP}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
+              <input value={modalForm.notas} onChange={function(e){setModalForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={doGuardar} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Confirmar pago</button>
+              <button onClick={function(){setShowModal(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
 
 function GestProveedores(p) {
@@ -4002,12 +4197,14 @@ function PanelEgresos(p){
 
       {/* Contenido */}
       {areaActiva==="Sueldos"?(
-        <PanelSueldos
-          empleados={p.empleados||[]} sueldos={p.sueldos||[]} usuario={usuario}
-          cargasSociales={p.cargasSociales||[]}
-          onSaveEmpleado={p.onSaveEmpleado} onDeleteEmpleado={p.onDeleteEmpleado}
-          onSaveSueldo={p.onSaveSueldo} onDeleteSueldo={p.onDeleteSueldo}
-          onSaveCargaSocial={p.onSaveCargaSocial} onDeleteCargaSocial={p.onDeleteCargaSocial}
+        <PanelEgresosSueldos
+          planillaSueldos={p.planillaSueldos||[]}
+          sueldos={p.sueldos||[]}
+          empleados={p.empleados||[]}
+          gastos={gastos}
+          usuario={usuario}
+          onSaveSueldo={p.onSaveSueldo}
+          onSaveEgresoSueldo={p.onSaveEgresoSueldo}
         />
       ):areaActiva==="Retiros"?(
         <PanelRetiros retiros={p.retiros||[]} usuario={usuario}
@@ -6302,18 +6499,23 @@ function PanelSueldos(p){
 
       {/* TAB ESTADO DEL MES */}
       {tab==="estado"&&(function(){
-        var empsActivos=empleadosFiltro.filter(function(e){return e.activo!==false;});
-        var totalMes=empsActivos.reduce(function(a,e){return a+parseFloat(e.sueldo_base||0);},0);
-        var pagadoMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
-        var pendienteMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&s.estado==="pendiente";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+        // Usar planilla del mes como base
+        var mesFiltroNum=parseInt((mesFiltro||"").split("-")[1]||0)-1;
+        var anioFiltroNum=parseInt((mesFiltro||"").split("-")[0]||0);
+        var planillaMes=(p.planillaSueldos||[]).filter(function(pl){
+          return parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
+        });
+        var totalMes=planillaMes.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
+        var pagadoMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&(s.estado==="pagado"||s.estado==="parcial");}).reduce(function(a,s){return a+parseFloat(s.estado==="parcial"?s.monto_parcial||0:s.monto||0);},0);
+        var pendienteMes=totalMes-pagadoMes;
         return(
           <div>
             {/* Resumen */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
               <div style={{background:"#111",border:"1px solid #333",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Total a pagar</div>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Total planilla</div>
                 <div style={{fontSize:18,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(totalMes)}</div>
-                <div style={{fontSize:9,color:"#444",marginTop:2}}>{empsActivos.length} empleados</div>
+                <div style={{fontSize:9,color:"#444",marginTop:2}}>{planillaMes.length} empleados</div>
               </div>
               <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Pagado</div>
@@ -6321,36 +6523,70 @@ function PanelSueldos(p){
               </div>
               <div style={{background:"#1A1400",border:"1px solid #D4A01744",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Pendiente</div>
-                <div style={{fontSize:18,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(pendienteMes)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(Math.max(0,pendienteMes))}</div>
               </div>
             </div>
-            {/* Lista por empleado */}
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {empsActivos.map(function(emp){
-                var loc=LOCALES.find(function(l){return l.id===emp.local;});
-                var pagoEmp=sueldosMes.find(function(s){return s.empleado_id===emp.id;});
-                var est=pagoEmp?ESTADOS_SUELDO.find(function(e){return e[0]===pagoEmp.estado;}):null;
-                return(
-                  <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{emp.nombre}</div>
-                      <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}</div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmt(pagoEmp?pagoEmp.monto:emp.sueldo_base)}</div>
-                        <div style={{fontSize:10,color:est?est[2]:"#C1440E",marginTop:2}}>{est?est[1]:"⏳ Sin registrar"}</div>
+
+            {planillaMes.length===0?(
+              <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>
+                📅 Sin planilla cargada para {mesFiltro} — cargá los estimativos en el tab Planilla anual
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {planillaMes.map(function(pl){
+                  var emp=empleados.find(function(e){return e.id===pl.empleado_id;})||{nombre:pl.empleado_nombre,local:pl.local,categoria:""};
+                  var loc=LOCALES.find(function(l){return l.id===pl.local;});
+                  var pagoEmp=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+                  var est=pagoEmp?ESTADOS_SUELDO.find(function(e){return e[0]===pagoEmp.estado;}):["pendiente","⏳ Pendiente","#D4A017"];
+                  var montoMostrar=pagoEmp?pagoEmp.monto:pl.monto;
+                  var convMostrar=pl.monto_convenio>0?pl.monto_convenio:0;
+                  var sinMostrar=pl.monto_sin_convenio>0?pl.monto_sin_convenio:0;
+                  return(
+                    <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pagoEmp&&pagoEmp.estado==="pagado"?"#3A7D4433":pagoEmp&&pagoEmp.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                          <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:pl.local}</div>
+                          {convMostrar>0&&sinMostrar>0&&(
+                            <div style={{fontSize:9,marginTop:2}}>
+                              <span style={{color:"#4CAF50"}}>📋 Conv: {fmt(convMostrar)}</span>
+                              <span style={{color:"#1A6B8A",marginLeft:6}}>💼 S/conv: {fmt(sinMostrar)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{fmt(montoMostrar)}</div>
+                            <div style={{fontSize:10,color:est?est[2]:"#D4A017",marginTop:2}}>{est?est[1]:"⏳ Pendiente"}</div>
+                            {pagoEmp&&pagoEmp.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Pagado: {fmt(pagoEmp.monto_parcial)}</div>}
+                          </div>
+                          <button onClick={function(){
+                            setSueldoEdit(pagoEmp||null);
+                            setFormSueldo({
+                              empleado_id:pl.empleado_id,
+                              empleado_nombre:pl.empleado_nombre,
+                              local:pl.local,
+                              periodo:mesFiltro,
+                              fecha_pago:pagoEmp?pagoEmp.fecha_pago:hoy,
+                              monto:String(pl.monto||""),
+                              monto_convenio:String(pl.monto_convenio||""),
+                              monto_sin_convenio:String(pl.monto_sin_convenio||""),
+                              monto_parcial:pagoEmp?String(pagoEmp.monto_parcial||""):"",
+                              medio_pago:pagoEmp?pagoEmp.medio_pago||"":"",
+                              estado:pagoEmp?pagoEmp.estado:"pendiente",
+                              convenio:pl.tipo||"sin_convenio",
+                              pagos:pagoEmp?pagoEmp.pagos||[]:[],
+                              notas:pagoEmp?pagoEmp.notas||"":""
+                            });
+                            setShowFormSueldo(true);
+                          }} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pagoEmp?"✏️ Editar":"💳 Pagar"}</button>
+                        </div>
                       </div>
-                      <button onClick={function(){
-                        setSueldoEdit(pagoEmp||null);
-                        setFormSueldo({empleado_id:emp.id,empleado_nombre:emp.nombre,local:emp.local,periodo:mesFiltro,fecha_pago:pagoEmp?pagoEmp.fecha_pago:hoy,monto:pagoEmp?String(pagoEmp.monto):String(emp.sueldo_base),estado:pagoEmp?pagoEmp.estado:"pendiente",pagos:pagoEmp?pagoEmp.pagos||[]:[],notas:pagoEmp?pagoEmp.notas:""});
-                        setShowFormSueldo(true);
-                      }} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pagoEmp?"✏️":"+ Pagar"}</button>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })()}
@@ -8865,6 +9101,8 @@ export default function App() {
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}
               onSaveArea={function(a){setAreasCustomGastos(function(p){return p.includes(a)?p:[...p,a];});}}
               onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
+              planillaSueldos={planillaSueldos}
+              onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
             />
           )}
 

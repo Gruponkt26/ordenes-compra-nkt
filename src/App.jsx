@@ -6399,8 +6399,8 @@ function PanelSueldos(p){
   var onSaveEmpleado=p.onSaveEmpleado, onDeleteEmpleado=p.onDeleteEmpleado;
   var onSaveSueldo=p.onSaveSueldo, onDeleteSueldo=p.onDeleteSueldo;
   var hoy=new Date().toISOString().split("T")[0];
-  var mesCurrent=new Date().toISOString().slice(0,7);
-  var [tab,setTab]=useState("estado"); // estado | empleados | historial | cargas
+  var mesCurrent="2026-07";
+  var [tab,setTab]=useState("estado");
   var [showFormCarga,setShowFormCarga]=useState(false);
   var [cargaEdit,setCargaEdit]=useState(null);
   var CUITS=[

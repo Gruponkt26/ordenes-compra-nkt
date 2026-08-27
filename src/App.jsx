@@ -8190,8 +8190,9 @@ async function sbLoadSueldos() {
 async function sbSaveSueldo(sueldo) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/sueldos", { method: "POST", headers: h, body: JSON.stringify(sueldo) });
-  } catch(e) {}
+    var r=await fetch(SURL + "/rest/v1/sueldos", { method: "POST", headers: h, body: JSON.stringify(sueldo) });
+    if(!r.ok){var err=await r.text();console.error("sbSaveSueldo error:",r.status,err);}
+  } catch(e) {console.error("sbSaveSueldo catch:",e);}
 }
 async function sbDeleteSueldo(id) {
   try {

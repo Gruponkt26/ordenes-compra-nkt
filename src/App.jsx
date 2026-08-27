@@ -2665,6 +2665,8 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
   var [localFiltro,setLocalFiltro]=useState("l1");
   // DEBUG
   console.log("PlanillaSueldos render — planilla.length:", (planilla||[]).length, "anio:", new Date().getFullYear(), "sample:", JSON.stringify((planilla||[]).slice(0,2)));
+  console.log("emps l1:", empleados.filter(function(e){return e.activo!==false&&e.local==="l1";}).map(function(e){return e.id+"_"+e.nombre;}));
+  console.log("planilla l1:", (planilla||[]).filter(function(p){return p.local==="l1";}).map(function(p){return p.empleado_nombre+"_mes"+p.mes;}));
   var [editando,setEditando]=useState(null); // {empId, mes, campo}
   var [valEdit,setValEdit]=useState("");
   var [guardando,setGuardando]=useState(false);

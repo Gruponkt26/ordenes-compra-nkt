@@ -2675,7 +2675,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
   // Obtener valor de planilla para empleado/mes
   function getPlan(empId, mes){
-    return planilla.find(function(p){return p.empleado_id===empId&&p.mes===mes&&p.anio===anio;})||null;
+    return planilla.find(function(p){return p.empleado_id===empId&&parseInt(p.mes)===parseInt(mes)&&parseInt(p.anio)===parseInt(anio);})||null;
   }
 
   function getMontoDisplay(plan){

@@ -6557,6 +6557,7 @@ function PanelSueldos(p){
       />}
 
       {/* TAB PLANILLA ANUAL — inline, sin componente hijo */}
+      {tab==="planilla"&&<div style={{fontSize:9,color:"#555",marginBottom:6}}>planilla en estado: {(p.planillaSueldos||[]).length} registros</div>}
       {tab==="planilla"&&<PlanillaInline
         empleados={empleados}
         planilla={p.planillaSueldos||[]}

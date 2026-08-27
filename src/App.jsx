@@ -2126,7 +2126,7 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
 // ─── PANEL INFORME ────────────────────────────────────────────────────────────
 function PanelInforme({gastos, sueldos, cargasSociales, localesObras, empleados}){
   var hoy=new Date().toISOString().split("T")[0];
-  var mesCurrent=new Date().toISOString().slice(0,7);
+  var mesCurrent="2026-07";
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [localFiltro,setLocalFiltro]=useState("all");
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
@@ -3149,22 +3149,6 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         </div>
       </div>
 
-      {/* Botón resetear pagos */}
-      {planillaMes.length>0&&(
-        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
-          <button onClick={function(){
-            var loc=localFiltro==="all"?"todos los locales":LOCALES.find(function(l){return l.id===localFiltro;})?LOCALES.find(function(l){return l.id===localFiltro;}).nombre:localFiltro;
-            if(!window.confirm("¿Resetear todos los pagos de "+mesFiltro+" en "+loc+"?"))return;
-            var sueldosABorrar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
-            sueldosABorrar.forEach(function(s){
-              if(p&&p.onDeleteSueldo)p.onDeleteSueldo(s.id);
-              // También borrar el egreso asociado
-              var egId="egr_sueldo_"+s.id;
-              if(p&&p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo(egId);
-            });
-          }} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>🗑️ Resetear {localFiltro==="all"?"todos":""} pagos</button>
-        </div>
-      )}
 
       {planillaMes.length===0?(
         <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>
@@ -6501,7 +6485,16 @@ function PanelSueldos(p){
           </select>}
           <button onClick={function(){setShowFormSueldo(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
           <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
-          {tab==="estado"&&<button onClick={function(){if(window.confirm("¿Borrar todos los sueldos de "+mesFiltro+"?")){{var ids=sueldosMes.map(function(s){return s.id;});ids.forEach(function(id){onDeleteSueldo(id);});};}}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}} title="Resetear sueldos del mes">🗑️ Resetear mes</button>}
+          {tab==="estado"&&<button onClick={function(){
+            var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
+            if(!window.confirm("¿Resetear todos los pagos de "+mesFiltro+" en "+loc+"?"))return;
+            var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
+            aEliminar.forEach(function(s){
+              onDeleteSueldo(s.id);
+              // Borrar egreso asociado
+              if(p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo("egr_sueldo_"+s.id);
+            });
+          }} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>🗑️ Resetear mes</button>}
         </div>
       </div>
 
@@ -8928,6 +8921,7 @@ export default function App() {
                 onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+                onDeleteEgresoSueldo={function(id){sbDeleteGasto(id);setGastos(function(prev){return prev.filter(function(g){return g.id!==id;});});}}
                 vacaciones={vacaciones}
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}

@@ -3099,6 +3099,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var montoParcial=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):0;
     var sid=String(Date.now());
     var pagoExistente=sueldosMes.find(function(s){return s.empleado_id===modalPl.empleado_id;});
+    console.log("doGuardar — onSaveSueldo:", typeof onSaveSueldo, "modalPl:", modalPl.empleado_nombre, "monto:", montoFinal);
     var s={
       id:pagoExistente?pagoExistente.id:sid,
       empleado_id:modalPl.empleado_id,
@@ -3119,6 +3120,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       created_at:pagoExistente?pagoExistente.created_at:new Date().toISOString()
     };
     if(onSaveSueldo)onSaveSueldo(s);
+    else console.error("onSaveSueldo es undefined!");
     // Egreso automático
     if(onSaveEgresoSueldo){
       var montoEgreso=modalForm.estado==="parcial"?montoParcial:montoFinal;

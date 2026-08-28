@@ -4092,7 +4092,7 @@ function PanelEgresos(p){
             var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===mesFiltroGrid;});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
-            gl.forEach(function(g){var a=g.area||g.categoria||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
+            gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             var totS=sl.filter(function(s){return s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
@@ -4103,7 +4103,7 @@ function PanelEgresos(p){
 
                 {/* Un bloque por cada área/tab */}
                 {[...AREAS_BASE.filter(function(a){return a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
-                  var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
+                  var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
                   if(items.length===0)return null;
                   var gkey=l.id+"_area_"+area;
                   var abierto=expandidoGrid===gkey;
@@ -4295,7 +4295,7 @@ function PanelEgresos(p){
       ):(
         <PanelFormEgreso
           area={areaActiva}
-          gastos={gastos.filter(function(g){return(g.area||g.categoria||"Proveedores")===areaActiva;})}
+          gastos={gastos.filter(function(g){return(g.area||g.categoria||"Otros")===areaActiva;})}
           usuario={usuario}
           conceptosCustom={conceptosCustom}
           proveedores={p.proveedores||[]}
@@ -4724,7 +4724,7 @@ function PanelGastos(p) {
               // totales por categoría (grupo)
               var cats={};
               gl.forEach(function(g){
-                var cat=(g.categoria||"Otro").split(" - ")[0];
+                var cat=((g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros").split(" - ")[0];
                 cats[cat]=(cats[cat]||0)+parseFloat(g.monto||0);
               });
               return(
@@ -5816,7 +5816,7 @@ function PanelResultados(p){
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
     var porCat={};
     gl.forEach(function(g){
-      var cat=(g.categoria||"Otro").split(" - ")[0];
+      var cat=((g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros").split(" - ")[0];
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
 
@@ -6008,7 +6008,7 @@ function PanelResultados(p){
         {gl.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(area){
-              var items=gl.filter(function(g){return(g.area||g.categoria||"Proveedores")===area;});
+              var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
               if(items.length===0)return null;
               var totalArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
               var color=AREA_COLORES[area]||"#555";

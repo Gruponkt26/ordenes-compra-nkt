@@ -6609,7 +6609,7 @@ function PanelSueldos(p){
               </div>
             </div>
 
-            {planillaMesTotal.length===0?(
+            {planillaMes.length===0?(
               <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>
                 📅 Sin planilla cargada para {mesFiltro} — cargá los estimativos en el tab Planilla anual
               </div>

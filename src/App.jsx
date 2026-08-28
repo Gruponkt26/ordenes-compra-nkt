@@ -4096,6 +4096,14 @@ function PanelEgresos(p){
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
+            // Agregar sueldos de tabla sueldos al porArea (si no están ya en gastos)
+            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
+            if(!sueldosEnGastos){
+              sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
+                var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+                porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
+              });
+            }
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             // Solo sumar sueldos de la tabla sueldos si NO están ya en gastos
             var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});

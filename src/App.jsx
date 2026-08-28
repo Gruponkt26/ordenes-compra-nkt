@@ -6626,7 +6626,7 @@ function PanelSueldos(p){
                 {planillaMes.map(function(pl){
                   var emp=empleados.find(function(e){return e.id===pl.empleado_id;})||{nombre:pl.empleado_nombre,local:pl.local,categoria:""};
                   var loc=LOCALES.find(function(l){return l.id===pl.local;});
-                  var pagoEmp=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+                  var pagoEmp=sueldosMes.filter(function(s){return !s.concepto_extra;}).find(function(s){return s.empleado_id===pl.empleado_id;});
                   var est=pagoEmp?ESTADOS_SUELDO.find(function(e){return e[0]===pagoEmp.estado;}):["pendiente","⏳ Pendiente","#D4A017"];
                   var montoMostrar=pagoEmp?pagoEmp.monto:pl.monto;
                   var convMostrar=pl.monto_convenio>0?pl.monto_convenio:0;

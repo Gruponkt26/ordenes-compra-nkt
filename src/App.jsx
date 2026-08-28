@@ -2370,7 +2370,7 @@ function PanelInformePersonal({sueldos, gastos, cargasSociales, empleados}){
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [localFiltro,setLocalFiltro]=useState("all");
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
-  var localesPrinc=LOCALES.filter(function(l){return l.id!=="l4";});
+  var localesPrinc=LOCALES;
 
   var mesesDisp=[...new Set([
     ...sueldos.map(function(s){return s.periodo;}),
@@ -2939,7 +2939,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800,color:"#F0EDE8",minWidth:50,textAlign:"center"}}>{anio}</div>
           <button onClick={function(){setAnio(anio+1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>›</button>
         </div>
-        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
+        {LOCALES.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
         <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
@@ -3155,7 +3155,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
           {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
         </select>
         <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#F0EDE8":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#444",fontSize:11,cursor:"pointer"}}>Todos</button>
-        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
+        {LOCALES.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>
         );})}
       </div>

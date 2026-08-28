@@ -2894,7 +2894,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
   function getPlan(empId,mes){
     // mes puede ser número (0-11) o string ('ag_jun', 'ag_dic')
     return (planilla||[]).find(function(x){
-      if(typeof mes==="string"&&(mes==="ag_jun"||mes==="ag_dic")){
+      if(typeof mes==="string"&&(mes==="ag_jul"||mes==="ag_dic")){
         return x.empleado_id===empId&&x.anio===anio&&x.tipo===mes;
       }
       return x.empleado_id===empId&&parseInt(x.mes)===mes&&parseInt(x.anio)===anio;
@@ -2902,7 +2902,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
   }
 
   function abrirModal(emp,mes){
-    var esAguinaldo=mes==="ag_jun"||mes==="ag_dic";
+    var esAguinaldo=mes==="ag_jul"||mes==="ag_dic";
     var plan=getPlan(emp.id,mes);
     setModalEmp(emp);setModalMes(mes);
     if(plan){
@@ -2922,7 +2922,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
     var sinc=parseFloat(modalForm.monto_sin_convenio)||0;
     var total=modalForm.tipo==="mixto"?conv+sinc:modalForm.tipo==="convenio"?conv:sinc;
     if(total===0){setShowModal(false);return;}
-    var esAguinaldo=modalMes==="ag_jun"||modalMes==="ag_dic";
+    var esAguinaldo=modalMes==="ag_jul"||modalMes==="ag_dic";
     var id=esAguinaldo
       ?"plan_"+modalEmp.id+"_"+anio+"_"+modalMes
       :"plan_"+modalEmp.id+"_"+anio+"_"+modalMes;
@@ -2987,7 +2987,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
               <tr>
                 <th style={{textAlign:"left",padding:"6px 8px",color:"#555",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:110,position:"sticky",left:0,background:"#111"}}>Empleado</th>
                 {MESES.map(function(m,i){return <th key={i} style={{padding:"4px",color:"#555",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:58,textAlign:"center"}}>{m}</th>;})}
-                <th style={{padding:"4px",color:"#8B2FC9",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:55,textAlign:"center"}}>Ag.Jun</th>
+                <th style={{padding:"4px",color:"#8B2FC9",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:55,textAlign:"center"}}>Ag.Jul</th>
                 <th style={{padding:"4px",color:"#8B2FC9",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:55,textAlign:"center"}}>Ag.Dic</th>
                 <th style={{padding:"4px",color:"#D4A017",fontWeight:700,borderBottom:"1px solid #1A1A1A",minWidth:60,textAlign:"center"}}>Total</th>
               </tr>
@@ -3026,7 +3026,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                         </td>
                       );
                     })}
-                    {["ag_jun","ag_dic"].map(function(tipo,tIdx){
+                    {["ag_jul","ag_dic"].map(function(tipo,tIdx){
                       var agPlan=(planilla||[]).find(function(x){return x.empleado_id===emp.id&&x.anio===anio&&x.tipo===tipo;});
                       var agTot=agPlan?(parseFloat(agPlan.monto)||0):0;
                       if(agTot)anualTotal+=agTot;
@@ -3057,7 +3057,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:360,border:"1px solid #4CAF5033"}}>
             <div style={{fontSize:12,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalEmp.nombre}</div>
             <div style={{fontSize:10,color:"#555",marginBottom:14}}>
-              {modalMes==="ag_jun"?"🎁 Aguinaldo Junio "+anio:modalMes==="ag_dic"?"🎁 Aguinaldo Diciembre "+anio:MESES[modalMes]+" "+anio}
+              {modalMes==="ag_jul"?"🎁 Aguinaldo Julio "+anio:modalMes==="ag_dic"?"🎁 Aguinaldo Diciembre "+anio:MESES[modalMes]+" "+anio}
             </div>
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {[["convenio","📋 Convenio"],["sin_convenio","💼 Sin conv."],["mixto","📋+💼 Mixto"]].map(function(t){return(
@@ -3118,7 +3118,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     return parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
   });
   // Aguinaldos del mes seleccionado (junio=5, diciembre=11)
-  var tipoAguinaldo=mesFiltroNum===5?"ag_jun":mesFiltroNum===11?"ag_dic":null;
+  var tipoAguinaldo=mesFiltroNum===6?"ag_jul":mesFiltroNum===11?"ag_dic":null;
   var aguinaldosMes=tipoAguinaldo?(planillaSueldos||[]).filter(function(pl){
     return pl.tipo===tipoAguinaldo&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
   }):[];

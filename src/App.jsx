@@ -3160,6 +3160,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var sid=String(Date.now());
     var pagoExistente=sueldosMes.find(function(s){return s.empleado_id===modalPl.empleado_id;});
     console.log("doGuardar — onSaveSueldo:", typeof onSaveSueldo, "modalPl:", modalPl.empleado_nombre, "monto:", montoFinal);
+    var esAguinaldo=modalPl._esAguinaldo||false;
     var s={
       id:pagoExistente?pagoExistente.id:sid,
       empleado_id:modalPl.empleado_id,
@@ -3173,7 +3174,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       monto_parcial:montoParcial,
       medio_pago:modalForm.medio_pago||"",
       estado:modalForm.estado,
-      convenio:modalPl.tipo||"sin_convenio",
+      convenio:esAguinaldo?modalPl.tipo:"sin_convenio",
+      concepto_extra:esAguinaldo?modalPl.tipo:null,
       pagos:[],
       notas:modalForm.notas||"",
       usuario:usuario||"",
@@ -3185,7 +3187,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     if(onSaveEgresoSueldo){
       var montoEgreso=modalForm.estado==="parcial"?montoParcial:montoFinal;
       if(montoEgreso>0){
-        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:"Sueldo "+mesFiltro,detalle:modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
         onSaveEgresoSueldo(eg);
       }
     }
@@ -3223,7 +3225,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {planillaMesTotal.map(function(pl){
-            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id&&(pl._esAguinaldo?s.esAguinaldo===pl.tipo:!s.esAguinaldo);});
+            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id&&(pl._esAguinaldo?s.concepto_extra===pl.tipo:!s.concepto_extra);});
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
             return(

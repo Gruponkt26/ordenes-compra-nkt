@@ -3113,14 +3113,22 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var mesFiltroNum=parseInt(mesFiltro.split("-")[1]||0)-1;
   var anioFiltroNum=parseInt(mesFiltro.split("-")[0]||0);
 
+  // Registros del mes seleccionado
   var planillaMes=(planillaSueldos||[]).filter(function(pl){
     return parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
   });
+  // Aguinaldos del mes seleccionado (junio=5, diciembre=11)
+  var tipoAguinaldo=mesFiltroNum===5?"ag_jun":mesFiltroNum===11?"ag_dic":null;
+  var aguinaldosMes=tipoAguinaldo?(planillaSueldos||[]).filter(function(pl){
+    return pl.tipo===tipoAguinaldo&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
+  }):[];
+  // Combinar sueldos + aguinaldos
+  var planillaMesTotal=[...planillaMes,...aguinaldosMes.map(function(ag){return{...ag,_esAguinaldo:true};})];
 
   var sueldosMes=(sueldos||[]).filter(function(s){return s.periodo===mesFiltro;});
 
-  var totalPlanilla=planillaMes.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
-  var totalPagado=planillaMes.reduce(function(a,pl){
+  var totalPlanilla=planillaMesTotal.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
+  var totalPagado=planillaMesTotal.reduce(function(a,pl){
     var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
     if(!pago||(pago.estado!=="pagado"&&pago.estado!=="parcial"))return a;
     return a+parseFloat(pago.estado==="parcial"?pago.monto_parcial||0:pago.monto||0);
@@ -3210,18 +3218,21 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       </div>
 
 
-      {planillaMes.length===0?(
+      {planillaMesTotal.length===0?(
         <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {planillaMes.map(function(pl){
-            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+          {planillaMesTotal.map(function(pl){
+            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id&&(pl._esAguinaldo?s.esAguinaldo===pl.tipo:!s.esAguinaldo);});
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
             return(
               <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pago&&pago.estado==="pagado"?"#3A7D4433":pago&&pago.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                    {pl._esAguinaldo&&<div style={{fontSize:9,color:"#8B2FC9",background:"#8B2FC922",borderRadius:4,padding:"1px 5px"}}>🎁 Aguinaldo</div>}
+                  </div>
                   <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:pl.local}</div>
                   {pl.monto_convenio>0&&pl.monto_sin_convenio>0&&(
                     <div style={{fontSize:9,marginTop:2}}>
@@ -6598,7 +6609,7 @@ function PanelSueldos(p){
               </div>
             </div>
 
-            {planillaMes.length===0?(
+            {planillaMesTotal.length===0?(
               <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>
                 📅 Sin planilla cargada para {mesFiltro} — cargá los estimativos en el tab Planilla anual
               </div>

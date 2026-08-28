@@ -3031,7 +3031,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                       var agTot=agPlan?(parseFloat(agPlan.monto)||0):0;
                       if(agTot)anualTotal+=agTot;
                       return(
-                        <td key={tipo} onClick={function(){abrirModal(emp,tipo==="ag_jun"?"ag_jun":"ag_dic");}} style={{padding:"3px",textAlign:"center",cursor:"pointer",background:agTot>0?"#1A0A2A":"transparent",borderRadius:3,border:agTot>0?"1px solid #8B2FC933":"none"}}>
+                        <td key={tipo} onClick={function(){abrirModal(emp,tipo);}} style={{padding:"3px",textAlign:"center",cursor:"pointer",background:agTot>0?"#1A0A2A":"transparent",borderRadius:3,border:agTot>0?"1px solid #8B2FC933":"none"}}>
                           {agTot>0?(
                             <div style={{fontSize:9,fontWeight:700,color:"#8B2FC9"}}>${Math.round(agTot/1000)}k</div>
                           ):(

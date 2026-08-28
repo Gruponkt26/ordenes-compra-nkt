@@ -4094,7 +4094,9 @@ function PanelEgresos(p){
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-            var totS=sl.filter(function(s){return s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+            // Solo sumar sueldos de la tabla sueldos si NO están ya en gastos
+            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
+            var totS=sueldosEnGastos?0:sl.filter(function(s){return s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
             var totTotal=totG+totS+totR;
             return(
@@ -8202,7 +8204,7 @@ async function sbSaveGasto(gasto) {
       subramo: gasto.subramo||"",
       detalle: gasto.detalle||"",
       notas: gasto.notas||"",
-      fecha: gasto.fecha,
+      fecha: (gasto.fecha||"").replace(/\//g,"-"),
       usuario: gasto.usuario,
       created_at: gasto.created_at,
       pagos: gasto.pagos||[]

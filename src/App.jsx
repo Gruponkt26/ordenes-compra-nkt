@@ -6594,11 +6594,25 @@ function PanelSueldos(p){
         // Usar planilla del mes como base
         var mesFiltroNum=parseInt((mesFiltro||"").split("-")[1]||0)-1;
         var anioFiltroNum=parseInt((mesFiltro||"").split("-")[0]||0);
+        // Sueldos del mes
         var planillaMes=(p.planillaSueldos||[]).filter(function(pl){
           return parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
         });
-        var totalMes=planillaMes.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
-        var pagadoMes=sueldosMes.filter(function(s){return(localFiltro==="all"||s.local===localFiltro)&&(s.estado==="pagado"||s.estado==="parcial");}).reduce(function(a,s){return a+parseFloat(s.estado==="parcial"?s.monto_parcial||0:s.monto||0);},0);
+        // Aguinaldos del mes (julio=ag_jul, diciembre=ag_dic)
+        var tipoAg=mesFiltroNum===6?"ag_jul":mesFiltroNum===11?"ag_dic":null;
+        var aguinaldosMesPlan=tipoAg?(p.planillaSueldos||[]).filter(function(pl){
+          return pl.tipo===tipoAg&&parseInt(pl.anio)===anioFiltroNum&&(localFiltro==="all"||pl.local===localFiltro);
+        }):[];
+        var planillaMesTotal=[...planillaMes,...aguinaldosMesPlan.map(function(ag){return{...ag,_esAguinaldo:true};})];
+        var totalMes=planillaMesTotal.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
+        var aguinaldosMesPagos=(sueldosMes||[]).filter(function(s){return s.concepto_extra;});
+        var pagadoMes=planillaMesTotal.reduce(function(a,pl){
+          var pago=pl._esAguinaldo
+            ?aguinaldosMesPagos.find(function(s){return s.empleado_id===pl.empleado_id&&s.concepto_extra===pl.tipo;})
+            :sueldosMes.filter(function(s){return !s.concepto_extra;}).find(function(s){return s.empleado_id===pl.empleado_id;});
+          if(!pago||(pago.estado!=="pagado"&&pago.estado!=="parcial"))return a;
+          return a+parseFloat(pago.estado==="parcial"?pago.monto_parcial||0:pago.monto||0);
+        },0);
         var pendienteMes=totalMes-pagadoMes;
         return(
           <div>
@@ -6607,7 +6621,7 @@ function PanelSueldos(p){
               <div style={{background:"#111",border:"1px solid #333",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Total planilla</div>
                 <div style={{fontSize:18,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(totalMes)}</div>
-                <div style={{fontSize:9,color:"#444",marginTop:2}}>{planillaMes.length} empleados</div>
+                <div style={{fontSize:9,color:"#444",marginTop:2}}>{planillaMesTotal.length} empleados</div>
               </div>
               <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Pagado</div>
@@ -6619,16 +6633,18 @@ function PanelSueldos(p){
               </div>
             </div>
 
-            {planillaMes.length===0?(
+            {planillaMesTotal.length===0?(
               <div style={{textAlign:"center",padding:"20px",color:"#333",fontSize:12}}>
                 📅 Sin planilla cargada para {mesFiltro} — cargá los estimativos en el tab Planilla anual
               </div>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {planillaMes.map(function(pl){
+                {planillaMesTotal.map(function(pl){
                   var emp=empleados.find(function(e){return e.id===pl.empleado_id;})||{nombre:pl.empleado_nombre,local:pl.local,categoria:""};
                   var loc=LOCALES.find(function(l){return l.id===pl.local;});
-                  var pagoEmp=sueldosMes.filter(function(s){return !s.concepto_extra;}).find(function(s){return s.empleado_id===pl.empleado_id;});
+                  var pagoEmp=pl._esAguinaldo
+                    ?aguinaldosMesPagos.find(function(s){return s.empleado_id===pl.empleado_id&&s.concepto_extra===pl.tipo;})
+                    :sueldosMes.filter(function(s){return !s.concepto_extra;}).find(function(s){return s.empleado_id===pl.empleado_id;});
                   var est=pagoEmp?ESTADOS_SUELDO.find(function(e){return e[0]===pagoEmp.estado;}):["pendiente","⏳ Pendiente","#D4A017"];
                   var montoMostrar=pagoEmp?pagoEmp.monto:pl.monto;
                   var convMostrar=pl.monto_convenio>0?pl.monto_convenio:0;
@@ -6637,7 +6653,10 @@ function PanelSueldos(p){
                     <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pagoEmp&&pagoEmp.estado==="pagado"?"#3A7D4433":pagoEmp&&pagoEmp.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                         <div>
-                          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}</div>
+                            {pl._esAguinaldo&&<div style={{fontSize:9,color:"#8B2FC9",background:"#8B2FC922",borderRadius:4,padding:"1px 5px"}}>🎁 Aguinaldo</div>}
+                          </div>
                           <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:pl.local}</div>
                           {convMostrar>0&&sinMostrar>0&&(
                             <div style={{fontSize:9,marginTop:2}}>

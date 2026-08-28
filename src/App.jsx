@@ -3125,11 +3125,14 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   // Combinar sueldos + aguinaldos
   var planillaMesTotal=[...planillaMes,...aguinaldosMes.map(function(ag){return{...ag,_esAguinaldo:true};})];
 
-  var sueldosMes=(sueldos||[]).filter(function(s){return s.periodo===mesFiltro;});
+  var sueldosMes=(sueldos||[]).filter(function(s){return s.periodo===mesFiltro&&!s.concepto_extra;});
+  var aguinaldosMesPagos=(sueldos||[]).filter(function(s){return s.periodo===mesFiltro&&s.concepto_extra;});
 
   var totalPlanilla=planillaMesTotal.reduce(function(a,pl){return a+parseFloat(pl.monto||0);},0);
   var totalPagado=planillaMesTotal.reduce(function(a,pl){
-    var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+    var pago=pl._esAguinaldo
+      ?aguinaldosMesPagos.find(function(s){return s.empleado_id===pl.empleado_id&&s.concepto_extra===pl.tipo;})
+      :sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
     if(!pago||(pago.estado!=="pagado"&&pago.estado!=="parcial"))return a;
     return a+parseFloat(pago.estado==="parcial"?pago.monto_parcial||0:pago.monto||0);
   },0);
@@ -3226,7 +3229,9 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {planillaMesTotal.map(function(pl){
-            var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id&&(pl._esAguinaldo?s.concepto_extra===pl.tipo:!s.concepto_extra);});
+            var pago=pl._esAguinaldo
+              ?aguinaldosMesPagos.find(function(s){return s.empleado_id===pl.empleado_id&&s.concepto_extra===pl.tipo;})
+              :sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
             return(

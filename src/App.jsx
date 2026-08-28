@@ -6485,14 +6485,10 @@ function PanelSueldos(p){
       var sid=sueldoEdit&&mesesACargar.length===1?sueldoEdit.id:(String(Date.now())+Math.floor(Math.random()*9999));
       var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_convenio:montoConvenio,monto_sin_convenio:montoSinConvenio,convenio:formSueldo.convenio||"sin_convenio",monto_parcial:montoParcial,medio_pago:formSueldo.medio_pago||"",estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
       onSaveSueldo(s);
-      // Egreso automático si pagado o parcial
-      if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
-        var montoEgreso=formSueldo.estado==="parcial"?montoParcial:montoFinal;
-        if(montoEgreso>0){
-          var egreso={id:"egr_sueldo_"+sid,local:formSueldo.local,concepto:formSueldo.empleado_nombre,subramo:"Sueldo "+periodo,detalle:formSueldo.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:formSueldo.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:formSueldo.notas||"",fecha:formSueldo.fecha_pago,usuario:usuario,created_at:new Date().toISOString(),pagos:[]};
-          p.onSaveEgresoSueldo(egreso);
-        }
-      }
+      // Egreso automático DESHABILITADO — solo se genera desde Egresos → Sueldos
+      // if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
+      //   var montoEgreso=...
+      // }
     });
     setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
     setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[],notas:""});

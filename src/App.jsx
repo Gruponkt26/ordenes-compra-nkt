@@ -4089,7 +4089,10 @@ function PanelEgresos(p){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"start"}}>
           {LOCALES.map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
-            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===mesFiltroGrid;});
+            // Sueldos: mostrar en el mes siguiente al período (julio aparece en agosto)
+            var mesParts=mesFiltroGrid.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
+            var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
+            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior;});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});

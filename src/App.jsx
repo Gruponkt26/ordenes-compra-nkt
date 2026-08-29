@@ -4092,13 +4092,12 @@ function PanelEgresos(p){
             // Sueldos: mostrar en el mes siguiente al período (julio aparece en agosto)
             var mesParts=mesFiltroGrid.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
             var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
-            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior;});
+            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&!s.concepto_extra;});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
-            // Agregar sueldos de tabla sueldos al porArea (si no están ya en gastos de ESE local)
-            var sueldosEnGastos=gl.some(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&g.local===l.id;});
-            console.log("local:",l.id,"periodoAnterior:",periodoAnterior,"sl.length:",sl.length,"sueldosEnGastos:",sueldosEnGastos,"gl.sueldos:",gl.filter(function(g){return g.area==="Sueldos";}).length);
+            // Solo agregar sueldos de tabla sueldos si no hay ninguno en gastos para este local
+            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
             if(!sueldosEnGastos){
               sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
@@ -4106,9 +4105,7 @@ function PanelEgresos(p){
               });
             }
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-            // Solo sumar sueldos de la tabla sueldos si NO están ya en gastos
-            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
-            var totS=sueldosEnGastos?0:sl.filter(function(s){return s.estado==="pagado";}).reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+            var totS=sueldosEnGastos?0:sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
             var totTotal=totG+totS+totR;
             return(

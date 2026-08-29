@@ -4096,9 +4096,9 @@ function PanelEgresos(p){
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
-            // Agregar sueldos de tabla sueldos al porArea (si no están ya en gastos)
-            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
-            console.log("local:",l.id,"periodoAnterior:",periodoAnterior,"sl.length:",sl.length,"sueldosEnGastos:",sueldosEnGastos);
+            // Agregar sueldos de tabla sueldos al porArea (si no están ya en gastos de ESE local)
+            var sueldosEnGastos=gl.some(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&g.local===l.id;});
+            console.log("local:",l.id,"periodoAnterior:",periodoAnterior,"sl.length:",sl.length,"sueldosEnGastos:",sueldosEnGastos,"gl.sueldos:",gl.filter(function(g){return g.area==="Sueldos";}).length);
             if(!sueldosEnGastos){
               sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);

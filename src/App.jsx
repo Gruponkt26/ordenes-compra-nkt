@@ -4093,6 +4093,7 @@ function PanelEgresos(p){
             var mesParts=mesFiltroGrid.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
             var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
             var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="");});
+            var alBodegon=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
@@ -4101,6 +4102,11 @@ function PanelEgresos(p){
             var sueldosEnGastos=gl.some(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             if(!sueldosEnGastos){
               sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
+                var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+                porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
+              });
+              // Agregar aguinaldos de tabla sueldos
+              alBodegon.forEach(function(s){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
                 porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
               });

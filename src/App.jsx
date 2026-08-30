@@ -4097,7 +4097,8 @@ function PanelEgresos(p){
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
             // Solo agregar sueldos de tabla sueldos si no hay ninguno en gastos para este local
-            var sueldosEnGastos=gl.some(function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";});
+            // Sueldos en gastos = solo los que no son aguinaldos (subramo no empieza con "Aguinaldo")
+            var sueldosEnGastos=gl.some(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             if(!sueldosEnGastos){
               sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);

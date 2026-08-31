@@ -4910,7 +4910,14 @@ function PanelGastos(p) {
               // totales por categoría (grupo)
               var cats={};
               gl.forEach(function(g){
-                var cat=((g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros").split(" - ")[0];
+                var cat=(function(){
+                  var a=(g.area&&g.area.trim())||"";
+                  var c=(g.categoria&&g.categoria.trim())||"";
+                  if(a&&a!=="Proveedores")return a.split(" - ")[0];
+                  if(c&&AREAS_BASE.includes(c.split(" - ")[0]))return c.split(" - ")[0];
+                  if(a==="Proveedores")return "Proveedores";
+                  return c.split(" - ")[0]||"Otros";
+                })();
                 cats[cat]=(cats[cat]||0)+parseFloat(g.monto||0);
               });
               return(
@@ -6002,7 +6009,14 @@ function PanelResultados(p){
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
     var porCat={};
     gl.forEach(function(g){
-      var cat=((g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros").split(" - ")[0];
+      var cat=(function(){
+        var a=(g.area&&g.area.trim())||"";
+        var c=(g.categoria&&g.categoria.trim())||"";
+        if(a&&a!=="Proveedores")return a.split(" - ")[0];
+        if(c&&AREAS_BASE.includes(c.split(" - ")[0]))return c.split(" - ")[0];
+        if(a==="Proveedores")return "Proveedores";
+        return c.split(" - ")[0]||"Otros";
+      })();
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
 

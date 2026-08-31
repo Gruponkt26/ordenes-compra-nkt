@@ -6206,7 +6206,7 @@ function PanelResultados(p){
         {/* Egresos por área */}
         <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"14px",marginBottom:10}}>
           <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:700}}>💸 Egresos</div>
-          {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+          {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
             var monto=d.porCat[cat]||0;
             var color=AREA_COLORES[cat]||"#555";
             var pct=d.totalGastos>0?Math.round(monto/d.totalGastos*100):0;
@@ -6400,7 +6400,7 @@ function PanelResultados(p){
                     <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</div>
                   </div>
                   <div>
-                    {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+                    {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
                       var monto=d.porCat[cat]||0;
                       var color=AREA_COLORES[cat]||"#555";
                       return(

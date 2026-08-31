@@ -4280,15 +4280,21 @@ function PanelEgresos(p){
 
                 {/* Totales al pie */}
                 <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginTop:4}}>
-                  {Object.keys(porArea).length>0&&<div style={{marginBottom:6}}>
-                    <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Por área</div>
-                    {Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos"&&a!=="Retiros"&&a!=="Proveedores";}).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
-                      <div key={area} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
-                        <span style={{color:AREA_COLORES[area]||"#555"}}>{area}</span>
-                        <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>
+                  {(function(){
+                    var areasResumen=Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos"&&a!=="Retiros"&&a!=="Proveedores";});
+                    if(areasResumen.length===0)return null;
+                    return(
+                      <div style={{marginBottom:6}}>
+                        <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Por área</div>
+                        {areasResumen.sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
+                          <div key={area} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
+                            <span style={{color:AREA_COLORES[area]||"#555"}}>{area}</span>
+                            <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>
+                          </div>
+                        );})}
                       </div>
-                    );})}
-                  </div>}
+                    );
+                  })()}
                   {totR>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#8B4513"}}>Retiros</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(totR)}</span></div>}
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,marginTop:4,paddingTop:4,borderTop:"1px solid #2A2A2A"}}>
                     <span style={{color:l.color}}>Total</span>

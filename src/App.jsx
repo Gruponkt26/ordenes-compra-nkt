@@ -6006,7 +6006,23 @@ function PanelResultados(p){
     });
 
     var gl=gastos.filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
+    // Agregar sueldos del mes anterior desde tabla sueldos si no están en gastos
+    var mesParts=mesFiltro.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
+    var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
+    var sueldosTabla=(p.sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
+    var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+    var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+    if(!hasSueldosGastos){
+      sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
+        totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
+      });
+    }
+    if(!hasAguinaldosGastos){
+      sueldosTabla.filter(function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""}).forEach(function(s){
+        totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
+      });
+    }
     var porCat={};
     gl.forEach(function(g){
       var cat=(function(){
@@ -6017,7 +6033,21 @@ function PanelResultados(p){
         if(a==="Proveedores")return "Proveedores";
         return c.split(" - ")[0]||"Otros";
       })();
+      // Separar aguinaldos de sueldos
+      if(cat==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))cat="Aguinaldos";
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
+    });
+    // Agregar sueldos/aguinaldos de tabla sueldos al porCat
+    if(!hasSueldosGastos){
+      sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
+        porCat["Sueldos"]=(porCat["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
+      });
+    }
+    if(!hasAguinaldosGastos){
+      sueldosTabla.filter(function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""}).forEach(function(s){
+        porCat["Aguinaldos"]=(porCat["Aguinaldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
+      });
+    }
     });
 
     var traspaso=calcTraspaso(lid);
@@ -9437,6 +9467,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              sueldos={sueldos}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

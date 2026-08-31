@@ -4106,16 +4106,17 @@ function PanelEgresos(p){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
                 porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
               });
-              // Agregar aguinaldos de tabla sueldos
+              // Agregar aguinaldos de tabla sueldos como área separada
               alBodegon.forEach(function(s){
                 var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
-                porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
+                porArea["Aguinaldos"]=(porArea["Aguinaldos"]||0)+monto;
               });
             }
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             var totS=sueldosEnGastos?0:sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
+            var totAg=sueldosEnGastos?0:alBodegon.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-            var totTotal=totG+totS+totR;
+            var totTotal=totG+totS+totAg+totR;
             return(
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>

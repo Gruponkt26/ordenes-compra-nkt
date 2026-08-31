@@ -4162,7 +4162,7 @@ function PanelEgresos(p){
                 })}
 
                 {/* Sueldos — una fila con total, expandible al detalle */}
-                {sl.length>0&&(function(){
+                {(porArea["Sueldos"]||0)>0&&(function(){
                   var gkey=l.id+"_sueldos";
                   var abierto=expandidoGrid===gkey;
                   return(
@@ -4171,13 +4171,13 @@ function PanelEgresos(p){
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
                           <span style={{fontSize:8,color:"#4CAF50",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
                           <span style={{fontSize:11,fontWeight:700,color:"#4CAF50"}}>👥 Sueldos</span>
-                          <span style={{fontSize:9,color:"#444"}}>({sl.length})</span>
+                          <span style={{fontSize:9,color:"#444"}}>({(porArea["Sueldos"]||0)>0?"✓":"—"})</span>
                         </div>
-                        <span style={{fontSize:12,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totS)}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(porArea["Sueldos"]||0)}</span>
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {sl.map(function(s){
+                          {(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="");}).map(function(s){
                             var est=s.estado==="pagado"?"✅":s.estado==="parcial"?"🔸":"⏳";
                             var esMixto=s.convenio==="mixto"&&(s.monto_convenio>0||s.monto_sin_convenio>0);
                             return(
@@ -4231,7 +4231,7 @@ function PanelEgresos(p){
                   );
                 })()}
 
-                {gl.length===0&&sl.length===0&&rl.length===0&&(
+                {gl.length===0&&!Object.keys(porArea).length&&rl.length===0&&(
                   <div style={{fontSize:10,color:"#333",textAlign:"center",padding:"10px 0"}}>Sin egresos</div>
                 )}
 
@@ -4246,7 +4246,8 @@ function PanelEgresos(p){
                       </div>
                     );})}
                   </div>}
-                  {totS>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#4CAF50"}}>Sueldos</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(totS)}</span></div>}
+                  {(porArea["Sueldos"]||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#4CAF50"}}>Sueldos</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea["Sueldos"]||0)}</span></div>}
+                  {(porArea["Aguinaldos"]||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#8B2FC9"}}>Aguinaldos</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea["Aguinaldos"]||0)}</span></div>}
                   {totR>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#8B4513"}}>Retiros</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(totR)}</span></div>}
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,marginTop:4,paddingTop:4,borderTop:"1px solid #2A2A2A"}}>
                     <span style={{color:l.color}}>Total</span>

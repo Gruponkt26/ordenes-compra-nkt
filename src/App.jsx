@@ -142,6 +142,25 @@ async function sbDeletePlanillaSueldo(id) {
   } catch(e){}
 }
 
+async function sbLoadIdeas() {
+  try {
+    var r=await fetch(SURL+"/rest/v1/ideas?order=created_at.desc",{headers:{...SH,"Cache-Control":"no-cache"}});
+    var d=await r.json();
+    return Array.isArray(d)?d:[];
+  } catch(e){return [];}
+}
+async function sbSaveIdea(idea) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    await fetch(SURL+"/rest/v1/ideas",{method:"POST",headers:h,body:JSON.stringify(idea)});
+  } catch(e){}
+}
+async function sbDeleteIdea(id) {
+  try {
+    await fetch(SURL+"/rest/v1/ideas?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e){}
+}
+
 async function sbLoadVacaciones() {
   try {
     var r=await fetch(SURL+"/rest/v1/vacaciones?order=fecha_desde.desc",{headers:{...SH,"Cache-Control":"no-cache"}});
@@ -3302,6 +3321,104 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               <button onClick={function(){setShowModal(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>✕</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── PANEL IDEAS ──────────────────────────────────────────────────────────────
+function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
+  var [texto,setTexto]=useState("");
+  var [guardando,setGuardando]=useState(false);
+  var [filtro,setFiltro]=useState("todas"); // todas | pendiente | en_revision | implementada
+
+  var ESTADOS=[
+    {id:"pendiente",label:"💡 Pendiente",color:"#D4A017"},
+    {id:"en_revision",label:"🔍 En revisión",color:"#1A6B8A"},
+    {id:"implementada",label:"✅ Implementada",color:"#3A7D44"},
+  ];
+
+  function fmt_fecha(iso){
+    if(!iso)return "";
+    var d=new Date(iso);
+    return d.toLocaleDateString("es-AR")+' '+d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
+  }
+
+  function doGuardar(){
+    if(!texto.trim())return;
+    setGuardando(true);
+    var idea={id:String(Date.now()),texto:texto.trim(),estado:"pendiente",usuario:usuario||"",created_at:new Date().toISOString()};
+    onSave(idea);
+    setTexto("");
+    setTimeout(function(){setGuardando(false);},500);
+  }
+
+  var ideasFiltradas=(ideas||[]).filter(function(i){return filtro==="todas"||i.estado===filtro;});
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💡 Ideas</div>
+      </div>
+
+      {/* Nueva idea */}
+      <div style={{background:"#0F0F0F",border:"1px solid #E07B0033",borderRadius:12,padding:"14px",marginBottom:14}}>
+        <textarea
+          value={texto}
+          onChange={function(e){setTexto(e.target.value);}}
+          placeholder="¿Qué idea tenés? Escribila acá..."
+          rows={3}
+          style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#080808",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,resize:"vertical",boxSizing:"border-box",outline:"none"}}
+        />
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+          <span style={{fontSize:10,color:"#444"}}>{usuario}</span>
+          <button onClick={doGuardar} disabled={!texto.trim()||guardando} style={{padding:"8px 18px",borderRadius:8,border:"none",background:texto.trim()?"#E07B00":"#1A1A1A",color:texto.trim()?"#000":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:texto.trim()?"pointer":"not-allowed",transition:"all 0.2s"}}>
+            💡 Publicar idea
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        <button onClick={function(){setFiltro("todas");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro==="todas"?"#E07B00":"#1A1A1A"),background:filtro==="todas"?"#E07B0022":"none",color:filtro==="todas"?"#E07B00":"#444",fontSize:11,cursor:"pointer"}}>Todas ({(ideas||[]).length})</button>
+        {ESTADOS.map(function(e){
+          var count=(ideas||[]).filter(function(i){return i.estado===e.id;}).length;
+          return(
+            <button key={e.id} onClick={function(){setFiltro(e.id);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro===e.id?e.color:"#1A1A1A"),background:filtro===e.id?e.color+"22":"none",color:filtro===e.id?e.color:"#444",fontSize:11,cursor:"pointer"}}>{e.label} ({count})</button>
+          );
+        })}
+      </div>
+
+      {/* Lista de ideas */}
+      {ideasFiltradas.length===0?(
+        <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>
+          <div style={{fontSize:28,marginBottom:8}}>💭</div>
+          <div>No hay ideas {filtro!=="todas"?"con este estado":""}</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {ideasFiltradas.map(function(idea){
+            var est=ESTADOS.find(function(e){return e.id===idea.estado;})||ESTADOS[0];
+            return(
+              <div key={idea.id} style={{background:"#0F0F0F",border:"1px solid "+(idea.estado==="implementada"?"#3A7D4433":idea.estado==="en_revision"?"#1A6B8A33":"#1A1A1A"),borderRadius:12,padding:"14px"}}>
+                <div style={{fontSize:13,color:"#F0EDE8",lineHeight:1.5,marginBottom:10}}>{idea.texto}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontSize:10,color:"#555"}}>{idea.usuario} · {fmt_fecha(idea.created_at)}</div>
+                  </div>
+                  <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                    <select value={idea.estado} onChange={function(e){onUpdate({...idea,estado:e.target.value});}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+est.color+"44",background:"#111",color:est.color,fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+                      {ESTADOS.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
+                    </select>
+                    {idea.usuario===usuario&&<button onClick={function(){if(window.confirm("¿Eliminar esta idea?"))onDelete(idea.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 8px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -8764,6 +8881,7 @@ export default function App() {
   var [localesObras,setLocalesObras]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
+  var [ideas,setIdeas]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -8805,6 +8923,7 @@ export default function App() {
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
+    sbLoadIdeas().then(function(d){setIdeas(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   }
 
@@ -8879,6 +8998,7 @@ export default function App() {
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
+              {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -8905,6 +9025,7 @@ export default function App() {
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
+                  {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -9095,6 +9216,17 @@ export default function App() {
               </div>
               <GestUsuarios users={users} onClose={function(){setModulo(null);}} onSave={function(u){setUsers(u);}}/>
             </div>
+          )}
+
+          {/* MÓDULO IDEAS */}
+          {modulo==="ideas"&&(
+            <PanelIdeas
+              ideas={ideas}
+              usuario={cu.nombre}
+              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
+              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+            />
           )}
 
           {/* MÓDULO LOCALES */}

@@ -4282,7 +4282,7 @@ function PanelEgresos(p){
                 <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginTop:4}}>
                   {Object.keys(porArea).length>0&&<div style={{marginBottom:6}}>
                     <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Por área</div>
-                    {Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos";}).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
+                    {Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos"&&a!=="Retiros"&&a!=="Proveedores";}).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
                       <div key={area} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
                         <span style={{color:AREA_COLORES[area]||"#555"}}>{area}</span>
                         <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>

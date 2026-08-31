@@ -6141,7 +6141,7 @@ function PanelResultados(p){
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto;
-    var resultado=ventasCorregidas-totalGastos+(traspaso?traspaso.total:0);
+    var resultado=ventasCorregidas-totalGastos-retiros+(traspaso?traspaso.total:0);
     return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
   }
 

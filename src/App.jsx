@@ -4186,12 +4186,18 @@ function PanelEgresos(p){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
           {LOCALES.map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
-            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===mesFiltroGrid&&s.estado==="pagado";});
+            var mpArr=mesFiltroGrid.split("-");var mpY=parseInt(mpArr[0]);var mpM=parseInt(mpArr[1])-1;if(mpM===0){mpM=12;mpY--;}
+            var perAnt=mpY+"-"+(mpM<10?"0"+mpM:String(mpM));
+            var hasSG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+            var hasAG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
+            var slResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial");});
+            var agResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-            var totS=sl.reduce(function(a,s){return a+parseFloat(s.monto||0);},0);
+            var totS=hasSG?0:slResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
+            var totAg=hasAG?0:agResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-            var tot=totG+totS+totR;
+            var tot=totG+totS+totAg+totR;
             return(
               <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>

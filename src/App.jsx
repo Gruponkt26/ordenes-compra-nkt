@@ -4201,8 +4201,8 @@ function PanelEgresos(p){
             return(
               <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
-                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
-                <div style={{fontSize:9,color:"#444",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS)} · Retiros {fmt(totR)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}} onClick={function(){alert(l.nombre+": totG="+totG+" totS="+totS+" totAg="+totAg+" totR="+totR+" tot="+tot+" hasSG="+hasSG+" slResumen="+slResumen.length);}}>{fmt(tot)}</div>
+                <div style={{fontSize:9,color:"#444",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)} · Retiros {fmt(totR)}</div>
               </div>
             );
           })}
@@ -6054,7 +6054,6 @@ function PanelResultados(p){
         porCat["Aguinaldos"]=(porCat["Aguinaldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
       });
     }
-    });
 
     var traspaso=calcTraspaso(lid);
 

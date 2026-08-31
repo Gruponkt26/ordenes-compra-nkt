@@ -4124,7 +4124,14 @@ function PanelEgresos(p){
 
                 {/* Un bloque por cada área/tab */}
                 {[...AREAS_BASE.filter(function(a){return a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
-                  var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
+                  var items=gl.filter(function(g){
+                    var aReal=(g.area&&g.area.trim()&&g.area!=="Proveedores")?g.area.trim():(g.categoria&&g.categoria.trim()?g.categoria.split(" - ")[0].trim():"Otros");
+                    // Si el área real coincide exactamente, incluir
+                    if(aReal===area)return true;
+                    // Si area es Proveedores y g.area es Proveedores y categoria no tiene subcategoría clara
+                    if(area==="Proveedores"&&g.area==="Proveedores"&&(!g.categoria||g.categoria==="Proveedores"||!AREAS_BASE.includes(g.categoria.split(" - ")[0])))return true;
+                    return false;
+                  });
                   if(items.length===0)return null;
                   var gkey=l.id+"_area_"+area;
                   var abierto=expandidoGrid===gkey;

@@ -4094,6 +4094,7 @@ function PanelEgresos(p){
             var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
             var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="");});
             var alBodegon=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
+            if(l.id==="l1")console.log("l1 alBodegon:",alBodegon.length,"sample:",JSON.stringify(alBodegon[0]));
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
             gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});

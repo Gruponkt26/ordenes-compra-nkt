@@ -4089,34 +4089,35 @@ function PanelEgresos(p){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"start"}}>
           {LOCALES.map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
-            // Sueldos: mostrar en el mes siguiente al período (julio aparece en agosto)
+            var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
+            // Sueldos del mes anterior (julio aparece en agosto)
             var mesParts=mesFiltroGrid.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
             var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
-            var sl=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="");});
-            var alBodegon=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
-            if(l.id==="l1")console.log("l1 alBodegon:",alBodegon.length,"sample:",JSON.stringify(alBodegon[0]));
-            var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var porArea={};
-            gl.forEach(function(g){var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);});
-            // Solo agregar sueldos de tabla sueldos si no hay ninguno en gastos para este local
-            // Sueldos en gastos = solo los que no son aguinaldos (subramo no empieza con "Aguinaldo")
-            var sueldosEnGastos=gl.some(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
-            if(!sueldosEnGastos){
-              sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).forEach(function(s){
-                var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
-                porArea["Sueldos"]=(porArea["Sueldos"]||0)+monto;
+            // Gastos normales
+            gl.forEach(function(g){
+              var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros";
+              if(a==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))a="Aguinaldos";
+              porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);
+            });
+            // Sueldos de tabla sueldos si no hay en gastos
+            var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+            var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
+            if(!hasSueldosGastos){
+              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
+                porArea["Sueldos"]=(porArea["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
               });
-              // Agregar aguinaldos de tabla sueldos como área separada
-              alBodegon.forEach(function(s){
-                var monto=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
-                porArea["Aguinaldos"]=(porArea["Aguinaldos"]||0)+monto;
+            }
+            if(!hasAguinaldosGastos){
+              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
+                porArea["Aguinaldos"]=(porArea["Aguinaldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
               });
             }
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-            var totS=sueldosEnGastos?0:sl.filter(function(s){return s.estado==="pagado"||s.estado==="parcial";}).reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
-            var totAg=sueldosEnGastos?0:alBodegon.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
+            var totExtraSueldos=hasSueldosGastos?0:(porArea["Sueldos"]||0);
+            var totExtraAg=hasAguinaldosGastos?0:(porArea["Aguinaldos"]||0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-            var totTotal=totG+totS+totAg+totR;
+            var totTotal=totG+totExtraSueldos+totExtraAg+totR;
             return(
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>

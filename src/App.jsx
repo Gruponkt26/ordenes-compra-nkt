@@ -4209,6 +4209,40 @@ function PanelEgresos(p){
                   );
                 })()}
 
+                {/* Aguinaldos — fila expandible */}
+                {(porArea["Aguinaldos"]||0)>0&&(function(){
+                  var gkey=l.id+"_aguinaldos";
+                  var abierto=expandidoGrid===gkey;
+                  var itemsAg=gl.filter(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
+                  var itemsAgSueldos=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
+                  return(
+                    <div style={{marginBottom:6}}>
+                      <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:8,color:"#8B2FC9",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#8B2FC9"}}>🎁 Aguinaldos</span>
+                        </div>
+                        <span style={{fontSize:12,fontWeight:800,color:"#8B2FC9",fontFamily:"'Playfair Display',serif"}}>{fmt(porArea["Aguinaldos"]||0)}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {itemsAg.length>0?itemsAg.map(function(g){return(
+                            <div key={g.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #0A0A0A",fontSize:10}}>
+                              <span style={{color:"#888"}}>{g.concepto}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                            </div>
+                          );}):itemsAgSueldos.map(function(s){return(
+                            <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #0A0A0A",fontSize:10}}>
+                              <span style={{color:"#888"}}>{s.empleado_nombre}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
+                            </div>
+                          );})}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Retiros — una fila con total, expandible al detalle */}
                 {rl.length>0&&(function(){
                   var gkey=l.id+"_retiros";
@@ -4246,15 +4280,13 @@ function PanelEgresos(p){
                 <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginTop:4}}>
                   {Object.keys(porArea).length>0&&<div style={{marginBottom:6}}>
                     <div style={{fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Por área</div>
-                    {Object.keys(porArea).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
+                    {Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos";}).sort(function(a,b){return porArea[b]-porArea[a];}).map(function(area){return(
                       <div key={area} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
                         <span style={{color:AREA_COLORES[area]||"#555"}}>{area}</span>
                         <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea[area])}</span>
                       </div>
                     );})}
                   </div>}
-                  {(porArea["Sueldos"]||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#4CAF50"}}>Sueldos</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea["Sueldos"]||0)}</span></div>}
-                  {(porArea["Aguinaldos"]||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#8B2FC9"}}>Aguinaldos</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(porArea["Aguinaldos"]||0)}</span></div>}
                   {totR>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}><span style={{color:"#8B4513"}}>Retiros</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(totR)}</span></div>}
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,marginTop:4,paddingTop:4,borderTop:"1px solid #2A2A2A"}}>
                     <span style={{color:l.color}}>Total</span>

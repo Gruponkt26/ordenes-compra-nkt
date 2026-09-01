@@ -6437,29 +6437,51 @@ function PanelResultados(p){
               {/* Estado de disponibilidad */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
                 <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Disponibilidad estimada</div>
-                {[
-                  {label:"💵 Efectivo",disp:d.dispEfectivo,ingreso:d.ingrEfectivo,ingresoOrig:d.ventaEfectivo,gasto:d.gastoEfectivo,corr:d.corrEfectivo,traspaso:d.traspaso?d.traspaso.efectivo:0},
-                  {label:"📲 Transferencia",disp:d.dispTransferencia,ingreso:d.ingrTransferencia,ingresoOrig:d.ventaTransferencia,gasto:d.gastoTransferencia,corr:d.corrTransferencia,traspaso:d.traspaso?d.traspaso.transferencia:0},
-                  {label:"💳 Débito",disp:d.dispDebito,ingreso:d.ingrDebito,ingresoOrig:d.ventaDebito,gasto:d.gastoDebito,corr:d.corrDebito,traspaso:d.traspaso?d.traspaso.debito:0},
-                  {label:"💳 Crédito",disp:d.dispCredito,ingreso:d.ingrCredito,ingresoOrig:d.ventaCredito,gasto:d.gastoCredito,corr:d.corrCredito,traspaso:d.traspaso?d.traspaso.credito:0},
-                ].map(function(m){
-                  if(m.ingreso===0&&m.gasto===0&&m.traspaso===0)return null;
+                
+                {/* Efectivo */}
+                {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo)&&(
+                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                      <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo</span>
+                      <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
+                    </div>
+                    {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
+                    {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
+                    {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
+                  </div>
+                )}
+
+                {/* Electrónico — suma de todos los medios electrónicos */}
+                {(function(){
+                  var ingElec=(d.ingrTransferencia||0)+(d.ingrDebito||0)+(d.ingrCredito||0)+(d.ventaOtros||0);
+                  var gasElec=(d.gastoTransferencia||0)+(d.gastoDebito||0)+(d.gastoCredito||0)+(d.gastoOtros||0);
+                  var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
+                  var dispElec=ingElec-gasElec+traspElec;
+                  if(ingElec===0&&gasElec===0&&traspElec===0)return null;
                   return(
-                    <div key={m.label} style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                    <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>{m.label}</span>
-                        <span style={{fontSize:13,fontWeight:800,color:m.disp>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(m.disp)}</span>
+                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico</span>
+                        <span style={{fontSize:13,fontWeight:800,color:dispElec>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(dispElec)}</span>
                       </div>
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}>
-                        <span>Ingresos{m.corr>0?" (corregido)":""}</span>
-                        <span style={{color:"#3A7D44"}}>+{fmt(m.ingreso)}</span>
-                      </div>
-                      {m.corr>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#555",marginBottom:2}}><span>  Original cierre</span><span>{fmt(m.ingresoOrig)}</span></div>}
-                      {m.gasto!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(m.gasto)}</span></div>}
-                      {m.traspaso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(m.traspaso)}</span></div>}
+                      {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
+                      {gasElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(gasElec)}</span></div>}
+                      {traspElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(traspElec)}</span></div>}
+                      {/* Desglose */}
+                      {[
+                        {label:"Transferencia",ing:d.ingrTransferencia||0,gas:d.gastoTransferencia||0,tr:d.traspaso?.transferencia||0},
+                        {label:"Débito",ing:d.ingrDebito||0,gas:d.gastoDebito||0,tr:d.traspaso?.debito||0},
+                        {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0},
+                        {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0},
+                      ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){return(
+                        <div key={x.label} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#555",marginBottom:1,paddingLeft:8}}>
+                          <span>{x.label}</span>
+                          <span style={{color:(x.ing-x.gas+x.tr)>=0?"#3A7D4488":"#C1440E88"}}>{fmt(x.ing-x.gas+x.tr)}</span>
+                        </div>
+                      );})}
                     </div>
                   );
-                })}
+                })()}
               </div>
 
               {/* Traspaso manual */}

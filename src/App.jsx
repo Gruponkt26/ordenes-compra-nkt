@@ -6063,7 +6063,7 @@ function PanelResultados(p){
     // Gastos por medio de pago (efectivo vs electrónico)
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
-      console.log("egreso:",g.concepto,"forma_pago:",g.forma_pago,"pagos:",g.pagos);
+      console.log("egreso:",g.concepto,"forma_pago:",g.forma_pago,"pagos:",JSON.stringify(g.pagos));
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
           if(pago.local!==lid)return;

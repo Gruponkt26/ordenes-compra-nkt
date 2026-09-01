@@ -6019,6 +6019,8 @@ function PanelResultados(p){
     var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
     var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+    // Incluir retiros de socios en totalGastos
+    totalGastos+=retiros;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6043,7 +6045,8 @@ function PanelResultados(p){
       if(cat==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))cat="Aguinaldos";
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
-    // Agregar sueldos/aguinaldos de tabla sueldos al porCat
+    // Agregar retiros al porCat
+    if(retiros>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retiros;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         porCat["Sueldos"]=(porCat["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6060,6 +6063,7 @@ function PanelResultados(p){
     // Gastos por medio de pago (efectivo vs electrónico)
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
+      console.log("egreso:",g.concepto,"forma_pago:",g.forma_pago,"pagos:",g.pagos);
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
           if(pago.local!==lid)return;
@@ -6141,7 +6145,7 @@ function PanelResultados(p){
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto;
-    var resultado=ventasCorregidas-totalGastos-retiros+(traspaso?traspaso.total:0);
+    var resultado=ventasCorregidas-totalGastos+(traspaso?traspaso.total:0);
     return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
   }
 

@@ -5924,6 +5924,7 @@ function PanelResultados(p){
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [corrLocal,setCorrLocal]=useState({});
+  var [vistaComparativa,setVistaComparativa]=useState(false);
   var [traspLocal,setTraspLocal]=useState({});
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
@@ -6322,10 +6323,88 @@ function PanelResultados(p){
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📈 Resultados por local</div>
         </div>
-        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
-          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
-        </select>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <button onClick={function(){setVistaComparativa(function(v){return !v;});}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid "+(vistaComparativa?"#D4A017":"#2A2A2A"),background:vistaComparativa?"#D4A01722":"none",color:vistaComparativa?"#D4A017":"#888",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>📊 Comparar</button>
+          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+            {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>
+        </div>
       </div>
+
+      {/* VISTA COMPARATIVA */}
+      {vistaComparativa&&(
+        <div style={{overflowX:"auto",marginBottom:16}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:500}}>
+            <thead>
+              <tr style={{borderBottom:"1px solid #1A1A1A"}}>
+                <th style={{textAlign:"left",padding:"8px",color:"#555",fontWeight:700,minWidth:120}}>Área</th>
+                {localesFiltro.map(function(l){return(
+                  <th key={l.id} style={{textAlign:"right",padding:"8px",color:l.color,fontWeight:700,minWidth:100}}>{l.emoji} {l.nombre}</th>
+                );})}
+                <th style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:700,minWidth:100}}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Ventas */}
+              <tr style={{borderBottom:"1px solid #0F0F0F",background:"#0A1A0A"}}>
+                <td style={{padding:"8px",color:"#3A7D44",fontWeight:700}}>💰 Ventas</td>
+                {localesFiltro.map(function(l){return(
+                  <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:600}}>{fmt(datos[l.id].ventasCorregidas)}</td>
+                );})}
+                <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800}}>{fmt(totalVentas)}</td>
+              </tr>
+              {/* Egresos por área */}
+              {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+                var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0);
+                if(totCat===0)return null;
+                var color=AREA_COLORES[cat]||"#555";
+                return(
+                  <tr key={cat} style={{borderBottom:"1px solid #0A0A0A"}}>
+                    <td style={{padding:"6px 8px",color:color,fontSize:10}}>{cat}</td>
+                    {localesFiltro.map(function(l){
+                      var m=datos[l.id].porCat[cat]||0;
+                      return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#2A2A2A",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
+                    })}
+                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totCat)}</td>
+                  </tr>
+                );
+              })}
+              {/* Retiros */}
+              {(function(){
+                var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0);},0);
+                if(totRet===0)return null;
+                return(
+                  <tr style={{borderBottom:"1px solid #0A0A0A"}}>
+                    <td style={{padding:"6px 8px",color:"#888",fontSize:10}}>Retiros</td>
+                    {localesFiltro.map(function(l){
+                      var m=datos[l.id].retiros||0;
+                      return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#2A2A2A",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
+                    })}
+                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totRet)}</td>
+                  </tr>
+                );
+              })()}
+              {/* Total egresos */}
+              <tr style={{borderBottom:"1px solid #1A1A1A",background:"#100A0A"}}>
+                <td style={{padding:"8px",color:"#C1440E",fontWeight:700}}>💸 Total egresos</td>
+                {localesFiltro.map(function(l){return(
+                  <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:600}}>{fmt(datos[l.id].totalGastos)}</td>
+                );})}
+                <td style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:800}}>{fmt(totalGastos)}</td>
+              </tr>
+              {/* Resultado */}
+              <tr style={{background:"#111"}}>
+                <td style={{padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>📊 Resultado</td>
+                {localesFiltro.map(function(l){
+                  var res=datos[l.id].resultado;
+                  return <td key={l.id} style={{textAlign:"right",padding:"8px",color:res>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{res>=0?"":"-"}{fmt(Math.abs(res))}</td>;
+                })}
+                <td style={{textAlign:"right",padding:"8px",color:totalResultado>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{totalResultado>=0?"":"-"}{fmt(Math.abs(totalResultado))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Card resumen grupo */}
       <div style={{background:"#111",border:"1px solid "+(totalResultado>=0?"#3A7D4444":"#C1440E44"),borderRadius:12,padding:"14px 16px",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,textAlign:"center"}}>

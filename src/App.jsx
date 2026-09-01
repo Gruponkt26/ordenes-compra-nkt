@@ -6063,12 +6063,15 @@ function PanelResultados(p){
     // Gastos por medio de pago (efectivo vs electrónico)
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
-      console.log("egreso:",g.concepto,"forma_pago:",g.forma_pago,"pagos:",JSON.stringify(g.pagos));
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
-          if(pago.local!==lid)return;
+          // Soporte para ambos formatos: {medio, monto} y {local, tipo, monto}
           var pm=parseFloat(pago.monto||0);
-          if((pago.tipo||"").toLowerCase().includes("efectivo"))gastoEfectivo+=pm;
+          var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          var pagoLocal=pago.local||null;
+          // Si tiene local, filtrar por local
+          if(pagoLocal&&pagoLocal!==lid)return;
+          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
           else gastoElectronico+=pm;
         });
       } else {
@@ -6093,18 +6096,17 @@ function PanelResultados(p){
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
-        // Nuevo sistema: descontar por local y tipo de cada pago
         g.pagos.forEach(function(pago){
-          if(pago.local!==lid)return; // solo pagos que salen de este local
           var pm=parseFloat(pago.monto||0);
-          var tp=(pago.tipo||"").toLowerCase();
-          if(tp.includes("transferencia"))gastoTransferencia+=pm;
-          else if(tp.includes("débito")||tp.includes("debito"))gastoDebito+=pm;
-          else if(tp.includes("crédito")||tp.includes("credito"))gastoCredito+=pm;
-          else if(!tp.includes("efectivo"))gastoOtros+=pm;
+          var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          var pagoLocal=pago.local||null;
+          if(pagoLocal&&pagoLocal!==lid)return;
+          if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
+          else if(medioStr.includes("débito")||medioStr.includes("debito"))gastoDebito+=pm;
+          else if(medioStr.includes("crédito")||medioStr.includes("credito"))gastoCredito+=pm;
+          else if(!medioStr.includes("efectivo"))gastoOtros+=pm;
         });
       } else {
-        // Legacy: forma_pago texto
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
         if(fp.includes("transferencia"))gastoTransferencia+=gm;

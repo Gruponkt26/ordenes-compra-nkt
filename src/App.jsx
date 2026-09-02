@@ -3425,6 +3425,28 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   );
 }
 
+
+// ─── MAPEO MEDIOS DE PAGO POR LOCAL ──────────────────────────────────────────
+var MEDIO_LOCAL_MAP={
+  "efectivo - bodegón":"l1","efectivo - bodegon":"l1",
+  "provincia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
+  "efectivo - kusama":"l2","galicia empresas":"l2",
+  "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
+  "patagonia empresas":"l3","mp calzon gitano":"l3",
+  "débito visa patagonia":"l3","debito visa patagonia":"l3",
+  "débito mastercard patagonia":"l3","debito mastercard patagonia":"l3",
+  "efectivo - oficina":"l4",
+};
+function getLocalFromMedio(medio){
+  if(!medio)return null;
+  var k=medio.toLowerCase().trim();
+  // Buscar coincidencia parcial
+  for(var key in MEDIO_LOCAL_MAP){
+    if(k.includes(key)||key.includes(k))return MEDIO_LOCAL_MAP[key];
+  }
+  return null;
+}
+
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
 
 function GestProveedores(p) {
@@ -6061,23 +6083,48 @@ function PanelResultados(p){
 
     var traspaso=calcTraspaso(lid);
 
-    // Gastos por medio de pago (efectivo vs electrónico)
+    // Gastos por medio de pago — descontar del local que paga (no del local del gasto)
     var gastoEfectivo=0,gastoElectronico=0;
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
-          // Soporte para ambos formatos: {medio, monto} y {local, tipo, monto}
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
-          var pagoLocal=pago.local||null;
-          // Si tiene local, filtrar por local
-          if(pagoLocal&&pagoLocal!==lid)return;
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||lid;
+          // Solo contar si el pago sale de este local
+          if(pagoLocal!==lid)return;
           if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
           else gastoElectronico+=pm;
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||lid;
+        // Solo contar si el pago sale de este local
+        if(pagoLocal!==lid)return;
+        if(fp.includes("efectivo"))gastoEfectivo+=gm;
+        else gastoElectronico+=gm;
+      }
+    });
+
+    // También sumar gastos de OTROS locales que se pagaron con medios de ESTE local
+    gastos.filter(function(g){
+      return g.local!==lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;
+    }).forEach(function(g){
+      if(g.pagos&&g.pagos.length>0){
+        g.pagos.forEach(function(pago){
+          var pm=parseFloat(pago.monto||0);
+          var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local;
+          if(pagoLocal!==lid)return;
+          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
+          else gastoElectronico+=pm;
+        });
+      } else {
+        var fp=(g.forma_pago||"").toLowerCase();
+        var gm=parseFloat(g.monto||0);
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||g.local;
+        if(pagoLocal!==lid)return;
         if(fp.includes("efectivo"))gastoEfectivo+=gm;
         else gastoElectronico+=gm;
       }
@@ -6095,25 +6142,43 @@ function PanelResultados(p){
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
+    var procesarPagoDetalle=function(medioStr,pm,pagoLocal){
+      if(pagoLocal!==lid)return;
+      if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
+      else if(medioStr.includes("débito")||medioStr.includes("debito"))gastoDebito+=pm;
+      else if(medioStr.includes("crédito")||medioStr.includes("credito"))gastoCredito+=pm;
+      else if(!medioStr.includes("efectivo"))gastoOtros+=pm;
+    };
+    // Gastos propios del local
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
-          var pagoLocal=pago.local||null;
-          if(pagoLocal&&pagoLocal!==lid)return;
-          if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
-          else if(medioStr.includes("débito")||medioStr.includes("debito"))gastoDebito+=pm;
-          else if(medioStr.includes("crédito")||medioStr.includes("credito"))gastoCredito+=pm;
-          else if(!medioStr.includes("efectivo"))gastoOtros+=pm;
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||lid;
+          procesarPagoDetalle(medioStr,pm,pagoLocal);
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
-        if(fp.includes("transferencia"))gastoTransferencia+=gm;
-        else if(fp.includes("débito")||fp.includes("debito"))gastoDebito+=gm;
-        else if(fp.includes("crédito")||fp.includes("credito"))gastoCredito+=gm;
-        else if(!fp.includes("efectivo"))gastoOtros+=gm;
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||lid;
+        procesarPagoDetalle(fp,gm,pagoLocal);
+      }
+    });
+    // Gastos de otros locales pagados con medios de este local
+    gastos.filter(function(g){return g.local!==lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;}).forEach(function(g){
+      if(g.pagos&&g.pagos.length>0){
+        g.pagos.forEach(function(pago){
+          var pm=parseFloat(pago.monto||0);
+          var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local;
+          procesarPagoDetalle(medioStr,pm,pagoLocal);
+        });
+      } else {
+        var fp=(g.forma_pago||"").toLowerCase();
+        var gm=parseFloat(g.monto||0);
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||g.local;
+        procesarPagoDetalle(fp,gm,pagoLocal);
       }
     });
 

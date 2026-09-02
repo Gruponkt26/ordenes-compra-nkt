@@ -9407,7 +9407,7 @@ export default function App() {
                 onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
                 onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
                 onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
-                onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
+                onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
               />
             </div>
           )}
@@ -9486,7 +9486,7 @@ export default function App() {
                 sbDeleteGasto(egresoId);
                 setGastos(function(prev){return prev.filter(function(g){return g.id!==egresoId;});});
               }}
-              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){return[g,...prev];});}}
+              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
             />
           )}
 
@@ -9630,7 +9630,7 @@ export default function App() {
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
-              onSave={function(g){sbSaveGasto(g);setGastos(function(p){return[g,...p];});}}
+              onSave={function(g){sbSaveGasto(g);setGastos(function(p){var f=p.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
               onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}

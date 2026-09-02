@@ -3946,6 +3946,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
 
   // El local "actual" es el seleccionado en el filtro (o l1 por defecto)
   var miLocal=filtroLocal==="all"?"l1":filtroLocal;
+  var areaConceptos=CONCEPTOS_POR_AREA[area]||{grupos:[],items:[]};
   var customItems=conceptosCustom.filter(function(c){return c.area===area&&c.activo!==false;}).map(function(c){return{nombre:c.nombre,sub:c.sub,id:c.id,esCustom:true};});
   // Para Proveedores, usar lista de Supabase plana
   var todosItems=area==="Proveedores"

@@ -6291,13 +6291,13 @@ function PanelResultados(p){
 
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
-    var ventasCorregidas=ventas+corrMonto;
-    var resultado=ventasCorregidas-totalGastos+(traspaso?traspaso.total:0);
+    var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
+    var resultado=ventasCorregidas-totalGastos;
     return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
-  var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas;},0);
+  var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0);
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
   var totalResultado=totalVentas-totalGastos;
 
@@ -6554,7 +6554,39 @@ function PanelResultados(p){
                     var m=d.ventasCorregidas>0?((d.resultado/d.ventasCorregidas)*100).toFixed(1):"—";
                     return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:parseFloat(m)>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:600}}>{m!=="—"?m+"%":"—"}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—",fontSize:10,fontWeight:600,color:totalResultado>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—"}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",fontSize:10,fontWeight:600,color:totalResultado>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—"}</td>
+                </tr>
+                {/* Separador */}
+                <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
+                {/* Disponibilidad efectivo */}
+                <tr style={{background:"#0A0F0A"}}>
+                  <td style={{padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💵 Disponible efectivo</td>
+                  {localesFiltro.map(function(l){
+                    var d=datos[l.id];
+                    var disp=d.dispEfectivo||0;
+                    return <td key={l.id} style={{textAlign:"right",padding:"8px",color:disp>=0?"#3A7D44":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(disp)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0))}</td>
+                </tr>
+                {/* Disponibilidad electrónico */}
+                <tr style={{background:"#0A0A0F"}}>
+                  <td style={{padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>📲 Disponible electrónico</td>
+                  {localesFiltro.map(function(l){
+                    var d=datos[l.id];
+                    var dispElec=(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);
+                    return <td key={l.id} style={{textAlign:"right",padding:"8px",color:dispElec>=0?"#1A6B8A":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(dispElec)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
+                </tr>
+                {/* Total disponible */}
+                <tr style={{background:"#111",borderTop:"2px solid #1A1A1A"}}>
+                  <td style={{padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>💰 Total disponible</td>
+                  {localesFiltro.map(function(l){
+                    var d=datos[l.id];
+                    var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);
+                    return <td key={l.id} style={{textAlign:"right",padding:"8px",color:tot>=0?"#F0EDE8":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
                 </tr>
               </tbody>
             </table>

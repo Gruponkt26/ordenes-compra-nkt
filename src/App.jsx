@@ -3964,10 +3964,13 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   // Detectar si un gasto es cruzado (medio de pago pertenece a otro local)
   function esCruzado(g){
     var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
-    return medios.some(function(pago){
-      var pagoLocal=getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago);
+    var result=medios.some(function(pago){
+      var medio=pago.medio||pago.tipo||g.forma_pago;
+      var pagoLocal=getLocalFromMedio(medio);
+      console.log("esCruzado check:",g.concepto,"medio:",medio,"pagoLocal:",pagoLocal,"g.local:",g.local);
       return pagoLocal&&pagoLocal!==g.local;
     });
+    return result;
   }
 
   var total=filtered.filter(function(g){return !esCruzado(g);}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);

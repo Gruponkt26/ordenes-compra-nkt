@@ -6659,10 +6659,27 @@ function PanelResultados(p){
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {/* Ventas */}
                 <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                     <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas netas</div>
-                    <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}{d.corrMonto!==0&&<span style={{fontSize:9,color:"#555",marginLeft:4}}>orig. {fmt(d.ventas)}</span>}</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}</div>
                   </div>
+                  {/* Desglose ventas + traspaso */}
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",marginBottom:2}}>
+                    <span>💰 Ventas del mes{d.corrMonto!==0?" (ajust.)":""}</span>
+                    <span style={{color:"#3A7D44",fontWeight:600}}>{fmt(d.ventas+d.corrMonto)}</span>
+                  </div>
+                  {d.traspaso&&d.traspaso.total>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#D4A017",marginBottom:4}}>
+                      <span>↩️ Traspaso {d.traspaso.mes}</span>
+                      <span style={{fontWeight:600}}>+{fmt(d.traspaso.total)}</span>
+                    </div>
+                  )}
+                  {d.traspaso&&d.traspaso.total>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,color:"#3A7D44",borderTop:"1px solid #1A1A1A",paddingTop:6,marginBottom:8}}>
+                      <span>Total ingresos</span>
+                      <span style={{fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}</span>
+                    </div>
+                  )}
                   {d.diasCierre===0?(
                     <div style={{fontSize:10,color:"#333"}}>Sin cierres cargados</div>
                   ):(

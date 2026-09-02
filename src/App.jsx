@@ -3973,7 +3973,9 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
     return result;
   }
 
-  var total=filtered.filter(function(g){return !esCruzado(g);}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var totalFiltered=filtered.filter(function(g){return !esCruzado(g);});
+  console.log("total items:", filtered.length, "no cruzados:", totalFiltered.length, "cruzados:", filtered.length-totalFiltered.length);
+  var total=totalFiltered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   function getLocal(id){return LOCALES.find(function(l){return l.id===id;});}

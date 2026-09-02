@@ -6490,13 +6490,36 @@ function PanelResultados(p){
                 </tr>
               </thead>
               <tbody>
-                {/* Ventas */}
-                <tr style={{borderBottom:"1px solid #0F0F0F",background:"#0A1A0A"}}>
-                  <td style={{padding:"8px",color:"#3A7D44",fontWeight:700}}>💰 Ventas</td>
+                {/* Ventas brutas */}
+                <tr style={{borderBottom:"1px solid #0A0A0A",background:"#0A1A0A"}}>
+                  <td style={{padding:"6px 8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💰 Ventas</td>
                   {localesFiltro.map(function(l){return(
-                    <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:600}}>{fmt(datos[l.id].ventasCorregidas)}</td>
+                    <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(datos[l.id].ventas+datos[l.id].corrMonto)}</td>
                   );})}
-                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800}}>{fmt(totalVentas)}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0))}</td>
+                </tr>
+                {/* Traspaso mes anterior */}
+                {(function(){
+                  var totTr=localesFiltro.reduce(function(a,l){return a+(datos[l.id].traspaso?datos[l.id].traspaso.total:0);},0);
+                  if(totTr===0)return null;
+                  return(
+                    <tr style={{borderBottom:"1px solid #1A1A1A",background:"#0A1A0A"}}>
+                      <td style={{padding:"6px 8px",color:"#D4A017",fontSize:10}}>↩️ Traspaso mes ant.</td>
+                      {localesFiltro.map(function(l){
+                        var tr=datos[l.id].traspaso?datos[l.id].traspaso.total:0;
+                        return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:tr>0?"#D4A017":"#2A2A2A",fontSize:10}}>{tr>0?fmt(tr):"—"}</td>;
+                      })}
+                      <td style={{textAlign:"right",padding:"6px 8px",color:"#D4A017",fontSize:10,fontWeight:600}}>{fmt(totTr)}</td>
+                    </tr>
+                  );
+                })()}
+                {/* Total ingresos */}
+                <tr style={{borderBottom:"2px solid #1A1A1A",background:"#071207"}}>
+                  <td style={{padding:"8px",color:"#3A7D44",fontWeight:800,fontFamily:"'Playfair Display',serif",fontSize:12}}>Total ingresos</td>
+                  {localesFiltro.map(function(l){return(
+                    <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(datos[l.id].ventasCorregidas)}</td>
+                  );})}
+                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(totalVentas)}</td>
                 </tr>
                 {/* Egresos por área */}
                 {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){

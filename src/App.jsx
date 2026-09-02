@@ -3961,7 +3961,16 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
     return ml&&mf;
   }).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
 
-  var total=filtered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  // Detectar si un gasto es cruzado (medio de pago pertenece a otro local)
+  function esCruzado(g){
+    var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
+    return medios.some(function(pago){
+      var pagoLocal=getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago);
+      return pagoLocal&&pagoLocal!==g.local;
+    });
+  }
+
+  var total=filtered.filter(function(g){return !esCruzado(g);}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   function getLocal(id){return LOCALES.find(function(l){return l.id===id;});}
@@ -4018,10 +4027,24 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
           {filtered.map(function(g){
             var loc=getLocal(g.local);
             var fact=g.facturado&&g.facturacion?getFact(g.facturacion):null;
+            var cruzado=esCruzado(g);
+            // Detectar local del medio de pago
+            var medioLocal=null;
+            if(cruzado){
+              var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
+              medios.forEach(function(pago){
+                var pl=getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago);
+                if(pl&&pl!==g.local)medioLocal=pl;
+              });
+            }
+            var locMedio=medioLocal?LOCALES.find(function(l){return l.id===medioLocal;}):null;
             return(
-              <div key={g.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div key={g.id} style={{background:"#0F0F0F",border:"1px solid "+(cruzado?"#1A6B8A33":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",opacity:cruzado?0.85:1}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
+                    {cruzado&&<div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>↔️ Cruzado {locMedio?locMedio.emoji+locMedio.nombre:""}</div>}
+                  </div>
                   <div style={{fontSize:10,color:"#444",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
                   {g.detalle&&<div style={{fontSize:10,color:"#3A7D44",marginTop:1}}>🛒 {g.detalle}</div>}
@@ -4029,8 +4052,9 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:10}}>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:13,fontWeight:800,color:colorAccent,fontFamily:"'Playfair Display',serif"}}>{fmt(g.monto)}</div>
-                    {g.facturado&&<div style={{fontSize:9,color:"#3A7D44"}}>✅ Fact.</div>}
+                    <div style={{fontSize:13,fontWeight:800,color:cruzado?"#1A6B8A":colorAccent,fontFamily:"'Playfair Display',serif"}}>{cruzado?"(":""}{fmt(g.monto)}{cruzado?")":""}</div>
+                    {cruzado&&<div style={{fontSize:9,color:"#1A6B8A"}}>no sumado</div>}
+                    {g.facturado&&!cruzado&&<div style={{fontSize:9,color:"#3A7D44"}}>✅ Fact.</div>}
                   </div>
                   <button onClick={function(){abrirEditar(g);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"4px 8px",color:"#555",fontSize:11,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete(g.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,padding:"4px 8px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>

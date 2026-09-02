@@ -3908,7 +3908,7 @@ var CONCEPTOS_POR_AREA={
   },
 };
 
-function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent, proveedores}){
+function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent, proveedores}){
   var hoy=new Date().toISOString().split("T")[0];
   var localesFiltro=LOCALES; // incluye Oficina (l4)
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
@@ -3944,7 +3944,8 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
   var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
-  var areaConceptos=CONCEPTOS_POR_AREA[area]||{grupos:[],items:[]};
+  // El local "actual" es el seleccionado en el filtro (o l1 por defecto)
+  var miLocal=filtroLocal==="all"?"l1":filtroLocal;
   var customItems=conceptosCustom.filter(function(c){return c.area===area&&c.activo!==false;}).map(function(c){return{nombre:c.nombre,sub:c.sub,id:c.id,esCustom:true};});
   // Para Proveedores, usar lista de Supabase plana
   var todosItems=area==="Proveedores"
@@ -3973,9 +3974,23 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
     return result;
   }
 
-  var totalFiltered=filtered.filter(function(g){return !esCruzado(g);});
-  console.log("total items:", filtered.length, "no cruzados:", totalFiltered.length, "cruzados:", filtered.length-totalFiltered.length);
-  var total=totalFiltered.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  // Gastos de otros locales cubiertos por este local (cruzados entrantes)
+  var gastosCubiertos=(todosGastos||[]).filter(function(g){
+    if(g.local===miLocal)return false; // no los propios
+    var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
+    return medios.some(function(pago){
+      return getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago)===miLocal;
+    });
+  }).filter(function(g){
+    var mf=true;
+    if(filtroFecha==="mes")mf=g.fecha&&g.fecha.slice(0,7)===mesFiltro;
+    if(filtroFecha==="hoy")mf=g.fecha===hoy;
+    if(filtroFecha==="semana"){var diff=(new Date()-new Date(g.fecha))/(86400000);mf=diff<=7;}
+    return mf;
+  });
+
+  var totalCubiertos=gastosCubiertos.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+  var total=filtered.filter(function(g){return !esCruzado(g);}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   function getLocal(id){return LOCALES.find(function(l){return l.id===id;});}
@@ -4067,6 +4082,37 @@ function PanelFormEgreso({area, gastos, usuario, conceptosCustom, onSave, onDele
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Gastos cubiertos — de otros locales pagados con medios de este local */}
+      {gastosCubiertos.length>0&&(
+        <div style={{marginTop:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>↔️ Gastos cubiertos de otros locales</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#1A6B8A"}}>{fmt(totalCubiertos)}</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {gastosCubiertos.map(function(g){
+              var loc=getLocal(g.local);
+              return(
+                <div key={g.id} style={{background:"#0A1015",border:"1px solid #1A6B8A33",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{g.concepto}</div>
+                      <div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px"}}>↔️ {loc?loc.emoji+" "+loc.nombre:g.local}</div>
+                    </div>
+                    <div style={{fontSize:10,color:"#444",marginTop:2}}>{g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
+                    {g.notas&&<div style={{fontSize:10,color:"#333",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
+                  </div>
+                  <div style={{textAlign:"right",marginLeft:10}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#1A6B8A",fontFamily:"'Playfair Display',serif"}}>{fmt(g.monto)}</div>
+                    <div style={{fontSize:9,color:"#1A6B8A44"}}>no sumado</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -4201,6 +4247,7 @@ function PanelEgresos(p){
   var areasCustom=p.areasCustom||[], onSaveArea=p.onSaveArea;
   var todasLasAreas=[...AREAS_BASE,...areasCustom];
   var [areaActiva,setAreaActiva]=useState("Proveedores");
+  var [localActual,setLocalActual]=useState("l1");
   var [showNuevaArea,setShowNuevaArea]=useState(false);
   var [nuevaAreaNombre,setNuevaAreaNombre]=useState("");
   var [vistaGrid,setVistaGrid]=useState(false);
@@ -4539,6 +4586,8 @@ function PanelEgresos(p){
         <PanelFormEgreso
           area={areaActiva}
           gastos={gastos.filter(function(g){return(g.area||g.categoria||"Otros")===areaActiva;})}
+          gastosLocalActual={localActual}
+          todosGastos={gastos}
           usuario={usuario}
           conceptosCustom={conceptosCustom}
           proveedores={p.proveedores||[]}

@@ -6305,27 +6305,15 @@ function PanelResultados(p){
       }
     });
 
-    // Retiros de socios (módulo "💼 Retiros de Socios") — mismo tratamiento que los gastos: descontar
-    // del local cuya cuenta realmente pagó el retiro, no necesariamente del local dueño del retiro.
+    // Retiros de socios (módulo "💼 Retiros de Socios") — a diferencia de los gastos, un retiro nunca es
+    // cruzado: sale directo de la cuenta del local que elige quien lo carga, sin intermediarios. Se
+    // descuenta siempre de r.local, sin intentar redirigir por el texto del medio.
     retirosModLocal.forEach(function(r){
       var rm=parseFloat(r.monto||0);
       var medioStr=(r.tipo_retiro||"").toLowerCase();
-      var pagoLocal=getLocalFromMedio(r.tipo_retiro)||lid;
-      if(pagoLocal!==lid)return;
       var esEf=medioStr.includes("efectivo");
       if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
       detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||""),medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:false});
-    });
-    retirosSocios.filter(function(r){
-      return r.local!==lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;
-    }).forEach(function(r){
-      var rm=parseFloat(r.monto||0);
-      var medioStr=(r.tipo_retiro||"").toLowerCase();
-      var pagoLocal=getLocalFromMedio(r.tipo_retiro)||r.local;
-      if(pagoLocal!==lid)return;
-      var esEf=medioStr.includes("efectivo");
-      if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
-      detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||"")+" ("+(LOCALES.find(function(x){return x.id===r.local;})||{}).nombre+")",medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:true});
     });
 
     // Ingresos de cierres por medio
@@ -6390,12 +6378,9 @@ function PanelResultados(p){
         procesarPagoDetalle(fp,gm,pagoLocal);
       }
     });
-    // Retiros de socios propios y cruzados, mismo desglose fino
+    // Retiros de socios — siempre del local propio (nunca cruzados), mismo desglose fino
     retirosModLocal.forEach(function(r){
-      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),getLocalFromMedio(r.tipo_retiro)||lid);
-    });
-    retirosSocios.filter(function(r){return r.local!==lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;}).forEach(function(r){
-      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),getLocalFromMedio(r.tipo_retiro)||r.local);
+      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),lid);
     });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio

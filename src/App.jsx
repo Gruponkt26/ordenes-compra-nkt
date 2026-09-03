@@ -9502,6 +9502,7 @@ export default function App() {
   var [showEditorMenu,setShowEditorMenu]=useState(false);
   var [menuStock,setMenuStock]=useState(MENU_POR_LOCAL);
   var [showUsers,setShowUsers]=useState(false);
+  var [showIdeas,setShowIdeas]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroMes,setFiltroMes]=useState("all");
@@ -9631,6 +9632,7 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
+            <button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {(!esSofia||modulo==="compras")&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
@@ -10306,6 +10308,24 @@ export default function App() {
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
+      {showIdeas&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={function(e){if(e.target===e.currentTarget)setShowIdeas(false);}}>
+          <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",overflow:"hidden"}}>
+            <div style={{padding:"14px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
+              <button onClick={function(){setShowIdeas(false);}} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{overflowY:"auto",flex:1,padding:"0 22px 18px"}}>
+              <PanelIdeas
+                ideas={ideas}
+                usuario={cu.nombre}
+                onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+                onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
+                onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

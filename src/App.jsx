@@ -9248,6 +9248,7 @@ export default function App() {
   var [showUsers,setShowUsers]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
+  var [filtroMes,setFiltroMes]=useState("all");
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState(null); // null | compras | admin
   // Default admin vista
@@ -9335,8 +9336,10 @@ export default function App() {
   var seccion=cu.seccion||"";
 
   var filtered=ordenes.filter(function(o){
-    return (lf?o.local===lf:(filtroLocal==="all"?true:o.local===filtroLocal))&&(filtroStatus==="all"||o.status===filtroStatus);
+    return (lf?o.local===lf:(filtroLocal==="all"?true:o.local===filtroLocal))&&(filtroStatus==="all"||o.status===filtroStatus)&&(filtroMes==="all"||(o.fecha&&o.fecha.slice(0,7)===filtroMes));
   });
+
+  var mesesDisp=[...new Set(ordenes.filter(function(o){return lf?o.local===lf:true;}).map(function(o){return o.fecha?o.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
 
   var stats={
     total:filtered.length,
@@ -9953,6 +9956,10 @@ export default function App() {
                   <option value="enviada">Enviada</option>
                   <option value="confirmada">Confirmada</option>
                   <option value="cancelada">Cancelada</option>
+                </select>
+                <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,width:"auto",padding:"4px 9px",fontSize:11,borderRadius:20}}>
+                  <option value="all">Todos los meses</option>
+                  {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
                 </select>
               </div>
               {loading?(

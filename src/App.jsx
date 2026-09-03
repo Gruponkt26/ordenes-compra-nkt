@@ -5225,15 +5225,16 @@ function PanelCruzados(p){
     if(medio.toLowerCase().includes("crédito")||medio.toLowerCase().includes("credito"))return "Crédito";
     return "Otro";
   }
-  function registrarDeuda(deudas,localGasto,medio,monto){
-    var medioLocal=detectarLocalMedio(medio);
-    if(!medioLocal||medioLocal===localGasto)return;
+  // acreedorLocal ya resuelto por el llamador — respeta pago.local explícito (ej. cargado desde "Gastos Diarios")
+  // antes de caer al detectarLocalMedio por texto, igual que hace PanelResultados.
+  function registrarDeuda(deudas,localGasto,acreedorLocal,medio,cuenta,monto){
+    if(!acreedorLocal||acreedorLocal===localGasto)return;
     var tipo=tipoMedio(medio);
-    var key=localGasto+"_"+medioLocal+"_"+tipo;
-    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:medioLocal,medio:tipo,cuentas:[],total:0};
+    var key=localGasto+"_"+acreedorLocal+"_"+tipo;
+    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:acreedorLocal,medio:tipo,cuentas:[],total:0};
     deudas[key].total+=parseFloat(monto||0);
-    var cuentaLabel=medio.replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
-    if(!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
+    var cuentaLabel=(cuenta||medio||"").replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
+    if(cuentaLabel&&!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
   }
   function calcDeudas(){
     var deudas={};
@@ -5242,11 +5243,12 @@ function PanelCruzados(p){
         // Nuevo sistema con pagos[]
         g.pagos.forEach(function(pago){
           var medio=pago.medio||pago.tipo||pago.forma_pago||"";
-          registrarDeuda(deudas,g.local,medio,pago.monto);
+          var acreedorLocal=pago.local||detectarLocalMedio(medio);
+          registrarDeuda(deudas,g.local,acreedorLocal,medio,pago.cuenta,pago.monto);
         });
       } else {
         // Legacy: forma_pago simple
-        registrarDeuda(deudas,g.local,g.forma_pago,g.monto);
+        registrarDeuda(deudas,g.local,detectarLocalMedio(g.forma_pago),g.forma_pago,null,g.monto);
       }
     });
     return Object.values(deudas).filter(function(d){return d.total>0;});

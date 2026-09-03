@@ -6679,6 +6679,27 @@ function PanelResultados(p){
                   })}
                   <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
                 </tr>
+                {/* Débito pendiente de acreditar */}
+                {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
+                  <tr style={{background:"#14100A"}}>
+                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito pendiente</td>
+                    {localesFiltro.map(function(l){
+                      var pend=datos[l.id].debitoPendiente||0;
+                      return <td key={l.id} style={{textAlign:"right",padding:"8px",color:pend>0?"#D4A017":"#333",fontWeight:700,fontSize:11}}>{pend>0?fmt(pend):"—"}</td>;
+                    })}
+                    <td style={{textAlign:"right",padding:"8px",color:"#D4A017",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].debitoPendiente||0);},0))}</td>
+                  </tr>
+                )}
+                {/* Total disponible HOY (real, sin débito en tránsito) */}
+                <tr style={{background:"#0D0D0D",borderTop:"1px solid #1A1A1A"}}>
+                  <td style={{padding:"8px",color:"#888",fontWeight:700,fontSize:11}}>📅 Disponible HOY (real)</td>
+                  {localesFiltro.map(function(l){
+                    var d=datos[l.id];
+                    var totHoy=(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);
+                    return <td key={l.id} style={{textAlign:"right",padding:"8px",color:totHoy>=0?"#888":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(totHoy)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);},0))}</td>
+                </tr>
               </tbody>
             </table>
           </div>

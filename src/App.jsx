@@ -6072,6 +6072,7 @@ function PanelRetiros(p) {
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
+  var retirosSocios=p.retiros||[]; // retiros cargados desde "💼 Retiros de Socios" (tabla separada de cierre.retiro_socio)
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -6208,6 +6209,10 @@ function PanelResultados(p){
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
     // Incluir retiros de socios en totalGastos
     totalGastos+=retiros;
+    // Retiros cargados desde el módulo "💼 Retiros de Socios" (tabla separada, con su propio medio/local)
+    var retirosModLocal=retirosSocios.filter(function(r){return r.local===lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;});
+    var retirosModMonto=retirosModLocal.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
+    totalGastos+=retirosModMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6234,6 +6239,7 @@ function PanelResultados(p){
     });
     // Agregar retiros al porCat
     if(retiros>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retiros;
+    if(retirosModMonto>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retirosModMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         porCat["Sueldos"]=(porCat["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6299,6 +6305,29 @@ function PanelResultados(p){
       }
     });
 
+    // Retiros de socios (módulo "💼 Retiros de Socios") — mismo tratamiento que los gastos: descontar
+    // del local cuya cuenta realmente pagó el retiro, no necesariamente del local dueño del retiro.
+    retirosModLocal.forEach(function(r){
+      var rm=parseFloat(r.monto||0);
+      var medioStr=(r.tipo_retiro||"").toLowerCase();
+      var pagoLocal=getLocalFromMedio(r.tipo_retiro)||lid;
+      if(pagoLocal!==lid)return;
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
+      detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||""),medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:false});
+    });
+    retirosSocios.filter(function(r){
+      return r.local!==lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;
+    }).forEach(function(r){
+      var rm=parseFloat(r.monto||0);
+      var medioStr=(r.tipo_retiro||"").toLowerCase();
+      var pagoLocal=getLocalFromMedio(r.tipo_retiro)||r.local;
+      if(pagoLocal!==lid)return;
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
+      detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||"")+" ("+(LOCALES.find(function(x){return x.id===r.local;})||{}).nombre+")",medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:true});
+    });
+
     // Ingresos de cierres por medio
     var ventaEfectivo=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0));},0);
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
@@ -6361,6 +6390,13 @@ function PanelResultados(p){
         procesarPagoDetalle(fp,gm,pagoLocal);
       }
     });
+    // Retiros de socios propios y cruzados, mismo desglose fino
+    retirosModLocal.forEach(function(r){
+      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),getLocalFromMedio(r.tipo_retiro)||lid);
+    });
+    retirosSocios.filter(function(r){return r.local!==lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;}).forEach(function(r){
+      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),getLocalFromMedio(r.tipo_retiro)||r.local);
+    });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio
     var corr=getCorr(lid);
@@ -6414,7 +6450,7 @@ function PanelResultados(p){
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -6660,13 +6696,13 @@ function PanelResultados(p){
                 })}
                 {/* Retiros */}
                 {(function(){
-                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0);},0);
+                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);},0);
                   if(totRet===0)return null;
                   return(
                     <tr style={{borderBottom:"1px solid #0A0A0A"}}>
                       <td style={{padding:"6px 8px",color:"#888",fontSize:10}}>Retiros socios</td>
                       {localesFiltro.map(function(l){
-                        var m=datos[l.id].retiros||0;
+                        var m=(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#2A2A2A",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totRet)}</td>
@@ -6832,9 +6868,10 @@ function PanelResultados(p){
                           <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.ventasPorMedio[mp])}</span>
                         </div>
                       );})}
-                      {(d.retiros>0||d.egresos>0)&&(
+                      {(d.retiros>0||d.retirosModMonto>0||d.egresos>0)&&(
                         <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
-                          {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios</span><span>−{fmt(d.retiros)}</span></div>}
+                          {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (cierre)</span><span>−{fmt(d.retiros)}</span></div>}
+                          {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
                           {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos diarios</span><span>−{fmt(d.egresos)}</span></div>}
                         </div>
                       )}
@@ -9980,7 +10017,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
-              sueldos={sueldos}
+              sueldos={sueldos} retiros={retiros}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

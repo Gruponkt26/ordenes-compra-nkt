@@ -3433,8 +3433,9 @@ var MEDIO_LOCAL_MAP={
   "efectivo - kusama":"l2","galicia empresas":"l2",
   "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
   "patagonia empresas":"l3","mp calzon gitano":"l3","mercado pago calzon gitano":"l3","calzon gitano":"l3",
-  "débito visa patagonia":"l3","debito visa patagonia":"l3",
-  "débito mastercard patagonia":"l3","debito mastercard patagonia":"l3",
+  // Tarjetas de débito personales de Bodegón (ver TODOS_MEDIOS) — no confundir con "Patagonia Empresas" (Colantonio's)
+  "visa provincia":"l1","visa patagonia personas":"l1","mastercard patagonia personas":"l1",
+  "visa patagonia":"l1","mastercard patagonia":"l1",
   "efectivo - oficina":"l4",
 };
 function getLocalFromMedio(medio){

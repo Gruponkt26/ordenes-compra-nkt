@@ -3447,6 +3447,25 @@ function getLocalFromMedio(medio){
   return null;
 }
 
+// ─── ACREDITACIÓN DIFERIDA DE DÉBITO ─────────────────────────────────────────
+// Suma n días hábiles (salta sábados y domingos) a una fecha "YYYY-MM-DD".
+function addBusinessDays(fechaStr,n){
+  if(!fechaStr)return null;
+  var d=new Date(fechaStr+"T00:00:00");
+  if(isNaN(d.getTime()))return null;
+  var restantes=n;
+  while(restantes>0){
+    d.setDate(d.getDate()+1);
+    var dow=d.getDay(); // 0=domingo, 6=sábado
+    if(dow!==0&&dow!==6)restantes--;
+  }
+  return d.toISOString().slice(0,10);
+}
+// Fecha en que se acredita en el banco una venta con débito (2 días hábiles después del cierre).
+function fechaAcreditacionDebito(fechaCierre){
+  return addBusinessDays(fechaCierre,2);
+}
+
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
 
 function GestProveedores(p) {
@@ -6318,11 +6337,31 @@ function PanelResultados(p){
     var dispOtros=ingrOtros-gastoOtros;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
+    // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
+    // Si hay corrección manual de débito, se toma como ya confirmada (no se filtra por fecha).
+    var hoyStr=new Date().toISOString().slice(0,10);
+    var debitoAcreditadoHoy=hasCorrDebito?corrDebito:cl.reduce(function(a,c){
+      var fa=fechaAcreditacionDebito(c.fecha);
+      if(fa&&fa<=hoyStr)return a+parseFloat(c.tarjeta_debito||0);
+      return a;
+    },0);
+    var debitoPendiente=hasCorrDebito?0:Math.max(0,ventaDebito-debitoAcreditadoHoy);
+    var proximaAcreditacionDebito=null;
+    if(debitoPendiente>0){
+      var fechasPend=cl.filter(function(c){
+        var fa=fechaAcreditacionDebito(c.fecha);
+        return fa&&fa>hoyStr&&parseFloat(c.tarjeta_debito||0)>0;
+      }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
+      proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
+    }
+    var dispDebitoHoy=debitoAcreditadoHoy-gastoDebito+(traspaso?traspaso.debito:0);
+    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
+
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -6822,6 +6861,22 @@ function PanelResultados(p){
                     </div>
                   );
                 })()}
+
+                {/* Débito pendiente de acreditar (2 días hábiles) */}
+                {d.debitoPendiente>0&&(
+                  <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Débito pendiente de acreditar</span>
+                      <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.debitoPendiente)}</span>
+                    </div>
+                    <div style={{fontSize:9,color:"#888"}}>
+                      Se acredita en el banco a partir del {d.proximaAcreditacionDebito?new Date(d.proximaAcreditacionDebito+"T00:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"}):"—"}
+                    </div>
+                    <div style={{fontSize:9,color:"#666",marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
+                      💰 Disponible HOY en electrónico (sin el pendiente): <b style={{color:"#F0EDE8"}}>{fmt(d.dispElectronicoHoy)}</b>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Traspaso manual */}

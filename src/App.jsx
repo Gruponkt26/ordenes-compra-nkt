@@ -3432,7 +3432,7 @@ var MEDIO_LOCAL_MAP={
   "provincia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
   "efectivo - kusama":"l2","galicia empresas":"l2",
   "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
-  "patagonia empresas":"l3","mp calzon gitano":"l3",
+  "patagonia empresas":"l3","mp calzon gitano":"l3","mercado pago calzon gitano":"l3","calzon gitano":"l3",
   "débito visa patagonia":"l3","debito visa patagonia":"l3",
   "débito mastercard patagonia":"l3","debito mastercard patagonia":"l3",
   "efectivo - oficina":"l4",

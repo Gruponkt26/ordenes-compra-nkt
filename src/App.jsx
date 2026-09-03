@@ -1279,7 +1279,7 @@ function OrdenCard(p) {
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               <button onClick={function(){setWspCompleto(true);}} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"6px 11px"}}>📲 Enviar por WhatsApp</button>
               {NS[orden.status]&&<button onClick={function(){
-  if(orden.status==="enviada" && esAdmin){
+  if(orden.status==="enviada"){
     setConfirmarModal(true);
   } else {
     onUpdate(orden.id,{status:NS[orden.status]});

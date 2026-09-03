@@ -3449,7 +3449,16 @@ function getLocalFromMedio(medio){
 }
 
 // ─── ACREDITACIÓN DIFERIDA DE DÉBITO ─────────────────────────────────────────
-// Suma n días hábiles (salta sábados y domingos) a una fecha "YYYY-MM-DD".
+// Feriados nacionales + días no laborables con fines turísticos (puentes) de Argentina.
+// Fuente: Ley 27.399 y Resolución 164/2025 (calendario 2026). ⚠️ Revisar y actualizar cada año
+// — los feriados trasladables (12/10, 20/11) y los puentes turísticos se definen por decreto anual.
+var FERIADOS_AR={
+  "2026-01-01":1,"2026-02-16":1,"2026-02-17":1,"2026-03-23":1,"2026-03-24":1,
+  "2026-04-02":1,"2026-04-03":1,"2026-05-01":1,"2026-05-25":1,"2026-06-17":1,
+  "2026-06-20":1,"2026-07-09":1,"2026-07-10":1,"2026-08-17":1,"2026-10-12":1,
+  "2026-11-23":1,"2026-12-07":1,"2026-12-08":1,"2026-12-25":1,
+};
+// Suma n días hábiles (salta sábados, domingos y feriados) a una fecha "YYYY-MM-DD".
 function addBusinessDays(fechaStr,n){
   if(!fechaStr)return null;
   var d=new Date(fechaStr+"T00:00:00");
@@ -3458,7 +3467,8 @@ function addBusinessDays(fechaStr,n){
   while(restantes>0){
     d.setDate(d.getDate()+1);
     var dow=d.getDay(); // 0=domingo, 6=sábado
-    if(dow!==0&&dow!==6)restantes--;
+    var fechaDia=d.toISOString().slice(0,10);
+    if(dow!==0&&dow!==6&&!FERIADOS_AR[fechaDia])restantes--;
   }
   return d.toISOString().slice(0,10);
 }

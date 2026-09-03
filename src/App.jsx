@@ -96,6 +96,28 @@ async function sbDeleteProveedor(id) {
   } catch(e) {}
 }
 
+// Usuarios (login) — requiere una tabla "usuarios" en Supabase con columnas:
+// id (text, PK), nombre, usuario, password, local (nullable), rol, seccion, puedecompras (bool, nullable)
+async function sbLoadUsuarios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/usuarios?order=nombre", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) && d.length > 0 ? d : null;
+  } catch(e) { return null; }
+}
+async function sbSaveUsuario(u) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var r = await fetch(SURL + "/rest/v1/usuarios", { method: "POST", headers: h, body: JSON.stringify(u) });
+    if(!r.ok){var errText=await r.text();console.error("sbSaveUsuario error:",r.status,errText);}
+  } catch(e) { console.error("sbSaveUsuario catch:",e); }
+}
+async function sbDeleteUsuario(id) {
+  try {
+    await fetch(SURL + "/rest/v1/usuarios?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // Productos
 async function sbLoadProductos() {
   try {
@@ -320,7 +342,7 @@ var INIT_PRODUCTOS = {
 var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
-var _oc = 1, _pc = 10, _uc = 10;
+var _oc = 1, _pc = 10, _uc = 100; // _uc arranca en 100 para no chocar con los ids u1-u11 ya usados en INIT_USERS
 var _contadores = { l1: 0, l2: 0, l3: 0, l4: 0 };
 var _prefijos = { l1: "BOD", l2: "KUS", l3: "COL", l4: "OFI" };
 
@@ -1302,15 +1324,31 @@ function OrdenCard(p) {
 // ─── GESTIÓN USUARIOS ─────────────────────────────────────────────────────────
 function GestUsuarios(p) {
   var [lista,setLista]=useState(p.users), [nuevo,setNuevo]=useState({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"}), [showAdd,setShowAdd]=useState(false), [editando,setEditando]=useState(null), [err,setErr]=useState("");
-  function doAdd(){if(!nuevo.nombre.trim()||!nuevo.usuario.trim()||!nuevo.password.trim()){setErr("Completá todos los campos.");return;}if(lista.find(function(u){return u.usuario===nuevo.usuario.trim();})){setErr("Ese usuario ya existe.");return;}setLista(function(l){return[...l,{id:genUser(),...nuevo}];});setNuevo({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"});setShowAdd(false);setErr("");}
-  function doDel(id){var t=lista.find(function(u){return u.id===id;});if(t&&t.rol==="admin"&&lista.filter(function(u){return u.rol==="admin";}).length===1){alert("Debe haber al menos un administrador.");return;}setLista(function(l){return l.filter(function(u){return u.id!==id;});});}
-  function doEdit(){setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});setEditando(null);}
+  function doAdd(){
+    if(!nuevo.nombre.trim()||!nuevo.usuario.trim()||!nuevo.password.trim()){setErr("Completá todos los campos.");return;}
+    if(lista.find(function(u){return u.usuario===nuevo.usuario.trim();})){setErr("Ese usuario ya existe.");return;}
+    var u={id:genUser(),...nuevo};
+    p.onSaveUser(u);
+    setLista(function(l){return[...l,u];});
+    setNuevo({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"});setShowAdd(false);setErr("");
+  }
+  function doDel(id){
+    var t=lista.find(function(u){return u.id===id;});
+    if(t&&t.rol==="admin"&&lista.filter(function(u){return u.rol==="admin";}).length===1){alert("Debe haber al menos un administrador.");return;}
+    p.onDeleteUser(id);
+    setLista(function(l){return l.filter(function(u){return u.id!==id;});});
+  }
+  function doEdit(){
+    p.onSaveUser(editando);
+    setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});
+    setEditando(null);
+  }
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
       <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",overflow:"hidden"}}>
         <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
           <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>👥 Usuarios</h2>
-          <div style={{display:"flex",gap:8}}><button onClick={function(){p.onSave(lista);}} style={{...BS("#3A7D44"),fontSize:12}}>✓ Guardar</button><button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button></div>
+          <div style={{display:"flex",gap:8}}><button onClick={p.onClose} style={{...BS("#3A7D44"),fontSize:12}}>✓ Listo</button><button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button></div>
         </div>
         <div style={{overflowY:"auto",flex:1,padding:"14px 22px"}}>
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:11}}><button onClick={function(){setShowAdd(function(v){return !v;});}} style={{...BS("#C1440E"),padding:"7px 13px",fontSize:12}}>+ Nuevo</button></div>
@@ -9537,6 +9575,10 @@ export default function App() {
   }
 
   useEffect(function(){cargarDatos();},[cu]);
+  // Usuarios se cargan aparte, sin depender del login (hacen falta para poder loguearse).
+  useEffect(function(){
+    sbLoadUsuarios().then(function(d){if(d)setUsers(d);}).catch(function(){});
+  },[]);
 
   function handleRefresh(){
     setRefrescando(true);
@@ -9826,7 +9868,9 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
               </div>
-              <GestUsuarios users={users} onClose={function(){setModulo(null);}} onSave={function(u){setUsers(u);}}/>
+              <GestUsuarios users={users} onClose={function(){setModulo(null);}}
+                onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+                onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
             </div>
           )}
 
@@ -10259,7 +10303,9 @@ export default function App() {
         });
         setPrecios(prs);setShowPrecios(false);
       }}/>}
-      {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}} onSave={function(u){setUsers(u);setShowUsers(false);}}/>}
+      {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
+        onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+        onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
     </div>
   );
 }

@@ -5645,9 +5645,32 @@ function PanelCierre(p) {
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
+  var [mesesColapsados,setMesesColapsados]=useState({});
 
   var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
+
+  var MESES_NOMBRE=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  function labelMes(m){
+    if(!m)return "Sin fecha";
+    var partes=m.split("-");
+    var nombre=MESES_NOMBRE[parseInt(partes[1],10)-1]||m;
+    return nombre+" "+partes[0];
+  }
+  var mapMeses={};
+  cierresLocal.forEach(function(c){
+    var m=c.fecha?c.fecha.substring(0,7):"";
+    if(!mapMeses[m])mapMeses[m]=[];
+    mapMeses[m].push(c);
+  });
+  var mesesHistorial=Object.keys(mapMeses).sort().reverse();
+  function toggleMes(m){
+    setMesesColapsados(function(prev){
+      var next={...prev};
+      next[m]=!(prev.hasOwnProperty(m)?prev[m]:(m!==mesesHistorial[0]));
+      return next;
+    });
+  }
 
   function calcTotal(f){
     var efectivoNeto=(parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
@@ -5812,30 +5835,51 @@ function PanelCierre(p) {
         </div>
       )}
 
-      {/* Historial */}
+      {/* Historial agrupado por mes */}
       {cierresLocal.length>0&&(
         <div>
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Historial de cierres</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {cierresLocal.map(function(c){
-              var esHoy=c.fecha===hoy;
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {mesesHistorial.map(function(m){
+              var cierresMes=mapMeses[m];
+              var totalMes=cierresMes.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+              var colapsado=mesesColapsados.hasOwnProperty(m)?mesesColapsados[m]:(m!==mesesHistorial[0]);
               return(
-                <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
-                    <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
-                    <div style={{fontSize:10,color:"#444",marginTop:2}}>
-                      {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}
-                      {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
-                      {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
-                      {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
-                      {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+                <div key={m}>
+                  <div onClick={function(){toggleMes(m);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:"#161616",borderRadius:8,cursor:"pointer",marginBottom:colapsado?0:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:7}}>
+                      <span style={{fontSize:10,color:"#666",display:"inline-block",transform:colapsado?"none":"rotate(90deg)",transition:"transform 0.15s"}}>▶</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"#F0EDE8",textTransform:"capitalize"}}>{labelMes(m)}</span>
+                      <span style={{fontSize:10,color:"#555"}}>({cierresMes.length} cierre{cierresMes.length!==1?"s":""})</span>
                     </div>
+                    <div style={{fontSize:13,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${totalMes.toLocaleString("es-AR")}</div>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
-                    <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
-                  </div>
+                  {!colapsado&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {cierresMes.map(function(c){
+                        var esHoy=c.fecha===hoy;
+                        return(
+                          <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
+                              <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
+                              <div style={{fontSize:10,color:"#444",marginTop:2}}>
+                                {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}
+                                {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
+                                {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
+                                {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
+                                {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+                              </div>
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                              <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
+                              <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

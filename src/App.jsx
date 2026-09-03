@@ -6316,6 +6316,24 @@ function PanelResultados(p){
       detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||""),medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:false});
     });
 
+    // Sueldos/aguinaldos pagados desde el módulo "Sueldos" que todavía no tienen un gasto asociado
+    // cargado en Egresos (mismo criterio que ya usa totalGastos más arriba). Igual que los retiros,
+    // salen directo de la cuenta del local que se eligió al pagarlos — nunca son cruzados.
+    var sueldosADescontar=[];
+    if(!hasSueldosGastos){
+      sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="";}));
+    }
+    if(!hasAguinaldosGastos){
+      sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!=="";}));
+    }
+    sueldosADescontar.forEach(function(s){
+      var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+      var medioStr=(s.medio_pago||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=sm;else gastoElectronico+=sm;
+      detGastos.push({fecha:s.fecha_pago||"",concepto:"💼 "+(s.concepto_extra?"Aguinaldo":"Sueldo")+" — "+(s.empleado_nombre||""),medio:s.medio_pago||"",monto:sm,tipo:esEf?"efectivo":"electronico",cruzado:false});
+    });
+
     // Ingresos de cierres por medio
     var ventaEfectivo=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0));},0);
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
@@ -6381,6 +6399,11 @@ function PanelResultados(p){
     // Retiros de socios — siempre del local propio (nunca cruzados), mismo desglose fino
     retirosModLocal.forEach(function(r){
       procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),lid);
+    });
+    // Sueldos/aguinaldos pagados desde "Sueldos" sin gasto asociado — mismo desglose fino
+    sueldosADescontar.forEach(function(s){
+      var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+      procesarPagoDetalle((s.medio_pago||"").toLowerCase(),sm,lid);
     });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio

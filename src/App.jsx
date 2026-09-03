@@ -282,7 +282,7 @@ var INIT_USERS = [
   { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
   { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l3", rol: "usuario", seccion: "Cocina" },
   { id: "u9",  nombre: "Cajero Bodegón",      usuario: "cajero_bodegon",     password: "CajeroBod1",  local: "l1", seccion: "Caja", rol: "cajero" },
-  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero" },
+  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero", puedeCompras: true },
   { id: "u11", nombre: "Cajero Colantonio's", usuario: "cajero_colantonios", password: "CajeroCol1",  local: "l3", seccion: "Caja", rol: "cajero" },
 ];
 
@@ -9331,6 +9331,7 @@ export default function App() {
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
+  var puedeCompras=!esCajero||!!cu.puedeCompras;
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -9372,7 +9373,7 @@ export default function App() {
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {(!esSofia||modulo==="compras")&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -9911,7 +9912,7 @@ export default function App() {
           {/* HISTORIAL */}
           {!esAdmin&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-              <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
+              {puedeCompras&&<button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>}
               {MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
                 <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
               )}
@@ -9933,7 +9934,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&modulo==="compras"&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&modulo==="compras"&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

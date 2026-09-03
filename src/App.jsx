@@ -6077,7 +6077,41 @@ function PanelResultados(p){
   var [traspLocal,setTraspLocal]=useState({});
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
+  var [detalleAbierto,setDetalleAbierto]=useState(null); // null | "lid_efectivo" | "lid_electronico"
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
+  function fmtFecha(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});}
+  function DetalleDisp(props){
+    var d=props.d,tipo=props.tipo; // tipo: "efectivo" | "electronico"
+    var ingresos=(d.detIngresos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
+    var gastosDet=(d.detGastos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
+    var traspasoVal=tipo==="efectivo"?(d.traspaso?d.traspaso.efectivo:0):((d.traspaso?d.traspaso.transferencia:0)+(d.traspaso?d.traspaso.debito:0)+(d.traspaso?d.traspaso.credito:0));
+    return(
+      <div style={{background:"#080808",border:"1px solid #1A1A1A",borderRadius:8,padding:"10px 12px",marginTop:6,marginBottom:6}}>
+        <div style={{fontSize:9,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>+ Ingresos ({ingresos.length})</div>
+        {ingresos.length===0?<div style={{fontSize:10,color:"#333",marginBottom:6}}>Sin movimientos</div>:ingresos.map(function(x,i){return(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#666",marginBottom:2}}>
+            <span>{fmtFecha(x.fecha)} · {x.concepto}</span>
+            <span style={{color:"#3A7D44",fontWeight:600}}>+{fmt(x.monto)}</span>
+          </div>
+        );})}
+        <div style={{fontSize:9,color:"#C1440E",fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"8px 0 5px"}}>− Gastos ({gastosDet.length})</div>
+        {gastosDet.length===0?<div style={{fontSize:10,color:"#333",marginBottom:6}}>Sin movimientos</div>:gastosDet.map(function(x,i){return(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#666",marginBottom:2}}>
+            <span>{fmtFecha(x.fecha)} · {x.concepto}{x.medio?" ("+x.medio+")":""}{x.cruzado?" ↔️":""}</span>
+            <span style={{color:"#C1440E",fontWeight:600}}>−{fmt(x.monto)}</span>
+          </div>
+        );})}
+        {traspasoVal!==0&&(
+          <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",fontWeight:700}}>
+              <span>🔄 Traspaso {d.traspaso&&d.traspaso.esManual?"(manual)":"de "+(d.traspaso?d.traspaso.mes:"")}</span>
+              <span>+{fmt(traspasoVal)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function getCorr(lid){
     if(corrLocal[lid])return corrLocal[lid];
@@ -6212,6 +6246,7 @@ function PanelResultados(p){
 
     // Gastos por medio de pago — descontar del local que paga (no del local del gasto)
     var gastoEfectivo=0,gastoElectronico=0;
+    var detGastos=[]; // detalle línea por línea de qué se restó (para el desglose clickeable)
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
@@ -6220,8 +6255,9 @@ function PanelResultados(p){
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||lid;
           // Solo contar si el pago sale de este local
           if(pagoLocal!==lid)return;
-          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
-          else gastoElectronico+=pm;
+          var esEf=medioStr.includes("efectivo");
+          if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
+          detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:false});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
@@ -6229,8 +6265,9 @@ function PanelResultados(p){
         var pagoLocal=getLocalFromMedio(g.forma_pago)||lid;
         // Solo contar si el pago sale de este local
         if(pagoLocal!==lid)return;
-        if(fp.includes("efectivo"))gastoEfectivo+=gm;
-        else gastoElectronico+=gm;
+        var esEf2=fp.includes("efectivo");
+        if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
+        detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:false});
       }
     });
 
@@ -6244,16 +6281,18 @@ function PanelResultados(p){
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local;
           if(pagoLocal!==lid)return;
-          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
-          else gastoElectronico+=pm;
+          var esEf=medioStr.includes("efectivo");
+          if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
+          detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
         var pagoLocal=getLocalFromMedio(g.forma_pago)||g.local;
         if(pagoLocal!==lid)return;
-        if(fp.includes("efectivo"))gastoEfectivo+=gm;
-        else gastoElectronico+=gm;
+        var esEf2=fp.includes("efectivo");
+        if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
+        detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:true});
       }
     });
 
@@ -6266,6 +6305,17 @@ function PanelResultados(p){
     var ventaDebito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
     var ventaCredito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
     var ventaOtros=cl.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
+
+    // Detalle línea por línea de ingresos (para el desglose clickeable)
+    var detIngresos=[];
+    cl.forEach(function(c){
+      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0);
+      if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
+      [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"]].forEach(function(f){
+        var v=parseFloat(c[f[0]]||0);
+        if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
+      });
+    });
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
@@ -6361,7 +6411,7 @@ function PanelResultados(p){
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -6840,9 +6890,9 @@ function PanelResultados(p){
                 
                 {/* Efectivo */}
                 {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo)&&(
-                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){var k=l.id+"_efectivo";setDetalleAbierto(detalleAbierto===k?null:k);}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                      <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo</span>
+                      <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo {detalleAbierto===l.id+"_efectivo"?"▾":"▸"}</span>
                       <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
                     </div>
                     {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
@@ -6850,6 +6900,7 @@ function PanelResultados(p){
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
                   </div>
                 )}
+                {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}
 
                 {/* Electrónico — suma de todos los medios electrónicos */}
                 {(function(){
@@ -6858,10 +6909,12 @@ function PanelResultados(p){
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
                   var dispElec=ingElec-gasElec+traspElec;
                   if(ingElec===0&&gasElec===0&&traspElec===0)return null;
+                  var kElec=l.id+"_electronico";
                   return(
-                    <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                    <div>
+                    <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){setDetalleAbierto(detalleAbierto===kElec?null:kElec);}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico</span>
+                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico {detalleAbierto===kElec?"▾":"▸"}</span>
                         <span style={{fontSize:13,fontWeight:800,color:dispElec>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(dispElec)}</span>
                       </div>
                       {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
@@ -6879,6 +6932,8 @@ function PanelResultados(p){
                           <span style={{color:(x.ing-x.gas+x.tr)>=0?"#3A7D4488":"#C1440E88"}}>{fmt(x.ing-x.gas+x.tr)}</span>
                         </div>
                       );})}
+                    </div>
+                    {detalleAbierto===kElec&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="electronico"/></div>}
                     </div>
                   );
                 })()}

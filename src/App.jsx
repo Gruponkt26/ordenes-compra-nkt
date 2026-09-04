@@ -6333,19 +6333,13 @@ function PanelResultados(p){
       var ot=parseFloat(manual.otros||0);
       return{efectivo:ef,transferencia:tr,debito:db,credito:cr,otros:ot,electronico:tr+db+cr+ot,total:ef+tr+db+cr+ot,mes:"manual",esManual:true};
     }
-    // Sino calcular automáticamente del mes anterior
+    // Sin traspaso manual cargado: no inventamos un arrastre automático (las ventas brutas del
+    // mes anterior no reflejan lo que realmente quedó disponible, porque no restan sus gastos).
+    // Devolvemos todo en cero y marcamos sinCargar para que la UI avise que falta cargarlo a mano.
     var d=new Date(mesFiltro+"-01");
     d.setMonth(d.getMonth()-1);
     var mesPrev=d.toISOString().slice(0,7);
-    var clPrev=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesPrev;});
-    if(clPrev.length===0)return{efectivo:0,transferencia:0,debito:0,credito:0,otros:0,electronico:0,total:0,mes:mesPrev,esManual:false};
-    var efectivo=clPrev.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));},0);
-    var transferencia=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
-    var debito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
-    var credito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
-    var otros=clPrev.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
-    var electronico=transferencia+debito+credito+otros;
-    return{efectivo,transferencia,debito,credito,otros,electronico,total:efectivo+electronico,mes:mesPrev,esManual:false};
+    return{efectivo:0,transferencia:0,debito:0,credito:0,otros:0,electronico:0,total:0,mes:mesPrev,esManual:false,sinCargar:true};
   }
 
   function calcLocal(lid){
@@ -7196,16 +7190,21 @@ function PanelResultados(p){
               {/* Traspaso manual */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🔄 Traspaso inicial{d.traspaso&&d.traspaso.esManual?" (manual)":" (auto)"}</div>
-                  {d.traspaso&&!d.traspaso.esManual&&<div style={{fontSize:9,color:"#555"}}>del {d.traspaso.mes}</div>}
+                  <div style={{fontSize:9,color:d.traspaso&&d.traspaso.sinCargar?"#C1440E":"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🔄 Traspaso inicial{d.traspaso&&d.traspaso.esManual?" (manual)":d.traspaso&&d.traspaso.sinCargar?" — ⚠️ SIN CARGAR":""}</div>
+                  {d.traspaso&&d.traspaso.sinCargar&&<div style={{fontSize:9,color:"#555"}}>de {d.traspaso.mes}</div>}
                 </div>
+                {d.traspaso&&d.traspaso.sinCargar&&(
+                  <div style={{fontSize:10,color:"#C1440E",marginBottom:7,lineHeight:1.4}}>
+                    No hay traspaso cargado para este mes — la disponibilidad de abajo NO incluye ningún arrastre de {d.traspaso.mes}. Cargalo a mano con el saldo real del banco/efectivo de cierre de ese mes.
+                  </div>
+                )}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
                   {MEDIOS_CORR.map(function(mc){
                     var tv=traspLocal[l.id]||(traspasos[l.id+"_"+mesFiltro]||{});
                     return(
                       <div key={mc[0]}>
                         <label style={{display:"block",fontSize:9,color:"#555",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder={d.traspaso&&!d.traspaso.esManual?String(Math.round(d.traspaso[mc[0]]||0)):"0"} value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" placeholder="0" value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );
                   })}

@@ -7204,12 +7204,12 @@ function PanelResultados(p){
                     return(
                       <div key={mc[0]}>
                         <label style={{display:"block",fontSize:9,color:"#555",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder="0" value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" placeholder="0" value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );
                   })}
                 </div>
-                <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
                 <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
               </div>
 

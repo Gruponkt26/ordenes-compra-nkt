@@ -3158,7 +3158,34 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [showModal,setShowModal]=useState(false);
   var [modalPl,setModalPl]=useState(null);
   var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",medio_pago:"",notas:"",fecha_pago:hoy});
+  var [showAdelantos,setShowAdelantos]=useState(false);
+  var [showAdelantoForm,setShowAdelantoForm]=useState(false);
+  var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",medio_pago:"",fecha:hoy,notas:""});
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var fmtFechaCorta=function(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});};
+  var adelantos=(p&&p.adelantos)||[];
+  function adelantosDe(empleadoId){return adelantos.filter(function(a){return a.empleado_id===empleadoId&&!a.aplicado;});}
+  function doGuardarAdelanto(){
+    if(!adelantoForm.empleado_id||!adelantoForm.monto||!adelantoForm.medio_pago)return;
+    var emp=(empleados||[]).find(function(e){return e.id===adelantoForm.empleado_id;});
+    var a={
+      id:"adel_"+String(Date.now()),
+      empleado_id:adelantoForm.empleado_id,
+      empleado_nombre:emp?emp.nombre:"",
+      local:emp?emp.local:null,
+      monto:parseFloat(adelantoForm.monto)||0,
+      medio_pago:adelantoForm.medio_pago,
+      fecha:adelantoForm.fecha,
+      notas:adelantoForm.notas||"",
+      usuario:usuario||"",
+      aplicado:false,
+      sueldo_id:null,
+      created_at:new Date().toISOString()
+    };
+    if(p&&p.onSaveAdelanto)p.onSaveAdelanto(a);
+    setAdelantoForm({empleado_id:"",monto:"",medio_pago:"",fecha:hoy,notas:""});
+    setShowAdelantoForm(false);
+  }
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var ESTADOS_S=[["pagado","✅ Pagado","#3A7D44"],["parcial","🔸 Pago parcial","#E07B00"]];
   var MEDIOS=[
@@ -3244,13 +3271,21 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     };
     if(onSaveSueldo)onSaveSueldo(s);
     else console.error("onSaveSueldo es undefined!");
-    // Egreso automático
+    // Adelantos pendientes de este empleado: se descuentan del monto a pagar ahora y se marcan aplicados
+    var adelPend=adelantosDe(modalPl.empleado_id);
+    var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    // Egreso automático — solo por el neto (lo que realmente sale de la cuenta ahora)
     if(onSaveEgresoSueldo){
-      var montoEgreso=modalForm.estado==="parcial"?montoParcial:montoFinal;
+      var montoEgresoBase=modalForm.estado==="parcial"?montoParcial:montoFinal;
+      var montoEgreso=Math.max(0,montoEgresoBase-totalAdel);
       if(montoEgreso>0){
-        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
+        var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
         onSaveEgresoSueldo(eg);
       }
+    }
+    if(totalAdel>0&&p&&p.onSaveAdelanto){
+      adelPend.forEach(function(a){p.onSaveAdelanto({...a,aplicado:true,sueldo_id:s.id});});
     }
     setShowModal(false);
   }
@@ -3266,6 +3301,71 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         {LOCALES.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>
         );})}
+      </div>
+
+      {/* Adelantos de sueldo */}
+      <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={function(){setShowAdelantos(function(v){return !v;});}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>⏳ Adelantos pendientes {showAdelantos?"▾":"▸"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:11,color:"#888"}}>{fmt(adelantos.filter(function(a){return !a.aplicado;}).reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
+            <button onClick={function(e){e.stopPropagation();setShowAdelantoForm(true);setShowAdelantos(true);}} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+          </div>
+        </div>
+        {showAdelantos&&(
+          <div style={{marginTop:10}}>
+            {showAdelantoForm&&(
+              <div style={{background:"#0A0A0A",border:"1px solid #222",borderRadius:10,padding:12,marginBottom:10}}>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Empleado</label>
+                  <select value={adelantoForm.empleado_id} onChange={function(e){setAdelantoForm(function(f){return{...f,empleado_id:e.target.value};});}} style={INP}>
+                    <option value="">-- Seleccioná --</option>
+                    {(empleados||[]).filter(function(e){return e.activo;}).map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
+                  </select>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto $</label>
+                  <input type="number" placeholder="0" value={adelantoForm.monto} onChange={function(e){setAdelantoForm(function(f){return{...f,monto:e.target.value};});}} style={INP}/>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
+                  <select value={adelantoForm.medio_pago} onChange={function(e){setAdelantoForm(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
+                    <option value="">-- Seleccioná --</option>
+                    {["Efectivo","Transferencia","Otros"].map(function(g){return(
+                      <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                    );})}
+                  </select>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha</label>
+                  <input type="date" value={adelantoForm.fecha} onChange={function(e){setAdelantoForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
+                  <input value={adelantoForm.notas} onChange={function(e){setAdelantoForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={doGuardarAdelanto} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar adelanto</button>
+                  <button onClick={function(){setShowAdelantoForm(false);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            {adelantos.filter(function(a){return !a.aplicado;}).length===0?(
+              <div style={{fontSize:11,color:"#444",textAlign:"center",padding:"8px 0"}}>Sin adelantos pendientes</div>
+            ):adelantos.filter(function(a){return !a.aplicado;}).map(function(a){return(
+              <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:"1px solid #1A1A1A"}}>
+                <div>
+                  <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{a.empleado_nombre}</div>
+                  <div style={{fontSize:9,color:"#555"}}>{fmtFechaCorta(a.fecha)} · {a.medio_pago}{a.notas?" · "+a.notas:""}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(a.monto)}</span>
+                  <button onClick={function(){if(window.confirm("¿Eliminar este adelanto?")&&p&&p.onDeleteAdelanto)p.onDeleteAdelanto(a.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                </div>
+              </div>
+            );})}
+          </div>
+        )}
       </div>
 
       {/* Resumen */}
@@ -3325,7 +3425,29 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
-            <div style={{fontSize:11,color:"#555",marginBottom:14}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            {(function(){
+              var adelPend=adelantosDe(modalPl.empleado_id);
+              var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+              if(totalAdel<=0)return null;
+              var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
+              var neto=Math.max(0,base-totalAdel);
+              return(
+                <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"8px 10px",marginBottom:12}}>
+                  <div style={{fontSize:9,color:"#D4A017",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>⏳ Adelantos a descontar</div>
+                  {adelPend.map(function(a){return(
+                    <div key={a.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#888"}}>
+                      <span>{fmtFechaCorta(a.fecha)} · {a.medio_pago}</span>
+                      <span style={{color:"#D4A017"}}>−{fmt(a.monto)}</span>
+                    </div>
+                  );})}
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
+                    <span style={{color:"#F0EDE8"}}>Neto a pagar ahora</span>
+                    <span style={{color:"#3A7D44"}}>{fmt(neto)}</span>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {ESTADOS_S.map(function(e){return(
                 <button key={e[0]} onClick={function(){setModalForm(function(f){return{...f,estado:e[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(modalForm.estado===e[0]?e[2]:"#2A2A2A"),background:modalForm.estado===e[0]?e[2]+"22":"#0F0F0F",color:modalForm.estado===e[0]?e[2]:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{e[1]}</button>
@@ -6121,6 +6243,7 @@ function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
   var retirosSocios=p.retiros||[]; // retiros cargados desde "💼 Retiros de Socios" (tabla separada de cierre.retiro_socio)
+  var adelantosSueldo=p.adelantos||[]; // adelantos de sueldo (tabla separada) — cuentan como gasto en el mes que se dan, se hayan aplicado o no a una liquidación
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -6261,6 +6384,10 @@ function PanelResultados(p){
     var retirosModLocal=retirosSocios.filter(function(r){return r.local===lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;});
     var retirosModMonto=retirosModLocal.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
     totalGastos+=retirosModMonto;
+    // Adelantos de sueldo del mes (ver detalle más abajo, en Disponibilidad)
+    var adelantosMesLocal=adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;});
+    var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    totalGastos+=adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6288,6 +6415,7 @@ function PanelResultados(p){
     // Agregar retiros al porCat
     if(retiros>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retiros;
     if(retirosModMonto>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retirosModMonto;
+    if(adelantosMonto>0)porCat["Sueldos"]=(porCat["Sueldos"]||0)+adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         porCat["Sueldos"]=(porCat["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6382,6 +6510,16 @@ function PanelResultados(p){
       detGastos.push({fecha:s.fecha_pago||"",concepto:"💼 "+(s.concepto_extra?"Aguinaldo":"Sueldo")+" — "+(s.empleado_nombre||""),medio:s.medio_pago||"",monto:sm,tipo:esEf?"efectivo":"electronico",cruzado:false});
     });
 
+    // Adelantos de sueldo — cuentan como gasto del mes en que se dieron (estén ya aplicados a una
+    // liquidación o no), directo del local que eligió quien los cargó. Nunca son cruzados.
+    adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;}).forEach(function(a){
+      var am=parseFloat(a.monto||0);
+      var medioStr=(a.medio_pago||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=am;else gastoElectronico+=am;
+      detGastos.push({fecha:a.fecha,concepto:"⏳ Adelanto sueldo — "+(a.empleado_nombre||""),medio:a.medio_pago||"",monto:am,tipo:esEf?"efectivo":"electronico",cruzado:false});
+    });
+
     // Ingresos de cierres por medio
     var ventaEfectivo=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0));},0);
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
@@ -6452,6 +6590,10 @@ function PanelResultados(p){
     sueldosADescontar.forEach(function(s){
       var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
       procesarPagoDetalle((s.medio_pago||"").toLowerCase(),sm,lid);
+    });
+    // Adelantos de sueldo — mismo desglose fino
+    adelantosMesLocal.forEach(function(a){
+      procesarPagoDetalle((a.medio_pago||"").toLowerCase(),parseFloat(a.monto||0),lid);
     });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio
@@ -9006,6 +9148,31 @@ async function sbDeleteRetiro(id) {
   } catch(e) {}
 }
 
+// ─── ADELANTOS DE SUELDO SUPABASE ─────────────────────────────────────────────
+// Requiere una tabla "adelantos" en Supabase con columnas:
+// id (text, PK), empleado_id, empleado_nombre, local, monto (numeric), medio_pago,
+// fecha, notas, usuario, aplicado (bool), sueldo_id (nullable), created_at
+async function sbLoadAdelantos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/adelantos?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveAdelanto(adelanto) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/adelantos", { method: "POST", headers: h, body: JSON.stringify(adelanto) });
+  } catch(e) {}
+}
+
+async function sbDeleteAdelanto(id) {
+  try {
+    await fetch(SURL + "/rest/v1/adelantos?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── CATEGORIAS GASTOS SUPABASE ───────────────────────────────────────────────
 async function sbLoadCategoriasGastos() {
   try {
@@ -9513,6 +9680,7 @@ export default function App() {
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
+  var [adelantos,setAdelantos]=useState([]);
   var [cierres,setCierres]=useState([]);
   var [categoriasGastos,setCategoriasGastos]=useState([]);
   var [showEditorCats,setShowEditorCats]=useState(false);
@@ -9542,6 +9710,7 @@ export default function App() {
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
     sbLoadRetiros().then(function(d){setRetiros(d);}).catch(function(){});
+    sbLoadAdelantos().then(function(d){setAdelantos(d);}).catch(function(){});
     sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
@@ -10057,6 +10226,9 @@ export default function App() {
               onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
               planillaSueldos={planillaSueldos}
               onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              adelantos={adelantos}
+              onSaveAdelanto={function(a){sbSaveAdelanto(a);setAdelantos(function(prev){var f=prev.filter(function(x){return x.id!==a.id;});return[a,...f];});}}
+              onDeleteAdelanto={function(id){sbDeleteAdelanto(id);setAdelantos(function(prev){return prev.filter(function(a){return a.id!==id;});});}}
             />
           )}
 
@@ -10081,7 +10253,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
-              sueldos={sueldos} retiros={retiros}
+              sueldos={sueldos} retiros={retiros} adelantos={adelantos}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

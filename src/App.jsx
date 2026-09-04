@@ -7213,29 +7213,17 @@ function PanelResultados(p){
                 <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
               </div>
 
-              {/* Corrección manual por medio de pago */}
-              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
-                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🔧 Corrección manual</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
-                  {MEDIOS_CORR.map(function(mc){
-                    var cv=getCorr(l.id);
-                    return(
-                      <div key={mc[0]}>
-                        <label style={{display:"block",fontSize:9,color:"#444",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder="0" value={(cv[mc[0]])||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
-                      </div>
-                    );
-                  })}
-                </div>
-                <input placeholder="Nota de corrección..." value={(getCorr(l.id).nota)||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
-                <button onClick={function(){saveCorr(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar corrección</button>
-                {d.corrMonto!==0&&(
-                  <div style={{fontSize:10,color:"#D4A017",marginTop:4}}>
+              {/* Corrección manual: la carga se sacó de la UI (no se usaba), pero si algún
+                  local/mes ya tiene una guardada de antes, el cálculo la sigue respetando. */}
+              {d.corrMonto!==0&&(
+                <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🔧 Corrección manual (histórica)</div>
+                  <div style={{fontSize:10,color:"#D4A017"}}>
                     Total ajuste: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}
                     {d.corrNota&&<span style={{color:"#888"}}> · {d.corrNota}</span>}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}

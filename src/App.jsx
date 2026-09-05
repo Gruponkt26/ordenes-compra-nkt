@@ -4444,6 +4444,12 @@ function PanelEgresos(p){
   var [vistaGrid,setVistaGrid]=useState(false);
   var [mesFiltroGrid,setMesFiltroGrid]=useState(new Date().toISOString().slice(0,7));
   var [expandidoGrid,setExpandidoGrid]=useState(null);
+  var [localGrid,setLocalGrid]=useState(LOCALES[0].id);
+  var [gastoDetalle,setGastoDetalle]=useState(null);
+  function medioPagoGasto(g){
+    if(g.pagos&&g.pagos.length>0)return g.pagos.map(function(pg){return(pg.medio||pg.tipo||"—")+(g.pagos.length>1?" ("+fmt(parseFloat(pg.monto||0))+")":"");}).join(" + ");
+    return g.forma_pago||"—";
+  }
   var color=AREA_COLORES[areaActiva]||"#888";
   var mesCurrent=new Date().toISOString().slice(0,7);
   var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
@@ -4471,7 +4477,7 @@ function PanelEgresos(p){
           <button onClick={function(){setVistaGrid(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✕ Cerrar</button>
         </div>
 
-        {/* Totales generales por local */}
+        {/* Pestañas por local — clickear un local lleva a su pantalla única */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
           {LOCALES.map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
@@ -4487,19 +4493,20 @@ function PanelEgresos(p){
             var totAg=hasAG?0:agResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
             var tot=totG+totS+totAg+totR;
+            var activo=localGrid===l.id;
             return(
-              <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+              <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
-                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}} onClick={function(){alert(l.nombre+": totG="+totG+" totS="+totS+" totAg="+totAg+" totR="+totR+" tot="+tot+" hasSG="+hasSG+" slResumen="+slResumen.length);}}>{fmt(tot)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
                 <div style={{fontSize:9,color:"#444",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)} · Retiros {fmt(totR)}</div>
               </div>
             );
           })}
         </div>
 
-        {/* Grid 4 columnas */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"start"}}>
-          {LOCALES.map(function(l){
+        {/* Pantalla única del local seleccionado */}
+        <div style={{maxWidth:640,margin:"0 auto"}}>
+          {LOCALES.filter(function(l){return l.id===localGrid;}).map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             // Sueldos del mes anterior (julio aparece en agosto)
@@ -4551,13 +4558,7 @@ function PanelEgresos(p){
                   var abierto=expandidoGrid===gkey;
                   var totArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
                   var color=AREA_COLORES[area]||"#1A6B8A";
-                  // Agrupar por concepto (sumar repetidos)
-                  var porConcepto={};
-                  items.forEach(function(g){
-                    var k=g.concepto+(g.subramo?"|"+g.subramo:"");
-                    if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0};
-                    porConcepto[k].total+=parseFloat(g.monto||0);
-                  });
+                  var itemsOrd=items.slice().sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
                   return(
                     <div key={area} style={{marginBottom:5}}>
                       <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
@@ -4570,12 +4571,25 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){return(
-                            <div key={c.concepto+(c.subramo||"")} style={{display:"flex",justifyContent:"space-between",padding:"3px 4px",fontSize:10,borderBottom:"1px solid #0F0F0F"}}>
-                              <span style={{color:"#888"}}>{c.concepto}{c.subramo?" · "+c.subramo:""}</span>
-                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(c.total)}</span>
-                            </div>
-                          );})}
+                          {itemsOrd.map(function(g){
+                            var gAbierto=gastoDetalle===g.id;
+                            return(
+                              <div key={g.id} style={{borderBottom:"1px solid #0F0F0F"}}>
+                                <div onClick={function(){setGastoDetalle(function(prev){return prev===g.id?null:g.id;});}} style={{display:"flex",justifyContent:"space-between",padding:"4px 4px",fontSize:10,cursor:"pointer"}}>
+                                  <span style={{color:"#888"}}>{g.concepto}{g.subramo?" · "+g.subramo:""}</span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                                </div>
+                                {gAbierto&&(
+                                  <div style={{background:"#0A0A0A",borderRadius:6,padding:"8px 10px",margin:"2px 0 6px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:10}}>
+                                    <div><span style={{color:"#555"}}>📅 Fecha: </span><span style={{color:"#F0EDE8"}}>{g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR"):"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{g.created_at?fmtDateTime(g.created_at).split(" ")[1]:"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(g.monto)}</span></div>
+                                    <div><span style={{color:"#555"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{medioPagoGasto(g)}</span></div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

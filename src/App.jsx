@@ -6620,9 +6620,10 @@ function PanelResultados(p){
 
     // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
     // Si hay corrección manual de débito, se toma como ya confirmada (no se filtra por fecha).
-    // Excepción: Kusama (l2) cobra por Banco Galicia, que acredita débito y crédito en el momento.
+    // Excepción: Kusama (l2, Banco Galicia) y Colantonio's (l3, Banco Patagonia Empresas)
+    // acreditan débito y crédito en el momento, no a los 2 días hábiles.
     var hoyStr=new Date().toISOString().slice(0,10);
-    var acreditaAlInstante=lid==="l2";
+    var acreditaAlInstante=lid==="l2"||lid==="l3";
     var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
       var fa=fechaAcreditacionDebito(c.fecha);
       if(fa&&fa<=hoyStr)return a+parseFloat(c.tarjeta_debito||0);

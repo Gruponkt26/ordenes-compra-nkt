@@ -5351,10 +5351,16 @@ var MEDIOS_POR_LOCAL={
 function esMedioCorrecto(gasto){
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];
   if(!localMedios)return true; // l4 no se controla
-  var fp=(gasto.forma_pago||"").trim();
-  // Efectivo sin subforma siempre OK
-  if(fp==="Efectivo")return true;
-  return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
+  function medioOk(medio){
+    var fp=(medio||"").trim();
+    // Efectivo sin subforma siempre OK
+    if(fp==="Efectivo")return true;
+    return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
+  }
+  // Un gasto puede pagarse con varios medios (split); si cualquiera pertenece
+  // a otro local, el gasto es cruzado.
+  var medios=gasto.pagos&&gasto.pagos.length>0?gasto.pagos.map(function(p){return p.medio||p.tipo||p.forma_pago;}):[gasto.forma_pago];
+  return medios.every(medioOk);
 }
 
 function PanelCruzados(p){
@@ -5562,8 +5568,14 @@ function PanelCruzados(p){
               <div key={lid} style={{background:"#111",border:"1px solid "+(l?l.color+"33":"#1A1A1A"),borderRadius:12,padding:"12px 14px",marginBottom:10}}>
                 <div style={{fontSize:13,fontWeight:700,color:l?l.color:"#F0EDE8",marginBottom:8}}>{l?l.emoji:""} {l?l.nombre:lid} <span style={{fontSize:11,fontWeight:400,color:"#555"}}>· {lista.length} gasto{lista.length!==1?"s":""}</span></div>
                 {lista.map(function(g){
+                  var medios=g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return p.medio||p.tipo||p.forma_pago;}):[g.forma_pago];
+                  // Buscar, entre todos los medios usados, el que no corresponde a este local (puede ser un pago dividido)
+                  var medioCruzado=medios.find(function(fp){
+                    var lid2=Object.keys(MEDIOS_POR_LOCAL).find(function(k){return MEDIOS_POR_LOCAL[k].some(function(m){return (fp||"").startsWith(m)&&m!=="Efectivo";});});
+                    return lid2&&lid2!==lid;
+                  })||g.forma_pago;
                   var localCorrecto=Object.keys(MEDIOS_POR_LOCAL).find(function(lid2){
-                    return MEDIOS_POR_LOCAL[lid2].some(function(m){return (g.forma_pago||"").startsWith(m)&&m!=="Efectivo";});
+                    return MEDIOS_POR_LOCAL[lid2].some(function(m){return (medioCruzado||"").startsWith(m)&&m!=="Efectivo";});
                   });
                   var lc=localCorrecto?getLocal(localCorrecto):null;
                   return(
@@ -5571,8 +5583,8 @@ function PanelCruzados(p){
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,color:"#F0EDE8",fontWeight:600}}>{g.concepto}</div>
-                          <div style={{fontSize:10,color:"#E07B00",marginTop:2}}>💳 {g.forma_pago}</div>
-                          {lc&&<div style={{fontSize:10,color:"#555",marginTop:2}}>→ Este medio corresponde a <span style={{color:lc.color}}>{lc.emoji} {lc.nombre}</span></div>}
+                          <div style={{fontSize:10,color:"#E07B00",marginTop:2}}>💳 {medios.length>1?medios.join(" + "):g.forma_pago}</div>
+                          {lc&&<div style={{fontSize:10,color:"#555",marginTop:2}}>→ {medioCruzado} corresponde a <span style={{color:lc.color}}>{lc.emoji} {lc.nombre}</span></div>}
                           <div style={{fontSize:10,color:"#444",marginTop:2}}>{fmtDate(g.fecha)} · {g.categoria}</div>
                         </div>
                         <div style={{fontSize:13,fontWeight:700,color:"#E07B00",fontFamily:"'Playfair Display',serif",marginLeft:10}}>${parseFloat(g.monto||0).toLocaleString("es-AR")}</div>

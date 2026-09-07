@@ -10134,8 +10134,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* MÓDULOS PRINCIPALES — solo Compras y Administración */}
-        {esSofia&&modulo&&(
+        {/* MÓDULOS PRINCIPALES — ocultos dentro de Compras, que es pantalla propia */}
+        {esSofia&&modulo&&modulo!=="compras"&&(
           <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
             <button onClick={function(){setModulo(null);}}
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
@@ -10182,6 +10182,15 @@ export default function App() {
                   </button>
                 );})}
               </div>
+            </div>
+          )}
+
+          {/* Volver a los módulos — encabeza la pantalla de Compras */}
+          {esSofia&&modulo==="compras"&&(
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+              <button onClick={function(){setModulo(null);}}
+                style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Módulos</button>
+              <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>🛒 Compras</span>
             </div>
           )}
 

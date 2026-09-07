@@ -10125,8 +10125,8 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
-            <button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>
-            {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
+            {!esSofia&&<button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>}
+            {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {enCompras&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
@@ -10187,12 +10187,11 @@ export default function App() {
 
           {/* STATS — solo en el grupo Compras */}
           {enCompras&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
-            {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
-              <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
-                <div style={{fontSize:15,marginBottom:4}}>{s.icon}</div>
-                <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:s.color||"#F0EDE8"}}>{s.value}</div>
-                <div style={{fontSize:10,color:"#333",textTransform:"uppercase",letterSpacing:1,marginTop:2}}>{s.label}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+            {[{label:"Órdenes",value:stats.total},{label:"Pendientes",value:stats.pendientes,color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,color:"#1A6B8A"},{label:"Monto",value:"$"+(Math.round(stats.monto)||0).toLocaleString("es-AR"),color:"#3A7D44"}].map(function(s){return(
+              <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:10,padding:"7px 11px",display:"flex",alignItems:"baseline",gap:7,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:s.color||"#F0EDE8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.value}</div>
+                <div style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,whiteSpace:"nowrap"}}>{s.label}</div>
               </div>
             );})}
           </div>
@@ -10202,21 +10201,21 @@ export default function App() {
           {esAdmin&&enCompras&&(function(){
             var enStock=vista==="stock"||vista==="stockmp";
             return(
-            <div>
+            <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
               {/* Grupos: Compras / Stock */}
-              <div style={{display:"flex",gap:5,marginBottom:10,background:"#0D0D0D",padding:"8px",borderRadius:10}}>
+              <div style={{display:"flex",gap:5,marginBottom:8}}>
                 <button onClick={function(){if(enStock)setVista("despacho");}}
-                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:!enStock?"#C1440E22":"transparent",color:!enStock?"#C1440E":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(!enStock?"#C1440E55":"#181818"),background:!enStock?"#C1440E22":"#111",color:!enStock?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
                   🛒 Compras {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
                 <button onClick={function(){if(!enStock){setVista("stock");asegurarLocalStock();}}}
-                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:enStock?"#8B2FC922":"transparent",color:enStock?"#8B2FC9":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(enStock?"#8B2FC955":"#181818"),background:enStock?"#8B2FC922":"#111",color:enStock?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
                   📦 Stock
                 </button>
               </div>
 
               {/* Sub-tabs del grupo activo */}
-              <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {!enStock&&<button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>}
                 {!enStock&&<button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>}
                 {!enStock&&(
@@ -10241,7 +10240,7 @@ export default function App() {
                 )}
               </div>
               {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
-                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
                   {[["proveedores","🏭 Proveedores","#D4A017"],["precios","💲 Precios","#3A7D44"]].map(function(t){return(
                     <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                   );})}

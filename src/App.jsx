@@ -9863,6 +9863,7 @@ export default function App() {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                 <button onClick={function(){setSubModuloCompras(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800}}>📦 Stock</div>
+                <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontSize:11,cursor:"pointer"}}>✏️ Editar menú</button>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:10}}>
                 <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>

@@ -1786,7 +1786,6 @@ function GestProveedoresPanel(p) {
                     </div>
                   )}
                   </div>
-                  )} {/* fin sub-tab saldo */}
 
                   {/* Modal nuevo movimiento */}
                   {showFormMov&&(
@@ -9766,6 +9765,8 @@ export default function App() {
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
   var puedeCompras=!esCajero||!!cu.puedeCompras;
+  // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
+  var enCompras=!esSofia||modulo==="compras";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -9808,7 +9809,7 @@ export default function App() {
             <button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            {(!esSofia||modulo==="compras")&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {enCompras&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -9866,7 +9867,7 @@ export default function App() {
           )}
 
           {/* STATS — solo en módulo compras */}
-          {(!esSofia||modulo==="compras")&&puedeCompras&&(
+          {enCompras&&puedeCompras&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
             {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
               <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
@@ -9879,7 +9880,7 @@ export default function App() {
           )}
 
           {/* TABS MÓDULO COMPRAS */}
-          {esAdmin&&(!esSofia||modulo==="compras")&&(
+          {esAdmin&&enCompras&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
                 <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
@@ -9965,7 +9966,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
+          {esAdmin&&enCompras&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -10178,7 +10179,7 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {modulo==="compras"&&vista==="configcompras"&&(
+          {enCompras&&vista==="configcompras"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
@@ -10188,7 +10189,7 @@ export default function App() {
           )}
 
           {/* PRECIOS */}
-          {modulo==="compras"&&vista==="precios"&&(
+          {enCompras&&vista==="precios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
@@ -10198,7 +10199,7 @@ export default function App() {
           )}
 
           {/* PROVEEDORES */}
-          {modulo==="compras"&&vista==="proveedores"&&(
+          {enCompras&&vista==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
@@ -10278,11 +10279,11 @@ export default function App() {
             />
           )}
 
-          {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(
+          {((esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics"))&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="stockmp"&&(
+          {esAdmin&&enCompras&&vista==="stockmp"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
@@ -10296,7 +10297,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="stock"&&(
+          {esAdmin&&enCompras&&vista==="stock"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
@@ -10315,7 +10316,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="faltantes"&&(
+          {esAdmin&&enCompras&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -10374,7 +10375,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&modulo==="compras"&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enCompras&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

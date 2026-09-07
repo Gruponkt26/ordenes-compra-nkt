@@ -8600,6 +8600,14 @@ async function sbLogMovimiento(localId, plato, tipo, cantidad, usuario) {
 
 
 
+async function sbDeleteStockItem(localId, plato) {
+  try {
+    var id = localId + "_" + plato.replace(/[^a-zA-Z0-9]/g,"_");
+    await fetch(SURL + "/rest/v1/stock?id=eq."+id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
+
 // ─── EDITOR MENÚ STOCK ────────────────────────────────────────────────────────
 function EditorMenuStock(p) {
   var onClose=p.onClose, onSave=p.onSave;
@@ -8739,19 +8747,28 @@ var BLINK_STYLE = `@keyframes nkt-blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
 
 function PanelStock(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
-  var menu = MENU_POR_LOCAL[localId] || {};
+  var menuExterno=p.menuExterno, onMenuChange=p.onMenuChange;
+  var [menu,setMenu]=useState(function(){ return JSON.parse(JSON.stringify(MENU_POR_LOCAL[localId]||{})); });
   var categorias = Object.keys(menu);
   var [stock,setStock]=useState({});
   var [loading,setLoading]=useState(true);
   var [catAct,setCatAct]=useState(categorias[0]||"");
-  var [modo,setModo]=useState("ver"); // ver | cargar | descontar
+  var [modo,setModo]=useState("ver"); // ver | cargar | descontar | minimos | informe | editar
   var [cambios,setCambios]=useState({});
   var [descuentos,setDescuentos]=useState({});
   var [saving,setSaving]=useState(false);
   var [minimos,setMinimos]=useState({});
   var [minimoEdit,setMinimoEdit]=useState({});
+  var [nuevoPlato,setNuevoPlato]=useState("");
+  var [catNuevoPlato,setCatNuevoPlato]=useState("");
+  var [nuevaCat,setNuevaCat]=useState("");
 
-  useState(function(){
+  // Carga del stock del local (se vuelve a ejecutar al cambiar de local)
+  useEffect(function(){
+    setMenu(JSON.parse(JSON.stringify(MENU_POR_LOCAL[localId]||{})));
+    setModo("ver");
+    setCambios({});setDescuentos({});setMinimoEdit({});
+    setNuevoPlato("");setNuevaCat("");setCatNuevoPlato("");
     setLoading(true);
     sbLoadStock(localId).then(function(d){
       setStock(d);
@@ -8768,8 +8785,101 @@ function PanelStock(p) {
     }).catch(function(){setLoading(false);});
   },[localId]);
 
+  // Si el menú cambia desde afuera (recarga de datos), lo reflejamos acá
+  useEffect(function(){
+    if(menuExterno) setMenu(JSON.parse(JSON.stringify(menuExterno)));
+  },[menuExterno]);
+
+  // Mantener una categoría válida seleccionada
+  useEffect(function(){
+    var cats=Object.keys(menu);
+    if(cats.length>0&&cats.indexOf(catAct)<0) setCatAct(cats[0]);
+    if(cats.length===0&&catAct) setCatAct("");
+  },[menu]);
+
   function getCantidad(plato){ return stock[plato]?stock[plato].cantidad:0; }
   function getMinimo(plato){ return minimos[plato]||0; }
+
+  // ── Edición del listado de productos ───────────────────────────────────────
+  function todosLosPlatos(){
+    var out=[];
+    Object.keys(menu).forEach(function(c){ (menu[c]||[]).forEach(function(pl){ out.push(pl); }); });
+    return out;
+  }
+
+  function aplicarMenu(nuevoMenu){
+    setMenu(nuevoMenu);
+    MENU_POR_LOCAL[localId]=nuevoMenu;
+    if(onMenuChange) onMenuChange(localId,nuevoMenu);
+  }
+
+  async function agregarPlato(){
+    var nombre=(nuevoPlato||"").trim();
+    var cat=catNuevoPlato||catAct;
+    if(!nombre){ alert("Escribí el nombre del producto."); return; }
+    if(!cat){ alert("Creá o elegí una categoría antes de agregar el producto."); return; }
+    if(todosLosPlatos().some(function(pl){return pl.toLowerCase()===nombre.toLowerCase();})){
+      alert("\""+nombre+"\" ya está en el stock de "+localNombre+".");
+      return;
+    }
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    if(!nuevoMenu[cat]) nuevoMenu[cat]=[];
+    nuevoMenu[cat]=nuevoMenu[cat].concat([nombre]).sort(function(a,b){return a.localeCompare(b,"es");});
+    await sbSaveMenuStock(localId,cat,nuevoMenu[cat]);
+    await sbUpdateStock(localId,nombre,0,0);
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};n[nombre]={cantidad:0,minimo:0,updatedAt:new Date().toISOString()};return n;});
+    setMinimos(function(m){var n={...m};n[nombre]=0;return n;});
+    setNuevoPlato("");
+    setCatAct(cat);
+    setSaving(false);
+  }
+
+  async function eliminarPlato(plato){
+    var cat=Object.keys(menu).filter(function(c){return (menu[c]||[]).indexOf(plato)>=0;})[0];
+    if(!cat) return;
+    if(!window.confirm("¿Sacar \""+plato+"\" del stock de "+localNombre+"?\n\nSe borra el producto y la cantidad cargada."))return;
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    nuevoMenu[cat]=nuevoMenu[cat].filter(function(pl){return pl!==plato;});
+    await sbSaveMenuStock(localId,cat,nuevoMenu[cat]);
+    await sbDeleteStockItem(localId,plato);
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};delete n[plato];return n;});
+    setMinimos(function(m){var n={...m};delete n[plato];return n;});
+    setSaving(false);
+  }
+
+  async function agregarCategoria(){
+    var nombre=(nuevaCat||"").trim();
+    if(!nombre) return;
+    if(menu[nombre]){ alert("La categoría \""+nombre+"\" ya existe."); return; }
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    nuevoMenu[nombre]=[];
+    await sbSaveMenuStock(localId,nombre,[]);
+    aplicarMenu(nuevoMenu);
+    setNuevaCat("");
+    setCatAct(nombre);
+    setCatNuevoPlato(nombre);
+    setSaving(false);
+  }
+
+  async function eliminarCategoria(cat){
+    var platosCat=(menu[cat]||[]).slice();
+    if(!window.confirm("¿Eliminar la categoría \""+cat+"\" y sus "+platosCat.length+" producto(s) del stock de "+localNombre+"?"))return;
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    delete nuevoMenu[cat];
+    await sbDeleteMenuStock(localId,cat);
+    for(var i=0;i<platosCat.length;i++){ await sbDeleteStockItem(localId,platosCat[i]); }
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};platosCat.forEach(function(pl){delete n[pl];});return n;});
+    setMinimos(function(m){var n={...m};platosCat.forEach(function(pl){delete n[pl];});return n;});
+    setCatAct(Object.keys(nuevoMenu)[0]||"");
+    setSaving(false);
+  }
 
   async function guardarMinimos(){
     setSaving(true);
@@ -8867,6 +8977,7 @@ function PanelStock(p) {
         <button onClick={function(){setModo("descontar");setCambios({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
         <button onClick={function(){setModo("minimos");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="minimos"?"#8B2FC9":"#1E1E1E"),background:modo==="minimos"?"#8B2FC922":"#111",color:modo==="minimos"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚡ Mínimos</button>
         <button onClick={function(){setModo("informe");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="informe"?"#1A6B8A":"#1E1E1E"),background:modo==="informe"?"#1A6B8A22":"#111",color:modo==="informe"?"#1A6B8A":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Informe</button>
+        <button onClick={function(){setModo("editar");setCambios({});setDescuentos({});setMinimoEdit({});setCatNuevoPlato(catAct);}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="editar"?"#D4A017":"#1E1E1E"),background:modo==="editar"?"#D4A01722":"#111",color:modo==="editar"?"#D4A017":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Editar productos</button>
       </div>
 
       {/* Categorias */}
@@ -8881,11 +8992,61 @@ function PanelStock(p) {
         })}
       </div>
 
+      {/* Editar productos del stock */}
+      {modo==="editar"&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#D4A017",fontWeight:700,marginBottom:10}}>Agregar producto al stock</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1.3fr auto",gap:7,alignItems:"flex-end"}}>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Producto</label>
+              <input value={nuevoPlato} placeholder="Ej: Empanadas"
+                onChange={function(e){setNuevoPlato(e.target.value);}}
+                onKeyDown={function(e){if(e.key==="Enter")agregarPlato();}}
+                style={INP}/>
+            </div>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Categoría</label>
+              <select value={catNuevoPlato||catAct||""} onChange={function(e){setCatNuevoPlato(e.target.value);}} style={INP}>
+                {categorias.length===0&&<option value="">Sin categorías</option>}
+                {categorias.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+              </select>
+            </div>
+            <button onClick={agregarPlato} disabled={saving} style={{...BS("#D4A017","#000"),padding:"9px 16px",fontSize:12,opacity:saving?0.5:1}}>{saving?"⏳":"+ Agregar"}</button>
+          </div>
+
+          <div style={{height:1,background:"#1A1A1A",margin:"14px 0"}}/>
+
+          <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,marginBottom:10}}>Categorías</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7,alignItems:"flex-end"}}>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Nueva categoría</label>
+              <input value={nuevaCat} placeholder="Ej: Empanadas / Postres..."
+                onChange={function(e){setNuevaCat(e.target.value);}}
+                onKeyDown={function(e){if(e.key==="Enter")agregarCategoria();}}
+                style={INP}/>
+            </div>
+            <button onClick={agregarCategoria} disabled={saving} style={{...BS("#8B2FC9"),padding:"9px 16px",fontSize:12,opacity:saving?0.5:1}}>+ Crear</button>
+          </div>
+          {esAdmin&&catAct&&(
+            <button onClick={function(){eliminarCategoria(catAct);}} disabled={saving}
+              style={{...GH,marginTop:10,padding:"7px 12px",fontSize:11,color:"#C1440E",borderColor:"#C1440E44"}}>
+              🗑️ Eliminar categoría «{catAct}»
+            </button>
+          )}
+          <div style={{fontSize:10,color:"#555",marginTop:12}}>Tocá 🗑 en cualquier producto de la lista para sacarlo del stock.</div>
+        </div>
+      )}
+
       {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
         <div>
           {/* Lista de platos */}
           <style>{BLINK_STYLE}</style>
           <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16}}>
+            {platosActuales.length===0&&(
+              <div style={{textAlign:"center",padding:"26px 14px",border:"1px dashed #222",borderRadius:10,color:"#444",fontSize:12}}>
+                {categorias.length===0?"Todavía no hay categorías. Entrá a ✏️ Editar productos para crear una.":"Sin productos en «"+catAct+"». Agregalos desde ✏️ Editar productos."}
+              </div>
+            )}
             {platosActuales.map(function(plato){
               var cant=getCantidad(plato);
               var min=getMinimo(plato);
@@ -8925,6 +9086,10 @@ function PanelStock(p) {
                       <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:sc.text}}>{cant}</div>
                       <div style={{fontSize:9,color:"#444"}}>unidades</div>
                     </div>
+                    {modo==="editar"&&(
+                      <button onClick={function(){eliminarPlato(plato);}} disabled={saving} title={"Sacar "+plato+" del stock"}
+                        style={{background:"none",border:"1px solid #C1440E44",color:"#C1440E",borderRadius:8,width:32,height:32,cursor:saving?"default":"pointer",fontSize:13,flexShrink:0,opacity:saving?0.5:1}}>🗑</button>
+                    )}
                   </div>
                 </div>
               );
@@ -9093,6 +9258,13 @@ async function sbUpdateStockMP(localId, producto, cantidad, unidad, minimo, prov
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var id = localId + "_" + producto.replace(/[^a-zA-Z0-9]/g,"_").slice(0,50);
     await fetch(SURL + "/rest/v1/stock_materia_prima", { method: "POST", headers: h, body: JSON.stringify({ id: id, local: localId, producto: producto, cantidad: cantidad, unidad: unidad||"unid", minimo: minimo||0, proveedor: proveedor||"", updated_at: new Date().toISOString() }) });
+  } catch(e) {}
+}
+
+async function sbDeleteStockMPItem(localId, producto) {
+  try {
+    var id = localId + "_" + producto.replace(/[^a-zA-Z0-9]/g,"_").slice(0,50);
+    await fetch(SURL + "/rest/v1/stock_materia_prima?id=eq."+id, { method: "DELETE", headers: SH });
   } catch(e) {}
 }
 
@@ -9521,6 +9693,14 @@ function PanelStockMP(p) {
     setShowAddProd(false);
   }
 
+  async function eliminarProductoMP(prod){
+    if(!window.confirm("¿Sacar \""+prod+"\" del stock de "+localNombre+"?"))return;
+    setSaving(true);
+    await sbDeleteStockMPItem(localId,prod);
+    setStock(function(st){var n={...st};delete n[prod];return n;});
+    setSaving(false);
+  }
+
   var totalBajos=Object.keys(stock).filter(function(k){return parseFloat(stock[k].minimo||0)>0&&parseFloat(stock[k].cantidad)<=parseFloat(stock[k].minimo||0);}).length;
   var provsUnicos=["todos",...new Set(todosProductos.map(function(p){return p.proveedor;}))];
 
@@ -9643,6 +9823,57 @@ function PanelStockMP(p) {
             })}
           </div>
 
+          {/* Productos agregados a mano (no figuran en la lista de proveedores) */}
+          {extrasEnStock.length>0&&(
+            <div style={{marginTop:14,background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"9px 12px",borderBottom:"1px solid #1A1A1A",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>✏️ Agregados a mano</div>
+                <div style={{fontSize:10,color:"#555"}}>{extrasEnStock.length} producto{extrasEnStock.length!==1?"s":""}</div>
+              </div>
+              <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                {extrasEnStock.map(function(prod){
+                  var cantE=getCant(prod);
+                  var unidadE=getUnidad(prod)||"unid";
+                  var minE=stock[prod]?parseFloat(stock[prod].minimo||0):0;
+                  var stE=getStockStatus(cantE,minE);
+                  var scE=STOCK_COLORS[stE.status];
+                  return(
+                    <div key={prod} style={{background:scE.bg,border:"1px solid "+scE.border,borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span style={{fontSize:12,color:scE.text,fontWeight:stE.status!=="ok"?700:400}}>{prod}</span>
+                          {scE.badge&&<span style={{fontSize:9,fontWeight:800,color:scE.text,background:scE.border,padding:"1px 6px",borderRadius:8}}>{scE.badge}</span>}
+                        </div>
+                        {minE>0&&<div style={{fontSize:9,color:"#555",marginTop:1}}>Mínimo: {minE}</div>}
+                      </div>
+                      {modo==="cargar"&&(
+                        <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""}
+                          onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:cargaManual[prod]?cargaManual[prod].unidad:unidadE};return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      {modo==="descontar"&&(
+                        <input type="number" min="0" placeholder="-" value={descuentos[prod]||""}
+                          onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      {modo==="minimos"&&(
+                        <input type="number" min="0" placeholder="0" value={minimoEditMP[prod]!==undefined?minimoEditMP[prod]:minE}
+                          onChange={function(e){setMinimoEditMP(function(m){var n={...m};n[prod]=e.target.value;return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #8B2FC9",background:"#0F0A1A",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      <div style={{width:55,textAlign:"center",flexShrink:0}}>
+                        <div style={{fontSize:15,fontWeight:800,color:scE.text}}>{cantE}</div>
+                        <div style={{fontSize:9,color:"#444"}}>{unidadE}</div>
+                      </div>
+                      <button onClick={function(){eliminarProductoMP(prod);}} disabled={saving} title={"Sacar "+prod+" del stock"}
+                        style={{background:"none",border:"1px solid #C1440E44",color:"#C1440E",borderRadius:8,width:30,height:30,cursor:saving?"default":"pointer",fontSize:12,flexShrink:0,opacity:saving?0.5:1}}>🗑</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Botones guardar */}
           {modo==="cargar"&&Object.keys(cargaManual).filter(function(k){return cargaManual[k]&&parseFloat(cargaManual[k].cantidad)>0;}).length>0&&(
             <button onClick={guardarCargaManual} disabled={saving} style={{...BS("#3A7D44"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar carga de mercadería"}</button>
@@ -9706,6 +9937,10 @@ export default function App() {
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
   var [refrescando,setRefrescando]=useState(false);
+
+  function actualizarMenuStock(localId,nuevoMenu){
+    setMenuStock(function(prev){ var n={...prev}; n[localId]=nuevoMenu; return n; });
+  }
 
   function cargarDatos(){
     if(!cu)return;
@@ -10300,17 +10535,18 @@ export default function App() {
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
-                  var hasMenu=Object.keys(MENU_POR_LOCAL[l.id]||{}).length>0;
+                  var hasMenu=Object.keys((menuStock[l.id]||MENU_POR_LOCAL[l.id]||{})).length>0;
                   return(
-                    <button key={l.id} onClick={function(){if(hasMenu)setVistaUsuario(l.id);}}
-                      style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:hasMenu?"#666":"#333",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:hasMenu?"pointer":"not-allowed",opacity:hasMenu?1:0.5}}>
-                      {l.emoji} {l.nombre} {!hasMenu&&<span style={{fontSize:9}}>(próximamente)</span>}
+                    <button key={l.id} onClick={function(){setVistaUsuario(l.id);}}
+                      style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:hasMenu?"#666":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      {l.emoji} {l.nombre} {!hasMenu&&<span style={{fontSize:9}}>(sin productos)</span>}
                     </button>
                   );
                 })}
               </div>
-              {vistaUsuario&&MENU_POR_LOCAL[vistaUsuario]&&Object.keys(MENU_POR_LOCAL[vistaUsuario]).length>0&&(
-                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}/>
+              {LOCALES.some(function(l){return l.id===vistaUsuario;})&&(
+                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}
+                  menuExterno={menuStock[vistaUsuario]} onMenuChange={actualizarMenuStock}/>
               )}
             </div>
           )}
@@ -10353,15 +10589,16 @@ export default function App() {
           {!esAdmin&&puedeCompras&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
-              {MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
+              {(menuStock[lf]||MENU_POR_LOCAL[lf])&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
                 <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
               )}
               <button onClick={function(){setVistaUsuario("stockmp");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vistaUsuario==="stockmp"?"#1A6B8A22":"#111",color:vistaUsuario==="stockmp"?"#1A6B8A":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🥩 Materia Prima</button>
             </div>
           )}
 
-          {!esAdmin&&vistaUsuario==="stock"&&MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
-            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}/>
+          {!esAdmin&&vistaUsuario==="stock"&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
+            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}
+              menuExterno={menuStock[lf]} onMenuChange={actualizarMenuStock}/>
           )}
 
           {esCajero&&(

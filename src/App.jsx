@@ -9938,6 +9938,14 @@ export default function App() {
 
   var [refrescando,setRefrescando]=useState(false);
 
+  function asegurarLocalStock(){
+    setVistaUsuario(function(prev){
+      if(LOCALES.some(function(l){return l.id===prev;})) return prev;
+      var conProductos=LOCALES.filter(function(l){return Object.keys(MENU_POR_LOCAL[l.id]||{}).length>0;})[0];
+      return conProductos?conProductos.id:LOCALES[0].id;
+    });
+  }
+
   function actualizarMenuStock(localId,nuevoMenu){
     setMenuStock(function(prev){ var n={...prev}; n[localId]=nuevoMenu; return n; });
   }
@@ -10100,8 +10108,8 @@ export default function App() {
             </div>
           )}
 
-          {/* STATS — solo en módulo compras */}
-          {(!esSofia||modulo==="compras")&&puedeCompras&&(
+          {/* STATS — solo en el grupo Compras */}
+          {(!esSofia||modulo==="compras")&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
             {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
               <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
@@ -10114,23 +10122,46 @@ export default function App() {
           )}
 
           {/* TABS MÓDULO COMPRAS */}
-          {esAdmin&&(!esSofia||modulo==="compras")&&(
+          {esAdmin&&(!esSofia||modulo==="compras")&&(function(){
+            var enStock=vista==="stock"||vista==="stockmp";
+            return(
             <div>
+              {/* Grupos: Compras / Stock */}
+              <div style={{display:"flex",gap:5,marginBottom:10,background:"#0D0D0D",padding:"8px",borderRadius:10}}>
+                <button onClick={function(){if(enStock)setVista("despacho");}}
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:!enStock?"#C1440E22":"transparent",color:!enStock?"#C1440E":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  🛒 Compras {faltantes.length>0?"("+faltantes.length+")":""}
+                </button>
+                <button onClick={function(){if(!enStock){setVista("stock");asegurarLocalStock();}}}
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:enStock?"#8B2FC922":"transparent",color:enStock?"#8B2FC9":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  📦 Stock
+                </button>
+              </div>
+
+              {/* Sub-tabs del grupo activo */}
               <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-                <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
-                <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+                {!enStock&&<button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>}
+                {!enStock&&<button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>}
+                {!enStock&&(
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
-                <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                )}
+                {enStock&&(
+                <button onClick={function(){setVista("stock");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   📦 Stock Platos
                 </button>
-                <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                )}
+                {enStock&&(
+                <button onClick={function(){setVista("stockmp");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   🥩 Materia Prima
                 </button>
+                )}
+                {!enStock&&(
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
+                )}
               </div>
               {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
                 <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
@@ -10141,7 +10172,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* SUB-MÓDULOS DE ADMINISTRACIÓN */}
           {esSofia&&modulo==="admin"&&(function(){

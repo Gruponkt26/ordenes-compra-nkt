@@ -375,6 +375,13 @@ function fmtDateTime(s) {
   var pad = function(n) { return n < 10 ? "0"+n : n; };
   return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
 }
+function fmtHora(s) {
+  if (!s) return "";
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  var pad = function(n) { return n < 10 ? "0"+n : n; };
+  return pad(d.getHours())+":"+pad(d.getMinutes());
+}
 function cleanPhone(s) { return s.replace(/\D/g,""); }
 
 var INP = { padding:"9px 12px", borderRadius:8, border:"1px solid #2A2A2A", background:"#0F0F0F", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:13, boxSizing:"border-box", width:"100%" };
@@ -1786,7 +1793,6 @@ function GestProveedoresPanel(p) {
                     </div>
                   )}
                   </div>
-                  )} {/* fin sub-tab saldo */}
 
                   {/* Modal nuevo movimiento */}
                   {showFormMov&&(
@@ -4676,6 +4682,10 @@ function PanelEgresos(p){
                   var gkey=l.id+"_retiros";
                   var abierto=expandidoGrid===gkey;
                   var totRl=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
+                  var rlOrd=rl.slice().sort(function(a,b){
+                    var d=(b.fecha||"").localeCompare(a.fecha||"");
+                    return d!==0?d:(b.created_at||"").localeCompare(a.created_at||"");
+                  });
                   return(
                     <div style={{marginBottom:6}}>
                       <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
@@ -4688,12 +4698,31 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {rl.map(function(r){return(
-                            <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #111",fontSize:10}}>
-                              <span style={{color:"#888"}}>{r.concepto||r.socio||"Retiro"}</span>
-                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(r.monto)}</span>
-                            </div>
-                          );})}
+                          {rlOrd.map(function(r){
+                            var rkey="retiro_"+r.id;
+                            var rAbierto=gastoDetalle===rkey;
+                            var hora=fmtHora(r.created_at);
+                            return(
+                              <div key={r.id} style={{borderBottom:"1px solid #0F0F0F"}}>
+                                <div onClick={function(){setGastoDetalle(function(prev){return prev===rkey?null:rkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,padding:"4px 4px",fontSize:10,cursor:"pointer"}}>
+                                  <span style={{color:"#888",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.concepto||r.socio||"Retiro"}</span>
+                                  <span style={{color:"#555",flexShrink:0}}>{fmtDate(r.fecha)}{hora?" · "+hora:""}</span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600,flexShrink:0}}>{fmt(r.monto)}</span>
+                                </div>
+                                {rAbierto&&(
+                                  <div style={{background:"#0A0A0A",borderRadius:6,padding:"8px 10px",margin:"2px 0 6px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:10}}>
+                                    <div><span style={{color:"#555"}}>📅 Fecha: </span><span style={{color:"#F0EDE8"}}>{r.fecha?new Date(r.fecha+"T00:00:00").toLocaleDateString("es-AR"):"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{hora||"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(r.monto)}</span></div>
+                                    <div><span style={{color:"#555"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{r.tipo_retiro||"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>👤 Socio: </span><span style={{color:"#F0EDE8"}}>{r.socio||"—"}</span></div>
+                                    {r.usuario&&<div><span style={{color:"#555"}}>✍️ Cargó: </span><span style={{color:"#F0EDE8"}}>{r.usuario}</span></div>}
+                                    {r.notas&&<div style={{gridColumn:"1 / -1"}}><span style={{color:"#555"}}>📝 </span><span style={{color:"#888",fontStyle:"italic"}}>{r.notas}</span></div>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -6088,7 +6117,9 @@ function PanelRetiros(p) {
   var [showForm,setShowForm]=useState(false);
   var [filtroFecha,setFiltroFecha]=useState("mes");
   var [filtroLocal,setFiltroLocal]=useState("all");
-  var [form,setForm]=useState({socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy});
+  var FORM_VACIO={socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy};
+  var [form,setForm]=useState(FORM_VACIO);
+  var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
 
   var TIPOS_RETIRO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
@@ -6109,23 +6140,60 @@ function PanelRetiros(p) {
 
   var totalFiltered=filtered.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
 
+  // "Efectivo - Efectivo Kusama" vuelve a separarse en tipo + subtipo para el formulario
+  function partirTipo(t){
+    var v=t||"";
+    var i=v.indexOf(" - ");
+    if(i===-1)return{tipo:v||"Efectivo",subtipo:""};
+    return{tipo:v.slice(0,i),subtipo:v.slice(i+3)};
+  }
+
+  function abrirNuevo(){
+    setEditando(null);
+    setForm(FORM_VACIO);
+    setShowForm(true);
+  }
+  function abrirEdicion(r){
+    var t=partirTipo(r.tipo_retiro);
+    setEditando(r);
+    setForm({
+      socio:r.socio||"",
+      local:r.local||"l1",
+      monto:String(r.monto||""),
+      tipo_retiro:t.tipo,
+      subtipo:t.subtipo,
+      notas:r.notas||"",
+      fecha:r.fecha||hoy
+    });
+    setShowForm(true);
+  }
+  function cerrarForm(){
+    setShowForm(false);
+    setEditando(null);
+    setForm(FORM_VACIO);
+  }
+
   function doSave(){
     if(!form.socio.trim()||!form.monto)return;
     var retiro={
-      id:String(Date.now()),
+      id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
       local:form.local,
       monto:parseFloat(form.monto),
       tipo_retiro:form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""),
       notas:form.notas,
       fecha:form.fecha,
-      usuario:usuario,
-      created_at:new Date().toISOString()
+      usuario:editando?(editando.usuario||usuario):usuario,
+      created_at:editando&&editando.created_at?editando.created_at:new Date().toISOString()
     };
     onSave(retiro);
-    setForm({socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy});
-    setShowForm(false);
+    cerrarForm();
   }
+
+  // Un retiro viejo puede tener un tipo/cuenta que ya no esta en las listas: lo sumamos para no perderlo al editar
+  var tiposOpts=form.tipo_retiro&&TIPOS_RETIRO.indexOf(form.tipo_retiro)===-1?[form.tipo_retiro].concat(TIPOS_RETIRO):TIPOS_RETIRO;
+  var subtiposOpts=SUBTIPOS[form.tipo_retiro]||[];
+  if(form.subtipo&&subtiposOpts.indexOf(form.subtipo)===-1)subtiposOpts=[form.subtipo].concat(subtiposOpts);
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -6134,12 +6202,15 @@ function PanelRetiros(p) {
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💼 Retiros de Socios</div>
         </div>
-        <button onClick={function(){setShowForm(function(v){return !v;});}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>+ Cargar retiro</button>
+        <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar retiro"}</button>
       </div>
 
       {showForm&&(
         <div style={{background:"#0F0F0F",border:"1px solid #8B2FC944",borderRadius:14,padding:"18px",marginBottom:18}}>
-          <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Nuevo retiro</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
+            <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{editando?"✏️ Editar retiro":"Nuevo retiro"}</div>
+            {editando&&<div style={{fontSize:10,color:"#555"}}>Cargado el {fmtDateTime(editando.created_at)}{editando.usuario?" por "+editando.usuario:""}</div>}
+          </div>
 
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Socio</label>
@@ -6167,12 +6238,12 @@ function PanelRetiros(p) {
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Tipo de retiro</label>
             <select value={form.tipo_retiro} onChange={function(e){setForm(function(f){return{...f,tipo_retiro:e.target.value,subtipo:""};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:6}}>
-              {TIPOS_RETIRO.map(function(t){return <option key={t}>{t}</option>;})}
+              {tiposOpts.map(function(t){return <option key={t}>{t}</option>;})}
             </select>
-            {SUBTIPOS[form.tipo_retiro]&&(
+            {subtiposOpts.length>0&&(
               <select value={form.subtipo} onChange={function(e){setForm(function(f){return{...f,subtipo:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:form.subtipo?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}>
                 <option value="">-- Seleccioná cuenta --</option>
-                {SUBTIPOS[form.tipo_retiro].map(function(s){return <option key={s}>{s}</option>;})}
+                {subtiposOpts.map(function(s){return <option key={s}>{s}</option>;})}
               </select>
             )}
           </div>
@@ -6183,8 +6254,8 @@ function PanelRetiros(p) {
           </div>
 
           <div style={{display:"flex",gap:8}}>
-            <button onClick={doSave} disabled={!form.socio||!form.monto} style={{background:!form.socio||!form.monto?"#1A1A1A":"#8B2FC9",border:"none",borderRadius:8,color:!form.socio||!form.monto?"#444":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:!form.socio||!form.monto?"not-allowed":"pointer",flex:2,padding:"11px"}}>✓ Guardar retiro</button>
-            <button onClick={function(){setShowForm(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+            <button onClick={doSave} disabled={!form.socio||!form.monto} style={{background:!form.socio||!form.monto?"#1A1A1A":"#8B2FC9",border:"none",borderRadius:8,color:!form.socio||!form.monto?"#444":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:!form.socio||!form.monto?"not-allowed":"pointer",flex:2,padding:"11px"}}>{editando?"✓ Guardar cambios":"✓ Guardar retiro"}</button>
+            <button onClick={cerrarForm} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -6227,8 +6298,9 @@ function PanelRetiros(p) {
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {filtered.map(function(r){
             var loc=getLocal(r.local);
+            var enEdicion=editando&&editando.id===r.id;
             return(
-              <div key={r.id} style={{background:"#111",border:"1px solid #8B2FC922",borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
+              <div key={r.id} style={{background:enEdicion?"#8B2FC911":"#111",border:"1px solid "+(enEdicion?"#8B2FC9":"#8B2FC922"),borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
                     <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>💼 {r.socio}</span>
@@ -6240,7 +6312,10 @@ function PanelRetiros(p) {
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#8B2FC9"}}>${parseFloat(r.monto).toLocaleString("es-AR")}</div>
-                  <button onClick={function(){if(window.confirm("¿Eliminar este retiro?"))onDelete(r.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12,marginTop:4}}>🗑️</button>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                    <button onClick={function(){abrirEdicion(r);}} title="Editar retiro" style={{background:"none",border:"none",color:enEdicion?"#8B2FC9":"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar este retiro?"))onDelete(r.id);}} title="Eliminar retiro" style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                  </div>
                 </div>
               </div>
             );
@@ -10009,6 +10084,8 @@ export default function App() {
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
   var puedeCompras=!esCajero||!!cu.puedeCompras;
+  // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
+  var enCompras=!esSofia||modulo==="compras";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -10051,7 +10128,7 @@ export default function App() {
             <button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>
             {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            {(!esSofia||modulo==="compras")&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {enCompras&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -10109,7 +10186,7 @@ export default function App() {
           )}
 
           {/* STATS — solo en el grupo Compras */}
-          {(!esSofia||modulo==="compras")&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
+          {enCompras&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
             {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
               <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
@@ -10122,7 +10199,7 @@ export default function App() {
           )}
 
           {/* TABS MÓDULO COMPRAS */}
-          {esAdmin&&(!esSofia||modulo==="compras")&&(function(){
+          {esAdmin&&enCompras&&(function(){
             var enStock=vista==="stock"||vista==="stockmp";
             return(
             <div>
@@ -10232,7 +10309,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
+          {esAdmin&&enCompras&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -10445,7 +10522,7 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {modulo==="compras"&&vista==="configcompras"&&(
+          {enCompras&&vista==="configcompras"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
@@ -10455,7 +10532,7 @@ export default function App() {
           )}
 
           {/* PRECIOS */}
-          {modulo==="compras"&&vista==="precios"&&(
+          {enCompras&&vista==="precios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
@@ -10465,7 +10542,7 @@ export default function App() {
           )}
 
           {/* PROVEEDORES */}
-          {modulo==="compras"&&vista==="proveedores"&&(
+          {enCompras&&vista==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
@@ -10481,7 +10558,7 @@ export default function App() {
               empleados={empleados} sueldos={sueldos}
               retiros={retiros}
               cargasSociales={cargasSociales}
-              onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
+              onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
@@ -10513,7 +10590,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(
             <PanelRetiros retiros={retiros} usuario={cu.nombre}
-              onSave={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
+              onSave={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
             />
           )}
@@ -10545,11 +10622,11 @@ export default function App() {
             />
           )}
 
-          {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(
+          {((esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics"))&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="stockmp"&&(
+          {esAdmin&&enCompras&&vista==="stockmp"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
@@ -10563,7 +10640,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="stock"&&(
+          {esAdmin&&enCompras&&vista==="stock"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
@@ -10583,7 +10660,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="faltantes"&&(
+          {esAdmin&&enCompras&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -10643,7 +10720,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&modulo==="compras"&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enCompras&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

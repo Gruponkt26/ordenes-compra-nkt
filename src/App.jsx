@@ -9473,12 +9473,6 @@ export default function App() {
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
-                <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  📦 Stock Platos
-                </button>
-                <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  🥩 Materia Prima
-                </button>
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
@@ -9551,7 +9545,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&modulo==="compras"&&vista==="despacho"&&(
+          {esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -9762,7 +9756,7 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {modulo==="compras"&&vista==="configcompras"&&(
+          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="configcompras"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
@@ -9772,7 +9766,7 @@ export default function App() {
           )}
 
           {/* PRECIOS */}
-          {modulo==="compras"&&vista==="precios"&&(
+          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="precios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
@@ -9782,7 +9776,7 @@ export default function App() {
           )}
 
           {/* PROVEEDORES */}
-          {modulo==="compras"&&vista==="proveedores"&&(
+          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
@@ -9910,7 +9904,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="faltantes"&&(
+          {esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -9969,7 +9963,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&modulo==="compras"&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

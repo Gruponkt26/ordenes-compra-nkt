@@ -302,11 +302,17 @@ var INIT_USERS = [
   { id: "u5", nombre: "Galo",    usuario: "galo",    password: "Galo123",     local: "l1", rol: "usuario", seccion: "Salón" },
   { id: "u6", nombre: "Sol",     usuario: "sol",     password: "Sol123",      local: "l1", rol: "usuario", seccion: "Cocina" },
   { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
-  { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l3", rol: "usuario", seccion: "Cocina" },
+  { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l1", rol: "usuario", seccion: "Cocina" },
+  { id: "u12", nombre: "Florencia", usuario: "florencia", password: "Flor123", local: "l3", rol: "usuario", seccion: "Cocina" },
   { id: "u9",  nombre: "Cajero Bodegón",      usuario: "cajero_bodegon",     password: "CajeroBod1",  local: "l1", seccion: "Caja", rol: "cajero" },
   { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero", puedeCompras: true },
   { id: "u11", nombre: "Cajero Colantonio's", usuario: "cajero_colantonios", password: "CajeroCol1",  local: "l3", seccion: "Caja", rol: "cajero" },
 ];
+
+// Usuarios que entran a Compras con la misma navegación que Sofía — las dos
+// tarjetas, Órdenes de compra y Stock — pero siempre limitados a su propio
+// local y sin Faltantes ni Config, que siguen siendo de admin.
+var COMPRAS_SUBMODULOS = ["sol", "magali", "florencia", "flor", "ariana"];
 
 var INIT_PROVEEDORES = [
   { id: "p1",  nombre: "Carnicería",    categoria: "Carnes & Aves",           compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
@@ -10087,10 +10093,14 @@ export default function App() {
   var puedeCompras=!esCajero||!!cu.puedeCompras;
   // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
   var enCompras=!esSofia||modulo==="compras";
-  // Dentro de Compras, el admin elige primero un sub-módulo: Órdenes de compra o Stock.
+  // Encargadas con la navegación completa de Compras (las dos tarjetas), pero
+  // acotadas a su local y sin Faltantes ni Config.
+  var verSubCompras=!esAdmin&&!esCajero&&COMPRAS_SUBMODULOS.indexOf(String(cu.usuario||"").toLowerCase())!==-1;
+  var conSubmodulos=esAdmin||verSubCompras;
+  // Dentro de Compras se elige primero un sub-módulo: Órdenes de compra o Stock.
   // El resto de los usuarios no tiene esa pantalla y entra directo a sus órdenes.
-  var enOrdenes=esAdmin?(enCompras&&subCompras==="ordenes"):enCompras;
-  var enStockCompras=esAdmin&&enCompras&&subCompras==="stock";
+  var enOrdenes=conSubmodulos?(enCompras&&subCompras==="ordenes"):enCompras;
+  var enStockCompras=conSubmodulos&&enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -10191,7 +10201,7 @@ export default function App() {
           )}
 
           {/* Encabezado de Compras — volver a los módulos y al listado de sub-módulos */}
-          {esAdmin&&enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
+          {conSubmodulos&&enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
             <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
               {esSofia&&modulo==="compras"&&(
                 <button onClick={function(){setModulo(null);setSubCompras(null);}}
@@ -10208,10 +10218,10 @@ export default function App() {
           )}
 
           {/* PANTALLA DE COMPRAS — elección de sub-módulo */}
-          {esAdmin&&enCompras&&!subCompras&&(
+          {conSubmodulos&&enCompras&&!subCompras&&(
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
               {[
-                {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:"Despacho, historial, faltantes y configuración",color:"#C1440E",badge:faltantes.length},
+                {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":"Despachar y ver las órdenes del local",color:"#C1440E",badge:esAdmin?faltantes.length:0},
                 {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
               ].map(function(m){return(
                 <button key={m.id} onClick={function(){
@@ -10242,19 +10252,23 @@ export default function App() {
           )}
 
           {/* TABS — ÓRDENES DE COMPRA */}
-          {esAdmin&&enOrdenes&&(
+          {conSubmodulos&&enOrdenes&&(
             <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
                 <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+                {esAdmin&&(
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
+                )}
+                {esAdmin&&(
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
+                )}
               </div>
-              {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
+              {esAdmin&&(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
                 <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
                   {[["proveedores","🏭 Proveedores","#D4A017"],["precios","💲 Precios","#3A7D44"]].map(function(t){return(
                     <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
@@ -10275,9 +10289,11 @@ export default function App() {
                 <button onClick={function(){setVista("stockmp");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   🥩 Materia Prima
                 </button>
+                {esAdmin&&(
                 <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ✏️ Editar menú
                 </button>
+                )}
               </div>
             </div>
           )}
@@ -10339,8 +10355,8 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&enOrdenes&&vista==="despacho"&&(
-            <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
+          {conSubmodulos&&enOrdenes&&vista==="despacho"&&(
+            <PanelDespacho ordenes={lf?ordenes.filter(function(o){return o.local===lf;}):ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
           {/* DASHBOARD */}
@@ -10656,8 +10672,12 @@ export default function App() {
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {enStockCompras&&vista==="stockmp"&&(
+          {enStockCompras&&vista==="stockmp"&&(function(){
+            var stockLocal=esAdmin?(vistaUsuario||"l1"):lf;
+            var stockNombre=(LOCALES.find(function(l){return l.id===stockLocal;})||{}).nombre||"";
+            return(
             <div>
+              {esAdmin&&(
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
                   <button key={l.id} onClick={function(){setVistaUsuario(l.id);}}
@@ -10666,12 +10686,18 @@ export default function App() {
                   </button>
                 );})}
               </div>
-              <PanelStockMP localId={vistaUsuario||"l1"} localNombre={LOCALES.find(function(l){return l.id===(vistaUsuario||"l1");})?LOCALES.find(function(l){return l.id===(vistaUsuario||"l1");}).nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
+              )}
+              <PanelStockMP localId={stockLocal} localNombre={stockNombre} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
             </div>
-          )}
+            );
+          })()}
 
-          {enStockCompras&&vista==="stock"&&(
+          {enStockCompras&&vista==="stock"&&(function(){
+            var stockLocal=esAdmin?vistaUsuario:lf;
+            var stockNombre=(LOCALES.find(function(l){return l.id===stockLocal;})||{}).nombre||"";
+            return(
             <div>
+              {esAdmin&&(
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
                   var hasMenu=Object.keys((menuStock[l.id]||MENU_POR_LOCAL[l.id]||{})).length>0;
@@ -10683,12 +10709,14 @@ export default function App() {
                   );
                 })}
               </div>
-              {LOCALES.some(function(l){return l.id===vistaUsuario;})&&(
-                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}
-                  menuExterno={menuStock[vistaUsuario]} onMenuChange={actualizarMenuStock}/>
+              )}
+              {LOCALES.some(function(l){return l.id===stockLocal;})&&(
+                <PanelStock localId={stockLocal} localNombre={stockNombre} usuario={cu.nombre} esAdmin={esAdmin}
+                  menuExterno={menuStock[stockLocal]} onMenuChange={actualizarMenuStock}/>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {esAdmin&&enOrdenes&&vista==="faltantes"&&(
             <div>
@@ -10725,7 +10753,7 @@ export default function App() {
           )}
 
           {/* HISTORIAL */}
-          {!esAdmin&&puedeCompras&&(
+          {!conSubmodulos&&puedeCompras&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
               {(menuStock[lf]||MENU_POR_LOCAL[lf])&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
@@ -10735,7 +10763,7 @@ export default function App() {
             </div>
           )}
 
-          {!esAdmin&&vistaUsuario==="stock"&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
+          {!conSubmodulos&&vistaUsuario==="stock"&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
             <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}
               menuExterno={menuStock[lf]} onMenuChange={actualizarMenuStock}/>
           )}
@@ -10746,11 +10774,11 @@ export default function App() {
             />
           )}
 
-          {!esAdmin&&!esCajero&&vistaUsuario==="stockmp"&&(
+          {!conSubmodulos&&!esCajero&&vistaUsuario==="stockmp"&&(
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enOrdenes&&vista==="historial")&&(
+          {(!conSubmodulos&&vistaUsuario==="ordenes"&&puedeCompras||conSubmodulos&&enOrdenes&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

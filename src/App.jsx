@@ -96,6 +96,28 @@ async function sbDeleteProveedor(id) {
   } catch(e) {}
 }
 
+// Usuarios (login) — requiere una tabla "usuarios" en Supabase con columnas:
+// id (text, PK), nombre, usuario, password, local (nullable), rol, seccion, puedecompras (bool, nullable)
+async function sbLoadUsuarios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/usuarios?order=nombre", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) && d.length > 0 ? d : null;
+  } catch(e) { return null; }
+}
+async function sbSaveUsuario(u) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var r = await fetch(SURL + "/rest/v1/usuarios", { method: "POST", headers: h, body: JSON.stringify(u) });
+    if(!r.ok){var errText=await r.text();console.error("sbSaveUsuario error:",r.status,errText);}
+  } catch(e) { console.error("sbSaveUsuario catch:",e); }
+}
+async function sbDeleteUsuario(id) {
+  try {
+    await fetch(SURL + "/rest/v1/usuarios?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // Productos
 async function sbLoadProductos() {
   try {
@@ -282,7 +304,7 @@ var INIT_USERS = [
   { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
   { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l3", rol: "usuario", seccion: "Cocina" },
   { id: "u9",  nombre: "Cajero Bodegón",      usuario: "cajero_bodegon",     password: "CajeroBod1",  local: "l1", seccion: "Caja", rol: "cajero" },
-  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero" },
+  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero", puedeCompras: true },
   { id: "u11", nombre: "Cajero Colantonio's", usuario: "cajero_colantonios", password: "CajeroCol1",  local: "l3", seccion: "Caja", rol: "cajero" },
 ];
 
@@ -320,7 +342,7 @@ var INIT_PRODUCTOS = {
 var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
-var _oc = 1, _pc = 10, _uc = 10;
+var _oc = 1, _pc = 10, _uc = 100; // _uc arranca en 100 para no chocar con los ids u1-u11 ya usados en INIT_USERS
 var _contadores = { l1: 0, l2: 0, l3: 0, l4: 0 };
 var _prefijos = { l1: "BOD", l2: "KUS", l3: "COL", l4: "OFI" };
 
@@ -352,6 +374,13 @@ function fmtDateTime(s) {
   var d = new Date(s);
   var pad = function(n) { return n < 10 ? "0"+n : n; };
   return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+function fmtHora(s) {
+  if (!s) return "";
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  var pad = function(n) { return n < 10 ? "0"+n : n; };
+  return pad(d.getHours())+":"+pad(d.getMinutes());
 }
 function cleanPhone(s) { return s.replace(/\D/g,""); }
 
@@ -1279,7 +1308,7 @@ function OrdenCard(p) {
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
               <button onClick={function(){setWspCompleto(true);}} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"6px 11px"}}>📲 Enviar por WhatsApp</button>
               {NS[orden.status]&&<button onClick={function(){
-  if(orden.status==="enviada" && esAdmin){
+  if(orden.status==="enviada"){
     setConfirmarModal(true);
   } else {
     onUpdate(orden.id,{status:NS[orden.status]});
@@ -1302,15 +1331,31 @@ function OrdenCard(p) {
 // ─── GESTIÓN USUARIOS ─────────────────────────────────────────────────────────
 function GestUsuarios(p) {
   var [lista,setLista]=useState(p.users), [nuevo,setNuevo]=useState({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"}), [showAdd,setShowAdd]=useState(false), [editando,setEditando]=useState(null), [err,setErr]=useState("");
-  function doAdd(){if(!nuevo.nombre.trim()||!nuevo.usuario.trim()||!nuevo.password.trim()){setErr("Completá todos los campos.");return;}if(lista.find(function(u){return u.usuario===nuevo.usuario.trim();})){setErr("Ese usuario ya existe.");return;}setLista(function(l){return[...l,{id:genUser(),...nuevo}];});setNuevo({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"});setShowAdd(false);setErr("");}
-  function doDel(id){var t=lista.find(function(u){return u.id===id;});if(t&&t.rol==="admin"&&lista.filter(function(u){return u.rol==="admin";}).length===1){alert("Debe haber al menos un administrador.");return;}setLista(function(l){return l.filter(function(u){return u.id!==id;});});}
-  function doEdit(){setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});setEditando(null);}
+  function doAdd(){
+    if(!nuevo.nombre.trim()||!nuevo.usuario.trim()||!nuevo.password.trim()){setErr("Completá todos los campos.");return;}
+    if(lista.find(function(u){return u.usuario===nuevo.usuario.trim();})){setErr("Ese usuario ya existe.");return;}
+    var u={id:genUser(),...nuevo};
+    p.onSaveUser(u);
+    setLista(function(l){return[...l,u];});
+    setNuevo({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"});setShowAdd(false);setErr("");
+  }
+  function doDel(id){
+    var t=lista.find(function(u){return u.id===id;});
+    if(t&&t.rol==="admin"&&lista.filter(function(u){return u.rol==="admin";}).length===1){alert("Debe haber al menos un administrador.");return;}
+    p.onDeleteUser(id);
+    setLista(function(l){return l.filter(function(u){return u.id!==id;});});
+  }
+  function doEdit(){
+    p.onSaveUser(editando);
+    setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});
+    setEditando(null);
+  }
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
       <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",overflow:"hidden"}}>
         <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
           <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>👥 Usuarios</h2>
-          <div style={{display:"flex",gap:8}}><button onClick={function(){p.onSave(lista);}} style={{...BS("#3A7D44"),fontSize:12}}>✓ Guardar</button><button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button></div>
+          <div style={{display:"flex",gap:8}}><button onClick={p.onClose} style={{...BS("#3A7D44"),fontSize:12}}>✓ Listo</button><button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button></div>
         </div>
         <div style={{overflowY:"auto",flex:1,padding:"14px 22px"}}>
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:11}}><button onClick={function(){setShowAdd(function(v){return !v;});}} style={{...BS("#C1440E"),padding:"7px 13px",fontSize:12}}>+ Nuevo</button></div>
@@ -1748,7 +1793,6 @@ function GestProveedoresPanel(p) {
                     </div>
                   )}
                   </div>
-                  )} {/* fin sub-tab saldo */}
 
                   {/* Modal nuevo movimiento */}
                   {showFormMov&&(
@@ -3120,7 +3164,34 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [showModal,setShowModal]=useState(false);
   var [modalPl,setModalPl]=useState(null);
   var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",medio_pago:"",notas:"",fecha_pago:hoy});
+  var [showAdelantos,setShowAdelantos]=useState(false);
+  var [showAdelantoForm,setShowAdelantoForm]=useState(false);
+  var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",medio_pago:"",fecha:hoy,notas:""});
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var fmtFechaCorta=function(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});};
+  var adelantos=(p&&p.adelantos)||[];
+  function adelantosDe(empleadoId){return adelantos.filter(function(a){return a.empleado_id===empleadoId&&!a.aplicado;});}
+  function doGuardarAdelanto(){
+    if(!adelantoForm.empleado_id||!adelantoForm.monto||!adelantoForm.medio_pago)return;
+    var emp=(empleados||[]).find(function(e){return e.id===adelantoForm.empleado_id;});
+    var a={
+      id:"adel_"+String(Date.now()),
+      empleado_id:adelantoForm.empleado_id,
+      empleado_nombre:emp?emp.nombre:"",
+      local:emp?emp.local:null,
+      monto:parseFloat(adelantoForm.monto)||0,
+      medio_pago:adelantoForm.medio_pago,
+      fecha:adelantoForm.fecha,
+      notas:adelantoForm.notas||"",
+      usuario:usuario||"",
+      aplicado:false,
+      sueldo_id:null,
+      created_at:new Date().toISOString()
+    };
+    if(p&&p.onSaveAdelanto)p.onSaveAdelanto(a);
+    setAdelantoForm({empleado_id:"",monto:"",medio_pago:"",fecha:hoy,notas:""});
+    setShowAdelantoForm(false);
+  }
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var ESTADOS_S=[["pagado","✅ Pagado","#3A7D44"],["parcial","🔸 Pago parcial","#E07B00"]];
   var MEDIOS=[
@@ -3206,13 +3277,21 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     };
     if(onSaveSueldo)onSaveSueldo(s);
     else console.error("onSaveSueldo es undefined!");
-    // Egreso automático
+    // Adelantos pendientes de este empleado: se descuentan del monto a pagar ahora y se marcan aplicados
+    var adelPend=adelantosDe(modalPl.empleado_id);
+    var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    // Egreso automático — solo por el neto (lo que realmente sale de la cuenta ahora)
     if(onSaveEgresoSueldo){
-      var montoEgreso=modalForm.estado==="parcial"?montoParcial:montoFinal;
+      var montoEgresoBase=modalForm.estado==="parcial"?montoParcial:montoFinal;
+      var montoEgreso=Math.max(0,montoEgresoBase-totalAdel);
       if(montoEgreso>0){
-        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"",monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
+        var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
         onSaveEgresoSueldo(eg);
       }
+    }
+    if(totalAdel>0&&p&&p.onSaveAdelanto){
+      adelPend.forEach(function(a){p.onSaveAdelanto({...a,aplicado:true,sueldo_id:s.id});});
     }
     setShowModal(false);
   }
@@ -3228,6 +3307,71 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         {LOCALES.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>
         );})}
+      </div>
+
+      {/* Adelantos de sueldo */}
+      <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={function(){setShowAdelantos(function(v){return !v;});}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>⏳ Adelantos pendientes {showAdelantos?"▾":"▸"}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:11,color:"#888"}}>{fmt(adelantos.filter(function(a){return !a.aplicado;}).reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
+            <button onClick={function(e){e.stopPropagation();setShowAdelantoForm(true);setShowAdelantos(true);}} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+          </div>
+        </div>
+        {showAdelantos&&(
+          <div style={{marginTop:10}}>
+            {showAdelantoForm&&(
+              <div style={{background:"#0A0A0A",border:"1px solid #222",borderRadius:10,padding:12,marginBottom:10}}>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Empleado</label>
+                  <select value={adelantoForm.empleado_id} onChange={function(e){setAdelantoForm(function(f){return{...f,empleado_id:e.target.value};});}} style={INP}>
+                    <option value="">-- Seleccioná --</option>
+                    {(empleados||[]).filter(function(e){return e.activo;}).map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
+                  </select>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Monto $</label>
+                  <input type="number" placeholder="0" value={adelantoForm.monto} onChange={function(e){setAdelantoForm(function(f){return{...f,monto:e.target.value};});}} style={INP}/>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
+                  <select value={adelantoForm.medio_pago} onChange={function(e){setAdelantoForm(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
+                    <option value="">-- Seleccioná --</option>
+                    {["Efectivo","Transferencia","Otros"].map(function(g){return(
+                      <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                    );})}
+                  </select>
+                </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha</label>
+                  <input type="date" value={adelantoForm.fecha} onChange={function(e){setAdelantoForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Notas</label>
+                  <input value={adelantoForm.notas} onChange={function(e){setAdelantoForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={doGuardarAdelanto} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar adelanto</button>
+                  <button onClick={function(){setShowAdelantoForm(false);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                </div>
+              </div>
+            )}
+            {adelantos.filter(function(a){return !a.aplicado;}).length===0?(
+              <div style={{fontSize:11,color:"#444",textAlign:"center",padding:"8px 0"}}>Sin adelantos pendientes</div>
+            ):adelantos.filter(function(a){return !a.aplicado;}).map(function(a){return(
+              <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:"1px solid #1A1A1A"}}>
+                <div>
+                  <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{a.empleado_nombre}</div>
+                  <div style={{fontSize:9,color:"#555"}}>{fmtFechaCorta(a.fecha)} · {a.medio_pago}{a.notas?" · "+a.notas:""}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(a.monto)}</span>
+                  <button onClick={function(){if(window.confirm("¿Eliminar este adelanto?")&&p&&p.onDeleteAdelanto)p.onDeleteAdelanto(a.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                </div>
+              </div>
+            );})}
+          </div>
+        )}
       </div>
 
       {/* Resumen */}
@@ -3287,7 +3431,29 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
-            <div style={{fontSize:11,color:"#555",marginBottom:14}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            {(function(){
+              var adelPend=adelantosDe(modalPl.empleado_id);
+              var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+              if(totalAdel<=0)return null;
+              var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
+              var neto=Math.max(0,base-totalAdel);
+              return(
+                <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"8px 10px",marginBottom:12}}>
+                  <div style={{fontSize:9,color:"#D4A017",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>⏳ Adelantos a descontar</div>
+                  {adelPend.map(function(a){return(
+                    <div key={a.id} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#888"}}>
+                      <span>{fmtFechaCorta(a.fecha)} · {a.medio_pago}</span>
+                      <span style={{color:"#D4A017"}}>−{fmt(a.monto)}</span>
+                    </div>
+                  );})}
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
+                    <span style={{color:"#F0EDE8"}}>Neto a pagar ahora</span>
+                    <span style={{color:"#3A7D44"}}>{fmt(neto)}</span>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{display:"flex",gap:6,marginBottom:12}}>
               {ESTADOS_S.map(function(e){return(
                 <button key={e[0]} onClick={function(){setModalForm(function(f){return{...f,estado:e[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(modalForm.estado===e[0]?e[2]:"#2A2A2A"),background:modalForm.estado===e[0]?e[2]+"22":"#0F0F0F",color:modalForm.estado===e[0]?e[2]:"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{e[1]}</button>
@@ -3432,9 +3598,10 @@ var MEDIO_LOCAL_MAP={
   "provincia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
   "efectivo - kusama":"l2","galicia empresas":"l2",
   "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
-  "patagonia empresas":"l3","mp calzon gitano":"l3",
-  "débito visa patagonia":"l3","debito visa patagonia":"l3",
-  "débito mastercard patagonia":"l3","debito mastercard patagonia":"l3",
+  "patagonia empresas":"l3","mp calzon gitano":"l3","mercado pago calzon gitano":"l3","calzon gitano":"l3",
+  // Tarjetas de débito personales de Bodegón (ver TODOS_MEDIOS) — no confundir con "Patagonia Empresas" (Colantonio's)
+  "visa provincia":"l1","visa patagonia personas":"l1","mastercard patagonia personas":"l1",
+  "visa patagonia":"l1","mastercard patagonia":"l1",
   "efectivo - oficina":"l4",
 };
 function getLocalFromMedio(medio){
@@ -3445,6 +3612,35 @@ function getLocalFromMedio(medio){
     if(k.includes(key)||key.includes(k))return MEDIO_LOCAL_MAP[key];
   }
   return null;
+}
+
+// ─── ACREDITACIÓN DIFERIDA DE DÉBITO ─────────────────────────────────────────
+// Feriados nacionales + días no laborables con fines turísticos (puentes) de Argentina.
+// Fuente: Ley 27.399 y Resolución 164/2025 (calendario 2026). ⚠️ Revisar y actualizar cada año
+// — los feriados trasladables (12/10, 20/11) y los puentes turísticos se definen por decreto anual.
+var FERIADOS_AR={
+  "2026-01-01":1,"2026-02-16":1,"2026-02-17":1,"2026-03-23":1,"2026-03-24":1,
+  "2026-04-02":1,"2026-04-03":1,"2026-05-01":1,"2026-05-25":1,"2026-06-17":1,
+  "2026-06-20":1,"2026-07-09":1,"2026-07-10":1,"2026-08-17":1,"2026-10-12":1,
+  "2026-11-23":1,"2026-12-07":1,"2026-12-08":1,"2026-12-25":1,
+};
+// Suma n días hábiles (salta sábados, domingos y feriados) a una fecha "YYYY-MM-DD".
+function addBusinessDays(fechaStr,n){
+  if(!fechaStr)return null;
+  var d=new Date(fechaStr+"T00:00:00");
+  if(isNaN(d.getTime()))return null;
+  var restantes=n;
+  while(restantes>0){
+    d.setDate(d.getDate()+1);
+    var dow=d.getDay(); // 0=domingo, 6=sábado
+    var fechaDia=d.toISOString().slice(0,10);
+    if(dow!==0&&dow!==6&&!FERIADOS_AR[fechaDia])restantes--;
+  }
+  return d.toISOString().slice(0,10);
+}
+// Fecha en que se acredita en el banco una venta con débito (2 días hábiles después del cierre).
+function fechaAcreditacionDebito(fechaCierre){
+  return addBusinessDays(fechaCierre,2);
 }
 
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
@@ -4254,6 +4450,12 @@ function PanelEgresos(p){
   var [vistaGrid,setVistaGrid]=useState(false);
   var [mesFiltroGrid,setMesFiltroGrid]=useState(new Date().toISOString().slice(0,7));
   var [expandidoGrid,setExpandidoGrid]=useState(null);
+  var [localGrid,setLocalGrid]=useState(LOCALES[0].id);
+  var [gastoDetalle,setGastoDetalle]=useState(null);
+  function medioPagoGasto(g){
+    if(g.pagos&&g.pagos.length>0)return g.pagos.map(function(pg){return(pg.medio||pg.tipo||"—")+(g.pagos.length>1?" ("+fmt(parseFloat(pg.monto||0))+")":"");}).join(" + ");
+    return g.forma_pago||"—";
+  }
   var color=AREA_COLORES[areaActiva]||"#888";
   var mesCurrent=new Date().toISOString().slice(0,7);
   var mesesDisp=[...new Set(gastos.map(function(g){return g.fecha?g.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
@@ -4281,7 +4483,7 @@ function PanelEgresos(p){
           <button onClick={function(){setVistaGrid(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✕ Cerrar</button>
         </div>
 
-        {/* Totales generales por local */}
+        {/* Pestañas por local — clickear un local lleva a su pantalla única */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
           {LOCALES.map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
@@ -4297,19 +4499,20 @@ function PanelEgresos(p){
             var totAg=hasAG?0:agResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
             var tot=totG+totS+totAg+totR;
+            var activo=localGrid===l.id;
             return(
-              <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"55",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
+              <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
-                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}} onClick={function(){alert(l.nombre+": totG="+totG+" totS="+totS+" totAg="+totAg+" totR="+totR+" tot="+tot+" hasSG="+hasSG+" slResumen="+slResumen.length);}}>{fmt(tot)}</div>
+                <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
                 <div style={{fontSize:9,color:"#444",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)} · Retiros {fmt(totR)}</div>
               </div>
             );
           })}
         </div>
 
-        {/* Grid 4 columnas */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"start"}}>
-          {LOCALES.map(function(l){
+        {/* Pantalla única del local seleccionado */}
+        <div style={{maxWidth:640,margin:"0 auto"}}>
+          {LOCALES.filter(function(l){return l.id===localGrid;}).map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             // Sueldos del mes anterior (julio aparece en agosto)
@@ -4361,13 +4564,7 @@ function PanelEgresos(p){
                   var abierto=expandidoGrid===gkey;
                   var totArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
                   var color=AREA_COLORES[area]||"#1A6B8A";
-                  // Agrupar por concepto (sumar repetidos)
-                  var porConcepto={};
-                  items.forEach(function(g){
-                    var k=g.concepto+(g.subramo?"|"+g.subramo:"");
-                    if(!porConcepto[k])porConcepto[k]={concepto:g.concepto,subramo:g.subramo,total:0};
-                    porConcepto[k].total+=parseFloat(g.monto||0);
-                  });
+                  var itemsOrd=items.slice().sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
                   return(
                     <div key={area} style={{marginBottom:5}}>
                       <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
@@ -4380,12 +4577,25 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {Object.values(porConcepto).sort(function(a,b){return b.total-a.total;}).map(function(c){return(
-                            <div key={c.concepto+(c.subramo||"")} style={{display:"flex",justifyContent:"space-between",padding:"3px 4px",fontSize:10,borderBottom:"1px solid #0F0F0F"}}>
-                              <span style={{color:"#888"}}>{c.concepto}{c.subramo?" · "+c.subramo:""}</span>
-                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(c.total)}</span>
-                            </div>
-                          );})}
+                          {itemsOrd.map(function(g){
+                            var gAbierto=gastoDetalle===g.id;
+                            return(
+                              <div key={g.id} style={{borderBottom:"1px solid #0F0F0F"}}>
+                                <div onClick={function(){setGastoDetalle(function(prev){return prev===g.id?null:g.id;});}} style={{display:"flex",justifyContent:"space-between",padding:"4px 4px",fontSize:10,cursor:"pointer"}}>
+                                  <span style={{color:"#888"}}>{g.concepto}{g.subramo?" · "+g.subramo:""}</span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                                </div>
+                                {gAbierto&&(
+                                  <div style={{background:"#0A0A0A",borderRadius:6,padding:"8px 10px",margin:"2px 0 6px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:10}}>
+                                    <div><span style={{color:"#555"}}>📅 Fecha: </span><span style={{color:"#F0EDE8"}}>{g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR"):"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{g.created_at?fmtDateTime(g.created_at).split(" ")[1]:"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(g.monto)}</span></div>
+                                    <div><span style={{color:"#555"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{medioPagoGasto(g)}</span></div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -4472,6 +4682,10 @@ function PanelEgresos(p){
                   var gkey=l.id+"_retiros";
                   var abierto=expandidoGrid===gkey;
                   var totRl=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
+                  var rlOrd=rl.slice().sort(function(a,b){
+                    var d=(b.fecha||"").localeCompare(a.fecha||"");
+                    return d!==0?d:(b.created_at||"").localeCompare(a.created_at||"");
+                  });
                   return(
                     <div style={{marginBottom:6}}>
                       <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer",borderRadius:4}}>
@@ -4484,12 +4698,31 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {rl.map(function(r){return(
-                            <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:"1px solid #111",fontSize:10}}>
-                              <span style={{color:"#888"}}>{r.concepto||r.socio||"Retiro"}</span>
-                              <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(r.monto)}</span>
-                            </div>
-                          );})}
+                          {rlOrd.map(function(r){
+                            var rkey="retiro_"+r.id;
+                            var rAbierto=gastoDetalle===rkey;
+                            var hora=fmtHora(r.created_at);
+                            return(
+                              <div key={r.id} style={{borderBottom:"1px solid #0F0F0F"}}>
+                                <div onClick={function(){setGastoDetalle(function(prev){return prev===rkey?null:rkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,padding:"4px 4px",fontSize:10,cursor:"pointer"}}>
+                                  <span style={{color:"#888",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.concepto||r.socio||"Retiro"}</span>
+                                  <span style={{color:"#555",flexShrink:0}}>{fmtDate(r.fecha)}{hora?" · "+hora:""}</span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600,flexShrink:0}}>{fmt(r.monto)}</span>
+                                </div>
+                                {rAbierto&&(
+                                  <div style={{background:"#0A0A0A",borderRadius:6,padding:"8px 10px",margin:"2px 0 6px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:10}}>
+                                    <div><span style={{color:"#555"}}>📅 Fecha: </span><span style={{color:"#F0EDE8"}}>{r.fecha?new Date(r.fecha+"T00:00:00").toLocaleDateString("es-AR"):"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{hora||"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(r.monto)}</span></div>
+                                    <div><span style={{color:"#555"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{r.tipo_retiro||"—"}</span></div>
+                                    <div><span style={{color:"#555"}}>👤 Socio: </span><span style={{color:"#F0EDE8"}}>{r.socio||"—"}</span></div>
+                                    {r.usuario&&<div><span style={{color:"#555"}}>✍️ Cargó: </span><span style={{color:"#F0EDE8"}}>{r.usuario}</span></div>}
+                                    {r.notas&&<div style={{gridColumn:"1 / -1"}}><span style={{color:"#555"}}>📝 </span><span style={{color:"#888",fontStyle:"italic"}}>{r.notas}</span></div>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -5205,15 +5438,16 @@ function PanelCruzados(p){
     if(medio.toLowerCase().includes("crédito")||medio.toLowerCase().includes("credito"))return "Crédito";
     return "Otro";
   }
-  function registrarDeuda(deudas,localGasto,medio,monto){
-    var medioLocal=detectarLocalMedio(medio);
-    if(!medioLocal||medioLocal===localGasto)return;
+  // acreedorLocal ya resuelto por el llamador — respeta pago.local explícito (ej. cargado desde "Gastos Diarios")
+  // antes de caer al detectarLocalMedio por texto, igual que hace PanelResultados.
+  function registrarDeuda(deudas,localGasto,acreedorLocal,medio,cuenta,monto){
+    if(!acreedorLocal||acreedorLocal===localGasto)return;
     var tipo=tipoMedio(medio);
-    var key=localGasto+"_"+medioLocal+"_"+tipo;
-    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:medioLocal,medio:tipo,cuentas:[],total:0};
+    var key=localGasto+"_"+acreedorLocal+"_"+tipo;
+    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:acreedorLocal,medio:tipo,cuentas:[],total:0};
     deudas[key].total+=parseFloat(monto||0);
-    var cuentaLabel=medio.replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
-    if(!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
+    var cuentaLabel=(cuenta||medio||"").replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
+    if(cuentaLabel&&!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
   }
   function calcDeudas(){
     var deudas={};
@@ -5222,11 +5456,12 @@ function PanelCruzados(p){
         // Nuevo sistema con pagos[]
         g.pagos.forEach(function(pago){
           var medio=pago.medio||pago.tipo||pago.forma_pago||"";
-          registrarDeuda(deudas,g.local,medio,pago.monto);
+          var acreedorLocal=pago.local||detectarLocalMedio(medio);
+          registrarDeuda(deudas,g.local,acreedorLocal,medio,pago.cuenta,pago.monto);
         });
       } else {
         // Legacy: forma_pago simple
-        registrarDeuda(deudas,g.local,g.forma_pago,g.monto);
+        registrarDeuda(deudas,g.local,detectarLocalMedio(g.forma_pago),g.forma_pago,null,g.monto);
       }
     });
     return Object.values(deudas).filter(function(d){return d.total>0;});
@@ -5645,9 +5880,23 @@ function PanelCierre(p) {
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
+  var mesActual=hoy.substring(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesActual);
 
   var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
+
+  var MESES_NOMBRE=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  function labelMes(m){
+    if(!m)return "Sin fecha";
+    var partes=m.split("-");
+    var nombre=MESES_NOMBRE[parseInt(partes[1],10)-1]||m;
+    return nombre+" "+partes[0];
+  }
+  var mesesHistorial=[...new Set(cierresLocal.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}).filter(Boolean))].sort().reverse();
+  if(mesesHistorial.indexOf(mesActual)===-1)mesesHistorial.unshift(mesActual);
+  var cierresMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+  var totalMesFiltro=cierresMes.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
 
   function calcTotal(f){
     var efectivoNeto=(parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
@@ -5812,34 +6061,49 @@ function PanelCierre(p) {
         </div>
       )}
 
-      {/* Historial */}
+      {/* Historial filtrado por mes */}
       {cierresLocal.length>0&&(
         <div>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Historial de cierres</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {cierresLocal.map(function(c){
-              var esHoy=c.fecha===hoy;
-              return(
-                <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
-                    <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
-                    <div style={{fontSize:10,color:"#444",marginTop:2}}>
-                      {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}
-                      {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
-                      {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
-                      {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
-                      {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Historial de cierres</div>
+            <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+              {mesesHistorial.map(function(m){return <option key={m} value={m}>{labelMes(m)}</option>;})}
+            </select>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#161616",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+            <span style={{fontSize:11,color:"#666"}}>{cierresMes.length} cierre{cierresMes.length!==1?"s":""} en {labelMes(mesFiltro).toLowerCase()}</span>
+            <span style={{fontSize:13,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${totalMesFiltro.toLocaleString("es-AR")}</span>
+          </div>
+
+          {cierresMes.length===0?(
+            <div style={{fontSize:11,color:"#444",textAlign:"center",padding:"14px 0"}}>Sin cierres en este mes</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {cierresMes.map(function(c){
+                var esHoy=c.fecha===hoy;
+                return(
+                  <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
+                      <div style={{fontSize:10,color:"#555",marginTop:2}}>por {c.usuario}</div>
+                      <div style={{fontSize:10,color:"#444",marginTop:2}}>
+                        {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}
+                        {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
+                        {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
+                        {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
+                        {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                      <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
+                      <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
                     </div>
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
-                    <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -5853,7 +6117,9 @@ function PanelRetiros(p) {
   var [showForm,setShowForm]=useState(false);
   var [filtroFecha,setFiltroFecha]=useState("mes");
   var [filtroLocal,setFiltroLocal]=useState("all");
-  var [form,setForm]=useState({socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy});
+  var FORM_VACIO={socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy};
+  var [form,setForm]=useState(FORM_VACIO);
+  var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
 
   var TIPOS_RETIRO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
@@ -5874,23 +6140,60 @@ function PanelRetiros(p) {
 
   var totalFiltered=filtered.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
 
+  // "Efectivo - Efectivo Kusama" vuelve a separarse en tipo + subtipo para el formulario
+  function partirTipo(t){
+    var v=t||"";
+    var i=v.indexOf(" - ");
+    if(i===-1)return{tipo:v||"Efectivo",subtipo:""};
+    return{tipo:v.slice(0,i),subtipo:v.slice(i+3)};
+  }
+
+  function abrirNuevo(){
+    setEditando(null);
+    setForm(FORM_VACIO);
+    setShowForm(true);
+  }
+  function abrirEdicion(r){
+    var t=partirTipo(r.tipo_retiro);
+    setEditando(r);
+    setForm({
+      socio:r.socio||"",
+      local:r.local||"l1",
+      monto:String(r.monto||""),
+      tipo_retiro:t.tipo,
+      subtipo:t.subtipo,
+      notas:r.notas||"",
+      fecha:r.fecha||hoy
+    });
+    setShowForm(true);
+  }
+  function cerrarForm(){
+    setShowForm(false);
+    setEditando(null);
+    setForm(FORM_VACIO);
+  }
+
   function doSave(){
     if(!form.socio.trim()||!form.monto)return;
     var retiro={
-      id:String(Date.now()),
+      id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
       local:form.local,
       monto:parseFloat(form.monto),
       tipo_retiro:form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""),
       notas:form.notas,
       fecha:form.fecha,
-      usuario:usuario,
-      created_at:new Date().toISOString()
+      usuario:editando?(editando.usuario||usuario):usuario,
+      created_at:editando&&editando.created_at?editando.created_at:new Date().toISOString()
     };
     onSave(retiro);
-    setForm({socio:"",local:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy});
-    setShowForm(false);
+    cerrarForm();
   }
+
+  // Un retiro viejo puede tener un tipo/cuenta que ya no esta en las listas: lo sumamos para no perderlo al editar
+  var tiposOpts=form.tipo_retiro&&TIPOS_RETIRO.indexOf(form.tipo_retiro)===-1?[form.tipo_retiro].concat(TIPOS_RETIRO):TIPOS_RETIRO;
+  var subtiposOpts=SUBTIPOS[form.tipo_retiro]||[];
+  if(form.subtipo&&subtiposOpts.indexOf(form.subtipo)===-1)subtiposOpts=[form.subtipo].concat(subtiposOpts);
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -5899,12 +6202,15 @@ function PanelRetiros(p) {
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💼 Retiros de Socios</div>
         </div>
-        <button onClick={function(){setShowForm(function(v){return !v;});}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>+ Cargar retiro</button>
+        <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar retiro"}</button>
       </div>
 
       {showForm&&(
         <div style={{background:"#0F0F0F",border:"1px solid #8B2FC944",borderRadius:14,padding:"18px",marginBottom:18}}>
-          <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>Nuevo retiro</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
+            <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{editando?"✏️ Editar retiro":"Nuevo retiro"}</div>
+            {editando&&<div style={{fontSize:10,color:"#555"}}>Cargado el {fmtDateTime(editando.created_at)}{editando.usuario?" por "+editando.usuario:""}</div>}
+          </div>
 
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Socio</label>
@@ -5932,12 +6238,12 @@ function PanelRetiros(p) {
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Tipo de retiro</label>
             <select value={form.tipo_retiro} onChange={function(e){setForm(function(f){return{...f,tipo_retiro:e.target.value,subtipo:""};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:6}}>
-              {TIPOS_RETIRO.map(function(t){return <option key={t}>{t}</option>;})}
+              {tiposOpts.map(function(t){return <option key={t}>{t}</option>;})}
             </select>
-            {SUBTIPOS[form.tipo_retiro]&&(
+            {subtiposOpts.length>0&&(
               <select value={form.subtipo} onChange={function(e){setForm(function(f){return{...f,subtipo:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:form.subtipo?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}>
                 <option value="">-- Seleccioná cuenta --</option>
-                {SUBTIPOS[form.tipo_retiro].map(function(s){return <option key={s}>{s}</option>;})}
+                {subtiposOpts.map(function(s){return <option key={s}>{s}</option>;})}
               </select>
             )}
           </div>
@@ -5948,8 +6254,8 @@ function PanelRetiros(p) {
           </div>
 
           <div style={{display:"flex",gap:8}}>
-            <button onClick={doSave} disabled={!form.socio||!form.monto} style={{background:!form.socio||!form.monto?"#1A1A1A":"#8B2FC9",border:"none",borderRadius:8,color:!form.socio||!form.monto?"#444":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:!form.socio||!form.monto?"not-allowed":"pointer",flex:2,padding:"11px"}}>✓ Guardar retiro</button>
-            <button onClick={function(){setShowForm(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+            <button onClick={doSave} disabled={!form.socio||!form.monto} style={{background:!form.socio||!form.monto?"#1A1A1A":"#8B2FC9",border:"none",borderRadius:8,color:!form.socio||!form.monto?"#444":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:!form.socio||!form.monto?"not-allowed":"pointer",flex:2,padding:"11px"}}>{editando?"✓ Guardar cambios":"✓ Guardar retiro"}</button>
+            <button onClick={cerrarForm} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -5992,8 +6298,9 @@ function PanelRetiros(p) {
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {filtered.map(function(r){
             var loc=getLocal(r.local);
+            var enEdicion=editando&&editando.id===r.id;
             return(
-              <div key={r.id} style={{background:"#111",border:"1px solid #8B2FC922",borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
+              <div key={r.id} style={{background:enEdicion?"#8B2FC911":"#111",border:"1px solid "+(enEdicion?"#8B2FC9":"#8B2FC922"),borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
                     <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>💼 {r.socio}</span>
@@ -6005,7 +6312,10 @@ function PanelRetiros(p) {
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#8B2FC9"}}>${parseFloat(r.monto).toLocaleString("es-AR")}</div>
-                  <button onClick={function(){if(window.confirm("¿Eliminar este retiro?"))onDelete(r.id);}} style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12,marginTop:4}}>🗑️</button>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                    <button onClick={function(){abrirEdicion(r);}} title="Editar retiro" style={{background:"none",border:"none",color:enEdicion?"#8B2FC9":"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar este retiro?"))onDelete(r.id);}} title="Eliminar retiro" style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                  </div>
                 </div>
               </div>
             );
@@ -6021,6 +6331,8 @@ function PanelRetiros(p) {
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
+  var retirosSocios=p.retiros||[]; // retiros cargados desde "💼 Retiros de Socios" (tabla separada de cierre.retiro_socio)
+  var adelantosSueldo=p.adelantos||[]; // adelantos de sueldo (tabla separada) — cuentan como gasto en el mes que se dan, se hayan aplicado o no a una liquidación
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -6029,7 +6341,41 @@ function PanelResultados(p){
   var [traspLocal,setTraspLocal]=useState({});
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
+  var [detalleAbierto,setDetalleAbierto]=useState(null); // null | "lid_efectivo" | "lid_electronico"
   var MEDIOS_CORR=[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["debito","💳 Débito"],["credito","💳 Crédito"],["otros","📦 Otros"]];
+  function fmtFecha(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});}
+  function DetalleDisp(props){
+    var d=props.d,tipo=props.tipo; // tipo: "efectivo" | "electronico"
+    var ingresos=(d.detIngresos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
+    var gastosDet=(d.detGastos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
+    var traspasoVal=tipo==="efectivo"?(d.traspaso?d.traspaso.efectivo:0):((d.traspaso?d.traspaso.transferencia:0)+(d.traspaso?d.traspaso.debito:0)+(d.traspaso?d.traspaso.credito:0));
+    return(
+      <div style={{background:"#080808",border:"1px solid #1A1A1A",borderRadius:8,padding:"10px 12px",marginTop:6,marginBottom:6}}>
+        <div style={{fontSize:9,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>+ Ingresos ({ingresos.length})</div>
+        {ingresos.length===0?<div style={{fontSize:10,color:"#333",marginBottom:6}}>Sin movimientos</div>:ingresos.map(function(x,i){return(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#666",marginBottom:2}}>
+            <span>{fmtFecha(x.fecha)} · {x.concepto}</span>
+            <span style={{color:"#3A7D44",fontWeight:600}}>+{fmt(x.monto)}</span>
+          </div>
+        );})}
+        <div style={{fontSize:9,color:"#C1440E",fontWeight:700,textTransform:"uppercase",letterSpacing:1,margin:"8px 0 5px"}}>− Gastos ({gastosDet.length})</div>
+        {gastosDet.length===0?<div style={{fontSize:10,color:"#333",marginBottom:6}}>Sin movimientos</div>:gastosDet.map(function(x,i){return(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#666",marginBottom:2}}>
+            <span>{fmtFecha(x.fecha)} · {x.concepto}{x.medio?" ("+x.medio+")":""}{x.cruzado?" ↔️":""}</span>
+            <span style={{color:"#C1440E",fontWeight:600}}>−{fmt(x.monto)}</span>
+          </div>
+        );})}
+        {traspasoVal!==0&&(
+          <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",fontWeight:700}}>
+              <span>🔄 Traspaso {d.traspaso&&d.traspaso.esManual?"(manual)":"de "+(d.traspaso?d.traspaso.mes:"")}</span>
+              <span>+{fmt(traspasoVal)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function getCorr(lid){
     if(corrLocal[lid])return corrLocal[lid];
@@ -6076,19 +6422,13 @@ function PanelResultados(p){
       var ot=parseFloat(manual.otros||0);
       return{efectivo:ef,transferencia:tr,debito:db,credito:cr,otros:ot,electronico:tr+db+cr+ot,total:ef+tr+db+cr+ot,mes:"manual",esManual:true};
     }
-    // Sino calcular automáticamente del mes anterior
+    // Sin traspaso manual cargado: no inventamos un arrastre automático (las ventas brutas del
+    // mes anterior no reflejan lo que realmente quedó disponible, porque no restan sus gastos).
+    // Devolvemos todo en cero y marcamos sinCargar para que la UI avise que falta cargarlo a mano.
     var d=new Date(mesFiltro+"-01");
     d.setMonth(d.getMonth()-1);
     var mesPrev=d.toISOString().slice(0,7);
-    var clPrev=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesPrev;});
-    if(clPrev.length===0)return{efectivo:0,transferencia:0,debito:0,credito:0,otros:0,electronico:0,total:0,mes:mesPrev,esManual:false};
-    var efectivo=clPrev.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));},0);
-    var transferencia=clPrev.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
-    var debito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
-    var credito=clPrev.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
-    var otros=clPrev.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
-    var electronico=transferencia+debito+credito+otros;
-    return{efectivo,transferencia,debito,credito,otros,electronico,total:efectivo+electronico,mes:mesPrev,esManual:false};
+    return{efectivo:0,transferencia:0,debito:0,credito:0,otros:0,electronico:0,total:0,mes:mesPrev,esManual:false,sinCargar:true};
   }
 
   function calcLocal(lid){
@@ -6123,6 +6463,14 @@ function PanelResultados(p){
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
     // Incluir retiros de socios en totalGastos
     totalGastos+=retiros;
+    // Retiros cargados desde el módulo "💼 Retiros de Socios" (tabla separada, con su propio medio/local)
+    var retirosModLocal=retirosSocios.filter(function(r){return r.local===lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;});
+    var retirosModMonto=retirosModLocal.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
+    totalGastos+=retirosModMonto;
+    // Adelantos de sueldo del mes (ver detalle más abajo, en Disponibilidad)
+    var adelantosMesLocal=adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;});
+    var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    totalGastos+=adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6149,6 +6497,8 @@ function PanelResultados(p){
     });
     // Agregar retiros al porCat
     if(retiros>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retiros;
+    if(retirosModMonto>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retirosModMonto;
+    if(adelantosMonto>0)porCat["Sueldos"]=(porCat["Sueldos"]||0)+adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
         porCat["Sueldos"]=(porCat["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
@@ -6164,6 +6514,7 @@ function PanelResultados(p){
 
     // Gastos por medio de pago — descontar del local que paga (no del local del gasto)
     var gastoEfectivo=0,gastoElectronico=0;
+    var detGastos=[]; // detalle línea por línea de qué se restó (para el desglose clickeable)
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
@@ -6172,8 +6523,9 @@ function PanelResultados(p){
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||lid;
           // Solo contar si el pago sale de este local
           if(pagoLocal!==lid)return;
-          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
-          else gastoElectronico+=pm;
+          var esEf=medioStr.includes("efectivo");
+          if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
+          detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:false});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
@@ -6181,8 +6533,9 @@ function PanelResultados(p){
         var pagoLocal=getLocalFromMedio(g.forma_pago)||lid;
         // Solo contar si el pago sale de este local
         if(pagoLocal!==lid)return;
-        if(fp.includes("efectivo"))gastoEfectivo+=gm;
-        else gastoElectronico+=gm;
+        var esEf2=fp.includes("efectivo");
+        if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
+        detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:false});
       }
     });
 
@@ -6196,17 +6549,58 @@ function PanelResultados(p){
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local;
           if(pagoLocal!==lid)return;
-          if(medioStr.includes("efectivo"))gastoEfectivo+=pm;
-          else gastoElectronico+=pm;
+          var esEf=medioStr.includes("efectivo");
+          if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
+          detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
         var pagoLocal=getLocalFromMedio(g.forma_pago)||g.local;
         if(pagoLocal!==lid)return;
-        if(fp.includes("efectivo"))gastoEfectivo+=gm;
-        else gastoElectronico+=gm;
+        var esEf2=fp.includes("efectivo");
+        if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
+        detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:true});
       }
+    });
+
+    // Retiros de socios (módulo "💼 Retiros de Socios") — a diferencia de los gastos, un retiro nunca es
+    // cruzado: sale directo de la cuenta del local que elige quien lo carga, sin intermediarios. Se
+    // descuenta siempre de r.local, sin intentar redirigir por el texto del medio.
+    retirosModLocal.forEach(function(r){
+      var rm=parseFloat(r.monto||0);
+      var medioStr=(r.tipo_retiro||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
+      detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||""),medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:false});
+    });
+
+    // Sueldos/aguinaldos pagados desde el módulo "Sueldos" que todavía no tienen un gasto asociado
+    // cargado en Egresos (mismo criterio que ya usa totalGastos más arriba). Igual que los retiros,
+    // salen directo de la cuenta del local que se eligió al pagarlos — nunca son cruzados.
+    var sueldosADescontar=[];
+    if(!hasSueldosGastos){
+      sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="";}));
+    }
+    if(!hasAguinaldosGastos){
+      sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!=="";}));
+    }
+    sueldosADescontar.forEach(function(s){
+      var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+      var medioStr=(s.medio_pago||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=sm;else gastoElectronico+=sm;
+      detGastos.push({fecha:s.fecha_pago||"",concepto:"💼 "+(s.concepto_extra?"Aguinaldo":"Sueldo")+" — "+(s.empleado_nombre||""),medio:s.medio_pago||"",monto:sm,tipo:esEf?"efectivo":"electronico",cruzado:false});
+    });
+
+    // Adelantos de sueldo — cuentan como gasto del mes en que se dieron (estén ya aplicados a una
+    // liquidación o no), directo del local que eligió quien los cargó. Nunca son cruzados.
+    adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;}).forEach(function(a){
+      var am=parseFloat(a.monto||0);
+      var medioStr=(a.medio_pago||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)gastoEfectivo+=am;else gastoElectronico+=am;
+      detGastos.push({fecha:a.fecha,concepto:"⏳ Adelanto sueldo — "+(a.empleado_nombre||""),medio:a.medio_pago||"",monto:am,tipo:esEf?"efectivo":"electronico",cruzado:false});
     });
 
     // Ingresos de cierres por medio
@@ -6218,6 +6612,17 @@ function PanelResultados(p){
     var ventaDebito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
     var ventaCredito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
     var ventaOtros=cl.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
+
+    // Detalle línea por línea de ingresos (para el desglose clickeable)
+    var detIngresos=[];
+    cl.forEach(function(c){
+      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0);
+      if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
+      [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"]].forEach(function(f){
+        var v=parseFloat(c[f[0]]||0);
+        if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
+      });
+    });
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
@@ -6260,6 +6665,19 @@ function PanelResultados(p){
         procesarPagoDetalle(fp,gm,pagoLocal);
       }
     });
+    // Retiros de socios — siempre del local propio (nunca cruzados), mismo desglose fino
+    retirosModLocal.forEach(function(r){
+      procesarPagoDetalle((r.tipo_retiro||"").toLowerCase(),parseFloat(r.monto||0),lid);
+    });
+    // Sueldos/aguinaldos pagados desde "Sueldos" sin gasto asociado — mismo desglose fino
+    sueldosADescontar.forEach(function(s){
+      var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
+      procesarPagoDetalle((s.medio_pago||"").toLowerCase(),sm,lid);
+    });
+    // Adelantos de sueldo — mismo desglose fino
+    adelantosMesLocal.forEach(function(a){
+      procesarPagoDetalle((a.medio_pago||"").toLowerCase(),parseFloat(a.monto||0),lid);
+    });
 
     // Corrección: si hay valor, reemplaza el ingreso del cierre por ese medio
     var corr=getCorr(lid);
@@ -6289,11 +6707,34 @@ function PanelResultados(p){
     var dispOtros=ingrOtros-gastoOtros;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
+    // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
+    // Si hay corrección manual de débito, se toma como ya confirmada (no se filtra por fecha).
+    // Excepción: Kusama (l2, Banco Galicia) y Colantonio's (l3, Banco Patagonia Empresas)
+    // acreditan débito y crédito en el momento, no a los 2 días hábiles.
+    var hoyStr=new Date().toISOString().slice(0,10);
+    var acreditaAlInstante=lid==="l2"||lid==="l3";
+    var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
+      var fa=fechaAcreditacionDebito(c.fecha);
+      if(fa&&fa<=hoyStr)return a+parseFloat(c.tarjeta_debito||0);
+      return a;
+    },0);
+    var debitoPendiente=hasCorrDebito||acreditaAlInstante?0:Math.max(0,ventaDebito-debitoAcreditadoHoy);
+    var proximaAcreditacionDebito=null;
+    if(debitoPendiente>0){
+      var fechasPend=cl.filter(function(c){
+        var fa=fechaAcreditacionDebito(c.fecha);
+        return fa&&fa>hoyStr&&parseFloat(c.tarjeta_debito||0)>0;
+      }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
+      proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
+    }
+    var dispDebitoHoy=debitoAcreditadoHoy-gastoDebito+(traspaso?traspaso.debito:0);
+    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
+
     var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -6539,13 +6980,13 @@ function PanelResultados(p){
                 })}
                 {/* Retiros */}
                 {(function(){
-                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0);},0);
+                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);},0);
                   if(totRet===0)return null;
                   return(
                     <tr style={{borderBottom:"1px solid #0A0A0A"}}>
                       <td style={{padding:"6px 8px",color:"#888",fontSize:10}}>Retiros socios</td>
                       {localesFiltro.map(function(l){
-                        var m=datos[l.id].retiros||0;
+                        var m=(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#2A2A2A",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totRet)}</td>
@@ -6610,6 +7051,27 @@ function PanelResultados(p){
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:tot>=0?"#F0EDE8":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</td>;
                   })}
                   <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
+                </tr>
+                {/* Débito pendiente de acreditar */}
+                {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
+                  <tr style={{background:"#14100A"}}>
+                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito pendiente</td>
+                    {localesFiltro.map(function(l){
+                      var pend=datos[l.id].debitoPendiente||0;
+                      return <td key={l.id} style={{textAlign:"right",padding:"8px",color:pend>0?"#D4A017":"#333",fontWeight:700,fontSize:11}}>{pend>0?fmt(pend):"—"}</td>;
+                    })}
+                    <td style={{textAlign:"right",padding:"8px",color:"#D4A017",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].debitoPendiente||0);},0))}</td>
+                  </tr>
+                )}
+                {/* Total disponible HOY (real, sin débito en tránsito) */}
+                <tr style={{background:"#0D0D0D",borderTop:"1px solid #1A1A1A"}}>
+                  <td style={{padding:"8px",color:"#888",fontWeight:700,fontSize:11}}>📅 Disponible HOY (real)</td>
+                  {localesFiltro.map(function(l){
+                    var d=datos[l.id];
+                    var totHoy=(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);
+                    return <td key={l.id} style={{textAlign:"right",padding:"8px",color:totHoy>=0?"#888":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(totHoy)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);},0))}</td>
                 </tr>
               </tbody>
             </table>
@@ -6690,9 +7152,10 @@ function PanelResultados(p){
                           <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.ventasPorMedio[mp])}</span>
                         </div>
                       );})}
-                      {(d.retiros>0||d.egresos>0)&&(
+                      {(d.retiros>0||d.retirosModMonto>0||d.egresos>0)&&(
                         <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
-                          {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios</span><span>−{fmt(d.retiros)}</span></div>}
+                          {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (cierre)</span><span>−{fmt(d.retiros)}</span></div>}
+                          {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
                           {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos diarios</span><span>−{fmt(d.egresos)}</span></div>}
                         </div>
                       )}
@@ -6751,9 +7214,9 @@ function PanelResultados(p){
                 
                 {/* Efectivo */}
                 {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo)&&(
-                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){var k=l.id+"_efectivo";setDetalleAbierto(detalleAbierto===k?null:k);}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                      <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo</span>
+                      <span style={{fontSize:10,color:"#555",fontWeight:700}}>💵 Efectivo {detalleAbierto===l.id+"_efectivo"?"▾":"▸"}</span>
                       <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
                     </div>
                     {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
@@ -6761,6 +7224,7 @@ function PanelResultados(p){
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
                   </div>
                 )}
+                {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}
 
                 {/* Electrónico — suma de todos los medios electrónicos */}
                 {(function(){
@@ -6769,10 +7233,12 @@ function PanelResultados(p){
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
                   var dispElec=ingElec-gasElec+traspElec;
                   if(ingElec===0&&gasElec===0&&traspElec===0)return null;
+                  var kElec=l.id+"_electronico";
                   return(
-                    <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+                    <div>
+                    <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){setDetalleAbierto(detalleAbierto===kElec?null:kElec);}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico</span>
+                        <span style={{fontSize:10,color:"#555",fontWeight:700}}>📲 Electrónico {detalleAbierto===kElec?"▾":"▸"}</span>
                         <span style={{fontSize:13,fontWeight:800,color:dispElec>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(dispElec)}</span>
                       </div>
                       {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
@@ -6791,54 +7257,65 @@ function PanelResultados(p){
                         </div>
                       );})}
                     </div>
+                    {detalleAbierto===kElec&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="electronico"/></div>}
+                    </div>
                   );
                 })()}
+
+                {/* Débito pendiente de acreditar (2 días hábiles) */}
+                {d.debitoPendiente>0&&(
+                  <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Débito pendiente de acreditar</span>
+                      <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.debitoPendiente)}</span>
+                    </div>
+                    <div style={{fontSize:9,color:"#888"}}>
+                      Se acredita en el banco a partir del {d.proximaAcreditacionDebito?new Date(d.proximaAcreditacionDebito+"T00:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"}):"—"}
+                    </div>
+                    <div style={{fontSize:9,color:"#666",marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
+                      💰 Disponible HOY en electrónico (sin el pendiente): <b style={{color:"#F0EDE8"}}>{fmt(d.dispElectronicoHoy)}</b>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Traspaso manual */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🔄 Traspaso inicial{d.traspaso&&d.traspaso.esManual?" (manual)":" (auto)"}</div>
-                  {d.traspaso&&!d.traspaso.esManual&&<div style={{fontSize:9,color:"#555"}}>del {d.traspaso.mes}</div>}
+                  <div style={{fontSize:9,color:d.traspaso&&d.traspaso.sinCargar?"#C1440E":"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🔄 Traspaso inicial{d.traspaso&&d.traspaso.esManual?" (manual)":d.traspaso&&d.traspaso.sinCargar?" — ⚠️ SIN CARGAR":""}</div>
+                  {d.traspaso&&d.traspaso.sinCargar&&<div style={{fontSize:9,color:"#555"}}>de {d.traspaso.mes}</div>}
                 </div>
+                {d.traspaso&&d.traspaso.sinCargar&&(
+                  <div style={{fontSize:10,color:"#C1440E",marginBottom:7,lineHeight:1.4}}>
+                    No hay traspaso cargado para este mes — la disponibilidad de abajo NO incluye ningún arrastre de {d.traspaso.mes}. Cargalo a mano con el saldo real del banco/efectivo de cierre de ese mes.
+                  </div>
+                )}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
                   {MEDIOS_CORR.map(function(mc){
                     var tv=traspLocal[l.id]||(traspasos[l.id+"_"+mesFiltro]||{});
                     return(
                       <div key={mc[0]}>
                         <label style={{display:"block",fontSize:9,color:"#555",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder={d.traspaso&&!d.traspaso.esManual?String(Math.round(d.traspaso[mc[0]]||0)):"0"} value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                        <input type="number" placeholder="0" value={(tv[mc[0]])||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
                       </div>
                     );
                   })}
                 </div>
-                <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+                <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
                 <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
               </div>
 
-              {/* Corrección manual por medio de pago */}
-              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
-                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🔧 Corrección manual</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
-                  {MEDIOS_CORR.map(function(mc){
-                    var cv=getCorr(l.id);
-                    return(
-                      <div key={mc[0]}>
-                        <label style={{display:"block",fontSize:9,color:"#444",marginBottom:3}}>{mc[1]}</label>
-                        <input type="number" placeholder="0" value={(cv[mc[0]])||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,[mc[0]]:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
-                      </div>
-                    );
-                  })}
-                </div>
-                <input placeholder="Nota de corrección..." value={(getCorr(l.id).nota)||""} onChange={function(e){var v=e.target.value;setCorrLocal(function(prev){var c=prev[l.id]||getCorr(l.id);var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
-                <button onClick={function(){saveCorr(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar corrección</button>
-                {d.corrMonto!==0&&(
-                  <div style={{fontSize:10,color:"#D4A017",marginTop:4}}>
+              {/* Corrección manual: la carga se sacó de la UI (no se usaba), pero si algún
+                  local/mes ya tiene una guardada de antes, el cálculo la sigue respetando. */}
+              {d.corrMonto!==0&&(
+                <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🔧 Corrección manual (histórica)</div>
+                  <div style={{fontSize:10,color:"#D4A017"}}>
                     Total ajuste: {d.corrMonto>0?"+":""}{fmt(d.corrMonto)}
                     {d.corrNota&&<span style={{color:"#888"}}> · {d.corrNota}</span>}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -8198,6 +8675,14 @@ async function sbLogMovimiento(localId, plato, tipo, cantidad, usuario) {
 
 
 
+async function sbDeleteStockItem(localId, plato) {
+  try {
+    var id = localId + "_" + plato.replace(/[^a-zA-Z0-9]/g,"_");
+    await fetch(SURL + "/rest/v1/stock?id=eq."+id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
+
 // ─── EDITOR MENÚ STOCK ────────────────────────────────────────────────────────
 function EditorMenuStock(p) {
   var onClose=p.onClose, onSave=p.onSave;
@@ -8337,19 +8822,28 @@ var BLINK_STYLE = `@keyframes nkt-blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
 
 function PanelStock(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, esAdmin=p.esAdmin;
-  var menu = MENU_POR_LOCAL[localId] || {};
+  var menuExterno=p.menuExterno, onMenuChange=p.onMenuChange;
+  var [menu,setMenu]=useState(function(){ return JSON.parse(JSON.stringify(MENU_POR_LOCAL[localId]||{})); });
   var categorias = Object.keys(menu);
   var [stock,setStock]=useState({});
   var [loading,setLoading]=useState(true);
   var [catAct,setCatAct]=useState(categorias[0]||"");
-  var [modo,setModo]=useState("ver"); // ver | cargar | descontar
+  var [modo,setModo]=useState("ver"); // ver | cargar | descontar | minimos | informe | editar
   var [cambios,setCambios]=useState({});
   var [descuentos,setDescuentos]=useState({});
   var [saving,setSaving]=useState(false);
   var [minimos,setMinimos]=useState({});
   var [minimoEdit,setMinimoEdit]=useState({});
+  var [nuevoPlato,setNuevoPlato]=useState("");
+  var [catNuevoPlato,setCatNuevoPlato]=useState("");
+  var [nuevaCat,setNuevaCat]=useState("");
 
-  useState(function(){
+  // Carga del stock del local (se vuelve a ejecutar al cambiar de local)
+  useEffect(function(){
+    setMenu(JSON.parse(JSON.stringify(MENU_POR_LOCAL[localId]||{})));
+    setModo("ver");
+    setCambios({});setDescuentos({});setMinimoEdit({});
+    setNuevoPlato("");setNuevaCat("");setCatNuevoPlato("");
     setLoading(true);
     sbLoadStock(localId).then(function(d){
       setStock(d);
@@ -8366,8 +8860,101 @@ function PanelStock(p) {
     }).catch(function(){setLoading(false);});
   },[localId]);
 
+  // Si el menú cambia desde afuera (recarga de datos), lo reflejamos acá
+  useEffect(function(){
+    if(menuExterno) setMenu(JSON.parse(JSON.stringify(menuExterno)));
+  },[menuExterno]);
+
+  // Mantener una categoría válida seleccionada
+  useEffect(function(){
+    var cats=Object.keys(menu);
+    if(cats.length>0&&cats.indexOf(catAct)<0) setCatAct(cats[0]);
+    if(cats.length===0&&catAct) setCatAct("");
+  },[menu]);
+
   function getCantidad(plato){ return stock[plato]?stock[plato].cantidad:0; }
   function getMinimo(plato){ return minimos[plato]||0; }
+
+  // ── Edición del listado de productos ───────────────────────────────────────
+  function todosLosPlatos(){
+    var out=[];
+    Object.keys(menu).forEach(function(c){ (menu[c]||[]).forEach(function(pl){ out.push(pl); }); });
+    return out;
+  }
+
+  function aplicarMenu(nuevoMenu){
+    setMenu(nuevoMenu);
+    MENU_POR_LOCAL[localId]=nuevoMenu;
+    if(onMenuChange) onMenuChange(localId,nuevoMenu);
+  }
+
+  async function agregarPlato(){
+    var nombre=(nuevoPlato||"").trim();
+    var cat=catNuevoPlato||catAct;
+    if(!nombre){ alert("Escribí el nombre del producto."); return; }
+    if(!cat){ alert("Creá o elegí una categoría antes de agregar el producto."); return; }
+    if(todosLosPlatos().some(function(pl){return pl.toLowerCase()===nombre.toLowerCase();})){
+      alert("\""+nombre+"\" ya está en el stock de "+localNombre+".");
+      return;
+    }
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    if(!nuevoMenu[cat]) nuevoMenu[cat]=[];
+    nuevoMenu[cat]=nuevoMenu[cat].concat([nombre]).sort(function(a,b){return a.localeCompare(b,"es");});
+    await sbSaveMenuStock(localId,cat,nuevoMenu[cat]);
+    await sbUpdateStock(localId,nombre,0,0);
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};n[nombre]={cantidad:0,minimo:0,updatedAt:new Date().toISOString()};return n;});
+    setMinimos(function(m){var n={...m};n[nombre]=0;return n;});
+    setNuevoPlato("");
+    setCatAct(cat);
+    setSaving(false);
+  }
+
+  async function eliminarPlato(plato){
+    var cat=Object.keys(menu).filter(function(c){return (menu[c]||[]).indexOf(plato)>=0;})[0];
+    if(!cat) return;
+    if(!window.confirm("¿Sacar \""+plato+"\" del stock de "+localNombre+"?\n\nSe borra el producto y la cantidad cargada."))return;
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    nuevoMenu[cat]=nuevoMenu[cat].filter(function(pl){return pl!==plato;});
+    await sbSaveMenuStock(localId,cat,nuevoMenu[cat]);
+    await sbDeleteStockItem(localId,plato);
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};delete n[plato];return n;});
+    setMinimos(function(m){var n={...m};delete n[plato];return n;});
+    setSaving(false);
+  }
+
+  async function agregarCategoria(){
+    var nombre=(nuevaCat||"").trim();
+    if(!nombre) return;
+    if(menu[nombre]){ alert("La categoría \""+nombre+"\" ya existe."); return; }
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    nuevoMenu[nombre]=[];
+    await sbSaveMenuStock(localId,nombre,[]);
+    aplicarMenu(nuevoMenu);
+    setNuevaCat("");
+    setCatAct(nombre);
+    setCatNuevoPlato(nombre);
+    setSaving(false);
+  }
+
+  async function eliminarCategoria(cat){
+    var platosCat=(menu[cat]||[]).slice();
+    if(!window.confirm("¿Eliminar la categoría \""+cat+"\" y sus "+platosCat.length+" producto(s) del stock de "+localNombre+"?"))return;
+    setSaving(true);
+    var nuevoMenu=JSON.parse(JSON.stringify(menu));
+    delete nuevoMenu[cat];
+    await sbDeleteMenuStock(localId,cat);
+    for(var i=0;i<platosCat.length;i++){ await sbDeleteStockItem(localId,platosCat[i]); }
+    aplicarMenu(nuevoMenu);
+    setStock(function(st){var n={...st};platosCat.forEach(function(pl){delete n[pl];});return n;});
+    setMinimos(function(m){var n={...m};platosCat.forEach(function(pl){delete n[pl];});return n;});
+    setCatAct(Object.keys(nuevoMenu)[0]||"");
+    setSaving(false);
+  }
 
   async function guardarMinimos(){
     setSaving(true);
@@ -8465,6 +9052,7 @@ function PanelStock(p) {
         <button onClick={function(){setModo("descontar");setCambios({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="descontar"?"#C1440E":"#1E1E1E"),background:modo==="descontar"?"#C1440E22":"#111",color:modo==="descontar"?"#C1440E":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>- Descontar</button>
         <button onClick={function(){setModo("minimos");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="minimos"?"#8B2FC9":"#1E1E1E"),background:modo==="minimos"?"#8B2FC922":"#111",color:modo==="minimos"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚡ Mínimos</button>
         <button onClick={function(){setModo("informe");setCambios({});setDescuentos({});}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="informe"?"#1A6B8A":"#1E1E1E"),background:modo==="informe"?"#1A6B8A22":"#111",color:modo==="informe"?"#1A6B8A":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Informe</button>
+        <button onClick={function(){setModo("editar");setCambios({});setDescuentos({});setMinimoEdit({});setCatNuevoPlato(catAct);}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(modo==="editar"?"#D4A017":"#1E1E1E"),background:modo==="editar"?"#D4A01722":"#111",color:modo==="editar"?"#D4A017":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>✏️ Editar productos</button>
       </div>
 
       {/* Categorias */}
@@ -8479,11 +9067,61 @@ function PanelStock(p) {
         })}
       </div>
 
+      {/* Editar productos del stock */}
+      {modo==="editar"&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#D4A017",fontWeight:700,marginBottom:10}}>Agregar producto al stock</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1.3fr auto",gap:7,alignItems:"flex-end"}}>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Producto</label>
+              <input value={nuevoPlato} placeholder="Ej: Empanadas"
+                onChange={function(e){setNuevoPlato(e.target.value);}}
+                onKeyDown={function(e){if(e.key==="Enter")agregarPlato();}}
+                style={INP}/>
+            </div>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Categoría</label>
+              <select value={catNuevoPlato||catAct||""} onChange={function(e){setCatNuevoPlato(e.target.value);}} style={INP}>
+                {categorias.length===0&&<option value="">Sin categorías</option>}
+                {categorias.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+              </select>
+            </div>
+            <button onClick={agregarPlato} disabled={saving} style={{...BS("#D4A017","#000"),padding:"9px 16px",fontSize:12,opacity:saving?0.5:1}}>{saving?"⏳":"+ Agregar"}</button>
+          </div>
+
+          <div style={{height:1,background:"#1A1A1A",margin:"14px 0"}}/>
+
+          <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,marginBottom:10}}>Categorías</div>
+          <div style={{display:"grid",gridTemplateColumns:"2fr auto",gap:7,alignItems:"flex-end"}}>
+            <div>
+              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Nueva categoría</label>
+              <input value={nuevaCat} placeholder="Ej: Empanadas / Postres..."
+                onChange={function(e){setNuevaCat(e.target.value);}}
+                onKeyDown={function(e){if(e.key==="Enter")agregarCategoria();}}
+                style={INP}/>
+            </div>
+            <button onClick={agregarCategoria} disabled={saving} style={{...BS("#8B2FC9"),padding:"9px 16px",fontSize:12,opacity:saving?0.5:1}}>+ Crear</button>
+          </div>
+          {esAdmin&&catAct&&(
+            <button onClick={function(){eliminarCategoria(catAct);}} disabled={saving}
+              style={{...GH,marginTop:10,padding:"7px 12px",fontSize:11,color:"#C1440E",borderColor:"#C1440E44"}}>
+              🗑️ Eliminar categoría «{catAct}»
+            </button>
+          )}
+          <div style={{fontSize:10,color:"#555",marginTop:12}}>Tocá 🗑 en cualquier producto de la lista para sacarlo del stock.</div>
+        </div>
+      )}
+
       {loading?<div style={{textAlign:"center",padding:"30px",color:"#444"}}>⏳ Cargando...</div>:(
         <div>
           {/* Lista de platos */}
           <style>{BLINK_STYLE}</style>
           <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16}}>
+            {platosActuales.length===0&&(
+              <div style={{textAlign:"center",padding:"26px 14px",border:"1px dashed #222",borderRadius:10,color:"#444",fontSize:12}}>
+                {categorias.length===0?"Todavía no hay categorías. Entrá a ✏️ Editar productos para crear una.":"Sin productos en «"+catAct+"». Agregalos desde ✏️ Editar productos."}
+              </div>
+            )}
             {platosActuales.map(function(plato){
               var cant=getCantidad(plato);
               var min=getMinimo(plato);
@@ -8523,6 +9161,10 @@ function PanelStock(p) {
                       <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:sc.text}}>{cant}</div>
                       <div style={{fontSize:9,color:"#444"}}>unidades</div>
                     </div>
+                    {modo==="editar"&&(
+                      <button onClick={function(){eliminarPlato(plato);}} disabled={saving} title={"Sacar "+plato+" del stock"}
+                        style={{background:"none",border:"1px solid #C1440E44",color:"#C1440E",borderRadius:8,width:32,height:32,cursor:saving?"default":"pointer",fontSize:13,flexShrink:0,opacity:saving?0.5:1}}>🗑</button>
+                    )}
                   </div>
                 </div>
               );
@@ -8694,6 +9336,13 @@ async function sbUpdateStockMP(localId, producto, cantidad, unidad, minimo, prov
   } catch(e) {}
 }
 
+async function sbDeleteStockMPItem(localId, producto) {
+  try {
+    var id = localId + "_" + producto.replace(/[^a-zA-Z0-9]/g,"_").slice(0,50);
+    await fetch(SURL + "/rest/v1/stock_materia_prima?id=eq."+id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 async function sbLogMovimientoMP(localId, producto, tipo, cantidad, unidad, usuario) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
@@ -8747,6 +9396,31 @@ async function sbSaveRetiro(retiro) {
 async function sbDeleteRetiro(id) {
   try {
     await fetch(SURL + "/rest/v1/retiros?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
+// ─── ADELANTOS DE SUELDO SUPABASE ─────────────────────────────────────────────
+// Requiere una tabla "adelantos" en Supabase con columnas:
+// id (text, PK), empleado_id, empleado_nombre, local, monto (numeric), medio_pago,
+// fecha, notas, usuario, aplicado (bool), sueldo_id (nullable), created_at
+async function sbLoadAdelantos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/adelantos?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveAdelanto(adelanto) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/adelantos", { method: "POST", headers: h, body: JSON.stringify(adelanto) });
+  } catch(e) {}
+}
+
+async function sbDeleteAdelanto(id) {
+  try {
+    await fetch(SURL + "/rest/v1/adelantos?id=eq." + id, { method: "DELETE", headers: SH });
   } catch(e) {}
 }
 
@@ -9094,6 +9768,14 @@ function PanelStockMP(p) {
     setShowAddProd(false);
   }
 
+  async function eliminarProductoMP(prod){
+    if(!window.confirm("¿Sacar \""+prod+"\" del stock de "+localNombre+"?"))return;
+    setSaving(true);
+    await sbDeleteStockMPItem(localId,prod);
+    setStock(function(st){var n={...st};delete n[prod];return n;});
+    setSaving(false);
+  }
+
   var totalBajos=Object.keys(stock).filter(function(k){return parseFloat(stock[k].minimo||0)>0&&parseFloat(stock[k].cantidad)<=parseFloat(stock[k].minimo||0);}).length;
   var provsUnicos=["todos",...new Set(todosProductos.map(function(p){return p.proveedor;}))];
 
@@ -9216,6 +9898,57 @@ function PanelStockMP(p) {
             })}
           </div>
 
+          {/* Productos agregados a mano (no figuran en la lista de proveedores) */}
+          {extrasEnStock.length>0&&(
+            <div style={{marginTop:14,background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"9px 12px",borderBottom:"1px solid #1A1A1A",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>✏️ Agregados a mano</div>
+                <div style={{fontSize:10,color:"#555"}}>{extrasEnStock.length} producto{extrasEnStock.length!==1?"s":""}</div>
+              </div>
+              <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:4}}>
+                {extrasEnStock.map(function(prod){
+                  var cantE=getCant(prod);
+                  var unidadE=getUnidad(prod)||"unid";
+                  var minE=stock[prod]?parseFloat(stock[prod].minimo||0):0;
+                  var stE=getStockStatus(cantE,minE);
+                  var scE=STOCK_COLORS[stE.status];
+                  return(
+                    <div key={prod} style={{background:scE.bg,border:"1px solid "+scE.border,borderRadius:8,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span style={{fontSize:12,color:scE.text,fontWeight:stE.status!=="ok"?700:400}}>{prod}</span>
+                          {scE.badge&&<span style={{fontSize:9,fontWeight:800,color:scE.text,background:scE.border,padding:"1px 6px",borderRadius:8}}>{scE.badge}</span>}
+                        </div>
+                        {minE>0&&<div style={{fontSize:9,color:"#555",marginTop:1}}>Mínimo: {minE}</div>}
+                      </div>
+                      {modo==="cargar"&&(
+                        <input type="number" min="0" placeholder="+" value={cargaManual[prod]?cargaManual[prod].cantidad:""}
+                          onChange={function(e){setCargaManual(function(c){var n={...c};n[prod]={cantidad:e.target.value,unidad:cargaManual[prod]?cargaManual[prod].unidad:unidadE};return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #3A7D44",background:"#0A140A",color:"#3A7D44",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      {modo==="descontar"&&(
+                        <input type="number" min="0" placeholder="-" value={descuentos[prod]||""}
+                          onChange={function(e){setDescuentos(function(d){var n={...d};n[prod]=e.target.value;return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #C1440E",background:"#1A0808",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      {modo==="minimos"&&(
+                        <input type="number" min="0" placeholder="0" value={minimoEditMP[prod]!==undefined?minimoEditMP[prod]:minE}
+                          onChange={function(e){setMinimoEditMP(function(m){var n={...m};n[prod]=e.target.value;return n;});}}
+                          style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #8B2FC9",background:"#0F0A1A",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:12,textAlign:"center"}}/>
+                      )}
+                      <div style={{width:55,textAlign:"center",flexShrink:0}}>
+                        <div style={{fontSize:15,fontWeight:800,color:scE.text}}>{cantE}</div>
+                        <div style={{fontSize:9,color:"#444"}}>{unidadE}</div>
+                      </div>
+                      <button onClick={function(){eliminarProductoMP(prod);}} disabled={saving} title={"Sacar "+prod+" del stock"}
+                        style={{background:"none",border:"1px solid #C1440E44",color:"#C1440E",borderRadius:8,width:30,height:30,cursor:saving?"default":"pointer",fontSize:12,flexShrink:0,opacity:saving?0.5:1}}>🗑</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Botones guardar */}
           {modo==="cargar"&&Object.keys(cargaManual).filter(function(k){return cargaManual[k]&&parseFloat(cargaManual[k].cantidad)>0;}).length>0&&(
             <button onClick={guardarCargaManual} disabled={saving} style={{...BS("#3A7D44"),width:"100%",padding:"12px",fontSize:14,marginTop:14}}>{saving?"⏳ Guardando...":"✓ Guardar carga de mercadería"}</button>
@@ -9246,16 +9979,18 @@ export default function App() {
   var [showEditorMenu,setShowEditorMenu]=useState(false);
   var [menuStock,setMenuStock]=useState(MENU_POR_LOCAL);
   var [showUsers,setShowUsers]=useState(false);
+  var [showIdeas,setShowIdeas]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
+  var [filtroMes,setFiltroMes]=useState("all");
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState(null); // null | compras | admin
   // Default admin vista
   var [vista,setVista]=useState("despacho");
-  var [subModuloCompras,setSubModuloCompras]=useState(null); // null | "compras" | "stock"
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
+  var [adelantos,setAdelantos]=useState([]);
   var [cierres,setCierres]=useState([]);
   var [categoriasGastos,setCategoriasGastos]=useState([]);
   var [showEditorCats,setShowEditorCats]=useState(false);
@@ -9278,6 +10013,18 @@ export default function App() {
 
   var [refrescando,setRefrescando]=useState(false);
 
+  function asegurarLocalStock(){
+    setVistaUsuario(function(prev){
+      if(LOCALES.some(function(l){return l.id===prev;})) return prev;
+      var conProductos=LOCALES.filter(function(l){return Object.keys(MENU_POR_LOCAL[l.id]||{}).length>0;})[0];
+      return conProductos?conProductos.id:LOCALES[0].id;
+    });
+  }
+
+  function actualizarMenuStock(localId,nuevoMenu){
+    setMenuStock(function(prev){ var n={...prev}; n[localId]=nuevoMenu; return n; });
+  }
+
   function cargarDatos(){
     if(!cu)return;
     setLoading(true);
@@ -9285,6 +10032,7 @@ export default function App() {
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
     sbLoadRetiros().then(function(d){setRetiros(d);}).catch(function(){});
+    sbLoadAdelantos().then(function(d){setAdelantos(d);}).catch(function(){});
     sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
@@ -9319,6 +10067,10 @@ export default function App() {
   }
 
   useEffect(function(){cargarDatos();},[cu]);
+  // Usuarios se cargan aparte, sin depender del login (hacen falta para poder loguearse).
+  useEffect(function(){
+    sbLoadUsuarios().then(function(d){if(d)setUsers(d);}).catch(function(){});
+  },[]);
 
   function handleRefresh(){
     setRefrescando(true);
@@ -9331,13 +10083,18 @@ export default function App() {
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
+  var puedeCompras=!esCajero||!!cu.puedeCompras;
+  // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
+  var enCompras=!esSofia||modulo==="compras";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
 
   var filtered=ordenes.filter(function(o){
-    return (lf?o.local===lf:(filtroLocal==="all"?true:o.local===filtroLocal))&&(filtroStatus==="all"||o.status===filtroStatus);
+    return (lf?o.local===lf:(filtroLocal==="all"?true:o.local===filtroLocal))&&(filtroStatus==="all"||o.status===filtroStatus)&&(filtroMes==="all"||(o.fecha&&o.fecha.slice(0,7)===filtroMes));
   });
+
+  var mesesDisp=[...new Set(ordenes.filter(function(o){return lf?o.local===lf:true;}).map(function(o){return o.fecha?o.fecha.slice(0,7):null;}).filter(Boolean))].sort().reverse();
 
   var stats={
     total:filtered.length,
@@ -9368,22 +10125,23 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
-            {esAdmin&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
-            {!esAdmin&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            {(!esSofia||modulo==="compras")&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {!esSofia&&<button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>}
+            {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
+            {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
+            {enCompras&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
         </div>
 
-        {/* MÓDULOS PRINCIPALES — solo Compras y Administración */}
-        {esSofia&&modulo&&(
+        {/* MÓDULOS PRINCIPALES — ocultos dentro de Compras, que es pantalla propia */}
+        {esSofia&&modulo&&modulo!=="compras"&&(
           <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
             <button onClick={function(){setModulo(null);}}
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             {[
-              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setSubModuloCompras(null);}},
+              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
@@ -9410,7 +10168,7 @@ export default function App() {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
-                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setSubModuloCompras(null);}},
+                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
@@ -9427,58 +10185,76 @@ export default function App() {
             </div>
           )}
 
-          {/* PANTALLA SELECCIÓN COMPRAS */}
-          {modulo==="compras"&&!subModuloCompras&&(
-            <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:16}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,marginBottom:8}}>🛒 Compras</div>
-              {[
-                {id:"compras",emoji:"📋",label:"Órdenes de compra",desc:"Despacho, historial, faltantes y configuración",color:"#C1440E"},
-                {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9"},
-              ].map(function(m){return(
-                <button key={m.id} onClick={function(){
-                  setSubModuloCompras(m.id);
-                  if(m.id==="compras")setVista("despacho");
-                  if(m.id==="stock")setVista("stock");
-                }} style={{background:"#0F0F0F",border:"1px solid "+m.color+"44",borderRadius:14,padding:"20px",textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
-                  <div style={{fontSize:24,marginBottom:6}}>{m.emoji}</div>
-                  <div style={{fontSize:15,fontWeight:800,color:m.color,marginBottom:4}}>{m.label}</div>
-                  <div style={{fontSize:11,color:"#555"}}>{m.desc}</div>
-                </button>
-              );})}
+          {/* Volver a los módulos — encabeza la pantalla de Compras */}
+          {esSofia&&modulo==="compras"&&(
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+              <button onClick={function(){setModulo(null);}}
+                style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Módulos</button>
+              <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>🛒 Compras</span>
             </div>
           )}
 
-          {/* STATS — solo en módulo compras */}
-          {(!esSofia||modulo==="compras")&&subModuloCompras==="compras"&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:16}}>
-            {[{label:"Órdenes",value:stats.total,icon:"📋"},{label:"Pendientes",value:stats.pendientes,icon:"⏳",color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,icon:"🚚",color:"#1A6B8A"},{label:"Monto",value:"$"+stats.monto.toFixed(0),icon:"💰",color:"#3A7D44"}].map(function(s){return(
-              <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"10px 12px"}}>
-                <div style={{fontSize:15,marginBottom:4}}>{s.icon}</div>
-                <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:s.color||"#F0EDE8"}}>{s.value}</div>
-                <div style={{fontSize:10,color:"#333",textTransform:"uppercase",letterSpacing:1,marginTop:2}}>{s.label}</div>
+          {/* STATS — solo en el grupo Compras */}
+          {enCompras&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+            {[{label:"Órdenes",value:stats.total},{label:"Pendientes",value:stats.pendientes,color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,color:"#1A6B8A"},{label:"Monto",value:"$"+(Math.round(stats.monto)||0).toLocaleString("es-AR"),color:"#3A7D44"}].map(function(s){return(
+              <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:10,padding:"7px 11px",display:"flex",alignItems:"baseline",gap:7,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:s.color||"#F0EDE8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.value}</div>
+                <div style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,whiteSpace:"nowrap"}}>{s.label}</div>
               </div>
             );})}
           </div>
           )}
 
           {/* TABS MÓDULO COMPRAS */}
-          {esAdmin&&(!esSofia||modulo==="compras")&&subModuloCompras==="compras"&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <button onClick={function(){setSubModuloCompras(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
+          {esAdmin&&enCompras&&(function(){
+            var enStock=vista==="stock"||vista==="stockmp";
+            return(
+            <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
+              {/* Grupos: Compras / Stock */}
+              <div style={{display:"flex",gap:5,marginBottom:8}}>
+                <button onClick={function(){if(enStock)setVista("despacho");}}
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(!enStock?"#C1440E55":"#181818"),background:!enStock?"#C1440E22":"#111",color:!enStock?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  🛒 Compras {faltantes.length>0?"("+faltantes.length+")":""}
+                </button>
+                <button onClick={function(){if(!enStock){setVista("stock");asegurarLocalStock();}}}
+                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(enStock?"#8B2FC955":"#181818"),background:enStock?"#8B2FC922":"#111",color:enStock?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                  📦 Stock
+                </button>
               </div>
-              <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-                <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
-                <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+
+              {/* Sub-tabs del grupo activo */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {!enStock&&<button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>}
+                {!enStock&&<button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>}
+                {!enStock&&(
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
+                )}
+                {enStock&&(
+                <button onClick={function(){setVista("stock");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  📦 Stock Platos
+                </button>
+                )}
+                {enStock&&(
+                <button onClick={function(){setVista("stockmp");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  🥩 Materia Prima
+                </button>
+                )}
+                {enStock&&(
+                <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ✏️ Editar menú
+                </button>
+                )}
+                {!enStock&&(
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
+                )}
               </div>
               {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
-                <div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
                   {[["proveedores","🏭 Proveedores","#D4A017"],["precios","💲 Precios","#3A7D44"]].map(function(t){return(
                     <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                   );})}
@@ -9486,7 +10262,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* SUB-MÓDULOS DE ADMINISTRACIÓN */}
           {esSofia&&modulo==="admin"&&(function(){
@@ -9545,7 +10322,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="despacho"&&(
+          {esAdmin&&enCompras&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -9623,7 +10400,9 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
               </div>
-              <GestUsuarios users={users} onClose={function(){setModulo(null);}} onSave={function(u){setUsers(u);}}/>
+              <GestUsuarios users={users} onClose={function(){setModulo(null);}}
+                onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+                onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
             </div>
           )}
 
@@ -9756,7 +10535,7 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="configcompras"&&(
+          {enCompras&&vista==="configcompras"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
@@ -9766,7 +10545,7 @@ export default function App() {
           )}
 
           {/* PRECIOS */}
-          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="precios"&&(
+          {enCompras&&vista==="precios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
@@ -9776,7 +10555,7 @@ export default function App() {
           )}
 
           {/* PROVEEDORES */}
-          {modulo==="compras"&&subModuloCompras==="compras"&&vista==="proveedores"&&(
+          {enCompras&&vista==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
@@ -9792,7 +10571,7 @@ export default function App() {
               empleados={empleados} sueldos={sueldos}
               retiros={retiros}
               cargasSociales={cargasSociales}
-              onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
+              onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
@@ -9808,6 +10587,9 @@ export default function App() {
               onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
               planillaSueldos={planillaSueldos}
               onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              adelantos={adelantos}
+              onSaveAdelanto={function(a){sbSaveAdelanto(a);setAdelantos(function(prev){var f=prev.filter(function(x){return x.id!==a.id;});return[a,...f];});}}
+              onDeleteAdelanto={function(id){sbDeleteAdelanto(id);setAdelantos(function(prev){return prev.filter(function(a){return a.id!==id;});});}}
             />
           )}
 
@@ -9821,7 +10603,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(
             <PanelRetiros retiros={retiros} usuario={cu.nombre}
-              onSave={function(r){sbSaveRetiro(r);setRetiros(function(p){return[r,...p];});}}
+              onSave={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
             />
           )}
@@ -9832,7 +10614,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
-              sueldos={sueldos}
+              sueldos={sueldos} retiros={retiros} adelantos={adelantos}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});
@@ -9853,26 +10635,11 @@ export default function App() {
             />
           )}
 
-          {(esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics")&&(
+          {((esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics"))&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {/* TABS STOCK */}
-          {esAdmin&&modulo==="compras"&&subModuloCompras==="stock"&&(
-            <div style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                <button onClick={function(){setSubModuloCompras(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800}}>📦 Stock</div>
-                <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontSize:11,cursor:"pointer"}}>✏️ Editar menú</button>
-              </div>
-              <div style={{display:"flex",gap:6,marginBottom:10}}>
-                <button onClick={function(){setVista("stock");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
-                <button onClick={function(){setVista("stockmp");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🥩 Materia Prima</button>
-              </div>
-            </div>
-          )}
-
-          {esAdmin&&modulo==="compras"&&vista==="stockmp"&&subModuloCompras==="stock"&&(
+          {esAdmin&&enCompras&&vista==="stockmp"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
@@ -9886,26 +10653,27 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&vista==="stock"&&subModuloCompras==="stock"&&(
+          {esAdmin&&enCompras&&vista==="stock"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
-                  var hasMenu=Object.keys(MENU_POR_LOCAL[l.id]||{}).length>0;
+                  var hasMenu=Object.keys((menuStock[l.id]||MENU_POR_LOCAL[l.id]||{})).length>0;
                   return(
-                    <button key={l.id} onClick={function(){if(hasMenu)setVistaUsuario(l.id);}}
-                      style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:hasMenu?"#666":"#333",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:hasMenu?"pointer":"not-allowed",opacity:hasMenu?1:0.5}}>
-                      {l.emoji} {l.nombre} {!hasMenu&&<span style={{fontSize:9}}>(próximamente)</span>}
+                    <button key={l.id} onClick={function(){setVistaUsuario(l.id);}}
+                      style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario===l.id?l.color:"#1E1E1E"),background:vistaUsuario===l.id?l.color+"22":"#111",color:vistaUsuario===l.id?l.color:hasMenu?"#666":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      {l.emoji} {l.nombre} {!hasMenu&&<span style={{fontSize:9}}>(sin productos)</span>}
                     </button>
                   );
                 })}
               </div>
-              {vistaUsuario&&MENU_POR_LOCAL[vistaUsuario]&&Object.keys(MENU_POR_LOCAL[vistaUsuario]).length>0&&(
-                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}/>
+              {LOCALES.some(function(l){return l.id===vistaUsuario;})&&(
+                <PanelStock localId={vistaUsuario} localNombre={LOCALES.find(function(l){return l.id===vistaUsuario;})?LOCALES.find(function(l){return l.id===vistaUsuario;}).nombre:""} usuario={cu.nombre} esAdmin={true}
+                  menuExterno={menuStock[vistaUsuario]} onMenuChange={actualizarMenuStock}/>
               )}
             </div>
           )}
 
-          {esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="faltantes"&&(
+          {esAdmin&&enCompras&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -9940,18 +10708,19 @@ export default function App() {
           )}
 
           {/* HISTORIAL */}
-          {!esAdmin&&(
+          {!esAdmin&&puedeCompras&&(
             <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
               <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
-              {MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
+              {(menuStock[lf]||MENU_POR_LOCAL[lf])&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
                 <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
               )}
               <button onClick={function(){setVistaUsuario("stockmp");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vistaUsuario==="stockmp"?"#1A6B8A22":"#111",color:vistaUsuario==="stockmp"?"#1A6B8A":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🥩 Materia Prima</button>
             </div>
           )}
 
-          {!esAdmin&&vistaUsuario==="stock"&&MENU_POR_LOCAL[lf]&&Object.keys(MENU_POR_LOCAL[lf]).length>0&&(
-            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}/>
+          {!esAdmin&&vistaUsuario==="stock"&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
+            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}
+              menuExterno={menuStock[lf]} onMenuChange={actualizarMenuStock}/>
           )}
 
           {esCajero&&(
@@ -9964,7 +10733,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"||esAdmin&&modulo==="compras"&&subModuloCompras==="compras"&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enCompras&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(
@@ -9987,6 +10756,10 @@ export default function App() {
                   <option value="enviada">Enviada</option>
                   <option value="confirmada">Confirmada</option>
                   <option value="cancelada">Cancelada</option>
+                </select>
+                <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,width:"auto",padding:"4px 9px",fontSize:11,borderRadius:20}}>
+                  <option value="all">Todos los meses</option>
+                  {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
                 </select>
               </div>
               {loading?(
@@ -10067,7 +10840,27 @@ export default function App() {
         });
         setPrecios(prs);setShowPrecios(false);
       }}/>}
-      {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}} onSave={function(u){setUsers(u);setShowUsers(false);}}/>}
+      {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
+        onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+        onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
+      {showIdeas&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={function(e){if(e.target===e.currentTarget)setShowIdeas(false);}}>
+          <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",overflow:"hidden"}}>
+            <div style={{padding:"14px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
+              <button onClick={function(){setShowIdeas(false);}} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{overflowY:"auto",flex:1,padding:"0 22px 18px"}}>
+              <PanelIdeas
+                ideas={ideas}
+                usuario={cu.nombre}
+                onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+                onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
+                onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

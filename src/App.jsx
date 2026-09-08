@@ -9985,6 +9985,7 @@ export default function App() {
   var [filtroMes,setFiltroMes]=useState("all");
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState(null); // null | compras | admin
+  var [subCompras,setSubCompras]=useState(null); // dentro de Compras: null (elección) | "ordenes" | "stock"
   // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [faltantes,setFaltantes]=useState([]);
@@ -10086,6 +10087,10 @@ export default function App() {
   var puedeCompras=!esCajero||!!cu.puedeCompras;
   // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
   var enCompras=!esSofia||modulo==="compras";
+  // Dentro de Compras, el admin elige primero un sub-módulo: Órdenes de compra o Stock.
+  // El resto de los usuarios no tiene esa pantalla y entra directo a sus órdenes.
+  var enOrdenes=esAdmin?(enCompras&&subCompras==="ordenes"):enCompras;
+  var enStockCompras=esAdmin&&enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -10128,7 +10133,7 @@ export default function App() {
             {!esSofia&&<button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>}
             {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
-            {enCompras&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -10141,7 +10146,7 @@ export default function App() {
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             {[
-              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
+              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");setSubCompras(null);}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
@@ -10168,7 +10173,7 @@ export default function App() {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
-                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");}},
+                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");setSubCompras(null);}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
@@ -10185,17 +10190,47 @@ export default function App() {
             </div>
           )}
 
-          {/* Volver a los módulos — encabeza la pantalla de Compras */}
-          {esSofia&&modulo==="compras"&&(
+          {/* Encabezado de Compras — volver a los módulos y al listado de sub-módulos */}
+          {esAdmin&&enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
             <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
-              <button onClick={function(){setModulo(null);}}
-                style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Módulos</button>
-              <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>🛒 Compras</span>
+              {esSofia&&modulo==="compras"&&(
+                <button onClick={function(){setModulo(null);setSubCompras(null);}}
+                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Módulos</button>
+              )}
+              {subCompras&&(
+                <button onClick={function(){setSubCompras(null);}}
+                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Compras</button>
+              )}
+              <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
+                🛒 Compras{subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":""}
+              </span>
             </div>
           )}
 
-          {/* STATS — solo en el grupo Compras */}
-          {enCompras&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
+          {/* PANTALLA DE COMPRAS — elección de sub-módulo */}
+          {esAdmin&&enCompras&&!subCompras&&(
+            <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
+              {[
+                {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:"Despacho, historial, faltantes y configuración",color:"#C1440E",badge:faltantes.length},
+                {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
+              ].map(function(m){return(
+                <button key={m.id} onClick={function(){
+                  setSubCompras(m.id);
+                  if(m.id==="ordenes")setVista("despacho");
+                  else{setVista("stock");asegurarLocalStock();}
+                }} style={{background:"#0F0F0F",border:"1px solid "+m.color+"44",borderRadius:14,padding:"20px",textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                  <div style={{fontSize:24,marginBottom:6}}>{m.emoji}</div>
+                  <div style={{fontSize:15,fontWeight:800,color:m.color,marginBottom:4}}>
+                    {m.label}{m.badge>0?" ("+m.badge+")":""}
+                  </div>
+                  <div style={{fontSize:11,color:"#555"}}>{m.desc}</div>
+                </button>
+              );})}
+            </div>
+          )}
+
+          {/* STATS — solo en Órdenes de compra */}
+          {enOrdenes&&puedeCompras&&vista!=="stock"&&vista!=="stockmp"&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
             {[{label:"Órdenes",value:stats.total},{label:"Pendientes",value:stats.pendientes,color:"#D4A017"},{label:"Enviadas",value:stats.enviadas,color:"#1A6B8A"},{label:"Monto",value:"$"+(Math.round(stats.monto)||0).toLocaleString("es-AR"),color:"#3A7D44"}].map(function(s){return(
               <div key={s.label} style={{background:"#111",border:"1px solid #181818",borderRadius:10,padding:"7px 11px",display:"flex",alignItems:"baseline",gap:7,minWidth:0}}>
@@ -10206,52 +10241,18 @@ export default function App() {
           </div>
           )}
 
-          {/* TABS MÓDULO COMPRAS */}
-          {esAdmin&&enCompras&&(function(){
-            var enStock=vista==="stock"||vista==="stockmp";
-            return(
+          {/* TABS — ÓRDENES DE COMPRA */}
+          {esAdmin&&enOrdenes&&(
             <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
-              {/* Grupos: Compras / Stock */}
-              <div style={{display:"flex",gap:5,marginBottom:8}}>
-                <button onClick={function(){if(enStock)setVista("despacho");}}
-                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(!enStock?"#C1440E55":"#181818"),background:!enStock?"#C1440E22":"#111",color:!enStock?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
-                  🛒 Compras {faltantes.length>0?"("+faltantes.length+")":""}
-                </button>
-                <button onClick={function(){if(!enStock){setVista("stock");asegurarLocalStock();}}}
-                  style={{flex:1,padding:"10px 6px",borderRadius:8,border:"1px solid "+(enStock?"#8B2FC955":"#181818"),background:enStock?"#8B2FC922":"#111",color:enStock?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
-                  📦 Stock
-                </button>
-              </div>
-
-              {/* Sub-tabs del grupo activo */}
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {!enStock&&<button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>}
-                {!enStock&&<button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>}
-                {!enStock&&(
+                <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
+                <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
-                )}
-                {enStock&&(
-                <button onClick={function(){setVista("stock");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  📦 Stock Platos
-                </button>
-                )}
-                {enStock&&(
-                <button onClick={function(){setVista("stockmp");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  🥩 Materia Prima
-                </button>
-                )}
-                {enStock&&(
-                <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  ✏️ Editar menú
-                </button>
-                )}
-                {!enStock&&(
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
-                )}
               </div>
               {(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
                 <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
@@ -10262,8 +10263,24 @@ export default function App() {
                 </div>
               )}
             </div>
-            );
-          })()}
+          )}
+
+          {/* TABS — STOCK */}
+          {enStockCompras&&(
+            <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button onClick={function(){setVista("stock");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stock"?"#8B2FC9":"#1E1E1E"),background:vista==="stock"?"#8B2FC922":"#111",color:vista==="stock"?"#8B2FC9":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  📦 Stock Platos
+                </button>
+                <button onClick={function(){setVista("stockmp");asegurarLocalStock();}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vista==="stockmp"?"#1A6B8A22":"#111",color:vista==="stockmp"?"#1A6B8A":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  🥩 Materia Prima
+                </button>
+                <button onClick={function(){setShowEditorMenu(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #8B2FC933",background:"#8B2FC922",color:"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  ✏️ Editar menú
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* SUB-MÓDULOS DE ADMINISTRACIÓN */}
           {esSofia&&modulo==="admin"&&(function(){
@@ -10322,7 +10339,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {esAdmin&&enCompras&&vista==="despacho"&&(
+          {esAdmin&&enOrdenes&&vista==="despacho"&&(
             <PanelDespacho ordenes={ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -10535,7 +10552,7 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {enCompras&&vista==="configcompras"&&(
+          {enOrdenes&&vista==="configcompras"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
@@ -10545,7 +10562,7 @@ export default function App() {
           )}
 
           {/* PRECIOS */}
-          {enCompras&&vista==="precios"&&(
+          {enOrdenes&&vista==="precios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
@@ -10555,7 +10572,7 @@ export default function App() {
           )}
 
           {/* PROVEEDORES */}
-          {enCompras&&vista==="proveedores"&&(
+          {enOrdenes&&vista==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
@@ -10639,7 +10656,7 @@ export default function App() {
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 
-          {esAdmin&&enCompras&&vista==="stockmp"&&(
+          {enStockCompras&&vista==="stockmp"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){return(
@@ -10653,7 +10670,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&enCompras&&vista==="stock"&&(
+          {enStockCompras&&vista==="stock"&&(
             <div>
               <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
                 {LOCALES.map(function(l){
@@ -10673,7 +10690,7 @@ export default function App() {
             </div>
           )}
 
-          {esAdmin&&enCompras&&vista==="faltantes"&&(
+          {esAdmin&&enOrdenes&&vista==="faltantes"&&(
             <div>
               <div style={{fontSize:11,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
                 {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
@@ -10733,7 +10750,7 @@ export default function App() {
             <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
           )}
 
-          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enCompras&&vista==="historial")&&(
+          {(!esAdmin&&vistaUsuario==="ordenes"&&puedeCompras||esAdmin&&enOrdenes&&vista==="historial")&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(

@@ -109,8 +109,9 @@ async function sbSaveUsuario(u) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var r = await fetch(SURL + "/rest/v1/usuarios", { method: "POST", headers: h, body: JSON.stringify(u) });
-    if(!r.ok){var errText=await r.text();console.error("sbSaveUsuario error:",r.status,errText);}
-  } catch(e) { console.error("sbSaveUsuario catch:",e); }
+    if(!r.ok){var errText=await r.text();console.error("sbSaveUsuario error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSaveUsuario catch:",e); return String((e&&e.message)||e); }
 }
 async function sbDeleteUsuario(id) {
   try {
@@ -1371,9 +1372,10 @@ function GestUsuarios(p) {
                 <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Nombre</label><input value={nuevo.nombre} onChange={function(e){setNuevo(function(n){return{...n,nombre:e.target.value};});}} style={INP}/></div>
                 <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Usuario</label><input value={nuevo.usuario} onChange={function(e){setNuevo(function(n){return{...n,usuario:e.target.value.toLowerCase()};});}} style={INP}/></div>
                 <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Contraseña</label><input value={nuevo.password} onChange={function(e){setNuevo(function(n){return{...n,password:e.target.value};});}} style={INP}/></div>
-                <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="admin">Admin</option></select></div>
+                <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
               </div>
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setNuevo(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"7px 3px",borderRadius:8,border:"2px solid "+(nuevo.local===l.id?l.color:"#222"),background:nuevo.local===l.id?l.color+"22":"#111",color:nuevo.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
+              {nuevo.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!nuevo.puedeCompras} onChange={function(e){var v=e.target.checked;setNuevo(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
               {err&&<div style={{fontSize:12,color:"#C1440E",marginBottom:7}}>⚠️ {err}</div>}
               <div style={{display:"flex",gap:7}}><button onClick={doAdd} style={{...BS("#C1440E"),flex:1}}>Crear</button><button onClick={function(){setShowAdd(false);setErr("");}} style={{...GH,flex:1}}>Cancelar</button></div>
             </div>
@@ -1387,9 +1389,10 @@ function GestUsuarios(p) {
                     <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Nombre</label><input value={editando.nombre} onChange={function(e){setEditando(function(n){return{...n,nombre:e.target.value};});}} style={INP}/></div>
                     <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Usuario</label><input value={editando.usuario} onChange={function(e){setEditando(function(n){return{...n,usuario:e.target.value};});}} style={INP}/></div>
                     <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Contraseña</label><input value={editando.password} onChange={function(e){setEditando(function(n){return{...n,password:e.target.value};});}} style={INP}/></div>
-                    <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="admin">Admin</option></select></div>
+                    <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
                   </div>
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setEditando(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"6px 3px",borderRadius:8,border:"2px solid "+(editando.local===l.id?l.color:"#222"),background:editando.local===l.id?l.color+"22":"#111",color:editando.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
+                  {editando.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!(editando.puedeCompras||editando.puedecompras)} onChange={function(e){var v=e.target.checked;setEditando(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
                   <div style={{display:"flex",gap:7}}><button onClick={doEdit} style={{...BS("#3A7D44"),flex:1,padding:"8px"}}>Guardar</button><button onClick={function(){setEditando(null);}} style={{...GH,flex:1,padding:"8px"}}>Cancelar</button></div>
                 </div>
               );
@@ -10090,12 +10093,16 @@ export default function App() {
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
-  var puedeCompras=!esCajero||!!cu.puedeCompras;
+  // El permiso de compras del cajero puede venir de Supabase con la columna en
+  // minúsculas, según cómo se haya creado; se aceptan las dos formas.
+  var cajeroCompras=!!(cu.puedeCompras||cu.puedecompras);
+  var puedeCompras=!esCajero||cajeroCompras;
   // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
   var enCompras=!esSofia||modulo==="compras";
   // Encargadas con la navegación completa de Compras (las dos tarjetas), pero
-  // acotadas a su local y sin Faltantes ni Config.
-  var verSubCompras=!esAdmin&&!esCajero&&COMPRAS_SUBMODULOS.indexOf(String(cu.usuario||"").toLowerCase())!==-1;
+  // acotadas a su local y sin Faltantes ni Config. Los cajeros habilitados entran
+  // a la misma pantalla, con una tarjeta más para el cierre de caja.
+  var verSubCompras=!esAdmin&&(esCajero?cajeroCompras:COMPRAS_SUBMODULOS.indexOf(String(cu.usuario||"").toLowerCase())!==-1);
   var conSubmodulos=esAdmin||verSubCompras;
   // Dentro de Compras se elige primero un sub-módulo: Órdenes de compra o Stock.
   // El resto de los usuarios no tiene esa pantalla y entra directo a sus órdenes.
@@ -10209,10 +10216,10 @@ export default function App() {
               )}
               {subCompras&&(
                 <button onClick={function(){setSubCompras(null);}}
-                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Compras</button>
+                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esCajero?"← Inicio":"← Compras"}</button>
               )}
               <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
-                🛒 Compras{subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":""}
+                {subCompras==="caja"?"🧾 Caja":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -10220,14 +10227,17 @@ export default function App() {
           {/* PANTALLA DE COMPRAS — elección de sub-módulo */}
           {conSubmodulos&&enCompras&&!subCompras&&(
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
-              {[
-                {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":"Despachar y ver las órdenes del local",color:"#C1440E",badge:esAdmin?faltantes.length:0},
-                {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
-              ].map(function(m){return(
+              {[].concat(
+                esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0}]:[],
+                [
+                  {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":"Despachar y ver las órdenes del local",color:"#C1440E",badge:esAdmin?faltantes.length:0},
+                  {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
+                ]
+              ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   setSubCompras(m.id);
                   if(m.id==="ordenes")setVista("despacho");
-                  else{setVista("stock");asegurarLocalStock();}
+                  else if(m.id==="stock"){setVista("stock");asegurarLocalStock();}
                 }} style={{background:"#0F0F0F",border:"1px solid "+m.color+"44",borderRadius:14,padding:"20px",textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
                   <div style={{fontSize:24,marginBottom:6}}>{m.emoji}</div>
                   <div style={{fontSize:15,fontWeight:800,color:m.color,marginBottom:4}}>
@@ -10434,7 +10444,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
               </div>
               <GestUsuarios users={users} onClose={function(){setModulo(null);}}
-                onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+                onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
                 onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
             </div>
           )}
@@ -10768,7 +10778,7 @@ export default function App() {
               menuExterno={menuStock[lf]} onMenuChange={actualizarMenuStock}/>
           )}
 
-          {esCajero&&(
+          {esCajero&&(!conSubmodulos||subCompras==="caja")&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
             />
@@ -10886,7 +10896,7 @@ export default function App() {
         setPrecios(prs);setShowPrecios(false);
       }}/>}
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
-        onSaveUser={function(u){sbSaveUsuario(u);setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
+        onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
       {showIdeas&&(
         <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={function(e){if(e.target===e.currentTarget)setShowIdeas(false);}}>

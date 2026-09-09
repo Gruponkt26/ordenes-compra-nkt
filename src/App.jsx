@@ -10250,7 +10250,6 @@ export default function App() {
   var [showEditorMenu,setShowEditorMenu]=useState(false);
   var [menuStock,setMenuStock]=useState(MENU_POR_LOCAL);
   var [showUsers,setShowUsers]=useState(false);
-  var [showIdeas,setShowIdeas]=useState(false);
   var [filtroStatus,setFiltroStatus]=useState("all");
   var [filtroLocal,setFiltroLocal]=useState("all");
   var [filtroMes,setFiltroMes]=useState("all");
@@ -10379,15 +10378,17 @@ export default function App() {
   // Cocina ve el recetario de su local, en modo lectura. Administración lo carga
   // y lo edita desde el módulo Locales.
   var esCocina=String(cu.seccion||"").trim().toLowerCase()==="cocina";
-  var conSubmodulos=esAdmin||verSubCompras||esCocina;
+  // Todos entran por la pantalla de tarjetas: es la puerta a Ideas, que ahora es
+  // un módulo principal para cualquiera y no un botón en el encabezado.
   // El despacho sigue siendo de quienes ya lo tenían: sumar cocina al recetario no
   // le da acceso a despachar órdenes.
   var verDespacho=esAdmin||verSubCompras;
   // Dentro de Compras se elige primero un sub-módulo: Órdenes de compra o Stock.
   // El resto de los usuarios no tiene esa pantalla y entra directo a sus órdenes.
-  var enOrdenes=conSubmodulos?(enCompras&&subCompras==="ordenes"):enCompras;
+  var enOrdenes=enCompras&&subCompras==="ordenes";
   var enRecetas=esCocina&&enCompras&&subCompras==="recetas";
-  var enStockCompras=conSubmodulos&&enCompras&&subCompras==="stock";
+  var enIdeas=!esSofia&&enCompras&&subCompras==="ideas";
+  var enStockCompras=enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
   var seccion=cu.seccion||"";
@@ -10427,7 +10428,6 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
-            {!esSofia&&<button onClick={function(){setShowIdeas(true);}} style={{...GH,padding:"5px 10px",fontSize:12,color:"#E07B00",borderColor:"#E07B0044"}}>💡 Ideas</button>}
             {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {!esAdmin&&puedeCompras&&<button onClick={function(){setShowMisProds(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>📦 Mis Productos</button>}
             {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
@@ -10488,7 +10488,7 @@ export default function App() {
           )}
 
           {/* Encabezado de Compras — volver a los módulos y al listado de sub-módulos */}
-          {conSubmodulos&&enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
+          {enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
             <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
               {esSofia&&modulo==="compras"&&(
                 <button onClick={function(){setModulo(null);setSubCompras(null);}}
@@ -10496,16 +10496,16 @@ export default function App() {
               )}
               {subCompras&&(
                 <button onClick={function(){setSubCompras(null);}}
-                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esCajero||esCocina||!puedeCompras?"← Inicio":"← Compras"}</button>
+                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="recetas"?"🍳 Recetas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
 
           {/* PANTALLA DE COMPRAS — elección de sub-módulo */}
-          {conSubmodulos&&enCompras&&!subCompras&&(
+          {enCompras&&!subCompras&&(
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
               {[].concat(
                 esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0}]:[],
@@ -10513,7 +10513,8 @@ export default function App() {
                   {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
-                esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[]
+                esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
+                esSofia?[]:[{id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0}]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   setSubCompras(m.id);
@@ -10543,7 +10544,7 @@ export default function App() {
           )}
 
           {/* TABS — ÓRDENES DE COMPRA */}
-          {conSubmodulos&&enOrdenes&&(
+          {enOrdenes&&(
             <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 {verDespacho&&(
@@ -10589,6 +10590,17 @@ export default function App() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* IDEAS — módulo principal para todos los que no navegan por la barra */}
+          {enIdeas&&(
+            <PanelIdeas
+              ideas={ideas}
+              usuario={cu.nombre}
+              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
+              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+            />
           )}
 
           {/* RECETARIO — cocina, sólo lectura */}
@@ -11054,33 +11066,13 @@ export default function App() {
             </div>
           )}
 
-          {/* HISTORIAL */}
-          {!conSubmodulos&&puedeCompras&&(
-            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-              <button onClick={function(){setVistaUsuario("ordenes");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="ordenes"?"#555":"#1E1E1E"),background:vistaUsuario==="ordenes"?"#222":"#111",color:vistaUsuario==="ordenes"?"#F0EDE8":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📋 Mis Órdenes</button>
-              {(menuStock[lf]||MENU_POR_LOCAL[lf])&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
-                <button onClick={function(){setVistaUsuario("stock");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stock"?"#8B2FC9":"#1E1E1E"),background:vistaUsuario==="stock"?"#8B2FC922":"#111",color:vistaUsuario==="stock"?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📦 Stock Platos</button>
-              )}
-              <button onClick={function(){setVistaUsuario("stockmp");}} style={{padding:"8px 16px",borderRadius:10,border:"1px solid "+(vistaUsuario==="stockmp"?"#1A6B8A":"#1E1E1E"),background:vistaUsuario==="stockmp"?"#1A6B8A22":"#111",color:vistaUsuario==="stockmp"?"#1A6B8A":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🥩 Materia Prima</button>
-            </div>
-          )}
-
-          {!conSubmodulos&&vistaUsuario==="stock"&&Object.keys(menuStock[lf]||MENU_POR_LOCAL[lf]||{}).length>0&&(
-            <PanelStock localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} esAdmin={false}
-              menuExterno={menuStock[lf]} onMenuChange={actualizarMenuStock}/>
-          )}
-
-          {esCajero&&(!conSubmodulos||subCompras==="caja")&&(
+          {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
             />
           )}
 
-          {!conSubmodulos&&!esCajero&&vistaUsuario==="stockmp"&&(
-            <PanelStockMP localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} proveedores={proveedores} productos={productos}/>
-          )}
-
-          {(!conSubmodulos&&vistaUsuario==="ordenes"&&puedeCompras||conSubmodulos&&enOrdenes&&vista==="historial")&&(
+          {enOrdenes&&vista==="historial"&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
                 {esAdmin&&(
@@ -11190,24 +11182,6 @@ export default function App() {
       {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
-      {showIdeas&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={function(e){if(e.target===e.currentTarget)setShowIdeas(false);}}>
-          <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",overflow:"hidden"}}>
-            <div style={{padding:"14px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"flex-end",flexShrink:0}}>
-              <button onClick={function(){setShowIdeas(false);}} style={{background:"none",border:"1px solid #222",color:"#555",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button>
-            </div>
-            <div style={{overflowY:"auto",flex:1,padding:"0 22px 18px"}}>
-              <PanelIdeas
-                ideas={ideas}
-                usuario={cu.nombre}
-                onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
-                onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
-                onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

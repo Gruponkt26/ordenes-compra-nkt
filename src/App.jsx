@@ -236,6 +236,28 @@ async function sbDeleteLocalObra(id) {
   } catch(e) {}
 }
 
+// ─── PAUTAS ───────────────────────────────────────────────────────────────────
+async function sbLoadPautas() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSavePauta(pauta) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:h,body:JSON.stringify(pauta)});
+    if(!r.ok){var errText=await r.text();console.error("sbSavePauta error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSavePauta catch:",e); return String((e&&e.message)||e); }
+}
+async function sbDeletePauta(id) {
+  try {
+    await fetch(SURL+"/rest/v1/pautas?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e) {}
+}
+
 // ─── RECETAS ──────────────────────────────────────────────────────────────────
 async function sbLoadRecetas() {
   try {
@@ -1963,6 +1985,124 @@ function GestProveedoresPanel(p) {
 
 
 // ─── PANEL LOCALES ────────────────────────────────────────────────────────────
+// ─── PANEL PAUTAS ─────────────────────────────────────────────────────────────
+// Pautas de la empresa, separadas por local y una sección general. Sólo Sofía.
+var PAUTAS_AMBITOS = [
+  { id: "general", emoji: "🏢", nombre: "Generales", color: "#1A8A7B" },
+  { id: "l1", emoji: "🍷", nombre: "El Bodegón Nkt", color: "#C1440E" },
+  { id: "l2", emoji: "🌸", nombre: "Kusama", color: "#8B2FC9" },
+  { id: "l3", emoji: "🍝", nombre: "Colantonio's", color: "#1A6B8A" },
+];
+
+function PanelPautas(p){
+  var pautas=p.pautas||[];
+  var [ambito,setAmbito]=useState("general");
+  var [texto,setTexto]=useState("");
+  var [editId,setEditId]=useState(null);
+  var [editTexto,setEditTexto]=useState("");
+
+  var amb=PAUTAS_AMBITOS.find(function(a){return a.id===ambito;})||PAUTAS_AMBITOS[0];
+  var delAmbito=pautas.filter(function(x){return x.ambito===ambito;});
+  var INP={padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical"};
+
+  function agregar(){
+    if(!texto.trim())return;
+    p.onSave({
+      id:"pau_"+Date.now(),
+      ambito:ambito,
+      texto:texto.trim(),
+      usuario:p.usuario||"",
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+    });
+    setTexto("");
+  }
+  function guardarEdicion(x){
+    if(!editTexto.trim())return;
+    p.onSave({...x,texto:editTexto.trim(),updated_at:new Date().toISOString()});
+    setEditId(null);setEditTexto("");
+  }
+  function fmtFecha(s){
+    if(!s)return "";
+    var d=new Date(s);
+    if(isNaN(d))return "";
+    return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📌 Pautas de la empresa</div>
+      </div>
+
+      {/* Ámbitos: general y cada local */}
+      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+        {PAUTAS_AMBITOS.map(function(a){
+          var activo=ambito===a.id;
+          var cuenta=pautas.filter(function(x){return x.ambito===a.id;}).length;
+          return(
+            <button key={a.id} onClick={function(){setAmbito(a.id);setEditId(null);}}
+              style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(activo?a.color:"#1E1E1E"),background:activo?a.color+"22":"#111",color:activo?a.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {a.emoji} {a.nombre}{cuenta>0?" ("+cuenta+")":""}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Alta */}
+      <div style={{background:"#0F0F0F",border:"1px solid "+amb.color+"33",borderRadius:12,padding:"13px",marginBottom:14}}>
+        <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>
+          Nueva pauta — {amb.nombre}
+        </label>
+        <textarea value={texto} onChange={function(e){setTexto(e.target.value);}} rows={2}
+          placeholder="Ej: mejorar redes sociales" style={{...INP,marginBottom:8}}/>
+        <button onClick={agregar} disabled={!texto.trim()}
+          style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:texto.trim()?amb.color:"#1A1A1A",color:texto.trim()?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:texto.trim()?"pointer":"not-allowed"}}>
+          + Agregar pauta
+        </button>
+      </div>
+
+      {/* Listado */}
+      {delAmbito.length===0?(
+        <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
+          <div style={{fontSize:30,marginBottom:8}}>📌</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin pautas en {amb.nombre}</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {delAmbito.map(function(x){
+            if(editId===x.id)return(
+              <div key={x.id} style={{background:"#0F0F0F",border:"1px solid "+amb.color+"44",borderRadius:10,padding:"11px"}}>
+                <textarea value={editTexto} onChange={function(e){setEditTexto(e.target.value);}} rows={3} style={{...INP,marginBottom:8}}/>
+                <div style={{display:"flex",gap:7}}>
+                  <button onClick={function(){guardarEdicion(x);}} style={{flex:1,padding:"8px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Guardar</button>
+                  <button onClick={function(){setEditId(null);setEditTexto("");}} style={{padding:"8px 14px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+                </div>
+              </div>
+            );
+            return(
+              <div key={x.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 13px"}}>
+                <div style={{fontSize:13,color:"#F0EDE8",whiteSpace:"pre-wrap",lineHeight:1.55}}>{x.texto}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
+                  <div style={{fontSize:9,color:"#3A3A3A"}}>
+                    {fmtFecha(x.created_at)}{x.usuario?" · "+x.usuario:""}
+                    {x.updated_at&&x.updated_at!==x.created_at?" · editada "+fmtFecha(x.updated_at):""}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={function(){setEditId(x.id);setEditTexto(x.texto||"");}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#666",fontSize:11,cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar esta pauta?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PANEL RECETAS ────────────────────────────────────────────────────────────
 // Recetas por local. Las carga y edita administración; cocina las ve en modo lectura.
 // La foto de la receta manuscrita no se guarda: se usa sólo para transcribirla.
@@ -10277,6 +10417,7 @@ export default function App() {
   var [localesDatos,setLocalesDatos]=useState({});
   var [localesObras,setLocalesObras]=useState([]);
   var [recetas,setRecetas]=useState([]);
+  var [pautas,setPautas]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
@@ -10333,6 +10474,7 @@ export default function App() {
     sbLoadLocalesDatos().then(function(d){setLocalesDatos(d||{});}).catch(function(){});
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
     sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
+    sbLoadPautas().then(function(d){setPautas(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
     sbLoadIdeas().then(function(d){setIdeas(d||[]);}).catch(function(){});
@@ -10349,6 +10491,15 @@ export default function App() {
     sbSaveReceta(r).then(function(err){if(err)alert("No se pudo guardar la receta en la base:\n\n"+err+"\n\nSi el error menciona la tabla recetas, hay que crearla en Supabase.");});
     setRecetas(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});
   }
+  function guardarPauta(x){
+    sbSavePauta(x).then(function(err){if(err)alert("No se pudo guardar la pauta en la base:\n\n"+err+"\n\nSi el error menciona la tabla pautas, hay que crearla en Supabase.");});
+    setPautas(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+  }
+  function borrarPauta(id){
+    sbDeletePauta(id);
+    setPautas(function(prev){return prev.filter(function(x){return x.id!==id;});});
+  }
+
   function borrarReceta(id){
     sbDeleteReceta(id);
     setRecetas(function(prev){return prev.filter(function(r){return r.id!==id;});});
@@ -10449,6 +10600,7 @@ export default function App() {
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
+              {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -10476,6 +10628,7 @@ export default function App() {
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
+                  {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -10763,6 +10916,12 @@ export default function App() {
               onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
               onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
             />
+          )}
+
+          {/* MÓDULO PAUTAS — sólo Sofía */}
+          {esSofia&&modulo==="pautas"&&(
+            <PanelPautas pautas={pautas} usuario={cu.nombre}
+              onSave={guardarPauta} onDelete={borrarPauta}/>
           )}
 
           {/* MÓDULO LOCALES */}

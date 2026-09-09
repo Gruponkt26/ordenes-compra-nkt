@@ -1,5 +1,5 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
@@ -234,6 +234,41 @@ async function sbDeleteLocalObra(id) {
   try {
     await fetch(SURL+"/rest/v1/locales_obras?id=eq."+id,{method:"DELETE",headers:SH});
   } catch(e) {}
+}
+
+// ─── RECETAS ──────────────────────────────────────────────────────────────────
+async function sbLoadRecetas() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/recetas?order=nombre", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveReceta(receta) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/recetas",{method:"POST",headers:h,body:JSON.stringify(receta)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveReceta error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSaveReceta catch:",e); return String((e&&e.message)||e); }
+}
+async function sbDeleteReceta(id) {
+  try {
+    await fetch(SURL+"/rest/v1/recetas?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e) {}
+}
+
+// Transcribe una foto de receta manuscrita vía la función serverless /api/leer-receta.
+// La clave de la API vive como variable de entorno en Vercel, nunca en el navegador.
+async function leerRecetaDeFoto(base64, mediaType) {
+  var r = await fetch("/api/leer-receta", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({imagen: base64, media_type: mediaType || "image/jpeg"})
+  });
+  var d = await r.json().catch(function(){return null;});
+  if(!r.ok) throw new Error((d&&d.error)||("La lectura falló (error "+r.status+")"));
+  return d;
 }
 
 async function sbLoadSaldosProveedores() {
@@ -1375,6 +1410,7 @@ function GestUsuarios(p) {
                 <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
               </div>
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setNuevo(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"7px 3px",borderRadius:8,border:"2px solid "+(nuevo.local===l.id?l.color:"#222"),background:nuevo.local===l.id?l.color+"22":"#111",color:nuevo.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
+              {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Sección</label><select value={nuevo.seccion||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#3A3A3A",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
               {nuevo.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!nuevo.puedeCompras} onChange={function(e){var v=e.target.checked;setNuevo(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
               {err&&<div style={{fontSize:12,color:"#C1440E",marginBottom:7}}>⚠️ {err}</div>}
               <div style={{display:"flex",gap:7}}><button onClick={doAdd} style={{...BS("#C1440E"),flex:1}}>Crear</button><button onClick={function(){setShowAdd(false);setErr("");}} style={{...GH,flex:1}}>Cancelar</button></div>
@@ -1392,6 +1428,7 @@ function GestUsuarios(p) {
                     <div><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
                   </div>
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setEditando(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"6px 3px",borderRadius:8,border:"2px solid "+(editando.local===l.id?l.color:"#222"),background:editando.local===l.id?l.color+"22":"#111",color:editando.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
+                  {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Sección</label><select value={editando.seccion||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#3A3A3A",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
                   {editando.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!(editando.puedeCompras||editando.puedecompras)} onChange={function(e){var v=e.target.checked;setEditando(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
                   <div style={{display:"flex",gap:7}}><button onClick={doEdit} style={{...BS("#3A7D44"),flex:1,padding:"8px"}}>Guardar</button><button onClick={function(){setEditando(null);}} style={{...GH,flex:1,padding:"8px"}}>Cancelar</button></div>
                 </div>
@@ -1926,7 +1963,226 @@ function GestProveedoresPanel(p) {
 
 
 // ─── PANEL LOCALES ────────────────────────────────────────────────────────────
-function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso}){
+// ─── PANEL RECETAS ────────────────────────────────────────────────────────────
+// Recetas por local. Las carga y edita administración; cocina las ve en modo lectura.
+// La foto de la receta manuscrita no se guarda: se usa sólo para transcribirla.
+
+// Achica la foto antes de mandarla a leer. 1568px es el lado máximo que aprovecha
+// el modelo, así que más grande sólo suma peso y costo sin leerse mejor.
+function achicarFoto(file, maxLado) {
+  return new Promise(function(resolve,reject){
+    var lector=new FileReader();
+    lector.onerror=function(){reject(new Error("No se pudo leer el archivo."));};
+    lector.onload=function(){
+      var img=new Image();
+      img.onerror=function(){reject(new Error("El archivo no es una imagen válida."));};
+      img.onload=function(){
+        var lado=maxLado||1568;
+        var escala=Math.min(1,lado/Math.max(img.width,img.height));
+        var w=Math.round(img.width*escala), h=Math.round(img.height*escala);
+        var canvas=document.createElement("canvas");
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        var dataUrl=canvas.toDataURL("image/jpeg",0.85);
+        resolve(dataUrl.split(",")[1]);
+      };
+      img.src=lector.result;
+    };
+    lector.readAsDataURL(file);
+  });
+}
+
+function PanelRecetas(p){
+  var recetas=p.recetas||[], localId=p.localId, puedeEditar=!!p.puedeEditar;
+  var [busqueda,setBusqueda]=useState("");
+  var [abierta,setAbierta]=useState(null);
+  var [showForm,setShowForm]=useState(false);
+  var [editId,setEditId]=useState(null);
+  var [form,setForm]=useState({nombre:"",porciones:"",ingredientes:"",pasos:"",notas:""});
+  var [leyendo,setLeyendo]=useState(false);
+  var [errLectura,setErrLectura]=useState("");
+  var [aviso,setAviso]=useState("");
+  var fileRef=useRef(null);
+
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var TA={...INP,minHeight:110,resize:"vertical",lineHeight:1.5};
+
+  var delLocal=recetas.filter(function(r){return r.local===localId;});
+  var filtradas=busqueda.trim()
+    ? delLocal.filter(function(r){
+        var t=busqueda.trim().toLowerCase();
+        return String(r.nombre||"").toLowerCase().includes(t)||String(r.ingredientes||"").toLowerCase().includes(t);
+      })
+    : delLocal;
+
+  function abrirNueva(){
+    setForm({nombre:"",porciones:"",ingredientes:"",pasos:"",notas:""});
+    setEditId(null);setErrLectura("");setAviso("");setShowForm(true);
+  }
+  function abrirEdicion(r){
+    setForm({nombre:r.nombre||"",porciones:r.porciones||"",ingredientes:r.ingredientes||"",pasos:r.pasos||"",notas:r.notas||""});
+    setEditId(r.id);setErrLectura("");setAviso("");setShowForm(true);
+  }
+  async function onFoto(e){
+    var file=e.target.files&&e.target.files[0];
+    e.target.value="";
+    if(!file)return;
+    setLeyendo(true);setErrLectura("");setAviso("");
+    try{
+      var base64=await achicarFoto(file,1568);
+      var datos=await leerRecetaDeFoto(base64,"image/jpeg");
+      setForm(function(f){return{
+        nombre:datos.nombre||f.nombre,
+        porciones:datos.porciones||f.porciones,
+        ingredientes:datos.ingredientes||f.ingredientes,
+        pasos:datos.pasos||f.pasos,
+        notas:datos.notas||f.notas,
+      };});
+      setEditId(null);setShowForm(true);
+      setAviso(datos.parcial
+        ? "Se leyó la receta pero no se pudo separar en campos: revisá el texto y acomodalo antes de guardar."
+        : "Leído de la foto. Revisá que esté bien antes de guardar — donde diga [?] no se entendía la letra.");
+    }catch(err){
+      setErrLectura(String((err&&err.message)||err));
+      setShowForm(true);
+    }finally{
+      setLeyendo(false);
+    }
+  }
+  function guardar(){
+    if(!form.nombre.trim()){setErrLectura("Ponele un nombre a la receta.");return;}
+    var receta={
+      id:editId||("rec_"+Date.now()),
+      local:localId,
+      nombre:form.nombre.trim(),
+      porciones:form.porciones||"",
+      ingredientes:form.ingredientes||"",
+      pasos:form.pasos||"",
+      notas:form.notas||"",
+      usuario:p.usuario||"",
+      updated_at:new Date().toISOString(),
+    };
+    if(!editId)receta.created_at=new Date().toISOString();
+    p.onSave(receta);
+    setShowForm(false);setEditId(null);setAviso("");setErrLectura("");
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <input value={busqueda} onChange={function(e){setBusqueda(e.target.value);}} placeholder="🔍 Buscar por nombre o ingrediente..." style={{...INP,flex:1,minWidth:160}}/>
+        {puedeEditar&&(
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={function(){if(fileRef.current)fileRef.current.click();}} disabled={leyendo}
+              style={{padding:"9px 14px",borderRadius:8,border:"1px solid #8B2FC944",background:leyendo?"#1A1A1A":"#8B2FC922",color:leyendo?"#555":"#8B2FC9",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:leyendo?"wait":"pointer",whiteSpace:"nowrap"}}>
+              {leyendo?"⏳ Leyendo...":"📷 Leer de una foto"}
+            </button>
+            <button onClick={abrirNueva} style={{padding:"9px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ Nueva</button>
+          </div>
+        )}
+      </div>
+      {puedeEditar&&<input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFoto} style={{display:"none"}}/>}
+
+      {leyendo&&(
+        <div style={{background:"#0F0A16",border:"1px solid #8B2FC933",borderRadius:10,padding:"12px 14px",marginBottom:12,fontSize:12,color:"#8B2FC9"}}>
+          ⏳ Leyendo la receta de la foto. Puede tardar unos segundos.
+        </div>
+      )}
+
+      {showForm&&puedeEditar&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #2A2A2A",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#3A7D44",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>
+            {editId?"Editar receta":"Nueva receta"}
+          </div>
+          {aviso&&<div style={{fontSize:11,color:"#D4A017",background:"#1A1408",border:"1px solid #D4A01733",borderRadius:8,padding:"8px 10px",marginBottom:10}}>⚠️ {aviso}</div>}
+          {errLectura&&<div style={{fontSize:11,color:"#C1440E",background:"#1A0A0A",border:"1px solid #C1440E33",borderRadius:8,padding:"8px 10px",marginBottom:10}}>⚠️ {errLectura}</div>}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8,marginBottom:9}}>
+            <div>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Nombre</label>
+              <input value={form.nombre} onChange={function(e){setForm(function(f){return{...f,nombre:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Porciones</label>
+              <input value={form.porciones} onChange={function(e){setForm(function(f){return{...f,porciones:e.target.value};});}} placeholder="Ej: 4" style={INP}/>
+            </div>
+          </div>
+          <div style={{marginBottom:9}}>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Ingredientes</label>
+            <textarea value={form.ingredientes} onChange={function(e){setForm(function(f){return{...f,ingredientes:e.target.value};});}} placeholder="Uno por línea..." style={TA}/>
+          </div>
+          <div style={{marginBottom:9}}>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Preparación</label>
+            <textarea value={form.pasos} onChange={function(e){setForm(function(f){return{...f,pasos:e.target.value};});}} placeholder="1. ..." style={TA}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+            <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar receta</button>
+            <button onClick={function(){setShowForm(false);setEditId(null);setAviso("");setErrLectura("");}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {filtradas.length===0?(
+        <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
+          <div style={{fontSize:30,marginBottom:8}}>🍳</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>
+            {busqueda.trim()?"Ninguna receta coincide con la búsqueda":"Todavía no hay recetas cargadas"}
+          </div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {filtradas.map(function(r){
+            var open=abierta===r.id;
+            return(
+              <div key={r.id} style={{background:"#111",border:"1px solid "+(open?"#3A7D4444":"#1A1A1A"),borderRadius:10,overflow:"hidden"}}>
+                <div onClick={function(){setAbierta(open?null:r.id);}} style={{padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:8}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nombre}</div>
+                    {r.porciones&&<div style={{fontSize:10,color:"#555",marginTop:2}}>Rinde {r.porciones}</div>}
+                  </div>
+                  <span style={{fontSize:9,color:"#3A7D44",transform:open?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                </div>
+                {open&&(
+                  <div style={{padding:"0 14px 13px",borderTop:"1px solid #161616"}}>
+                    {r.ingredientes&&(
+                      <div style={{marginTop:11}}>
+                        <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Ingredientes</div>
+                        <div style={{fontSize:12,color:"#C8C8C8",whiteSpace:"pre-wrap",lineHeight:1.6}}>{r.ingredientes}</div>
+                      </div>
+                    )}
+                    {r.pasos&&(
+                      <div style={{marginTop:11}}>
+                        <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Preparación</div>
+                        <div style={{fontSize:12,color:"#C8C8C8",whiteSpace:"pre-wrap",lineHeight:1.6}}>{r.pasos}</div>
+                      </div>
+                    )}
+                    {r.notas&&(
+                      <div style={{marginTop:11}}>
+                        <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Notas</div>
+                        <div style={{fontSize:12,color:"#888",whiteSpace:"pre-wrap",lineHeight:1.6}}>{r.notas}</div>
+                      </div>
+                    )}
+                    {puedeEditar&&(
+                      <div style={{display:"flex",gap:7,marginTop:13}}>
+                        <button onClick={function(){abrirEdicion(r);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#888",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+                        <button onClick={function(){if(window.confirm("¿Eliminar la receta \""+r.nombre+"\"?"))p.onDelete(r.id);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#666",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>🗑️</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -2025,10 +2281,16 @@ function PanelLocales({locales, localesDatos, localesObras, usuario, onSaveDatos
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"],["obras","🏗️ Obras"],["historial","📝 Historial"],["informe","📊 Informe"]].map(function(t){return(
+        {[["datos","📋 Datos"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]].map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
+
+      {/* Tab Recetas */}
+      {tab==="recetas"&&(
+        <PanelRecetas recetas={recetas} localId={localSel} usuario={usuario} puedeEditar={true}
+          onSave={onSaveReceta} onDelete={onDeleteReceta}/>
+      )}
 
       {/* Tab Datos */}
       {tab==="datos"&&(
@@ -10015,6 +10277,7 @@ export default function App() {
   var [saldosProveedores,setSaldosProveedores]=useState([]);
   var [localesDatos,setLocalesDatos]=useState({});
   var [localesObras,setLocalesObras]=useState([]);
+  var [recetas,setRecetas]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
@@ -10070,6 +10333,7 @@ export default function App() {
     sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
     sbLoadLocalesDatos().then(function(d){setLocalesDatos(d||{});}).catch(function(){});
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
+    sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
     sbLoadIdeas().then(function(d){setIdeas(d||[]);}).catch(function(){});
@@ -10081,6 +10345,15 @@ export default function App() {
   useEffect(function(){
     sbLoadUsuarios().then(function(d){if(d)setUsers(d);}).catch(function(){});
   },[]);
+
+  function guardarReceta(r){
+    sbSaveReceta(r).then(function(err){if(err)alert("No se pudo guardar la receta en la base:\n\n"+err+"\n\nSi el error menciona la tabla recetas, hay que crearla en Supabase.");});
+    setRecetas(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});
+  }
+  function borrarReceta(id){
+    sbDeleteReceta(id);
+    setRecetas(function(prev){return prev.filter(function(r){return r.id!==id;});});
+  }
 
   function handleRefresh(){
     setRefrescando(true);
@@ -10103,10 +10376,17 @@ export default function App() {
   // acotadas a su local y sin Faltantes ni Config. Los cajeros habilitados entran
   // a la misma pantalla, con una tarjeta más para el cierre de caja.
   var verSubCompras=!esAdmin&&(esCajero?cajeroCompras:COMPRAS_SUBMODULOS.indexOf(String(cu.usuario||"").toLowerCase())!==-1);
-  var conSubmodulos=esAdmin||verSubCompras;
+  // Cocina ve el recetario de su local, en modo lectura. Administración lo carga
+  // y lo edita desde el módulo Locales.
+  var esCocina=String(cu.seccion||"").trim().toLowerCase()==="cocina";
+  var conSubmodulos=esAdmin||verSubCompras||esCocina;
+  // El despacho sigue siendo de quienes ya lo tenían: sumar cocina al recetario no
+  // le da acceso a despachar órdenes.
+  var verDespacho=esAdmin||verSubCompras;
   // Dentro de Compras se elige primero un sub-módulo: Órdenes de compra o Stock.
   // El resto de los usuarios no tiene esa pantalla y entra directo a sus órdenes.
   var enOrdenes=conSubmodulos?(enCompras&&subCompras==="ordenes"):enCompras;
+  var enRecetas=esCocina&&enCompras&&subCompras==="recetas";
   var enStockCompras=conSubmodulos&&enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
@@ -10216,10 +10496,10 @@ export default function App() {
               )}
               {subCompras&&(
                 <button onClick={function(){setSubCompras(null);}}
-                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esCajero?"← Inicio":"← Compras"}</button>
+                  style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esCajero||esCocina||!puedeCompras?"← Inicio":"← Compras"}</button>
               )}
               <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="recetas"?"🍳 Recetas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -10229,14 +10509,15 @@ export default function App() {
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
               {[].concat(
                 esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0}]:[],
-                [
-                  {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":"Despachar y ver las órdenes del local",color:"#C1440E",badge:esAdmin?faltantes.length:0},
+                puedeCompras?[
+                  {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
-                ]
+                ]:[],
+                esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   setSubCompras(m.id);
-                  if(m.id==="ordenes")setVista("despacho");
+                  if(m.id==="ordenes")setVista(verDespacho?"despacho":"historial");
                   else if(m.id==="stock"){setVista("stock");asegurarLocalStock();}
                 }} style={{background:"#0F0F0F",border:"1px solid "+m.color+"44",borderRadius:14,padding:"20px",textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
                   <div style={{fontSize:24,marginBottom:6}}>{m.emoji}</div>
@@ -10265,7 +10546,9 @@ export default function App() {
           {conSubmodulos&&enOrdenes&&(
             <div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:8,marginBottom:12}}>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {verDespacho&&(
                 <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
+                )}
                 <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
                 {esAdmin&&(
                 <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
@@ -10306,6 +10589,12 @@ export default function App() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* RECETARIO — cocina, sólo lectura */}
+          {enRecetas&&(
+            <PanelRecetas recetas={recetas} localId={lf} usuario={cu.nombre} puedeEditar={false}
+              onSave={function(){}} onDelete={function(){}}/>
           )}
 
           {/* SUB-MÓDULOS DE ADMINISTRACIÓN */}
@@ -10365,7 +10654,7 @@ export default function App() {
           })()}
 
           {/* PANEL DESPACHO */}
-          {conSubmodulos&&enOrdenes&&vista==="despacho"&&(
+          {verDespacho&&enOrdenes&&vista==="despacho"&&(
             <PanelDespacho ordenes={lf?ordenes.filter(function(o){return o.local===lf;}):ordenes} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden}/>
           )}
 
@@ -10466,7 +10755,10 @@ export default function App() {
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}
+              recetas={recetas}
               usuario={cu.nombre}
+              onSaveReceta={guardarReceta}
+              onDeleteReceta={borrarReceta}
               onSaveDatos={function(datos){sbSaveLocalDatos(datos);setLocalesDatos(function(prev){var n={...prev};n[datos.local]=datos;return n;});}}
               onSaveObra={function(obra){sbSaveLocalObra(obra);setLocalesObras(function(prev){var f=prev.filter(function(x){return x.id!==obra.id;});return[obra,...f];});}}
               onDeleteObra={function(id){

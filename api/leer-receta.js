@@ -116,9 +116,21 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     console.error("leer-receta:", e);
     var status = (e && e.status) || 500;
-    var msg = status === 401 ? "La clave de la API es inválida."
-      : status === 429 ? "Demasiadas lecturas seguidas. Esperá unos segundos."
-      : "No se pudo leer la receta. Probá de nuevo.";
+    // El mensaje propio de la API dice mucho más que uno genérico ("credit balance
+    // is too low", "invalid x-api-key"), así que se pasa tal cual cuando viene.
+    var apiMsg = (e && e.error && e.error.error && e.error.error.message) || "";
+    var msg;
+    if (status === 401) {
+      msg = "La clave de la API es inválida. Revisá que esté completa y sin espacios en Vercel.";
+    } else if (status === 429) {
+      msg = "Demasiadas lecturas seguidas. Esperá unos segundos.";
+    } else if (/credit balance/i.test(apiMsg)) {
+      msg = "La cuenta de Anthropic no tiene crédito. Cargá saldo en console.anthropic.com → Billing.";
+    } else if (apiMsg) {
+      msg = "Anthropic respondió: " + apiMsg;
+    } else {
+      msg = "No se pudo leer la receta. Probá de nuevo.";
+    }
     return res.status(status === 401 || status === 429 ? status : 500).json({ error: msg });
   }
 };

@@ -2288,7 +2288,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
-        <PanelRecetas recetas={recetas} localId={localSel} usuario={usuario} puedeEditar={true}
+        <PanelRecetas recetas={recetas} localId={localSel.id} usuario={usuario} puedeEditar={true}
           onSave={onSaveReceta} onDelete={onDeleteReceta}/>
       )}
 

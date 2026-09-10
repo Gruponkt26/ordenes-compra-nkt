@@ -4437,13 +4437,19 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
   "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
   "Retiros":"#8B4513",
+  "Aportes":"#3A7D44",
   "F.931":"#4CAF50"
 };
+
+// Retiros y Aportes son movimientos de socios, no gastos operativos: tienen su propia
+// pestaña para cargarlos, pero quedan fuera de todo listado y total de gastos por área.
+var AREAS_SOCIOS=["Retiros","Aportes"];
+function esAreaSocios(a){ return AREAS_SOCIOS.indexOf(a)!==-1; }
 
 var CONCEPTOS_POR_AREA={
   "Proveedores":{
@@ -4959,7 +4965,7 @@ function PanelEgresos(p){
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
 
                 {/* Un bloque por cada área/tab */}
-                {[...AREAS_BASE.filter(function(a){return a!=="Retiros";}), ...(p.areasCustom||[])].map(function(area){
+                {[...AREAS_BASE.filter(function(a){return !esAreaSocios(a);}), ...(p.areasCustom||[])].map(function(area){
                   var items=gl.filter(function(g){
                     // Excluir aguinaldos del bloque de áreas normales
                     if((g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo"))return false;
@@ -5147,7 +5153,7 @@ function PanelEgresos(p){
                 {/* Totales al pie */}
                 <div style={{borderTop:"1px solid "+l.color+"22",paddingTop:8,marginTop:4}}>
                   {(function(){
-                    var areasResumen=Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos"&&a!=="Retiros"&&a!=="Proveedores";});
+                    var areasResumen=Object.keys(porArea).filter(function(a){return a!=="Sueldos"&&a!=="Aguinaldos"&&a!=="Proveedores"&&!esAreaSocios(a);});
                     if(areasResumen.length===0)return null;
                     return(
                       <div style={{marginBottom:6}}>
@@ -5226,6 +5232,10 @@ function PanelEgresos(p){
       ):areaActiva==="Retiros"?(
         <PanelRetiros retiros={p.retiros||[]} usuario={usuario}
           onSave={p.onSaveRetiro} onDelete={p.onDeleteRetiro}
+        />
+      ):areaActiva==="Aportes"?(
+        <PanelAportes aportes={p.aportes||[]} retiros={p.retiros||[]} usuario={usuario}
+          onSave={p.onSaveAporte} onDelete={p.onDeleteAporte}
         />
       ):(
         <PanelFormEgreso
@@ -6738,11 +6748,293 @@ function PanelRetiros(p) {
 }
 
 
+// ─── PANEL APORTES DE SOCIOS ──────────────────────────────────────────────────
+// Espejo del panel de Retiros. Un aporte es plata que el socio PONE en el local:
+// suma a la disponibilidad de caja, pero nunca entra al resultado operativo —
+// no es una venta, es capital. Ver PanelResultados.
+function PanelAportes(p) {
+  var aportes=p.aportes||[], retiros=p.retiros||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
+  var hoy=new Date().toISOString().split("T")[0];
+  var ACC="#3A7D44";
+  var [showForm,setShowForm]=useState(false);
+  var [filtroFecha,setFiltroFecha]=useState("mes");
+  var [filtroLocal,setFiltroLocal]=useState("all");
+  var FORM_VACIO={socio:"",local:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",notas:"",fecha:hoy};
+  var [form,setForm]=useState(FORM_VACIO);
+  var [editando,setEditando]=useState(null);
+
+  var TIPOS_APORTE=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  var SUBTIPOS={
+    "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
+    "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
+    "Tarjeta de débito":["Mastercard ML Calzon Gitano","Mastercard ML Nicolás","Visa Provincia Personas","Visa Patagonia Empresas","Visa Patagonia Personas"],
+    "Tarjeta de crédito":["Mastercard Patagonia Personas","Visa Patagonia Personas"]
+  };
+
+  var filtered=aportes.filter(function(a){
+    var matchLocal=filtroLocal==="all"||a.local===filtroLocal;
+    var matchFecha=true;
+    if(filtroFecha==="hoy") matchFecha=a.fecha===hoy;
+    if(filtroFecha==="semana"){var diff=(new Date()-new Date(a.fecha))/(1000*60*60*24);matchFecha=diff<=7;}
+    if(filtroFecha==="mes") matchFecha=a.fecha&&a.fecha.slice(0,7)===hoy.slice(0,7);
+    return matchLocal&&matchFecha;
+  });
+
+  var totalFiltered=filtered.reduce(function(acc,a){return acc+parseFloat(a.monto||0);},0);
+
+  // Cuenta corriente por socio — histórico completo (no lo recorta el filtro de fecha:
+  // un saldo acumulado que solo mirara este mes no diría nada). Sí respeta el local.
+  var ctaCorriente=(function(){
+    var mapa={};
+    function sumar(nombre,campo,monto){
+      var key=(nombre||"").trim().toLowerCase();
+      if(!key)return;
+      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0};
+      mapa[key][campo]+=parseFloat(monto||0);
+    }
+    aportes.forEach(function(a){
+      if(filtroLocal!=="all"&&a.local!==filtroLocal)return;
+      sumar(a.socio,"aportado",a.monto);
+    });
+    retiros.forEach(function(r){
+      if(filtroLocal!=="all"&&r.local!==filtroLocal)return;
+      sumar(r.socio,"retirado",r.monto);
+    });
+    return Object.keys(mapa).map(function(k){
+      var m=mapa[k];
+      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,saldo:m.aportado-m.retirado};
+    }).sort(function(a,b){return b.aportado-a.aportado;});
+  })();
+
+  function partirTipo(t){
+    var v=t||"";
+    var i=v.indexOf(" - ");
+    if(i===-1)return{tipo:v||"Efectivo",subtipo:""};
+    return{tipo:v.slice(0,i),subtipo:v.slice(i+3)};
+  }
+
+  function abrirNuevo(){
+    setEditando(null);
+    setForm(FORM_VACIO);
+    setShowForm(true);
+  }
+  function abrirEdicion(a){
+    var t=partirTipo(a.tipo_aporte);
+    setEditando(a);
+    setForm({
+      socio:a.socio||"",
+      local:a.local||"l1",
+      monto:String(a.monto||""),
+      tipo_aporte:t.tipo,
+      subtipo:t.subtipo,
+      notas:a.notas||"",
+      fecha:a.fecha||hoy
+    });
+    setShowForm(true);
+  }
+  function cerrarForm(){
+    setShowForm(false);
+    setEditando(null);
+    setForm(FORM_VACIO);
+  }
+
+  function doSave(){
+    if(!form.socio.trim()||!form.monto)return;
+    var aporte={
+      id:editando?editando.id:String(Date.now()),
+      socio:form.socio.trim(),
+      local:form.local,
+      monto:parseFloat(form.monto),
+      tipo_aporte:form.tipo_aporte+(form.subtipo?" - "+form.subtipo:""),
+      notas:form.notas,
+      fecha:form.fecha,
+      usuario:editando?(editando.usuario||usuario):usuario,
+      created_at:editando&&editando.created_at?editando.created_at:new Date().toISOString()
+    };
+    onSave(aporte);
+    cerrarForm();
+  }
+
+  // Un aporte viejo puede tener una cuenta que ya no está en las listas: la sumamos para no perderla al editar
+  var tiposOpts=form.tipo_aporte&&TIPOS_APORTE.indexOf(form.tipo_aporte)===-1?[form.tipo_aporte].concat(TIPOS_APORTE):TIPOS_APORTE;
+  var subtiposOpts=SUBTIPOS[form.tipo_aporte]||[];
+  if(form.subtipo&&subtiposOpts.indexOf(form.subtipo)===-1)subtiposOpts=[form.subtipo].concat(subtiposOpts);
+
+  var inputStyle={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var labelStyle={display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5};
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🤝 Aportes de Socios</div>
+        </div>
+        <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:ACC,border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar aporte"}</button>
+      </div>
+
+      <div style={{background:ACC+"11",border:"1px solid "+ACC+"33",borderRadius:10,padding:"9px 13px",marginBottom:14,fontSize:11,color:"#7A9A80",lineHeight:1.5}}>
+        Un aporte suma a la plata disponible del local, pero <b style={{color:ACC}}>no entra al resultado del mes</b> — es capital que pone el socio, no una venta.
+      </div>
+
+      {showForm&&(
+        <div style={{background:"#0F0F0F",border:"1px solid "+ACC+"44",borderRadius:14,padding:"18px",marginBottom:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
+            <div style={{fontSize:11,color:ACC,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{editando?"✏️ Editar aporte":"Nuevo aporte"}</div>
+            {editando&&<div style={{fontSize:10,color:"#555"}}>Cargado el {fmtDateTime(editando.created_at)}{editando.usuario?" por "+editando.usuario:""}</div>}
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={labelStyle}>Socio</label>
+            <input value={form.socio} onChange={function(e){setForm(function(f){return{...f,socio:e.target.value};});}} placeholder="Nombre del socio..." style={inputStyle}/>
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>Local</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
+            <div>
+              <label style={labelStyle}>Monto $</label>
+              <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>Fecha</label>
+              <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={inputStyle}/>
+            </div>
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={labelStyle}>Cómo entró la plata</label>
+            <select value={form.tipo_aporte} onChange={function(e){setForm(function(f){return{...f,tipo_aporte:e.target.value,subtipo:""};});}} style={{...inputStyle,marginBottom:6,cursor:"pointer"}}>
+              {tiposOpts.map(function(t){return <option key={t}>{t}</option>;})}
+            </select>
+            {subtiposOpts.length>0&&(
+              <select value={form.subtipo} onChange={function(e){setForm(function(f){return{...f,subtipo:e.target.value};});}} style={{...inputStyle,color:form.subtipo?"#F0EDE8":"#555",cursor:"pointer"}}>
+                <option value="">-- Seleccioná cuenta --</option>
+                {subtiposOpts.map(function(sb){return <option key={sb}>{sb}</option>;})}
+              </select>
+            )}
+          </div>
+
+          <div style={{marginBottom:14}}>
+            <label style={labelStyle}>Notas</label>
+            <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Motivo del aporte..." style={inputStyle}/>
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doSave} disabled={!form.socio||!form.monto} style={{background:!form.socio||!form.monto?"#1A1A1A":ACC,border:"none",borderRadius:8,color:!form.socio||!form.monto?"#444":"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:!form.socio||!form.monto?"not-allowed":"pointer",flex:2,padding:"11px"}}>{editando?"✓ Guardar cambios":"✓ Guardar aporte"}</button>
+            <button onClick={cerrarForm} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Resumen */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:16}}>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Total aportes</div>
+          <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:ACC}}>${totalFiltered.toLocaleString("es-AR")}</div>
+          <div style={{fontSize:10,color:"#444",marginTop:3}}>{filtered.length} aportes</div>
+        </div>
+        <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Por local</div>
+          {LOCALES.map(function(l){
+            var tot=filtered.filter(function(a){return a.local===l.id;}).reduce(function(acc,a){return acc+parseFloat(a.monto||0);},0);
+            if(tot===0)return null;
+            return <div key={l.id} style={{fontSize:11,color:l.color,display:"flex",justifyContent:"space-between"}}><span>{l.emoji} {l.nombre}</span><span>${tot.toLocaleString("es-AR")}</span></div>;
+          })}
+        </div>
+      </div>
+
+      {/* Cuenta corriente por socio */}
+      {ctaCorriente.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginBottom:16}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:9}}>
+            Cuenta corriente por socio · histórico{filtroLocal!=="all"?" · "+((getLocal(filtroLocal)||{}).nombre||""):" · todos los locales"}
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <div style={{display:"flex",fontSize:9,color:"#444",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",marginBottom:5,minWidth:280}}>
+              <div style={{flex:1}}>Socio</div>
+              <div style={{width:88,textAlign:"right"}}>Aportó</div>
+              <div style={{width:88,textAlign:"right"}}>Retiró</div>
+              <div style={{width:88,textAlign:"right"}}>Saldo</div>
+            </div>
+            {ctaCorriente.map(function(c){
+              return(
+                <div key={c.nombre} style={{display:"flex",fontSize:11,alignItems:"center",padding:"3px 0",minWidth:280}}>
+                  <div style={{flex:1,color:"#F0EDE8",fontWeight:600}}>{c.nombre}</div>
+                  <div style={{width:88,color:ACC,textAlign:"right"}}>${c.aportado.toLocaleString("es-AR")}</div>
+                  <div style={{width:88,color:"#8B2FC9",textAlign:"right"}}>${c.retirado.toLocaleString("es-AR")}</div>
+                  <div style={{width:88,color:c.saldo>=0?ACC:"#C1440E",textAlign:"right",fontWeight:700}}>{c.saldo<0?"−":""}${Math.abs(c.saldo).toLocaleString("es-AR")}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{fontSize:9,color:"#333",marginTop:8,lineHeight:1.5}}>
+            Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.
+          </div>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
+        {[["hoy","Hoy"],["semana","7 días"],["mes","Este mes"],["all","Todo"]].map(function(opt){
+          return <button key={opt[0]} onClick={function(){setFiltroFecha(opt[0]);}} style={{padding:"4px 11px",borderRadius:20,border:"1px solid "+(filtroFecha===opt[0]?ACC:"#1A1A1A"),background:filtroFecha===opt[0]?ACC+"22":"none",color:filtroFecha===opt[0]?ACC:"#444",fontSize:11,cursor:"pointer"}}>{opt[1]}</button>;
+        })}
+        <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
+        {LOCALES.map(function(l){return(
+          <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#444",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+        );})}
+      </div>
+
+      {/* Lista */}
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <div style={{fontSize:32,marginBottom:10}}>🤝</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin aportes en este período</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {filtered.map(function(a){
+            var loc=getLocal(a.local);
+            var enEdicion=editando&&editando.id===a.id;
+            return(
+              <div key={a.id} style={{background:enEdicion?ACC+"11":"#111",border:"1px solid "+(enEdicion?ACC:ACC+"22"),borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>🤝 {a.socio}</span>
+                    {loc&&<span style={{fontSize:10,color:loc.color}}>{loc.emoji} {loc.nombre}</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"#555"}}>{a.tipo_aporte} · {fmtDate(a.fecha)}</div>
+                  {a.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginTop:3}}>📝 {a.notas}</div>}
+                  <div style={{fontSize:10,color:"#333",marginTop:2}}>por {a.usuario} · {fmtDateTime(a.created_at)}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:ACC}}>+${parseFloat(a.monto).toLocaleString("es-AR")}</div>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:4}}>
+                    <button onClick={function(){abrirEdicion(a);}} title="Editar aporte" style={{background:"none",border:"none",color:enEdicion?ACC:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar este aporte?"))onDelete(a.id);}} title="Eliminar aporte" style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:12}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
   var retirosSocios=p.retiros||[]; // retiros cargados desde "💼 Retiros de Socios" (tabla separada de cierre.retiro_socio)
+  var aportesSocios=p.aportes||[]; // aportes cargados desde "🤝 Aportes de Socios"
   var adelantosSueldo=p.adelantos||[]; // adelantos de sueldo (tabla separada) — cuentan como gasto en el mes que se dan, se hayan aplicado o no a una liquidación
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
@@ -6845,10 +7137,16 @@ function PanelResultados(p){
   function calcLocal(lid){
     var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
     // Ventas netas — si total_ventas es 0 o null, calcularlo desde campos individuales
+    // Ventas del mes, SIEMPRE brutas de retiro de socio. Ojo con esto: cuando el cierre trae
+    // total_ventas cargado el retiro nunca estuvo restado, pero cuando hay que derivarlo del
+    // efectivo sí lo estaba — y como además se sumaba a totalGastos, en esos cierres el retiro
+    // terminaba descontándose dos veces. Al dejar las dos ramas brutas, el retiro no toca el
+    // resultado por ningún camino y se ve una sola vez, en "Movimientos de socios".
+    // Los egresos diarios sí siguen netos: eso es gasto operativo pagado de la caja.
     var ventas=cl.reduce(function(a,c){
       var tv=parseFloat(c.total_ventas||0);
       if(tv===0){
-        var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));
+        var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.egresos_diarios||0));
         tv=ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
       }
       return a+tv;
@@ -6859,7 +7157,8 @@ function PanelResultados(p){
     cl.forEach(function(c){
       [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
-        if(f[0]==="efectivo")v=v-(parseFloat(c.retiro_socio||0))-(parseFloat(c.egresos_diarios||0));
+        // bruto de retiro de socio, para que la suma de los medios cierre contra "ventas"
+        if(f[0]==="efectivo")v=v-(parseFloat(c.egresos_diarios||0));
         if(v>0)ventasPorMedio[f[1]]=(ventasPorMedio[f[1]]||0)+v;
       });
     });
@@ -6872,12 +7171,19 @@ function PanelResultados(p){
     var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
     var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
     var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-    // Incluir retiros de socios en totalGastos
-    totalGastos+=retiros;
+    // Los retiros de socios NO son gasto operativo: son reparto de la ganancia, se deciden
+    // una vez cerradas entradas y salidas. Por eso quedan fuera de totalGastos (y por lo tanto
+    // del resultado) y se muestran aparte, en "Movimientos de socios". Sí siguen descontando
+    // de la disponibilidad de caja más abajo, porque la plata efectivamente salió.
     // Retiros cargados desde el módulo "💼 Retiros de Socios" (tabla separada, con su propio medio/local)
     var retirosModLocal=retirosSocios.filter(function(r){return r.local===lid&&r.fecha&&r.fecha.substring(0,7)===mesFiltro;});
     var retirosModMonto=retirosModLocal.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-    totalGastos+=retirosModMonto;
+    // Aportes de socios — la contracara del retiro: capital que entra, nunca una venta.
+    // Suma a la disponibilidad, no al resultado.
+    var aportesModLocal=aportesSocios.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;});
+    var aportesModMonto=aportesModLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    var retirosTotales=retiros+retirosModMonto;      // cierre + módulo
+    var movSocios=aportesModMonto-retirosTotales;    // neto del mes: + puso, − sacó
     // Adelantos de sueldo del mes (ver detalle más abajo, en Disponibilidad)
     var adelantosMesLocal=adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;});
     var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
@@ -6906,9 +7212,7 @@ function PanelResultados(p){
       if(cat==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))cat="Aguinaldos";
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
-    // Agregar retiros al porCat
-    if(retiros>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retiros;
-    if(retirosModMonto>0)porCat["Retiros"]=(porCat["Retiros"]||0)+retirosModMonto;
+    // Los retiros ya no entran a porCat: no son una categoría de gasto, son movimiento de socios.
     if(adelantosMonto>0)porCat["Sueldos"]=(porCat["Sueldos"]||0)+adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
@@ -7014,8 +7318,13 @@ function PanelResultados(p){
       detGastos.push({fecha:a.fecha,concepto:"⏳ Adelanto sueldo — "+(a.empleado_nombre||""),medio:a.medio_pago||"",monto:am,tipo:esEf?"efectivo":"electronico",cruzado:false});
     });
 
-    // Ingresos de cierres por medio
-    var ventaEfectivo=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0));},0);
+    // Ingresos de cierres por medio.
+    // Dos cifras distintas y las dos hacen falta:
+    //  · ventaEfectivoBruto = venta en efectivo, sin descontar el retiro. Es la que se compara
+    //    contra la corrección manual y la que cierra contra "ventas".
+    //  · ventaEfectivo = lo que realmente quedó en la caja, ya neto del retiro. Es la de caja.
+    var ventaEfectivoBruto=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.egresos_diarios||0));},0);
+    var ventaEfectivo=ventaEfectivoBruto-retiros;
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
 
     // Ingresos electrónicos desglosados
@@ -7034,6 +7343,23 @@ function PanelResultados(p){
         if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
       });
     });
+
+    // Aportes de socios — plata que ENTRA a la cuenta del local que eligió quien lo cargó.
+    // Nunca es cruzado, igual que el retiro. Suma a la disponibilidad, no a las ventas.
+    var aporteEfectivo=0,aporteTransferencia=0,aporteDebito=0,aporteCredito=0,aporteOtros=0;
+    aportesModLocal.forEach(function(a){
+      var am=parseFloat(a.monto||0);
+      var medioStr=(a.tipo_aporte||"").toLowerCase();
+      var esEf=medioStr.includes("efectivo");
+      if(esEf)aporteEfectivo+=am;
+      else if(medioStr.includes("transferencia"))aporteTransferencia+=am;
+      else if(medioStr.includes("débito")||medioStr.includes("debito"))aporteDebito+=am;
+      else if(medioStr.includes("crédito")||medioStr.includes("credito"))aporteCredito+=am;
+      else aporteOtros+=am;
+      detIngresos.push({fecha:a.fecha,concepto:"🤝 Aporte — "+(a.socio||""),medio:a.tipo_aporte||"",monto:am,tipo:esEf?"efectivo":"electronico",aporte:true});
+    });
+    var aporteElectronico=aporteTransferencia+aporteDebito+aporteCredito+aporteOtros;
+
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
@@ -7104,18 +7430,20 @@ function PanelResultados(p){
     var hasCorrDebito=corr.debito!==undefined&&corr.debito!==null&&corr.debito!=="";
     var hasCorrCredito=corr.credito!==undefined&&corr.credito!==null&&corr.credito!=="";
     var hasCorrOtros=corr.otros!==undefined&&corr.otros!==null&&corr.otros!=="";
-    var ingrEfectivo=hasCorrEfectivo?corrEfectivo:ventaEfectivo;
+    var ingrEfectivo=hasCorrEfectivo?corrEfectivo:ventaEfectivoBruto;
     var ingrTransferencia=hasCorrTransferencia?corrTransferencia:ventaTransferencia;
     var ingrDebito=hasCorrDebito?corrDebito:ventaDebito;
     var ingrCredito=hasCorrCredito?corrCredito:ventaCredito;
     var ingrOtros=hasCorrOtros?corrOtros:ventaOtros;
 
-    // Disponibilidad = ingreso corregido − gastos + traspaso
-    var dispEfectivo=ingrEfectivo-gastoEfectivo+(traspaso?traspaso.efectivo:0);
-    var dispTransferencia=ingrTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0);
-    var dispDebito=ingrDebito-gastoDebito+(traspaso?traspaso.debito:0);
-    var dispCredito=ingrCredito-gastoCredito+(traspaso?traspaso.credito:0);
-    var dispOtros=ingrOtros-gastoOtros;
+    // Disponibilidad = ingreso corregido − gastos + traspaso + aportes de socios.
+    // Los aportes entran acá y NO en ingr*/venta*: la plata está en la caja, pero no es
+    // una venta, así que no debe ensuciar ni las ventas ni el cálculo de correcciones.
+    var dispEfectivo=ingrEfectivo-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo;
+    var dispTransferencia=ingrTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
+    var dispDebito=ingrDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispCredito=ingrCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
+    var dispOtros=ingrOtros-gastoOtros+aporteOtros;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
     // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
@@ -7138,14 +7466,14 @@ function PanelResultados(p){
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
-    var dispDebitoHoy=debitoAcreditadoHoy-gastoDebito+(traspaso?traspaso.debito:0);
+    var dispDebitoHoy=debitoAcreditadoHoy-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
 
-    var corrMonto=(ingrEfectivo-ventaEfectivo)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
+    var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas originales + diferencia de correcciones
     var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -7180,6 +7508,14 @@ function PanelResultados(p){
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:4}}>Resultado del mes</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:36,fontWeight:800,color:d.resultado>=0?"#3A7D44":"#C1440E"}}>{fmt(d.resultado)}</div>
           <div style={{fontSize:11,color:"#444",marginTop:4}}>Ventas {fmt(d.ventasCorregidas)} — Egresos {fmt(d.totalGastos)}</div>
+          <div style={{fontSize:9,color:"#333",marginTop:3}}>Operativo: no incluye aportes ni retiros de socios</div>
+          {(d.aportesModMonto>0||d.retirosTotales>0)&&(
+            <div style={{marginTop:10,paddingTop:9,borderTop:"1px solid #1A1A1A",display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
+              {d.aportesModMonto>0&&<span style={{fontSize:11,color:"#3A7D44"}}>🤝 Aportes +{fmt(d.aportesModMonto)}</span>}
+              {d.retirosTotales>0&&<span style={{fontSize:11,color:"#8B2FC9"}}>💼 Retiros −{fmt(d.retirosTotales)}</span>}
+              <span style={{fontSize:11,color:"#555"}}>Después de socios: <b style={{color:d.resultadoDespuesSocios>=0?"#3A7D44":"#C1440E"}}>{d.resultadoDespuesSocios>=0?"":"-"}{fmt(Math.abs(d.resultadoDespuesSocios))}</b></span>
+            </div>
+          )}
         </div>
 
         {/* Ventas por medio */}
@@ -7209,7 +7545,7 @@ function PanelResultados(p){
         {/* Egresos por área */}
         <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:12,padding:"14px",marginBottom:10}}>
           <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10,fontWeight:700}}>💸 Egresos</div>
-          {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+          {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
             var monto=d.porCat[cat]||0;
             var color=AREA_COLORES[cat]||"#555";
             var pct=d.totalGastos>0?Math.round(monto/d.totalGastos*100):0;
@@ -7245,7 +7581,7 @@ function PanelResultados(p){
         {/* Detalle de gastos por área */}
         {gl.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(area){
+            {[...AREAS_BASE,...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(area){
               var items=gl.filter(function(g){return(g.area||g.categoria||"Otros")===area;});
               if(items.length===0)return null;
               var totalArea=items.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
@@ -7374,7 +7710,7 @@ function PanelResultados(p){
                   <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(totalVentas)}</td>
                 </tr>
                 {/* Egresos por área */}
-                {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+                {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
                   var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0);
                   if(totCat===0)return null;
                   var color=AREA_COLORES[cat]||"#555";
@@ -7389,22 +7725,7 @@ function PanelResultados(p){
                     </tr>
                   );
                 })}
-                {/* Retiros */}
-                {(function(){
-                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);},0);
-                  if(totRet===0)return null;
-                  return(
-                    <tr style={{borderBottom:"1px solid #0A0A0A"}}>
-                      <td style={{padding:"6px 8px",color:"#888",fontSize:10}}>Retiros socios</td>
-                      {localesFiltro.map(function(l){
-                        var m=(datos[l.id].retiros||0)+(datos[l.id].retirosModMonto||0);
-                        return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#2A2A2A",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
-                      })}
-                      <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totRet)}</td>
-                    </tr>
-                  );
-                })()}
-                {/* Total egresos */}
+                {/* Total egresos — sin retiros ni aportes: esos son movimientos de socios, van abajo */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#100A0A"}}>
                   <td style={{padding:"8px",color:"#C1440E",fontWeight:700}}>💸 Total egresos</td>
                   {localesFiltro.map(function(l){return(
@@ -7431,6 +7752,50 @@ function PanelResultados(p){
                   })}
                   <td style={{textAlign:"right",padding:"6px 8px",fontSize:10,fontWeight:600,color:totalResultado>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—"}</td>
                 </tr>
+                {/* Movimientos de socios — debajo de la línea: no son gasto ni venta, son reparto y capital */}
+                {(function(){
+                  var totApo=localesFiltro.reduce(function(a,l){return a+(datos[l.id].aportesModMonto||0);},0);
+                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retirosTotales||0);},0);
+                  if(totApo===0&&totRet===0)return null;
+                  var totNeto=totApo-totRet;
+                  var totDespues=totalResultado+totNeto;
+                  return(
+                    <>
+                      <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
+                      <tr style={{background:"#0A0A0A"}}>
+                        <td colSpan={localesFiltro.length+2} style={{padding:"6px 8px",color:"#555",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>Movimientos de socios — fuera del resultado operativo</td>
+                      </tr>
+                      {totApo>0&&(
+                        <tr style={{borderBottom:"1px solid #0A0A0A"}}>
+                          <td style={{padding:"6px 8px",color:"#3A7D44",fontSize:10}}>🤝 Aportes</td>
+                          {localesFiltro.map(function(l){
+                            var m=datos[l.id].aportesModMonto||0;
+                            return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#3A7D44":"#2A2A2A",fontSize:10}}>{m>0?"+"+fmt(m):"—"}</td>;
+                          })}
+                          <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>+{fmt(totApo)}</td>
+                        </tr>
+                      )}
+                      {totRet>0&&(
+                        <tr style={{borderBottom:"1px solid #0A0A0A"}}>
+                          <td style={{padding:"6px 8px",color:"#8B2FC9",fontSize:10}}>💼 Retiros</td>
+                          {localesFiltro.map(function(l){
+                            var m=datos[l.id].retirosTotales||0;
+                            return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#8B2FC9":"#2A2A2A",fontSize:10}}>{m>0?"−"+fmt(m):"—"}</td>;
+                          })}
+                          <td style={{textAlign:"right",padding:"6px 8px",color:"#8B2FC9",fontWeight:600,fontSize:10}}>−{fmt(totRet)}</td>
+                        </tr>
+                      )}
+                      <tr style={{background:"#0D0D0D"}}>
+                        <td style={{padding:"7px 8px",color:"#888",fontSize:10,fontWeight:700}}>Resultado después de socios</td>
+                        {localesFiltro.map(function(l){
+                          var v=datos[l.id].resultadoDespuesSocios;
+                          return <td key={l.id} style={{textAlign:"right",padding:"7px 8px",color:v>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:700}}>{v>=0?"":"-"}{fmt(Math.abs(v))}</td>;
+                        })}
+                        <td style={{textAlign:"right",padding:"7px 8px",color:totDespues>=0?"#3A7D44":"#C1440E",fontWeight:800,fontSize:10}}>{totDespues>=0?"":"-"}{fmt(Math.abs(totDespues))}</td>
+                      </tr>
+                    </>
+                  );
+                })()}
                 {/* Separador */}
                 <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
                 {/* Disponibilidad efectivo */}
@@ -7529,6 +7894,25 @@ function PanelResultados(p){
                 </div>
               </div>
 
+              {/* Movimientos de socios — fuera del resultado, pero es lo que responde
+                  "¿el retiro salió de la ganancia o del capital?" */}
+              {(d.aportesModMonto>0||d.retirosTotales>0)&&(
+                <div style={{background:"#0A0A0A",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 12px",marginBottom:10}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Movimientos de socios · no afectan el resultado</div>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+                    {d.aportesModMonto>0&&<div style={{fontSize:11,color:"#3A7D44"}}>🤝 Aportes <b>+{fmt(d.aportesModMonto)}</b></div>}
+                    {d.retirosTotales>0&&<div style={{fontSize:11,color:"#8B2FC9"}}>💼 Retiros <b>−{fmt(d.retirosTotales)}</b></div>}
+                    <div style={{fontSize:11,color:"#555",marginLeft:"auto"}}>Después de socios: <b style={{color:d.resultadoDespuesSocios>=0?"#3A7D44":"#C1440E"}}>{d.resultadoDespuesSocios>=0?"":"-"}{fmt(Math.abs(d.resultadoDespuesSocios))}</b></div>
+                  </div>
+                  {d.retirosTotales>d.resultado&&d.resultado>0&&(
+                    <div style={{fontSize:10,color:"#E07B00",marginTop:5}}>⚠️ Los retiros superan la ganancia del mes por {fmt(d.retirosTotales-d.resultado)} — esa diferencia sale del capital del local.</div>
+                  )}
+                  {d.retirosTotales>0&&d.resultado<=0&&(
+                    <div style={{fontSize:10,color:"#C1440E",marginTop:5}}>⚠️ Hubo retiros en un mes sin ganancia: salieron del capital del local.</div>
+                  )}
+                </div>
+              )}
+
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {/* Ventas */}
                 <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
@@ -7591,7 +7975,7 @@ function PanelResultados(p){
                     <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.totalGastos)}</div>
                   </div>
                   <div>
-                    {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return a!=="Retiros";}).map(function(cat){
+                    {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
                       var monto=d.porCat[cat]||0;
                       var color=AREA_COLORES[cat]||"#555";
                       return(
@@ -9810,6 +10194,31 @@ async function sbDeleteRetiro(id) {
   } catch(e) {}
 }
 
+// ─── APORTES DE SOCIOS SUPABASE ───────────────────────────────────────────────
+// Requiere una tabla "aportes" en Supabase con columnas:
+// id (text, PK), socio (text), local (text), monto (numeric), tipo_aporte (text),
+// notas (text), fecha (date), usuario (text), created_at (timestamptz)
+async function sbLoadAportes() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/aportes?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+
+async function sbSaveAporte(aporte) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    await fetch(SURL + "/rest/v1/aportes", { method: "POST", headers: h, body: JSON.stringify(aporte) });
+  } catch(e) {}
+}
+
+async function sbDeleteAporte(id) {
+  try {
+    await fetch(SURL + "/rest/v1/aportes?id=eq." + id, { method: "DELETE", headers: SH });
+  } catch(e) {}
+}
+
 // ─── ADELANTOS DE SUELDO SUPABASE ─────────────────────────────────────────────
 // Requiere una tabla "adelantos" en Supabase con columnas:
 // id (text, PK), empleado_id, empleado_nombre, local, monto (numeric), medio_pago,
@@ -10401,6 +10810,7 @@ export default function App() {
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
+  var [aportes,setAportes]=useState([]);
   var [adelantos,setAdelantos]=useState([]);
   var [cierres,setCierres]=useState([]);
   var [categoriasGastos,setCategoriasGastos]=useState([]);
@@ -10445,6 +10855,7 @@ export default function App() {
     sbGetFaltantes().then(function(d){setFaltantes(d);}).catch(function(){});
     sbLoadGastos().then(function(d){setGastos(d);}).catch(function(){});
     sbLoadRetiros().then(function(d){setRetiros(d);}).catch(function(){});
+    sbLoadAportes().then(function(d){setAportes(d);}).catch(function(){});
     sbLoadAdelantos().then(function(d){setAdelantos(d);}).catch(function(){});
     sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
@@ -11080,9 +11491,12 @@ export default function App() {
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}
               retiros={retiros}
+              aportes={aportes}
               cargasSociales={cargasSociales}
               onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
+              onSaveAporte={function(a){sbSaveAporte(a);setAportes(function(p){var f=p.filter(function(x){return x.id!==a.id;});return[a,...f];});}}
+              onDeleteAporte={function(id){sbDeleteAporte(id);setAportes(function(p){return p.filter(function(a){return a.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
@@ -11124,7 +11538,7 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
-              sueldos={sueldos} retiros={retiros} adelantos={adelantos}
+              sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

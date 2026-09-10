@@ -91,6 +91,22 @@ create table if not exists aportes (
 Hasta que la tabla exista, el panel abre y funciona pero los aportes no se guardan
 entre sesiones.
 
+### ⚠️ Columna `local_cuenta` en `aportes` y `retiros`
+
+Los aportes y retiros distinguen **a qué local le corresponde** el movimiento de **por qué
+cuenta se movió la plata** (por ejemplo: un aporte para Kusama que el socio depositó en
+Mercado Pago Nicolás, que es cuenta de Bodegón). Eso requiere una columna más en las dos
+tablas. Corré esto en Supabase → SQL Editor:
+
+```sql
+alter table aportes add column if not exists local_cuenta text;
+alter table retiros add column if not exists local_cuenta text;
+```
+
+Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la app avisa en
+pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
+se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
+
 ### Cómo se leen los aportes y los retiros
 
 Los movimientos de socios **no son parte del resultado operativo**:
@@ -102,6 +118,16 @@ Los movimientos de socios **no son parte del resultado operativo**:
   esa diferencia sale del capital del local, no de la ganancia.
 - **Disponibilidad de caja** = incluye todo, con su medio de pago, para que el
   efectivo y los bancos cuadren contra la realidad.
+
+Ojo con los dos criterios de imputación, que conviven a propósito:
+
+- El **resultado** se imputa por el local del movimiento — quién consumió el gasto, a qué
+  local le corresponde el aporte o el retiro.
+- La **disponibilidad** se imputa por el local de la cuenta — de dónde salió o entró la
+  plata realmente.
+
+Por eso un mismo movimiento puede figurar en el resultado de un local y en la
+disponibilidad de otro. No está duplicado: responden preguntas distintas.
 
 ---
 

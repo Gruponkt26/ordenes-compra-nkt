@@ -6662,10 +6662,11 @@ function PanelRetiros(p) {
           </div>
 
           <div style={{marginBottom:12}}>
-            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>Local</label>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el retiro?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id,local_cuenta:f.cuentaTocada?f.local_cuenta:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
+            <div style={{fontSize:9,color:"#333",marginTop:6}}>Se imputa acá en Movimientos de socios y en la cuenta corriente del socio.</div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
@@ -6957,10 +6958,11 @@ function PanelAportes(p) {
           </div>
 
           <div style={{marginBottom:12}}>
-            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>Local</label>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el aporte?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id,local_cuenta:f.cuentaTocada?f.local_cuenta:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
+            <div style={{fontSize:9,color:"#333",marginTop:6}}>Se imputa acá en Movimientos de socios y en la cuenta corriente del socio.</div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>

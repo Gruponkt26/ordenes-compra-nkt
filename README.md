@@ -69,6 +69,42 @@ Luego en `src/App.jsx`, en el fetch de la IA, agregá el header:
 
 ---
 
+## ⚠️ Tabla nueva en Supabase: `aportes`
+
+El módulo **🤝 Aportes de Socios** (Administración → Egresos → pestaña *Aportes*)
+necesita una tabla propia. Creala una sola vez desde Supabase → SQL Editor:
+
+```sql
+create table if not exists aportes (
+  id          text primary key,
+  socio       text,
+  local       text,
+  monto       numeric,
+  tipo_aporte text,
+  notas       text,
+  fecha       date,
+  usuario     text,
+  created_at  timestamptz default now()
+);
+```
+
+Hasta que la tabla exista, el panel abre y funciona pero los aportes no se guardan
+entre sesiones.
+
+### Cómo se leen los aportes y los retiros
+
+Los movimientos de socios **no son parte del resultado operativo**:
+
+- **Resultado del mes** = ventas − gastos reales. No incluye ni aportes ni retiros.
+  Es lo que el local genera por sí solo.
+- **Movimientos de socios** = aportes (+) y retiros (−), en un bloque aparte debajo
+  del resultado. Un retiro mayor a la ganancia del mes se marca con una alerta:
+  esa diferencia sale del capital del local, no de la ganancia.
+- **Disponibilidad de caja** = incluye todo, con su medio de pago, para que el
+  efectivo y los bancos cuadren contra la realidad.
+
+---
+
 ## Estructura del proyecto
 ```
 compras-pro/

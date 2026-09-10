@@ -6762,6 +6762,7 @@ function PanelAportes(p) {
   var FORM_VACIO={socio:"",local:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null);
+  var [errorGuardado,setErrorGuardado]=useState(null);
 
   var TIPOS_APORTE=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
@@ -6851,7 +6852,14 @@ function PanelAportes(p) {
       usuario:editando?(editando.usuario||usuario):usuario,
       created_at:editando&&editando.created_at?editando.created_at:new Date().toISOString()
     };
-    onSave(aporte);
+    setErrorGuardado(null);
+    // Se cierra el formulario igual (el aporte ya está en pantalla), pero si Supabase lo
+    // rechazó avisamos, en vez de dejar creer que quedó guardado.
+    Promise.resolve(onSave(aporte)).then(function(res){
+      if(res&&res.ok===false)setErrorGuardado(res.error||"No se pudo guardar en Supabase.");
+    }).catch(function(e){
+      setErrorGuardado("No se pudo guardar en Supabase. "+(e&&e.message?e.message:""));
+    });
     cerrarForm();
   }
 
@@ -6872,6 +6880,18 @@ function PanelAportes(p) {
         </div>
         <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:ACC,border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar aporte"}</button>
       </div>
+
+      {errorGuardado&&(
+        <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:14,display:"flex",gap:10,alignItems:"flex-start"}}>
+          <span style={{fontSize:15}}>⚠️</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>El aporte NO se guardó</div>
+            <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>{errorGuardado}</div>
+            <div style={{fontSize:10,color:"#8A6055",marginTop:5}}>Lo ves en la lista porque quedó cargado en esta pantalla, pero se pierde al recargar.</div>
+          </div>
+          <button onClick={function(){setErrorGuardado(null);}} style={{background:"none",border:"none",color:"#8A6055",cursor:"pointer",fontSize:13}}>✕</button>
+        </div>
+      )}
 
       <div style={{background:ACC+"11",border:"1px solid "+ACC+"33",borderRadius:10,padding:"9px 13px",marginBottom:14,fontSize:11,color:"#7A9A80",lineHeight:1.5}}>
         Un aporte suma a la plata disponible del local, pero <b style={{color:ACC}}>no entra al resultado del mes</b> — es capital que pone el socio, no una venta.
@@ -10206,11 +10226,24 @@ async function sbLoadAportes() {
   } catch(e) { return []; }
 }
 
+// A diferencia del resto de los sb* de este archivo, este devuelve el resultado en vez de
+// tragarse el error: un aporte que no se guarda y no avisa nada es peor que un error en pantalla.
 async function sbSaveAporte(aporte) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/aportes", { method: "POST", headers: h, body: JSON.stringify(aporte) });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/aportes", { method: "POST", headers: h, body: JSON.stringify(aporte) });
+    if (r.ok) return { ok: true };
+    var detalle = "";
+    try {
+      var body = await r.json();
+      detalle = body.message || body.hint || body.details || JSON.stringify(body);
+    } catch(e2) { detalle = "respuesta " + r.status; }
+    if (r.status === 404) detalle = "La tabla \"aportes\" no existe en Supabase todavía. Creala con el SQL del README.";
+    else if (r.status === 401 || r.status === 403) detalle = "Supabase rechazó la escritura (permisos / RLS). Revisá las políticas de la tabla \"aportes\". Detalle: " + detalle;
+    return { ok: false, error: detalle, status: r.status };
+  } catch(e) {
+    return { ok: false, error: "No se pudo contactar a Supabase. ¿Hay internet? Detalle: " + (e && e.message ? e.message : String(e)) };
+  }
 }
 
 async function sbDeleteAporte(id) {
@@ -11495,7 +11528,7 @@ export default function App() {
               cargasSociales={cargasSociales}
               onSaveRetiro={function(r){sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
               onDeleteRetiro={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
-              onSaveAporte={function(a){sbSaveAporte(a);setAportes(function(p){var f=p.filter(function(x){return x.id!==a.id;});return[a,...f];});}}
+              onSaveAporte={function(a){var r=sbSaveAporte(a);setAportes(function(p){var f=p.filter(function(x){return x.id!==a.id;});return[a,...f];});return r;}}
               onDeleteAporte={function(id){sbDeleteAporte(id);setAportes(function(p){return p.filter(function(a){return a.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}

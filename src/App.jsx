@@ -7267,6 +7267,101 @@ function PanelAportes(p) {
 
 
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
+// Ventas de un cierre de caja. Si el cierre trae total_ventas cargado se usa ese;
+// si no, se arma desde los medios, restando del efectivo los egresos diarios (eso
+// es gasto operativo pagado de la caja, no venta). En las dos ramas queda bruto de
+// retiro de socio, así el retiro no se descuenta dos veces.
+function ventasDeCierre(c){
+  var tv=parseFloat(c.total_ventas||0);
+  if(tv!==0)return tv;
+  var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.egresos_diarios||0));
+  return ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
+}
+
+// ─── PANEL VENTAS Y EGRESOS ───────────────────────────────────────────────────
+// Cuadro simple, sin vueltas: por local, lo que se vendió según los cierres de
+// caja y lo que se gastó según el módulo Egresos. Para el detalle (medios,
+// disponibilidad, traspasos) está Resultados.
+function PanelVentasEgresos(p){
+  var gastos=p.gastos||[], cierres=p.cierres||[];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+  var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
+
+  var mesesDisp=[...new Set([
+    ...cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}),
+    ...gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;})
+  ].filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+
+  var filas=localesFiltro.map(function(l){
+    var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
+    var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
+    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
+    var egresos=gl.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+    return {local:l,cierres:cl.length,gastos:gl.length,ventas:ventas,egresos:egresos,dif:ventas-egresos};
+  });
+  var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
+  var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
+  var totDif=totVentas-totEgresos;
+
+  var TH={padding:"7px 6px",color:"#555",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A"};
+  var TD={padding:"10px 6px",fontSize:13,fontWeight:700,textAlign:"right",fontFamily:"'Playfair Display',serif",borderBottom:"1px solid #0F0F0F"};
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Finanzas</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧮 Ventas y Egresos</div>
+      </div>
+
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"4px 12px 12px",overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:320}}>
+          <thead>
+            <tr>
+              <th style={{...TH,textAlign:"left"}}>Local</th>
+              <th style={{...TH,textAlign:"right"}}>Ventas</th>
+              <th style={{...TH,textAlign:"right"}}>Egresos</th>
+              <th style={{...TH,textAlign:"right"}}>Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(function(f){return(
+              <tr key={f.local.id}>
+                <td style={{padding:"10px 6px",borderBottom:"1px solid #0F0F0F"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:f.local.color}}>{f.local.emoji} {f.local.nombre}</div>
+                  <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}</div>
+                </td>
+                <td style={{...TD,color:"#3A7D44"}}>{fmt(f.ventas)}</td>
+                <td style={{...TD,color:"#C1440E"}}>{fmt(f.egresos)}</td>
+                <td style={{...TD,color:f.dif>=0?"#F0EDE8":"#C1440E"}}>{fmt(f.dif)}</td>
+              </tr>
+            );})}
+            <tr>
+              <td style={{padding:"12px 6px 4px",fontSize:11,fontWeight:700,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Total</td>
+              <td style={{...TD,borderBottom:"none",paddingTop:12,color:"#3A7D44",fontSize:15}}>{fmt(totVentas)}</td>
+              <td style={{...TD,borderBottom:"none",paddingTop:12,color:"#C1440E",fontSize:15}}>{fmt(totEgresos)}</td>
+              <td style={{...TD,borderBottom:"none",paddingTop:12,color:totDif>=0?"#D4A017":"#C1440E",fontSize:15}}>{fmt(totDif)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.6}}>
+        Ventas: lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios.<br/>
+        Egresos: todo lo cargado en el módulo Egresos para ese local en el mes, sin importar el medio de pago.
+      </div>
+    </div>
+  );
+}
+
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
@@ -7380,14 +7475,7 @@ function PanelResultados(p){
     // terminaba descontándose dos veces. Al dejar las dos ramas brutas, el retiro no toca el
     // resultado por ningún camino y se ve una sola vez, en "Movimientos de socios".
     // Los egresos diarios sí siguen netos: eso es gasto operativo pagado de la caja.
-    var ventas=cl.reduce(function(a,c){
-      var tv=parseFloat(c.total_ventas||0);
-      if(tv===0){
-        var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.egresos_diarios||0));
-        tv=ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
-      }
-      return a+tv;
-    },0);
+    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
     var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
     var egresos=cl.reduce(function(a,c){return a+parseFloat(c.egresos_diarios||0);},0);
     var ventasPorMedio={};
@@ -11489,7 +11577,7 @@ export default function App() {
               {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
               {id:"config",label:"⚙️ Config",color:"#555"},
             ];
-            var vistaFinanzas=["iva","cruzados","resultados","analytics"].includes(vista);
+            var vistaFinanzas=["iva","cruzados","resultados","analytics","ventasegresos"].includes(vista);
             var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vistaFinanzas?"finanzas":"egresos";
             return(
               <div>
@@ -11519,7 +11607,7 @@ export default function App() {
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"]].map(function(t){return(
+                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"],["ventasegresos","🧮 Ventas y Egresos","#1A6B8A"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
                   </div>
@@ -11866,6 +11954,10 @@ export default function App() {
 
           {((esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics"))&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="ventasegresos"&&(
+            <PanelVentasEgresos gastos={gastos} cierres={cierres}/>
           )}
 
           {enStockCompras&&vista==="stockmp"&&(function(){

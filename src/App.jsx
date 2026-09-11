@@ -7267,6 +7267,11 @@ function PanelAportes(p) {
 
 
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
+// A qué local le pega en la caja un movimiento de socios: la cuenta por la que se
+// movió la plata, que puede no ser el local al que le corresponde el movimiento.
+// Los registros viejos no tienen local_cuenta y caen en local, igual que siempre.
+function cuentaDeMovimiento(x){ return x.local_cuenta||x.local; }
+
 // Ventas de un cierre de caja. Si el cierre trae total_ventas cargado se usa ese;
 // si no, se arma desde los medios, restando del efectivo los egresos diarios (eso
 // es gasto operativo pagado de la caja, no venta). En las dos ramas queda bruto de
@@ -7279,11 +7284,14 @@ function ventasDeCierre(c){
 }
 
 // ─── PANEL VENTAS Y EGRESOS ───────────────────────────────────────────────────
-// Cuadro simple, sin vueltas: por local, lo que se vendió según los cierres de
-// caja y lo que se gastó según el módulo Egresos. Para el detalle (medios,
-// disponibilidad, traspasos) está Resultados.
+// Cuadro simple: qué entró y qué salió de la caja de cada local en el mes.
+// Ingresos = ventas de los cierres + traspaso manual del mes anterior + aportes
+// de socios. Egresos = lo cargado en el módulo Egresos + retiros de socios.
+// Para el detalle fino (medios de pago, acreditación del débito, correcciones)
+// está Resultados; acá sólo los totales.
 function PanelVentasEgresos(p){
   var gastos=p.gastos||[], cierres=p.cierres||[];
+  var retirosSocios=p.retiros||[], aportesSocios=p.aportes||[], traspasos=p.traspasos||{};
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -7295,19 +7303,59 @@ function PanelVentasEgresos(p){
   ].filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
-  var filas=localesFiltro.map(function(l){
-    var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
-    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
-    var egresos=gl.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
-    return {local:l,cierres:cl.length,gastos:gl.length,ventas:ventas,egresos:egresos,dif:ventas-egresos};
-  });
-  var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
-  var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
-  var totDif=totVentas-totEgresos;
+  function delMes(x){return x.fecha&&x.fecha.substring(0,7)===mesFiltro;}
+  function sumaMonto(lista){return lista.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);}
 
-  var TH={padding:"7px 6px",color:"#555",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A"};
-  var TD={padding:"10px 6px",fontSize:13,fontWeight:700,textAlign:"right",fontFamily:"'Playfair Display',serif",borderBottom:"1px solid #0F0F0F"};
+  var datos={};
+  localesFiltro.forEach(function(l){
+    var lid=l.id;
+    var cl=cierres.filter(function(c){return c.local===lid&&delMes(c);});
+    var gl=gastos.filter(function(g){return g.local===lid&&delMes(g);});
+    // Aportes y retiros van por la CUENTA que movió la plata, no por el local al que
+    // le corresponde el movimiento: es la caja de esa cuenta la que sube o baja.
+    var apo=aportesSocios.filter(function(a){return cuentaDeMovimiento(a)===lid&&delMes(a);});
+    var retMod=retirosSocios.filter(function(r){return cuentaDeMovimiento(r)===lid&&delMes(r);});
+    var tr=traspasos[lid+"_"+mesFiltro]||null;
+    var traspaso=tr?["efectivo","transferencia","debito","credito","otros"].reduce(function(a,k){return a+(parseFloat(tr[k])||0);},0):0;
+    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
+    var aportes=sumaMonto(apo);
+    // Retiros: los que se anotaron en el propio cierre + los del módulo de socios
+    var retiros=cl.reduce(function(a,c){return a+(parseFloat(c.retiro_socio)||0);},0)+sumaMonto(retMod);
+    var egresos=gl.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+    var ingresos=ventas+traspaso+aportes;
+    var egresosTotal=egresos+retiros;
+    datos[lid]={
+      ventas:ventas,traspaso:traspaso,aportes:aportes,ingresos:ingresos,
+      egresos:egresos,retiros:retiros,egresosTotal:egresosTotal,dif:ingresos-egresosTotal,
+      cierres:cl.length,cantGastos:gl.length,
+      aportesCruz:apo.some(function(a){return a.local&&a.local!==lid;}),
+      retirosCruz:retMod.some(function(r){return r.local&&r.local!==lid;})
+    };
+  });
+  function total(k){return localesFiltro.reduce(function(a,l){return a+datos[l.id][k];},0);}
+
+  var FILAS=[
+    {k:"ventas",label:"Ventas por cierre",color:"#3A7D44"},
+    {k:"traspaso",label:"Traspaso manual",color:"#D4A017"},
+    {k:"aportes",label:"🤝 Aportes de socios",color:"#3A7D44",cruz:"aportesCruz"},
+    {k:"ingresos",label:"Total ingresos",color:"#3A7D44",sub:true},
+    {k:"egresos",label:"Egresos",color:"#C1440E"},
+    {k:"retiros",label:"💼 Retiros de socios",color:"#8B2FC9",cruz:"retirosCruz"},
+    {k:"egresosTotal",label:"Total egresos",color:"#C1440E",sub:true},
+    {k:"dif",label:"Diferencia",sub:true,grande:true},
+  ];
+
+  function celda(valor,fila,esTotal){
+    var cero=Math.round(valor)===0;
+    var color=fila.grande?(valor>=0?"#D4A017":"#C1440E"):fila.color;
+    return(
+      <span style={{fontSize:fila.grande?14:fila.sub?13:12,fontWeight:fila.sub?800:600,color:cero&&!fila.sub?"#2A2A2A":color,fontFamily:"'Playfair Display',serif"}}>
+        {cero&&!fila.sub?"—":fmt(valor)}
+      </span>
+    );
+  }
+
+  var TD={padding:"8px 6px",textAlign:"right",whiteSpace:"nowrap"};
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -7323,40 +7371,48 @@ function PanelVentasEgresos(p){
       </div>
 
       <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"4px 12px 12px",overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:320}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
           <thead>
             <tr>
-              <th style={{...TH,textAlign:"left"}}>Local</th>
-              <th style={{...TH,textAlign:"right"}}>Ventas</th>
-              <th style={{...TH,textAlign:"right"}}>Egresos</th>
-              <th style={{...TH,textAlign:"right"}}>Diferencia</th>
+              <th style={{padding:"8px 6px",textAlign:"left",borderBottom:"1px solid #1A1A1A"}}></th>
+              {localesFiltro.map(function(l){return(
+                <th key={l.id} style={{padding:"8px 6px",textAlign:"right",borderBottom:"1px solid #1A1A1A"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
+                  <div style={{fontSize:9,color:"#444",fontWeight:400,marginTop:2}}>{datos[l.id].cierres} cierre{datos[l.id].cierres===1?"":"s"}</div>
+                </th>
+              );})}
+              <th style={{padding:"8px 6px",textAlign:"right",borderBottom:"1px solid #1A1A1A"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Total</div>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {filas.map(function(f){return(
-              <tr key={f.local.id}>
-                <td style={{padding:"10px 6px",borderBottom:"1px solid #0F0F0F"}}>
-                  <div style={{fontSize:12,fontWeight:700,color:f.local.color}}>{f.local.emoji} {f.local.nombre}</div>
-                  <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}</div>
+            {FILAS.map(function(fila){return(
+              <tr key={fila.k} style={{background:fila.sub?"#141414":"transparent"}}>
+                <td style={{padding:"8px 6px",fontSize:11,color:fila.sub?"#F0EDE8":"#777",fontWeight:fila.sub?700:400,borderTop:fila.sub?"1px solid #1A1A1A":"none",whiteSpace:"nowrap"}}>
+                  {fila.label}
                 </td>
-                <td style={{...TD,color:"#3A7D44"}}>{fmt(f.ventas)}</td>
-                <td style={{...TD,color:"#C1440E"}}>{fmt(f.egresos)}</td>
-                <td style={{...TD,color:f.dif>=0?"#F0EDE8":"#C1440E"}}>{fmt(f.dif)}</td>
+                {localesFiltro.map(function(l){return(
+                  <td key={l.id} style={{...TD,borderTop:fila.sub?"1px solid #1A1A1A":"none"}}>
+                    {celda(datos[l.id][fila.k],fila)}
+                    {fila.cruz&&datos[l.id][fila.cruz]&&<span title="Incluye movimientos cruzados de otro local" style={{fontSize:9,marginLeft:3}}>↔️</span>}
+                  </td>
+                );})}
+                <td style={{...TD,borderTop:fila.sub?"1px solid #1A1A1A":"none"}}>
+                  {celda(total(fila.k),fila,true)}
+                </td>
               </tr>
             );})}
-            <tr>
-              <td style={{padding:"12px 6px 4px",fontSize:11,fontWeight:700,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Total</td>
-              <td style={{...TD,borderBottom:"none",paddingTop:12,color:"#3A7D44",fontSize:15}}>{fmt(totVentas)}</td>
-              <td style={{...TD,borderBottom:"none",paddingTop:12,color:"#C1440E",fontSize:15}}>{fmt(totEgresos)}</td>
-              <td style={{...TD,borderBottom:"none",paddingTop:12,color:totDif>=0?"#D4A017":"#C1440E",fontSize:15}}>{fmt(totDif)}</td>
-            </tr>
           </tbody>
         </table>
       </div>
 
-      <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.6}}>
-        Ventas: lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios.<br/>
-        Egresos: todo lo cargado en el módulo Egresos para ese local en el mes, sin importar el medio de pago.
+      <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.7}}>
+        <b style={{color:"#666"}}>Ventas:</b> lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios.<br/>
+        <b style={{color:"#666"}}>Traspaso:</b> el saldo del mes anterior cargado a mano en Resultados. Si no se cargó, va en cero.<br/>
+        <b style={{color:"#666"}}>Aportes y retiros:</b> se imputan a la cuenta por la que se movió la plata, que puede no ser el local al que le corresponde el movimiento — esos van marcados con ↔️.<br/>
+        <b style={{color:"#666"}}>Egresos:</b> todo lo del módulo Egresos para ese local. Van al local del gasto, no a la cuenta que lo pagó (para eso está Cruzados), y no incluyen los adelantos de sueldo.<br/>
+        <b style={{color:"#666"}}>Diferencia:</b> ingresos menos egresos, sin correcciones manuales ni acreditación diferida del débito. La disponibilidad fina está en Resultados.
       </div>
     </div>
   );
@@ -7505,7 +7561,7 @@ function PanelResultados(p){
     //  · local        → a qué local le CORRESPONDE el movimiento (va al bloque de socios).
     //  · local_cuenta → por qué cuenta se MOVIÓ la plata (va a la disponibilidad).
     // Los registros viejos no tienen local_cuenta, así que cae en local y se comportan igual que antes.
-    function cuentaDe(x){ return x.local_cuenta||x.local; }
+    var cuentaDe=cuentaDeMovimiento;
     var delMes=function(x){ return x.fecha&&x.fecha.substring(0,7)===mesFiltro; };
 
     var retirosModLocal=retirosSocios.filter(function(r){return r.local===lid&&delMes(r);});
@@ -11957,7 +12013,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="ventasegresos"&&(
-            <PanelVentasEgresos gastos={gastos} cierres={cierres}/>
+            <PanelVentasEgresos gastos={gastos} cierres={cierres} retiros={retiros} aportes={aportes} traspasos={traspasos}/>
           )}
 
           {enStockCompras&&vista==="stockmp"&&(function(){

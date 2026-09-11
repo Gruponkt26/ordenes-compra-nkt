@@ -7278,12 +7278,62 @@ function ventasDeCierre(c){
   return ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
 }
 
+// Mes anterior a un "YYYY-MM".
+function mesAnteriorDe(mes){
+  var pr=String(mes||"").split("-");var y=parseInt(pr[0]);var m=parseInt(pr[1])-1;
+  if(m===0){m=12;y--;}
+  return y+"-"+(m<10?"0"+m:String(m));
+}
+
+// Egresos operativos de un local en un mes. Además de lo cargado en el módulo
+// Egresos entran los adelantos de sueldo (viven en su propia tabla y no generan
+// gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
+// todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
+// Devuelve también las piezas intermedias, que Resultados usa para el desglose.
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes){
+  var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
+  var periodoAnterior=mesAnteriorDe(mes);
+  var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
+  var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+  var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
+  var adelantosMesLocal=(adelantos||[]).filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mes;});
+  var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+  var esAguinaldo=function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!=="";};
+  var pagado=function(s){return s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);};
+  var total=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0)+adelantosMonto;
+  if(!hasSueldosGastos)total+=sueldosTabla.filter(function(s){return !esAguinaldo(s);}).reduce(function(a,s){return a+pagado(s);},0);
+  if(!hasAguinaldosGastos)total+=sueldosTabla.filter(esAguinaldo).reduce(function(a,s){return a+pagado(s);},0);
+  return{total:total,gl:gl,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+}
+
+// Corrección manual de ventas de un local en un mes: cuánto se despega de los
+// cierres lo que se cargó a mano por medio de pago en Resultados. Cero si no hay
+// corrección guardada.
+function correccionVentas(cierres, lid, mes, corrResultados){
+  var corr=(corrResultados||{})[lid+"_"+mes]||{};
+  var cl=(cierres||[]).filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mes;});
+  var suma=function(f){return cl.reduce(function(a,c){return a+parseFloat(c[f]||0);},0);};
+  var delCierre={
+    efectivo:suma("efectivo")-suma("egresos_diarios"),
+    transferencia:suma("transferencia"),
+    debito:suma("tarjeta_debito"),
+    credito:suma("tarjeta_credito"),
+    otros:suma("otros")
+  };
+  return Object.keys(delCierre).reduce(function(a,k){
+    var v=corr[k];
+    if(v===undefined||v===null||v==="")return a;
+    return a+((parseFloat(v)||0)-delCierre[k]);
+  },0);
+}
+
 // ─── PANEL VENTAS Y EGRESOS ───────────────────────────────────────────────────
 // Cuadro simple, sin vueltas: por local, lo que se vendió según los cierres de
 // caja y lo que se gastó según el módulo Egresos. Para el detalle (medios,
 // disponibilidad, traspasos) está Resultados.
 function PanelVentasEgresos(p){
   var gastos=p.gastos||[], cierres=p.cierres||[];
+  var sueldos=p.sueldos||[], adelantos=p.adelantos||[], corrResultados=p.corrResultados||{};
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -7295,12 +7345,15 @@ function PanelVentasEgresos(p){
   ].filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
 
+  // Mismo criterio que el resultado de Resultados, para que las dos vistas no se
+  // contradigan: ventas de los cierres con la corrección manual aplicada, y egresos
+  // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
-    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
-    var egresos=gl.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
-    return {local:l,cierres:cl.length,gastos:gl.length,ventas:ventas,egresos:egresos,dif:ventas-egresos};
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro);
+    var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
+    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
+    return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total};
   });
   var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
   var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
@@ -7337,7 +7390,7 @@ function PanelVentasEgresos(p){
               <tr key={f.local.id}>
                 <td style={{padding:"10px 6px",borderBottom:"1px solid #0F0F0F"}}>
                   <div style={{fontSize:12,fontWeight:700,color:f.local.color}}>{f.local.emoji} {f.local.nombre}</div>
-                  <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}</div>
+                  <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}{f.corr!==0?" · con corrección":""}</div>
                 </td>
                 <td style={{...TD,color:"#3A7D44"}}>{fmt(f.ventas)}</td>
                 <td style={{...TD,color:"#C1440E"}}>{fmt(f.egresos)}</td>
@@ -7354,9 +7407,11 @@ function PanelVentasEgresos(p){
         </table>
       </div>
 
-      <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.6}}>
-        Ventas: lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios.<br/>
-        Egresos: todo lo cargado en el módulo Egresos para ese local en el mes, sin importar el medio de pago.
+      <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.7}}>
+        <b style={{color:"#666"}}>Ventas:</b> lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios, más la corrección manual si se cargó en Resultados.<br/>
+        <b style={{color:"#666"}}>Egresos:</b> el módulo Egresos de ese local, más los adelantos de sueldo y los sueldos o aguinaldos marcados pagados que todavía no generaron su egreso.<br/>
+        <b style={{color:"#666"}}>Solo el mes en curso:</b> no entra el traspaso del mes anterior ni los movimientos de socios — eso es saldo y capital, no venta. La plata disponible está en Resultados.<br/>
+        Es el mismo cálculo que el resultado de Resultados, abierto por local.
       </div>
     </div>
   );
@@ -7488,14 +7543,11 @@ function PanelResultados(p){
       });
     });
 
-    var gl=gastos.filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
-    // Agregar sueldos del mes anterior desde tabla sueldos si no están en gastos
-    var mesParts=mesFiltro.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}
-    var periodoAnterior=mesY+"-"+(mesM<10?"0"+mesM:String(mesM));
-    var sueldosTabla=(p.sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
-    var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
-    var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
-    var totalGastos=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+    // Egresos operativos del mes — mismo cálculo que usa el cuadro de Ventas y Egresos
+    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro);
+    var gl=eg.gl, periodoAnterior=eg.periodoAnterior, sueldosTabla=eg.sueldosTabla;
+    var hasSueldosGastos=eg.hasSueldosGastos, hasAguinaldosGastos=eg.hasAguinaldosGastos;
+    var totalGastos=eg.total;
     // Los retiros de socios NO son gasto operativo: son reparto de la ganancia, se deciden
     // una vez cerradas entradas y salidas. Por eso quedan fuera de totalGastos (y por lo tanto
     // del resultado) y se muestran aparte, en "Movimientos de socios". Sí siguen descontando
@@ -7518,20 +7570,8 @@ function PanelResultados(p){
     var aportesCajaLocal=aportesSocios.filter(function(a){return cuentaDe(a)===lid&&delMes(a);});
     var retirosTotales=retiros+retirosModMonto;      // cierre + módulo
     var movSocios=aportesModMonto-retirosTotales;    // neto del mes: + puso, − sacó
-    // Adelantos de sueldo del mes (ver detalle más abajo, en Disponibilidad)
-    var adelantosMesLocal=adelantosSueldo.filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mesFiltro;});
-    var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
-    totalGastos+=adelantosMonto;
-    if(!hasSueldosGastos){
-      sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
-        totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
-      });
-    }
-    if(!hasAguinaldosGastos){
-      sueldosTabla.filter(function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""}).forEach(function(s){
-        totalGastos+=(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
-      });
-    }
+    // Adelantos de sueldo del mes (ya sumados en totalGastos; se usan en Disponibilidad)
+    var adelantosMesLocal=eg.adelantosMesLocal, adelantosMonto=eg.adelantosMonto;
     var porCat={};
     gl.forEach(function(g){
       var cat=(function(){
@@ -7808,8 +7848,11 @@ function PanelResultados(p){
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
-    // Ventas corregidas = ventas originales + diferencia de correcciones
-    var ventasCorregidas=ventas+corrMonto+(traspaso?traspaso.total:0);
+    // Ventas corregidas = ventas de los cierres + diferencia de las correcciones manuales.
+    // El traspaso NO va acá: es el saldo que sobró del mes anterior, ya contado como venta
+    // en aquel mes. Sumarlo sería contar la misma venta dos veces e inflar el resultado.
+    // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
+    var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
     return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
@@ -8024,21 +8067,6 @@ function PanelResultados(p){
                   );})}
                   <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0))}</td>
                 </tr>
-                {/* Traspaso mes anterior */}
-                {(function(){
-                  var totTr=localesFiltro.reduce(function(a,l){return a+(datos[l.id].traspaso?datos[l.id].traspaso.total:0);},0);
-                  if(totTr===0)return null;
-                  return(
-                    <tr style={{borderBottom:"1px solid #1A1A1A",background:"#0A1A0A"}}>
-                      <td style={{padding:"6px 8px",color:"#D4A017",fontSize:10}}>↩️ Traspaso mes ant.</td>
-                      {localesFiltro.map(function(l){
-                        var tr=datos[l.id].traspaso?datos[l.id].traspaso.total:0;
-                        return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:tr>0?"#D4A017":"#2A2A2A",fontSize:10}}>{tr>0?fmt(tr):"—"}</td>;
-                      })}
-                      <td style={{textAlign:"right",padding:"6px 8px",color:"#D4A017",fontSize:10,fontWeight:600}}>{fmt(totTr)}</td>
-                    </tr>
-                  );
-                })()}
                 {/* Total ingresos */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#071207"}}>
                   <td style={{padding:"8px",color:"#3A7D44",fontWeight:800,fontFamily:"'Playfair Display',serif",fontSize:12}}>Total ingresos</td>
@@ -8136,6 +8164,22 @@ function PanelResultados(p){
                 })()}
                 {/* Separador */}
                 <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
+                {/* Traspaso del mes anterior — saldo inicial de la caja, no es ingreso del mes:
+                    por eso va acá, junto a la disponibilidad, y fuera del resultado. */}
+                {(function(){
+                  var totTr=localesFiltro.reduce(function(a,l){return a+(datos[l.id].traspaso?datos[l.id].traspaso.total:0);},0);
+                  if(totTr===0)return null;
+                  return(
+                    <tr style={{borderBottom:"1px solid #0A0A0A"}}>
+                      <td style={{padding:"6px 8px",color:"#D4A017",fontSize:10}}>↩️ Traspaso mes ant. <span style={{color:"#444",fontSize:9}}>(saldo inicial)</span></td>
+                      {localesFiltro.map(function(l){
+                        var tr=datos[l.id].traspaso?datos[l.id].traspaso.total:0;
+                        return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:tr>0?"#D4A017":"#2A2A2A",fontSize:10}}>{tr>0?fmt(tr):"—"}</td>;
+                      })}
+                      <td style={{textAlign:"right",padding:"6px 8px",color:"#D4A017",fontSize:10,fontWeight:600}}>{fmt(totTr)}</td>
+                    </tr>
+                  );
+                })()}
                 {/* Disponibilidad efectivo */}
                 <tr style={{background:"#0A0F0A"}}>
                   <td style={{padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💵 Disponible efectivo</td>
@@ -8258,21 +8302,11 @@ function PanelResultados(p){
                     <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ventas netas</div>
                     <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}</div>
                   </div>
-                  {/* Desglose ventas + traspaso */}
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",marginBottom:2}}>
-                    <span>💰 Ventas del mes{d.corrMonto!==0?" (ajust.)":""}</span>
-                    <span style={{color:"#3A7D44",fontWeight:600}}>{fmt(d.ventas+d.corrMonto)}</span>
-                  </div>
-                  {d.traspaso&&d.traspaso.total>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#D4A017",marginBottom:4}}>
-                      <span>↩️ Traspaso {d.traspaso.mes}</span>
-                      <span style={{fontWeight:600}}>+{fmt(d.traspaso.total)}</span>
-                    </div>
-                  )}
-                  {d.traspaso&&d.traspaso.total>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:800,color:"#3A7D44",borderTop:"1px solid #1A1A1A",paddingTop:6,marginBottom:8}}>
-                      <span>Total ingresos</span>
-                      <span style={{fontFamily:"'Playfair Display',serif"}}>{fmt(d.ventasCorregidas)}</span>
+                  {/* Sólo cuando hay corrección manual: sin ella repetiría el número de arriba */}
+                  {d.corrMonto!==0&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",marginBottom:4}}>
+                      <span>💰 Cierres {fmt(d.ventas)} + ajuste</span>
+                      <span style={{color:"#D4A017",fontWeight:600}}>{d.corrMonto>0?"+":"−"}{fmt(Math.abs(d.corrMonto))}</span>
                     </div>
                   )}
                   {d.diasCierre===0?(
@@ -8290,15 +8324,6 @@ function PanelResultados(p){
                           {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (cierre)</span><span>−{fmt(d.retiros)}</span></div>}
                           {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
                           {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos diarios</span><span>−{fmt(d.egresos)}</span></div>}
-                        </div>
-                      )}
-                      {d.traspaso&&d.traspaso.total>0&&(
-                        <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",fontWeight:700,marginBottom:4}}><span>🔄 Traspaso de {d.traspaso.mes}</span><span>+{fmt(d.traspaso.total)}</span></div>
-                          {[["efectivo","💵 Efectivo",d.traspaso.efectivo],["transferencia","📲 Transferencia",d.traspaso.transferencia],["debito","💳 Débito",d.traspaso.debito],["credito","💳 Crédito",d.traspaso.credito],["otros","📦 Otros",d.traspaso.otros]].map(function(m){
-                            if(!m[2]||m[2]===0)return null;
-                            return <div key={m[0]} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#666",marginBottom:2}}><span>{m[1]}</span><span>+{fmt(m[2])}</span></div>;
-                          })}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
@@ -11957,7 +11982,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="ventasegresos"&&(
-            <PanelVentasEgresos gastos={gastos} cierres={cierres}/>
+            <PanelVentasEgresos gastos={gastos} cierres={cierres} sueldos={sueldos} adelantos={adelantos} corrResultados={corrResultados}/>
           )}
 
           {enStockCompras&&vista==="stockmp"&&(function(){

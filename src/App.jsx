@@ -6692,6 +6692,15 @@ function PanelRetiros(p) {
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
   var [errorGuardado,setErrorGuardado]=useState(null);
+  var [faltanDatos,setFaltanDatos]=useState(false); // el aviso es por un campo vacío, no por Supabase
+  // El formulario está arriba de la lista: al tocar el lápiz de un movimiento que quedó
+  // más abajo, se abría fuera de la pantalla y parecía que el botón no hacía nada.
+  var formRef=useRef(null);
+  useEffect(function(){
+    if(showForm&&editando&&formRef.current&&formRef.current.scrollIntoView){
+      formRef.current.scrollIntoView({behavior:"smooth",block:"center"});
+    }
+  },[showForm,editando&&editando.id]);
 
   var TIPOS_RETIRO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
@@ -6748,7 +6757,14 @@ function PanelRetiros(p) {
   }
 
   function doSave(){
-    if(!form.socio.trim()||!form.monto)return;
+    // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
+    // botón estaba roto.
+    if(!form.socio.trim()||!form.monto){
+      setFaltanDatos(true);
+      setErrorGuardado("Falta completar el nombre del socio o el monto.");
+      return;
+    }
+    setFaltanDatos(false);
     var retiro={
       id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
@@ -6789,16 +6805,16 @@ function PanelRetiros(p) {
         <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:14,display:"flex",gap:10,alignItems:"flex-start"}}>
           <span style={{fontSize:15}}>⚠️</span>
           <div style={{flex:1}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>El retiro NO se guardó</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>{faltanDatos?"Faltan datos":"El retiro NO se guardó"}</div>
             <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>{errorGuardado}</div>
-            <div style={{fontSize:10,color:"#8A6055",marginTop:5}}>Lo ves en la lista porque quedó cargado en esta pantalla, pero se pierde al recargar.</div>
+            {!faltanDatos&&<div style={{fontSize:10,color:"#8A6055",marginTop:5}}>Lo ves en la lista porque quedó cargado en esta pantalla, pero se pierde al recargar.</div>}
           </div>
           <button onClick={function(){setErrorGuardado(null);}} style={{background:"none",border:"none",color:"#8A6055",cursor:"pointer",fontSize:13}}>✕</button>
         </div>
       )}
 
       {showForm&&(
-        <div style={{background:"#0F0F0F",border:"1px solid #8B2FC944",borderRadius:14,padding:"18px",marginBottom:18}}>
+        <div ref={formRef} style={{background:"#0F0F0F",border:"1px solid #8B2FC944",borderRadius:14,padding:"18px",marginBottom:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
             <div style={{fontSize:11,color:"#8B2FC9",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{editando?"✏️ Editar retiro":"Nuevo retiro"}</div>
             {editando&&<div style={{fontSize:10,color:"#555"}}>Cargado el {fmtDateTime(editando.created_at)}{editando.usuario?" por "+editando.usuario:""}</div>}
@@ -6956,6 +6972,15 @@ function PanelAportes(p) {
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null);
   var [errorGuardado,setErrorGuardado]=useState(null);
+  var [faltanDatos,setFaltanDatos]=useState(false); // el aviso es por un campo vacío, no por Supabase
+  // El formulario está arriba de la lista: al tocar el lápiz de un movimiento que quedó
+  // más abajo, se abría fuera de la pantalla y parecía que el botón no hacía nada.
+  var formRef=useRef(null);
+  useEffect(function(){
+    if(showForm&&editando&&formRef.current&&formRef.current.scrollIntoView){
+      formRef.current.scrollIntoView({behavior:"smooth",block:"center"});
+    }
+  },[showForm,editando&&editando.id]);
 
   var TIPOS_APORTE=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
@@ -7035,7 +7060,14 @@ function PanelAportes(p) {
   }
 
   function doSave(){
-    if(!form.socio.trim()||!form.monto)return;
+    // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
+    // botón estaba roto.
+    if(!form.socio.trim()||!form.monto){
+      setFaltanDatos(true);
+      setErrorGuardado("Falta completar el nombre del socio o el monto.");
+      return;
+    }
+    setFaltanDatos(false);
     var aporte={
       id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
@@ -7081,9 +7113,9 @@ function PanelAportes(p) {
         <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:14,display:"flex",gap:10,alignItems:"flex-start"}}>
           <span style={{fontSize:15}}>⚠️</span>
           <div style={{flex:1}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>El aporte NO se guardó</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>{faltanDatos?"Faltan datos":"El aporte NO se guardó"}</div>
             <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>{errorGuardado}</div>
-            <div style={{fontSize:10,color:"#8A6055",marginTop:5}}>Lo ves en la lista porque quedó cargado en esta pantalla, pero se pierde al recargar.</div>
+            {!faltanDatos&&<div style={{fontSize:10,color:"#8A6055",marginTop:5}}>Lo ves en la lista porque quedó cargado en esta pantalla, pero se pierde al recargar.</div>}
           </div>
           <button onClick={function(){setErrorGuardado(null);}} style={{background:"none",border:"none",color:"#8A6055",cursor:"pointer",fontSize:13}}>✕</button>
         </div>
@@ -7094,7 +7126,7 @@ function PanelAportes(p) {
       </div>
 
       {showForm&&(
-        <div style={{background:"#0F0F0F",border:"1px solid "+ACC+"44",borderRadius:14,padding:"18px",marginBottom:18}}>
+        <div ref={formRef} style={{background:"#0F0F0F",border:"1px solid "+ACC+"44",borderRadius:14,padding:"18px",marginBottom:18}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
             <div style={{fontSize:11,color:ACC,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{editando?"✏️ Editar aporte":"Nuevo aporte"}</div>
             {editando&&<div style={{fontSize:10,color:"#555"}}>Cargado el {fmtDateTime(editando.created_at)}{editando.usuario?" por "+editando.usuario:""}</div>}

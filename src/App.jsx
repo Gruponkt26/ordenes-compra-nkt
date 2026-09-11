@@ -3350,7 +3350,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
 
 // ─── PLANILLA INLINE ──────────────────────────────────────────────────────────
-function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
+function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
   var [showModal,setShowModal]=useState(false);
@@ -3469,6 +3469,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
             <tbody>
               {emps.map(function(emp){
                 var anualTotal=0;
+                var anualAdel=0;
                 return(
                   <tr key={emp.id} style={{borderBottom:"1px solid #0F0F0F"}}>
                     <td style={{padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:11,position:"sticky",left:0,background:"#111"}}>
@@ -3484,6 +3485,13 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                       // Estado de pago para este mes
                       var mesStr=anio+"-"+(mesIdx+1<10?"0"+(mesIdx+1):String(mesIdx+1));
                       var pago=(sueldos||[]).find(function(s){return s.empleado_id===emp.id&&s.periodo===mesStr;});
+                      // Adelantos imputados a este mes: bajan lo que falta pagar de la liquidación
+                      var adelMes=adelantosDelPeriodo(adelantos,emp.id,mesStr,sueldos);
+                      var adelTot=sumaAdelantos(adelMes);
+                      anualAdel+=adelTot;
+                      var falta=faltaPagarSueldo(tot,adelMes,pago);
+                      // "Falta" sólo cuando difiere del total: si no hay adelanto ni pago parcial sería repetir la cifra de arriba
+                      var mostrarFalta=tot>0&&falta>0&&(adelTot>0||(pago&&pago.estado==="parcial"));
                       var bgColor=tot>0?(pago&&pago.estado==="pagado"?"#0A1A0A":pago&&pago.estado==="parcial"?"#1A1000":"#101000"):"transparent";
                       var textColor=tot>0?(pago&&pago.estado==="pagado"?"#4CAF50":pago&&pago.estado==="parcial"?"#E07B00":"#D4A017"):"#1A1A1A";
                       return(
@@ -3492,7 +3500,15 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                             <div>
                               <div style={{fontSize:9,fontWeight:700,color:textColor}}>${Math.round(tot/1000).toFixed(0)}k</div>
                               {conv>0&&sinc>0&&<div style={{fontSize:7,color:"#555"}}><span style={{color:"#4CAF5088"}}>C</span><span style={{color:"#1A6B8A88"}}>+S</span></div>}
+                              {adelTot>0&&<div style={{fontSize:7,color:"#D4A017",fontWeight:700}}>⏳−{Math.round(adelTot/1000)}k</div>}
+                              {mostrarFalta&&<div style={{fontSize:7,color:"#E07B00"}}>falta {Math.round(falta/1000)}k</div>}
                               {pago&&<div style={{fontSize:7,color:textColor}}>{pago.estado==="pagado"?"✅":pago.estado==="parcial"?"🔸":"⏳"}</div>}
+                            </div>
+                          ):adelTot>0?(
+                            // Adelanto dado en un mes sin estimativo cargado: igual se marca
+                            <div>
+                              <div style={{fontSize:9,fontWeight:700,color:"#D4A017"}}>⏳{Math.round(adelTot/1000)}k</div>
+                              <div style={{fontSize:7,color:"#444"}}>adelanto</div>
                             </div>
                           ):(
                             <div style={{color:"#1A1A1A",fontSize:14}}>+</div>
@@ -3515,13 +3531,17 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                       );
                     })}
                     <td style={{padding:"4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:10,fontFamily:"'Playfair Display',serif"}}>
-                      {anualTotal>0?"$"+Math.round(anualTotal/1000)+"k":"—"}
+                      <div>{anualTotal>0?"$"+Math.round(anualTotal/1000)+"k":"—"}</div>
+                      {anualAdel>0&&<div style={{fontSize:7,color:"#D4A017AA",fontWeight:600,fontFamily:"'Inter',sans-serif"}}>⏳ {fmt(anualAdel)} en adelantos</div>}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          <div style={{fontSize:9,color:"#444",marginTop:8}}>
+            ⏳ adelanto ya entregado, imputado al mes del que se descuenta · <span style={{color:"#E07B00AA"}}>falta</span> = lo que queda por pagar de esa liquidación
+          </div>
         </div>
       )}
 
@@ -3834,6 +3854,10 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               :sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
+            // Adelantos pendientes del empleado: se descuentan de esta liquidación
+            var adelFila=adelantosDe(pl.empleado_id);
+            var adelFilaTot=sumaAdelantos(adelFila);
+            var faltaFila=faltaPagarSueldo(pl.monto,adelFila,pago);
             return(
               <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pago&&pago.estado==="pagado"?"#3A7D4433":pago&&pago.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
@@ -3855,6 +3879,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     {est?<div style={{fontSize:10,color:est[2]}}>{est[1]}</div>:<div style={{fontSize:10,color:"#D4A017"}}>⏳ Pendiente</div>}
                     {pago&&pago.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Abonado: {fmt(pago.monto_parcial)}</div>}
                     {pago&&textoMedios(pago)&&<div style={{fontSize:9,color:"#555",maxWidth:190}}>{textoMedios(pago)}</div>}
+                    {adelFilaTot>0&&<div style={{fontSize:9,color:"#D4A017",marginTop:2}}>⏳ Adelantos {fmt(adelFilaTot)} · <span style={{color:"#3A7D44",fontWeight:700}}>falta {fmt(faltaFila)}</span></div>}
                   </div>
                   <button onClick={function(){abrirModal(pl);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pago?"✏️":"💳 Pagar"}</button>
                 </div>
@@ -3869,7 +3894,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
-            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · Sueldo {fmt(modalPl.monto)}</div>
             {(function(){
               var adelPend=adelantosDe(modalPl.empleado_id);
               var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
@@ -3885,9 +3910,9 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                       <span style={{color:"#D4A017"}}>−{fmt(a.monto)}</span>
                     </div>
                   );})}
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
-                    <span style={{color:"#F0EDE8"}}>Neto a pagar ahora</span>
-                    <span style={{color:"#3A7D44"}}>{fmt(neto)}</span>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,paddingTop:6,borderTop:"1px solid #2A2416"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#F0EDE8"}}>Solo falta pagar</span>
+                    <span style={{fontSize:16,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(neto)}</span>
                   </div>
                 </div>
               );
@@ -4115,6 +4140,37 @@ function textoMedios(item){
   if(lista.length===0)return "";
   if(lista.length===1)return lista[0].medio;
   return lista.map(function(pg){return pg.medio+" ($"+Math.round(pg.monto).toLocaleString("es-AR")+")";}).join(" + ");
+}
+
+// ─── ADELANTOS DE SUELDO ─────────────────────────────────────────────────────
+// Un adelanto no tiene período propio: se descuenta de la próxima liquidación.
+// Para poder mostrarlo en la planilla anual se imputa al mes del que se va a
+// descontar — el del sueldo al que ya se aplicó, o el mes en que se dio si
+// todavía está pendiente.
+function adelantosDelPeriodo(adelantos, empleadoId, periodo, sueldos){
+  return (adelantos||[]).filter(function(a){
+    if(a.empleado_id!==empleadoId)return false;
+    if(a.aplicado&&a.sueldo_id){
+      var s=(sueldos||[]).find(function(x){return String(x.id)===String(a.sueldo_id);});
+      if(s)return s.periodo===periodo;
+    }
+    return (a.fecha||"").substring(0,7)===periodo;
+  });
+}
+function sumaAdelantos(lista){return (lista||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);}
+
+// Lo que ya se abonó de una liquidación, sin contar adelantos.
+function montoAbonadoSueldo(pago){
+  if(!pago)return 0;
+  if(pago.estado==="pagado")return parseFloat(pago.monto||0);
+  if(pago.estado==="parcial")return parseFloat(pago.monto_parcial||0);
+  return 0;
+}
+
+// Lo que falta pagar de una liquidación: el estimado de planilla menos los
+// adelantos ya dados y menos lo que se haya abonado.
+function faltaPagarSueldo(montoPlanilla, adelantos, pago){
+  return Math.max(0,(parseFloat(montoPlanilla)||0)-sumaAdelantos(adelantos)-montoAbonadoSueldo(pago));
 }
 
 // ─── ACREDITACIÓN DIFERIDA DE DÉBITO ─────────────────────────────────────────
@@ -8953,6 +9009,7 @@ function PanelSueldos(p){
         empleados={empleados}
         planilla={p.planillaSueldos||[]}
         sueldos={sueldos}
+        adelantos={p.adelantos||[]}
         onSave={p.onSavePlanilla}
         onDelete={p.onDeletePlanilla}
       />}
@@ -11543,6 +11600,7 @@ export default function App() {
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
                 planillaSueldos={planillaSueldos}
+                adelantos={adelantos}
                 onSavePlanilla={async function(item){
                   setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==item.id;});return[item,...f];});
                   await sbSavePlanillaSueldo(item);

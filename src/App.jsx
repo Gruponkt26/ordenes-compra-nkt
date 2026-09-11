@@ -3350,7 +3350,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
 
 // ─── PLANILLA INLINE ──────────────────────────────────────────────────────────
-function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
+function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [localFiltro,setLocalFiltro]=useState("l1");
   var [showModal,setShowModal]=useState(false);
@@ -3469,6 +3469,7 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
             <tbody>
               {emps.map(function(emp){
                 var anualTotal=0;
+                var anualAdel=0;
                 return(
                   <tr key={emp.id} style={{borderBottom:"1px solid #0F0F0F"}}>
                     <td style={{padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:11,position:"sticky",left:0,background:"#111"}}>
@@ -3484,6 +3485,13 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                       // Estado de pago para este mes
                       var mesStr=anio+"-"+(mesIdx+1<10?"0"+(mesIdx+1):String(mesIdx+1));
                       var pago=(sueldos||[]).find(function(s){return s.empleado_id===emp.id&&s.periodo===mesStr;});
+                      // Adelantos imputados a este mes: bajan lo que falta pagar de la liquidación
+                      var adelMes=adelantosDelPeriodo(adelantos,emp.id,mesStr,sueldos);
+                      var adelTot=sumaAdelantos(adelMes);
+                      anualAdel+=adelTot;
+                      var falta=faltaPagarSueldo(tot,adelMes,pago);
+                      // "Falta" sólo cuando difiere del total: si no hay adelanto ni pago parcial sería repetir la cifra de arriba
+                      var mostrarFalta=tot>0&&falta>0&&(adelTot>0||(pago&&pago.estado==="parcial"));
                       var bgColor=tot>0?(pago&&pago.estado==="pagado"?"#0A1A0A":pago&&pago.estado==="parcial"?"#1A1000":"#101000"):"transparent";
                       var textColor=tot>0?(pago&&pago.estado==="pagado"?"#4CAF50":pago&&pago.estado==="parcial"?"#E07B00":"#D4A017"):"#1A1A1A";
                       return(
@@ -3492,7 +3500,15 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                             <div>
                               <div style={{fontSize:9,fontWeight:700,color:textColor}}>${Math.round(tot/1000).toFixed(0)}k</div>
                               {conv>0&&sinc>0&&<div style={{fontSize:7,color:"#555"}}><span style={{color:"#4CAF5088"}}>C</span><span style={{color:"#1A6B8A88"}}>+S</span></div>}
+                              {adelTot>0&&<div style={{fontSize:7,color:"#D4A017",fontWeight:700}}>⏳−{Math.round(adelTot/1000)}k</div>}
+                              {mostrarFalta&&<div style={{fontSize:7,color:"#E07B00"}}>falta {Math.round(falta/1000)}k</div>}
                               {pago&&<div style={{fontSize:7,color:textColor}}>{pago.estado==="pagado"?"✅":pago.estado==="parcial"?"🔸":"⏳"}</div>}
+                            </div>
+                          ):adelTot>0?(
+                            // Adelanto dado en un mes sin estimativo cargado: igual se marca
+                            <div>
+                              <div style={{fontSize:9,fontWeight:700,color:"#D4A017"}}>⏳{Math.round(adelTot/1000)}k</div>
+                              <div style={{fontSize:7,color:"#444"}}>adelanto</div>
                             </div>
                           ):(
                             <div style={{color:"#1A1A1A",fontSize:14}}>+</div>
@@ -3515,13 +3531,17 @@ function PlanillaInline({empleados, planilla, sueldos, onSave, onDelete}){
                       );
                     })}
                     <td style={{padding:"4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:10,fontFamily:"'Playfair Display',serif"}}>
-                      {anualTotal>0?"$"+Math.round(anualTotal/1000)+"k":"—"}
+                      <div>{anualTotal>0?"$"+Math.round(anualTotal/1000)+"k":"—"}</div>
+                      {anualAdel>0&&<div style={{fontSize:7,color:"#D4A017AA",fontWeight:600,fontFamily:"'Inter',sans-serif"}}>⏳ {fmt(anualAdel)} en adelantos</div>}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          <div style={{fontSize:9,color:"#444",marginTop:8}}>
+            ⏳ adelanto ya entregado, imputado al mes del que se descuenta · <span style={{color:"#E07B00AA"}}>falta</span> = lo que queda por pagar de esa liquidación
+          </div>
         </div>
       )}
 
@@ -3574,7 +3594,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [localFiltro,setLocalFiltro]=useState("all");
   var [showModal,setShowModal]=useState(false);
   var [modalPl,setModalPl]=useState(null);
-  var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",medio_pago:"",notas:"",fecha_pago:hoy});
+  var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",pagos:[{medio:"",monto:""}],notas:"",fecha_pago:hoy});
   var [showAdelantos,setShowAdelantos]=useState(false);
   var [showAdelantoForm,setShowAdelantoForm]=useState(false);
   var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",medio_pago:"",fecha:hoy,notas:""});
@@ -3605,11 +3625,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   }
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var ESTADOS_S=[["pagado","✅ Pagado","#3A7D44"],["parcial","🔸 Pago parcial","#E07B00"]];
-  var MEDIOS=[
-    {g:"Efectivo",v:"Efectivo - Bodegón"},{g:"Efectivo",v:"Efectivo - Kusama"},{g:"Efectivo",v:"Efectivo - Colantonio's"},{g:"Efectivo",v:"Efectivo - Oficina"},
-    {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
-    {g:"Otros",v:"Cheque"},{g:"Otros",v:"Otro"}
-  ];
+  var MEDIOS=MEDIOS_SUELDOS;
 
   var mesFiltroNum=parseInt(mesFiltro.split("-")[1]||0)-1;
   var anioFiltroNum=parseInt(mesFiltro.split("-")[0]||0);
@@ -3646,19 +3662,49 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
 
   function abrirModal(pl){
     var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
+    var pagosPrev=pago&&pago.pagos&&pago.pagos.length>0
+      ?pago.pagos.map(function(pg){return{medio:pg.medio||pg.tipo||"",monto:String(pg.monto||"")};})
+      :[{medio:pago?pago.medio_pago||"":"",monto:""}];
     setModalPl(pl);
     setModalForm({
       estado:pago?pago.estado:"pagado",
       monto_parcial:pago?String(pago.monto_parcial||""):"",
-      medio_pago:pago?pago.medio_pago||"":"",
+      pagos:pagosPrev,
       notas:pago?pago.notas||"":"",
       fecha_pago:pago?pago.fecha_pago:hoy
     });
     setShowModal(true);
   }
 
+  // ── Medios de pago del modal ──
+  // El pago se puede repartir entre varias cuentas. Los montos se cargan sobre el
+  // neto que realmente sale ahora (ya descontados los adelantos). Si hay un solo
+  // medio y no se escribe monto, se asume que cubre todo el neto.
+  function netoModal(){
+    if(!modalPl)return 0;
+    var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
+    var totalAdel=adelantosDe(modalPl.empleado_id).reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+    return Math.max(0,base-totalAdel);
+  }
+  function pagosModal(){
+    var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
+    if(filas.length===1&&!(parseFloat(filas[0].monto)>0))return [{medio:filas[0].medio,monto:netoModal()}];
+    return filas.filter(function(pg){return parseFloat(pg.monto)>0;}).map(function(pg){return{medio:pg.medio,monto:parseFloat(pg.monto)};});
+  }
+  function totalPagosModal(){return pagosModal().reduce(function(a,pg){return a+pg.monto;},0);}
+  function pagosModalCuadran(){var n=netoModal();return n<=0||Math.abs(totalPagosModal()-n)<0.01;}
+  function setPagoModal(idx,campo,valor){
+    setModalForm(function(f){
+      var n=[...(f.pagos||[])];
+      n[idx]={...n[idx],[campo]:valor};
+      return{...f,pagos:n};
+    });
+  }
+
   function doGuardar(){
     if(!modalPl)return;
+    var pagosValidos=pagosModal();
+    if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     var montoFinal=parseFloat(modalPl.monto)||0;
     var montoParcial=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):0;
     var sid=String(Date.now());
@@ -3677,11 +3723,11 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       monto_convenio:parseFloat(modalPl.monto_convenio)||0,
       monto_sin_convenio:parseFloat(modalPl.monto_sin_convenio)||0,
       monto_parcial:montoParcial,
-      medio_pago:modalForm.medio_pago||"",
+      medio_pago:pagosValidos[0].medio||"",
       estado:modalForm.estado,
       convenio:esAguinaldo?modalPl.tipo:"sin_convenio",
       concepto_extra:esAguinaldo?modalPl.tipo:null,
-      pagos:[],
+      pagos:pagosValidos,
       notas:modalForm.notas||"",
       usuario:usuario||"",
       created_at:pagoExistente?pagoExistente.created_at:new Date().toISOString()
@@ -3697,7 +3743,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       var montoEgreso=Math.max(0,montoEgresoBase-totalAdel);
       if(montoEgreso>0){
         var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
-        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:modalForm.medio_pago||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:[]};
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos};
         onSaveEgresoSueldo(eg);
       }
     }
@@ -3808,6 +3854,10 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               :sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
+            // Adelantos pendientes del empleado: se descuentan de esta liquidación
+            var adelFila=adelantosDe(pl.empleado_id);
+            var adelFilaTot=sumaAdelantos(adelFila);
+            var faltaFila=faltaPagarSueldo(pl.monto,adelFila,pago);
             return(
               <div key={pl.id} style={{background:"#0F0F0F",border:"1px solid "+(pago&&pago.estado==="pagado"?"#3A7D4433":pago&&pago.estado==="parcial"?"#E07B0033":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
@@ -3828,6 +3878,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{fmt(pl.monto)}</div>
                     {est?<div style={{fontSize:10,color:est[2]}}>{est[1]}</div>:<div style={{fontSize:10,color:"#D4A017"}}>⏳ Pendiente</div>}
                     {pago&&pago.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Abonado: {fmt(pago.monto_parcial)}</div>}
+                    {pago&&textoMedios(pago)&&<div style={{fontSize:9,color:"#555",maxWidth:190}}>{textoMedios(pago)}</div>}
+                    {adelFilaTot>0&&<div style={{fontSize:9,color:"#D4A017",marginTop:2}}>⏳ Adelantos {fmt(adelFilaTot)} · <span style={{color:"#3A7D44",fontWeight:700}}>falta {fmt(faltaFila)}</span></div>}
                   </div>
                   <button onClick={function(){abrirModal(pl);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pago?"✏️":"💳 Pagar"}</button>
                 </div>
@@ -3842,7 +3894,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
-            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · {fmt(modalPl.monto)}</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:6}}>{mesFiltro} · Sueldo {fmt(modalPl.monto)}</div>
             {(function(){
               var adelPend=adelantosDe(modalPl.empleado_id);
               var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
@@ -3858,9 +3910,9 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                       <span style={{color:"#D4A017"}}>−{fmt(a.monto)}</span>
                     </div>
                   );})}
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
-                    <span style={{color:"#F0EDE8"}}>Neto a pagar ahora</span>
-                    <span style={{color:"#3A7D44"}}>{fmt(neto)}</span>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,paddingTop:6,borderTop:"1px solid #2A2416"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:"#F0EDE8"}}>Solo falta pagar</span>
+                    <span style={{fontSize:16,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(neto)}</span>
                   </div>
                 </div>
               );
@@ -3877,13 +3929,31 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               </div>
             )}
             <div style={{marginBottom:10}}>
-              <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
-              <select value={modalForm.medio_pago} onChange={function(e){setModalForm(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
-                <option value="">-- Seleccioná --</option>
-                {["Efectivo","Transferencia","Otros"].map(function(g){return(
-                  <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
-                );})}
-              </select>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <label style={{fontSize:9,color:"#555",textTransform:"uppercase"}}>Medios de pago</label>
+                <button onClick={function(){setModalForm(function(f){return{...f,pagos:[...(f.pagos||[]),{medio:"",monto:""}]};});}} style={{fontSize:11,color:"#4CAF50",background:"none",border:"1px solid #4CAF5044",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
+              </div>
+              {(modalForm.pagos||[]).map(function(pago,idx){return(
+                <div key={idx} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <select value={pago.medio} onChange={function(e){setPagoModal(idx,"medio",e.target.value);}} style={{...INP,fontSize:11}}>
+                    <option value="">-- Seleccioná --</option>
+                    {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
+                      <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                    );})}
+                  </select>
+                  <input type="number" placeholder={(modalForm.pagos||[]).length===1?"Todo":"Monto"} value={pago.monto} onChange={function(e){setPagoModal(idx,"monto",e.target.value);}} style={{...INP,width:90,flex:"none"}}/>
+                  {(modalForm.pagos||[]).length>1&&<button onClick={function(){setModalForm(function(f){return{...f,pagos:f.pagos.filter(function(_,i){return i!==idx;})};});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                </div>
+              );})}
+              {(modalForm.pagos||[]).length>1&&(
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:2,padding:"5px 8px",borderRadius:6,background:pagosModalCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                  <span style={{color:"#555"}}>Suma de medios</span>
+                  <span style={{color:pagosModalCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosModal())} / {fmt(netoModal())}{pagosModalCuadran()?" ✓":" ← diferencia"}</span>
+                </div>
+              )}
+              {(modalForm.pagos||[]).length===1&&(
+                <div style={{fontSize:9,color:"#444"}}>Dejá el monto vacío si todo se paga con ese medio. Usá “+ Agregar” para dividirlo.</div>
+              )}
             </div>
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Fecha de pago</label>
@@ -4023,6 +4093,84 @@ function getLocalFromMedio(medio){
     if(k.includes(key)||key.includes(k))return MEDIO_LOCAL_MAP[key];
   }
   return null;
+}
+
+// ─── MEDIOS DE PAGO MÚLTIPLES ────────────────────────────────────────────────
+// Un mismo pago (un sueldo, un aguinaldo, un gasto) puede repartirse entre varias
+// cuentas: una parte en efectivo del local y el resto por transferencia, por ejemplo.
+// Se guarda en `pagos: [{medio, monto}]` y se deja `medio_pago`/`forma_pago` con el
+// primer medio para que lo viejo (y los registros ya cargados) siga funcionando.
+var MEDIOS_SUELDOS=[
+  {g:"Efectivo",v:"Efectivo - Bodegón"},{g:"Efectivo",v:"Efectivo - Kusama"},{g:"Efectivo",v:"Efectivo - Colantonio's"},{g:"Efectivo",v:"Efectivo - Oficina"},
+  {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
+  {g:"Otros",v:"Cheque"},{g:"Otros",v:"Otro"}
+];
+var GRUPOS_MEDIOS_SUELDOS=["Efectivo","Transferencia","Otros"];
+
+// Lista de medios de un registro, normalizada. Si tiene `pagos[]` los usa; si no,
+// cae al medio único de siempre.
+function mediosDe(item){
+  if(!item)return [];
+  var lista=(item.pagos||[]).filter(function(pg){return (pg.medio||pg.tipo)&&(parseFloat(pg.monto)||0)>0;});
+  if(lista.length>0)return lista.map(function(pg){return {medio:pg.medio||pg.tipo,monto:parseFloat(pg.monto)||0};});
+  var unico=item.medio_pago||item.forma_pago||"";
+  return unico?[{medio:unico,monto:parseFloat(item.monto)||0}]:[];
+}
+
+// Reparte `monto` entre los medios del registro devolviendo siempre [{medio, monto}]
+// cuyo total es exactamente `monto`. Si los medios cargados no suman lo mismo
+// (por ejemplo porque se descontaron adelantos) se prorratea, así ningún total
+// del sistema cambia por el hecho de haber dividido el pago.
+function repartirMedios(item,monto){
+  var total=parseFloat(monto)||0;
+  var lista=mediosDe(item);
+  if(lista.length===0)return [{medio:"",monto:total}];
+  if(lista.length===1)return [{medio:lista[0].medio,monto:total}];
+  var suma=lista.reduce(function(a,pg){return a+pg.monto;},0);
+  if(suma<=0)return [{medio:lista[0].medio,monto:total}];
+  var out=lista.map(function(pg){return {medio:pg.medio,monto:total*pg.monto/suma};});
+  var acum=out.reduce(function(a,pg){return a+pg.monto;},0);
+  if(Math.abs(acum-total)>0.004)out[out.length-1].monto+=total-acum;
+  return out;
+}
+
+// Texto corto para mostrar el/los medios de un registro.
+function textoMedios(item){
+  var lista=mediosDe(item);
+  if(lista.length===0)return "";
+  if(lista.length===1)return lista[0].medio;
+  return lista.map(function(pg){return pg.medio+" ($"+Math.round(pg.monto).toLocaleString("es-AR")+")";}).join(" + ");
+}
+
+// ─── ADELANTOS DE SUELDO ─────────────────────────────────────────────────────
+// Un adelanto no tiene período propio: se descuenta de la próxima liquidación.
+// Para poder mostrarlo en la planilla anual se imputa al mes del que se va a
+// descontar — el del sueldo al que ya se aplicó, o el mes en que se dio si
+// todavía está pendiente.
+function adelantosDelPeriodo(adelantos, empleadoId, periodo, sueldos){
+  return (adelantos||[]).filter(function(a){
+    if(a.empleado_id!==empleadoId)return false;
+    if(a.aplicado&&a.sueldo_id){
+      var s=(sueldos||[]).find(function(x){return String(x.id)===String(a.sueldo_id);});
+      if(s)return s.periodo===periodo;
+    }
+    return (a.fecha||"").substring(0,7)===periodo;
+  });
+}
+function sumaAdelantos(lista){return (lista||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);}
+
+// Lo que ya se abonó de una liquidación, sin contar adelantos.
+function montoAbonadoSueldo(pago){
+  if(!pago)return 0;
+  if(pago.estado==="pagado")return parseFloat(pago.monto||0);
+  if(pago.estado==="parcial")return parseFloat(pago.monto_parcial||0);
+  return 0;
+}
+
+// Lo que falta pagar de una liquidación: el estimado de planilla menos los
+// adelantos ya dados y menos lo que se haya abonado.
+function faltaPagarSueldo(montoPlanilla, adelantos, pago){
+  return Math.max(0,(parseFloat(montoPlanilla)||0)-sumaAdelantos(adelantos)-montoAbonadoSueldo(pago));
 }
 
 // ─── ACREDITACIÓN DIFERIDA DE DÉBITO ─────────────────────────────────────────
@@ -7400,10 +7548,12 @@ function PanelResultados(p){
     }
     sueldosADescontar.forEach(function(s){
       var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
-      var medioStr=(s.medio_pago||"").toLowerCase();
-      var esEf=medioStr.includes("efectivo");
-      if(esEf)gastoEfectivo+=sm;else gastoElectronico+=sm;
-      detGastos.push({fecha:s.fecha_pago||"",concepto:"💼 "+(s.concepto_extra?"Aguinaldo":"Sueldo")+" — "+(s.empleado_nombre||""),medio:s.medio_pago||"",monto:sm,tipo:esEf?"efectivo":"electronico",cruzado:false});
+      // Un sueldo se puede haber pagado con varios medios: cada parte va a su caja.
+      repartirMedios(s,sm).forEach(function(pg){
+        var esEf=(pg.medio||"").toLowerCase().includes("efectivo");
+        if(esEf)gastoEfectivo+=pg.monto;else gastoElectronico+=pg.monto;
+        detGastos.push({fecha:s.fecha_pago||"",concepto:"💼 "+(s.concepto_extra?"Aguinaldo":"Sueldo")+" — "+(s.empleado_nombre||""),medio:pg.medio||"",monto:pg.monto,tipo:esEf?"efectivo":"electronico",cruzado:false});
+      });
     });
 
     // Adelantos de sueldo — cuentan como gasto del mes en que se dieron (estén ya aplicados a una
@@ -7507,7 +7657,9 @@ function PanelResultados(p){
     // Sueldos/aguinaldos pagados desde "Sueldos" sin gasto asociado — mismo desglose fino
     sueldosADescontar.forEach(function(s){
       var sm=s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);
-      procesarPagoDetalle((s.medio_pago||"").toLowerCase(),sm,lid);
+      repartirMedios(s,sm).forEach(function(pg){
+        procesarPagoDetalle((pg.medio||"").toLowerCase(),pg.monto,lid);
+      });
     });
     // Adelantos de sueldo — mismo desglose fino
     adelantosMesLocal.forEach(function(a){
@@ -8440,7 +8592,7 @@ function PanelSueldos(p){
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
   var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
-  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[],notas:""});
+  var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[{medio:"",monto:""}],notas:""});
   var [preCargar,setPreCargar]=useState(false);
   var [mesDesde,setMesDesde]=useState(mesCurrent);
   var [mesHasta,setMesHasta]=useState(mesCurrent);
@@ -8464,6 +8616,27 @@ function PanelSueldos(p){
     onSaveEmpleado(emp);
     setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   }
+  // ── Medios de pago del sueldo (se puede repartir entre varias cuentas) ──
+  function montoPagadoSueldo(){
+    return formSueldo.estado==="parcial"
+      ?(parseFloat(formSueldo.monto_parcial)||0)
+      :((parseFloat(formSueldo.monto_convenio)||0)+(parseFloat(formSueldo.monto_sin_convenio)||0)||parseFloat(formSueldo.monto)||0);
+  }
+  function pagosSueldo(){
+    var filas=(formSueldo.pagos||[]).filter(function(pg){return pg.medio;});
+    if(filas.length===1&&!(parseFloat(filas[0].monto)>0))return [{medio:filas[0].medio,monto:montoPagadoSueldo()}];
+    return filas.filter(function(pg){return parseFloat(pg.monto)>0;}).map(function(pg){return{medio:pg.medio,monto:parseFloat(pg.monto)};});
+  }
+  function totalPagosSueldo(){return pagosSueldo().reduce(function(a,pg){return a+pg.monto;},0);}
+  function pagosSueldoCuadran(){var t=montoPagadoSueldo();return t<=0||Math.abs(totalPagosSueldo()-t)<0.01;}
+  function setPagoSueldo(idx,campo,valor){
+    setFormSueldo(function(f){
+      var n=[...(f.pagos||[])];
+      n[idx]={...n[idx],[campo]:valor};
+      return{...f,pagos:n};
+    });
+  }
+
   function doSaveSueldo(){
     if(!formSueldo.empleado_id||!formSueldo.monto)return;
     var montoConvenio=parseFloat(formSueldo.monto_convenio)||0;
@@ -8483,9 +8656,11 @@ function PanelSueldos(p){
     } else {
       mesesACargar=[formSueldo.periodo];
     }
+    var pagosValidos=(formSueldo.estado==="pagado"||formSueldo.estado==="parcial")?pagosSueldo():[];
+    if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     mesesACargar.forEach(function(periodo){
       var sid=sueldoEdit&&mesesACargar.length===1?sueldoEdit.id:(String(Date.now())+Math.floor(Math.random()*9999));
-      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_convenio:montoConvenio,monto_sin_convenio:montoSinConvenio,convenio:formSueldo.convenio||"sin_convenio",monto_parcial:montoParcial,medio_pago:formSueldo.medio_pago||"",estado:formSueldo.estado,pagos:formSueldo.pagos||[],notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
+      var s={id:sid,empleado_id:formSueldo.empleado_id,empleado_nombre:formSueldo.empleado_nombre,local:formSueldo.local,periodo:periodo,fecha_pago:formSueldo.fecha_pago,monto:montoFinal,monto_convenio:montoConvenio,monto_sin_convenio:montoSinConvenio,convenio:formSueldo.convenio||"sin_convenio",monto_parcial:montoParcial,medio_pago:pagosValidos.length>0?pagosValidos[0].medio:(formSueldo.medio_pago||""),estado:formSueldo.estado,pagos:pagosValidos,notas:formSueldo.notas,usuario:usuario,created_at:new Date().toISOString()};
       onSaveSueldo(s);
       // Egreso automático DESHABILITADO — solo se genera desde Egresos → Sueldos
       // if((formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&p.onSaveEgresoSueldo){
@@ -8493,7 +8668,7 @@ function PanelSueldos(p){
       // }
     });
     setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
-    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[],notas:""});
+    setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[{medio:"",monto:""}],notas:""});
   }
 
   return(
@@ -8834,6 +9009,7 @@ function PanelSueldos(p){
         empleados={empleados}
         planilla={p.planillaSueldos||[]}
         sueldos={sueldos}
+        adelantos={p.adelantos||[]}
         onSave={p.onSavePlanilla}
         onDelete={p.onDeletePlanilla}
       />}
@@ -8992,27 +9168,31 @@ function PanelSueldos(p){
               )}
               {(formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&(
                 <div>
-                  <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
-                  <select value={formSueldo.medio_pago} onChange={function(e){setFormSueldo(function(f){return{...f,medio_pago:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%"}}>
-                    <option value="">-- Seleccioná --</option>
-                    <optgroup label="── Efectivo ──">
-                      <option value="Efectivo - Bodegón">💵 Bodegón</option>
-                      <option value="Efectivo - Kusama">💵 Kusama</option>
-                      <option value="Efectivo - Colantonio's">💵 Colantonio's</option>
-                      <option value="Efectivo - Oficina">💵 Oficina</option>
-                    </optgroup>
-                    <optgroup label="── Transferencia ──">
-                      <option value="Transferencia - Provincia Personas">📲 Provincia Personas</option>
-                      <option value="Transferencia - Mercado Pago Nicolás">📲 Mercado Pago Nicolás</option>
-                      <option value="Transferencia - Galicia Empresas">📲 Galicia Empresas</option>
-                      <option value="Transferencia - Patagonia Empresas">📲 Patagonia Empresas</option>
-                      <option value="Transferencia - Mercado Pago Calzon Gitano">📲 MP Calzon Gitano</option>
-                    </optgroup>
-                    <optgroup label="── Otros ──">
-                      <option value="Cheque">📄 Cheque</option>
-                      <option value="Otro">Otro</option>
-                    </optgroup>
-                  </select>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <label style={{fontSize:9,color:"#555",textTransform:"uppercase"}}>Medios de pago</label>
+                    <button onClick={function(){setFormSueldo(function(f){return{...f,pagos:[...(f.pagos||[]),{medio:"",monto:""}]};});}} style={{fontSize:11,color:"#4CAF50",background:"none",border:"1px solid #4CAF5044",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
+                  </div>
+                  {(formSueldo.pagos||[]).map(function(pago,idx){return(
+                    <div key={idx} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                      <select value={pago.medio} onChange={function(e){setPagoSueldo(idx,"medio",e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}>
+                        <option value="">-- Seleccioná --</option>
+                        {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
+                          <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS_SUELDOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                        );})}
+                      </select>
+                      <input type="number" placeholder={(formSueldo.pagos||[]).length===1?"Todo":"Monto"} value={pago.monto} onChange={function(e){setPagoSueldo(idx,"monto",e.target.value);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:90,flex:"none",boxSizing:"border-box"}}/>
+                      {(formSueldo.pagos||[]).length>1&&<button onClick={function(){setFormSueldo(function(f){return{...f,pagos:f.pagos.filter(function(_,i){return i!==idx;})};});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                    </div>
+                  );})}
+                  {(formSueldo.pagos||[]).length>1&&(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:pagosSueldoCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                      <span style={{color:"#555"}}>Suma de medios</span>
+                      <span style={{color:pagosSueldoCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosSueldo())} / {fmt(montoPagadoSueldo())}{pagosSueldoCuadran()?" ✓":" ← diferencia"}</span>
+                    </div>
+                  )}
+                  {(formSueldo.pagos||[]).length===1&&(
+                    <div style={{fontSize:9,color:"#444"}}>Dejá el monto vacío si todo se paga con ese medio. Usá “+ Agregar” para dividirlo.</div>
+                  )}
                 </div>
               )}
               {/* Pre-carga múltiples meses */}
@@ -11420,6 +11600,7 @@ export default function App() {
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
                 planillaSueldos={planillaSueldos}
+                adelantos={adelantos}
                 onSavePlanilla={async function(item){
                   setPlanillaSueldos(function(prev){var f=prev.filter(function(x){return x.id!==item.id;});return[item,...f];});
                   await sbSavePlanillaSueldo(item);

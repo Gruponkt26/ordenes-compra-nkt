@@ -243,6 +243,14 @@ async function sbDeleteLocalObra(id) {
 //  · checklist_items   → estado, hora, comentario y foto de cada tarea
 //  · checklist_tareas  → las tareas personalizadas de un local/área/turno
 // Si las tablas no existen todavía, las cargas devuelven vacío y al guardar avisa.
+// ¿Están creadas las tablas del checklist? Si no, todo lo que se cargue se pierde
+// al recargar, así que conviene decirlo antes de que alguien complete un turno entero.
+async function sbChecklistDisponible() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/checklist_tareas?select=id&limit=1", { headers: SH });
+    return r.ok;
+  } catch(e) { return false; }
+}
 async function sbLoadChecklistTurnos() {
   try {
     var r = await fetch(SURL + "/rest/v1/checklist_turnos?order=fecha.desc", { headers: SH });
@@ -2415,6 +2423,7 @@ function PanelChecklist({local, usuario}){
   var [items,setItems]=useState([]);
   var [tareasCustom,setTareasCustom]=useState([]);
   var [cargando,setCargando]=useState(true);
+  var [sinTablas,setSinTablas]=useState(false);
   var [aviso,setAviso]=useState(null);
   var [showEncargado,setShowEncargado]=useState(false);
   var [nuevaTarea,setNuevaTarea]=useState("");
@@ -2422,6 +2431,7 @@ function PanelChecklist({local, usuario}){
 
   useEffect(function(){
     var vivo=true;
+    sbChecklistDisponible().then(function(ok){ if(vivo)setSinTablas(!ok); });
     Promise.all([sbLoadChecklistTurnos(),sbLoadChecklistItems(),sbLoadChecklistTareas()]).then(function(r){
       if(!vivo)return;
       setTurnos(r[0]||[]);setItems(r[1]||[]);setTareasCustom(r[2]||[]);setCargando(false);
@@ -2433,8 +2443,18 @@ function PanelChecklist({local, usuario}){
   var areas=chkAreasDeLocal(local.id);
   var area=areas.find(function(a){return a.id===areaId;});
   var turnoObj=CHK_TURNOS.find(function(t){return t.id===turno;});
-  function mostrarAviso(msg){setAviso(msg);setTimeout(function(){setAviso(null);},2600);}
-  function avisarError(err){ if(err)mostrarAviso("⚠️ No se guardó en la base. Revisá que estén creadas las tablas del checklist."); }
+  function mostrarAviso(msg){setAviso(msg);setTimeout(function(){setAviso(null);},4200);}
+  function avisarError(err){
+    if(!err)return;
+    setSinTablas(true);
+    mostrarAviso(/does not exist|relation|404|Not Found/i.test(String(err))
+      ? "⚠️ No se guardó: faltan crear las tablas del checklist en Supabase."
+      : "⚠️ No se guardó en la base: "+String(err).slice(0,120));
+  }
+  // Cartel flotante, para que un error no pase desapercibido si estás mirando el pie de la lista
+  var Aviso=aviso?(
+    <div style={{position:"fixed",left:16,right:16,bottom:18,zIndex:1000,background:"#1A140A",border:"1px solid #D4A017",borderRadius:10,padding:"11px 14px",fontSize:12,color:"#D4A017",boxShadow:"0 8px 26px #000A",maxWidth:520,margin:"0 auto",textAlign:"center"}}>{aviso}</div>
+  ):null;
 
   // ── Tareas efectivas: las personalizadas del local pisan la plantilla ──
   function claveTareas(aId,t){return local.id+"_"+aId+"_"+t;}
@@ -2548,12 +2568,28 @@ function PanelChecklist({local, usuario}){
 
   if(cargando)return <div style={{textAlign:"center",padding:"30px",color:"#555",fontSize:12}}>⏳ Cargando checklist...</div>;
 
+  var BannerSinTablas=sinTablas?(
+    <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:12,display:"flex",gap:10,alignItems:"flex-start"}}>
+      <span style={{fontSize:15}}>⚠️</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>El checklist no está guardando</div>
+        <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>
+          Faltan crear las tablas en Supabase. Podés usarlo igual, pero todo lo que marques o agregues se pierde al recargar.
+        </div>
+        <div style={{fontSize:10,color:"#8A6055",marginTop:5}}>
+          Supabase → SQL Editor → pegá el bloque del README (checklist_turnos, checklist_items y checklist_tareas). Para las fotos, además: Storage → New bucket → “checklist”, público.
+        </div>
+      </div>
+    </div>
+  ):null;
+
   // ══ Vista de una área ══
   if(area){
     var tareas=tareasDe(area.id,turno);
     var p=progArea(area.id);
     return(
       <div>
+        {BannerSinTablas}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
           <button onClick={function(){setAreaId(null);setExpand(null);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontSize:12,cursor:"pointer"}}>← Áreas</button>
           <span style={{fontSize:14}}>{area.icon}</span>
@@ -2635,7 +2671,7 @@ function PanelChecklist({local, usuario}){
             style={{padding:"9px 16px",borderRadius:8,border:"none",background:nuevaTarea.trim()?local.color:"#1A1A1A",color:nuevaTarea.trim()?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:nuevaTarea.trim()?"pointer":"not-allowed",whiteSpace:"nowrap"}}>+ Agregar</button>
         </div>
 
-        {aviso&&<div style={{marginTop:12,background:"#1A140A",border:"1px solid #D4A01744",borderRadius:10,padding:"9px 12px",fontSize:11,color:"#D4A017"}}>{aviso}</div>}
+        {Aviso}
       </div>
     );
   }
@@ -2643,6 +2679,7 @@ function PanelChecklist({local, usuario}){
   // ══ Grilla de áreas ══
   return(
     <div>
+      {BannerSinTablas}
       {/* Fecha y encargado */}
       <div style={{background:"#0F0F0F",border:"1px solid "+local.color+"33",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -2713,7 +2750,7 @@ function PanelChecklist({local, usuario}){
         Enviar resumen por WhatsApp
       </button>
 
-      {aviso&&<div style={{marginTop:12,background:"#1A140A",border:"1px solid #D4A01744",borderRadius:10,padding:"9px 12px",fontSize:11,color:"#D4A017"}}>{aviso}</div>}
+      {Aviso}
 
       {/* Modal encargado */}
       {showEncargado&&(

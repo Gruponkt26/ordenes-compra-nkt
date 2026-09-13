@@ -236,6 +236,64 @@ async function sbDeleteLocalObra(id) {
   } catch(e) {}
 }
 
+// ─── CHECKLIST OPERATIVO ──────────────────────────────────────────────────────
+// Portado de la app "Checklist Operativo Grupo NKT". Tres tablas en Supabase
+// (el SQL está en el README) más un bucket público para las fotos:
+//  · checklist_turnos  → encargado y firma de cada local/turno/fecha
+//  · checklist_items   → estado, hora, comentario y foto de cada tarea
+//  · checklist_tareas  → las tareas personalizadas de un local/área/turno
+// Si las tablas no existen todavía, las cargas devuelven vacío y al guardar avisa.
+// ¿Están creadas las tablas del checklist? Si no, todo lo que se cargue se pierde
+// al recargar, así que conviene decirlo antes de que alguien complete un turno entero.
+async function sbChecklistDisponible() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/checklist_tareas?select=id&limit=1", { headers: SH });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function sbLoadChecklistTurnos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/checklist_turnos?order=fecha.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbLoadChecklistItems() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/checklist_items?order=fecha.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbLoadChecklistTareas() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/checklist_tareas", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveChecklist(tabla, fila) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/"+tabla,{method:"POST",headers:h,body:JSON.stringify(fila)});
+    if(!r.ok){var err=await r.text();console.error("sbSaveChecklist error:",tabla,r.status,err);return err;}
+    return null;
+  } catch(e) { return e&&e.message?e.message:String(e); }
+}
+// Las fotos van al Storage de Supabase, no a la base: una foto en base64 dentro de
+// una columna de texto pesa megas y hace lenta cualquier consulta.
+async function sbSubirFotoChecklist(file, path) {
+  try {
+    var r = await fetch(SURL+"/storage/v1/object/checklist/"+path,{
+      method:"POST",
+      headers:{"apikey":SKEY,"Authorization":"Bearer "+SKEY,"Content-Type":file.type||"image/jpeg","x-upsert":"true"},
+      body:file
+    });
+    if(!r.ok){var err=await r.text();return{ok:false,error:err};}
+    return{ok:true,url:SURL+"/storage/v1/object/public/checklist/"+path};
+  } catch(e) { return{ok:false,error:e&&e.message?e.message:String(e)}; }
+}
+
 // ─── PAUTAS ───────────────────────────────────────────────────────────────────
 async function sbLoadPautas() {
   try {
@@ -2322,6 +2380,396 @@ function PanelRecetas(p){
   );
 }
 
+// ─── CHECKLIST: ÁREAS Y TAREAS POR DEFECTO ────────────────────────────────────
+// Las tareas base de cada área, separadas por turno (ap = apertura, ci = cierre).
+// Son la plantilla: si un local le agrega o le saca tareas, eso se guarda en
+// checklist_tareas y pisa esta lista para ese local/área/turno.
+var CHK_AREAS=[
+  { id:"salon", label:"Salón", icon:"🪑",
+    ap:["Encender luces y música ambiente","Montar mesas: mantelería, cubiertos y copas","Revisar sillas y mesas (estabilidad y limpieza)","Reponer servilletas, saleros y condimentos","Encender sistema de caja y verificar fondo","Revisar reservas y armar distribución del salón","Limpiar vidrios y espejos del salón","Verificar que el menú esté completo y limpio"],
+    ci:["Desmontar mesas y guardar mantelería","Limpiar y ordenar todo el salón","Apagar música, luces decorativas y aire","Cuadrar caja y cerrar sistema de cobro","Completar libro de novedades del turno","Barrer y trapear pisos del salón","Cerrar y asegurar puertas del salón"] },
+  { id:"deposito", label:"Depósito", icon:"📦",
+    ap:["Revisar temperatura de cámaras y heladeras","Controlar stock de bebidas y reponer faltantes","Verificar vencimientos de productos almacenados","Reabastecer cocina con materias primas del día","Completar planilla de stock e ingresos","Reportar faltantes al encargado","Ordenar estantes y verificar rotación de productos"],
+    ci:["Registrar consumo del día en planilla de stock","Guardar correctamente productos sobrantes","Verificar cierre y temperatura de cámaras","Ordenar y limpiar estantes","Apagar luces del depósito","Asegurar accesos al depósito"] },
+  { id:"cocina", label:"Cocina", icon:"👨‍🍳",
+    ap:["Encender equipos: hornos, planchas, freidoras","Verificar temperatura de heladeras de línea","Preparar mise en place completo del servicio","Revisar stock de ingredientes para el menú del día","Controlar fechas en envases abiertos y etiquetados","Verificar uniforme completo del personal","Desinfectar tablas, cuchillos y superficies","Revisar gas y conexiones antes de encender"],
+    ci:["Guardar y cubrir todos los alimentos preparados","Limpiar y desinfectar toda la cocina","Cerrar gas y válvulas de seguridad","Apagar hornos, planchas y freidoras","Vaciar y limpiar freidoras del día","Lavar utensilios, ollas y bandejas","Desengrasado de campana y filtros","Apagar heladeras de línea no necesarias"] },
+  { id:"banos", label:"Baños", icon:"🚻",
+    ap:["Limpiar y desinfectar inodoros y mingitorios","Limpiar espejos y mesadas","Reponer papel higiénico, jabón y toallas","Verificar funcionamiento de grifos y mochilas","Barrer y trapear pisos con desinfectante","Vaciar cestos de residuos","Colocar ambientador"],
+    ci:["Limpiar y desinfectar inodoros y mingitorios","Limpiar espejos y mesadas","Vaciar cestos de residuos","Barrer y trapear pisos","Apagar luces de baños","Verificar que no haya canillas abiertas"] },
+  { id:"patio", label:"Patio", icon:"🌿",
+    ap:["Barrer y limpiar el patio","Montar mesas y sillas del patio","Revisar plantas y decoración","Encender luces o calefactores del patio","Verificar estado del piso (sin charcos ni peligros)","Reponer velas o ambientación si corresponde","Verificar luces del patio encendidas y funcionando","Verificar estado del aire acondicionado / calefactor"],
+    ci:["Guardar mesas y sillas del patio","Barrer y limpiar el patio","Apagar luces y calefactores del patio","Verificar que luces y artefactos queden apagados","Guardar plantas o decoración delicada","Cerrar accesos al patio"] },
+  { id:"vereda", label:"Vereda", icon:"🚶",
+    ap:["Barrer y limpiar la vereda","Armar mesas y sillas de exterior (si aplica)","Poner cartel de apertura / pizarrón del día","Verificar que no haya obstáculos en la entrada","Limpiar ventanas exteriores y entrada"],
+    ci:["Guardar mesas y sillas de exterior","Retirar cartel o pizarrón","Barrer la vereda","Apagar luces exteriores","Cerrar puerta principal con llave"] },
+];
+var CHK_TURNOS=[{id:"apertura",label:"Apertura",icon:"🌅"},{id:"cierre",label:"Cierre",icon:"🌙"}];
+var CHK_ENCARGADOS=["Sofía","Nicolás","Araceli"];
+// El patio es sólo del Bodegón; los otros dos locales no tienen.
+function chkAreasDeLocal(localId){ return localId==="l1"?CHK_AREAS:CHK_AREAS.filter(function(a){return a.id!=="patio";}); }
+
+// ─── PANEL CHECKLIST OPERATIVO ────────────────────────────────────────────────
+// Checklist diario por local, con turno de apertura y de cierre. Cada tarea se
+// aprueba (✅) o se marca como no hecha (❌), y puede llevar hora, comentario y
+// foto. El encargado firma el turno y se puede mandar el resumen por WhatsApp.
+function PanelChecklist({local, usuario}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var [fecha,setFecha]=useState(hoy);
+  var [turno,setTurno]=useState("apertura");
+  var [areaId,setAreaId]=useState(null);      // null = grilla de áreas
+  var [expand,setExpand]=useState(null);      // índice de la tarea abierta
+  var [turnos,setTurnos]=useState([]);
+  var [items,setItems]=useState([]);
+  var [tareasCustom,setTareasCustom]=useState([]);
+  var [cargando,setCargando]=useState(true);
+  var [sinTablas,setSinTablas]=useState(false);
+  var [aviso,setAviso]=useState(null);
+  var [showEncargado,setShowEncargado]=useState(false);
+  var [nuevaTarea,setNuevaTarea]=useState("");
+  var [subiendo,setSubiendo]=useState(null);
+
+  useEffect(function(){
+    var vivo=true;
+    sbChecklistDisponible().then(function(ok){ if(vivo)setSinTablas(!ok); });
+    Promise.all([sbLoadChecklistTurnos(),sbLoadChecklistItems(),sbLoadChecklistTareas()]).then(function(r){
+      if(!vivo)return;
+      setTurnos(r[0]||[]);setItems(r[1]||[]);setTareasCustom(r[2]||[]);setCargando(false);
+    }).catch(function(){ if(vivo)setCargando(false); });
+    return function(){vivo=false;};
+  },[]);
+
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var areas=chkAreasDeLocal(local.id);
+  var area=areas.find(function(a){return a.id===areaId;});
+  var turnoObj=CHK_TURNOS.find(function(t){return t.id===turno;});
+  function mostrarAviso(msg){setAviso(msg);setTimeout(function(){setAviso(null);},4200);}
+  function avisarError(err){
+    if(!err)return;
+    setSinTablas(true);
+    mostrarAviso(/does not exist|relation|404|Not Found/i.test(String(err))
+      ? "⚠️ No se guardó: faltan crear las tablas del checklist en Supabase."
+      : "⚠️ No se guardó en la base: "+String(err).slice(0,120));
+  }
+  // Cartel flotante, para que un error no pase desapercibido si estás mirando el pie de la lista
+  var Aviso=aviso?(
+    <div style={{position:"fixed",left:16,right:16,bottom:18,zIndex:1000,background:"#1A140A",border:"1px solid #D4A017",borderRadius:10,padding:"11px 14px",fontSize:12,color:"#D4A017",boxShadow:"0 8px 26px #000A",maxWidth:520,margin:"0 auto",textAlign:"center"}}>{aviso}</div>
+  ):null;
+
+  // ── Tareas efectivas: las personalizadas del local pisan la plantilla ──
+  function claveTareas(aId,t){return local.id+"_"+aId+"_"+t;}
+  function tareasDe(aId,t){
+    var fila=tareasCustom.find(function(x){return x.id===claveTareas(aId,t);});
+    if(fila&&Array.isArray(fila.tareas))return fila.tareas;
+    var a=CHK_AREAS.find(function(x){return x.id===aId;});
+    if(!a)return [];
+    return t==="apertura"?a.ap:a.ci;
+  }
+  function guardarTareas(aId,t,lista){
+    var fila={id:claveTareas(aId,t),local:local.id,area_id:aId,turno:t,tareas:lista,updated_at:new Date().toISOString()};
+    setTareasCustom(function(prev){var f=prev.filter(function(x){return x.id!==fila.id;});return[...f,fila];});
+    sbSaveChecklist("checklist_tareas",fila).then(avisarError);
+  }
+
+  // ── Estado de cada tarea ──
+  function idItem(aId,idx){return local.id+"_"+turno+"_"+fecha+"_"+aId+"_"+idx;}
+  function itemDe(aId,idx,t,f){
+    var id=local.id+"_"+(t||turno)+"_"+(f||fecha)+"_"+aId+"_"+idx;
+    return items.find(function(x){return x.id===id;})||{status:null,comentario:"",foto_url:null,hora:null};
+  }
+  function guardarItem(aId,idx,patch){
+    var actual=itemDe(aId,idx);
+    var fila={
+      id:idItem(aId,idx),
+      turno_id:local.id+"_"+turno+"_"+fecha,
+      local:local.id,fecha:fecha,turno:turno,area_id:aId,idx:idx,
+      status:actual.status||null,comentario:actual.comentario||"",foto_url:actual.foto_url||null,hora:actual.hora||null,
+      ...patch,
+      usuario:usuario||"",updated_at:new Date().toISOString()
+    };
+    setItems(function(prev){var f=prev.filter(function(x){return x.id!==fila.id;});return[...f,fila];});
+    sbSaveChecklist("checklist_items",fila).then(avisarError);
+  }
+  function marcar(aId,idx,estado){
+    var actual=itemDe(aId,idx);
+    var ya=actual.status===estado;
+    guardarItem(aId,idx,{
+      status:ya?null:estado,
+      hora:ya?null:new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})
+    });
+  }
+
+  // ── Encargado y firma del turno ──
+  var turnoId=local.id+"_"+turno+"_"+fecha;
+  var meta=turnos.find(function(x){return x.id===turnoId;})||{encargado:"",firmado:false};
+  function guardarMeta(patch){
+    var fila={id:turnoId,local:local.id,fecha:fecha,turno:turno,encargado:meta.encargado||"",firmado:!!meta.firmado,...patch,updated_at:new Date().toISOString()};
+    setTurnos(function(prev){var f=prev.filter(function(x){return x.id!==fila.id;});return[...f,fila];});
+    sbSaveChecklist("checklist_turnos",fila).then(avisarError);
+  }
+  function firmar(){
+    if(!meta.encargado){mostrarAviso("⚠️ Elegí un encargado antes de firmar");return;}
+    guardarMeta({firmado:true});
+    mostrarAviso("✍️ Firmado por "+meta.encargado);
+  }
+
+  // ── Progreso ──
+  function progArea(aId,t,f){
+    var lista=tareasDe(aId,t||turno);
+    var ok=0,no=0;
+    lista.forEach(function(_,i){
+      var it=itemDe(aId,i,t,f);
+      if(it.status==="ok")ok++;else if(it.status==="no")no++;
+    });
+    var done=ok+no;
+    return{ok:ok,no:no,done:done,total:lista.length,pct:lista.length?Math.round(done/lista.length*100):0};
+  }
+  var progTurno=(function(){
+    var ok=0,no=0,done=0,total=0;
+    areas.forEach(function(a){var p=progArea(a.id);ok+=p.ok;no+=p.no;done+=p.done;total+=p.total;});
+    return{ok:ok,no:no,done:done,total:total,pct:total?Math.round(done/total*100):0};
+  })();
+
+  // ── Foto ──
+  function subirFoto(aId,idx,file){
+    if(!file)return;
+    setSubiendo(aId+"_"+idx);
+    var ext=(file.name||"foto.jpg").split(".").pop().toLowerCase();
+    var path=local.id+"/"+fecha+"/"+turno+"_"+aId+"_"+idx+"_"+Date.now()+"."+ext;
+    sbSubirFotoChecklist(file,path).then(function(r){
+      setSubiendo(null);
+      if(!r.ok){mostrarAviso("⚠️ No se pudo subir la foto. ¿Está creado el bucket “checklist” en Supabase?");return;}
+      guardarItem(aId,idx,{foto_url:r.url});
+    });
+  }
+
+  // ── Resumen por WhatsApp ──
+  function enviarResumen(){
+    var l=[];
+    l.push(local.emoji+" *"+local.nombre+"*");
+    l.push("📅 "+fmtDate(fecha)+"  |  "+turnoObj.icon+" *"+turnoObj.label+"*");
+    l.push("👤 Encargado: "+(meta.encargado||"No asignado"));
+    l.push("✍️ Firmado: "+(meta.firmado?"Sí":"No"));
+    l.push("─────────────────");
+    var tOk=0,tNo=0,tPend=0;
+    areas.forEach(function(a){
+      var p=progArea(a.id);
+      var n=Math.round(p.pct/10);
+      l.push(a.icon+" *"+a.label+"*  "+"█".repeat(n)+"░".repeat(10-n)+" "+p.pct+"%");
+      l.push("  ✅"+p.ok+"  ❌"+p.no+"  ⏳"+(p.total-p.done));
+      tOk+=p.ok;tNo+=p.no;tPend+=p.total-p.done;
+    });
+    l.push("─────────────────");
+    var tot=tOk+tNo+tPend;
+    l.push("📊 *Total: "+(tot?Math.round((tOk+tNo)/tot*100):0)+"% completado*");
+    l.push("✅ "+tOk+" aprobados · ❌ "+tNo+" no aprobados · ⏳ "+tPend+" pendientes");
+    window.open("https://wa.me/?text="+encodeURIComponent(l.join("\n")),"_blank");
+  }
+
+  if(cargando)return <div style={{textAlign:"center",padding:"30px",color:"#555",fontSize:12}}>⏳ Cargando checklist...</div>;
+
+  var BannerSinTablas=sinTablas?(
+    <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:12,display:"flex",gap:10,alignItems:"flex-start"}}>
+      <span style={{fontSize:15}}>⚠️</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>El checklist no está guardando</div>
+        <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>
+          Faltan crear las tablas en Supabase. Podés usarlo igual, pero todo lo que marques o agregues se pierde al recargar.
+        </div>
+        <div style={{fontSize:10,color:"#8A6055",marginTop:5}}>
+          Supabase → SQL Editor → pegá el bloque del README (checklist_turnos, checklist_items y checklist_tareas). Para las fotos, además: Storage → New bucket → “checklist”, público.
+        </div>
+      </div>
+    </div>
+  ):null;
+
+  // ══ Vista de una área ══
+  if(area){
+    var tareas=tareasDe(area.id,turno);
+    var p=progArea(area.id);
+    return(
+      <div>
+        {BannerSinTablas}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+          <button onClick={function(){setAreaId(null);setExpand(null);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontSize:12,cursor:"pointer"}}>← Áreas</button>
+          <span style={{fontSize:14}}>{area.icon}</span>
+          <span style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>{area.label}</span>
+          <span style={{fontSize:10,fontWeight:700,borderRadius:99,padding:"3px 9px",background:local.color+"33",color:local.color}}>{turnoObj.icon} {turnoObj.label}</span>
+        </div>
+        <div style={{fontSize:10,color:"#444",marginBottom:10}}>
+          📅 {fmtDate(fecha)} · 👤 {meta.encargado||"Sin encargado"}{meta.firmado?" · ✍️ Firmado":""}
+        </div>
+
+        <div style={{background:"#0F0F0F",border:"1px solid "+local.color+"33",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+            <span style={{fontSize:11,color:"#555"}}>✅ {p.ok} · ❌ {p.no} · ⏳ {p.total-p.done}</span>
+            <span style={{fontSize:15,fontWeight:800,color:p.pct===100?"#3A7D44":local.color,fontFamily:"'Playfair Display',serif"}}>{p.done}/{p.total}</span>
+          </div>
+          <div style={{height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
+            <div style={{height:6,width:p.pct+"%",background:p.pct===100?"#3A7D44":local.color,borderRadius:3,transition:"width 0.25s"}}/>
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {tareas.map(function(tarea,idx){
+            var it=itemDe(area.id,idx);
+            var abierto=expand===idx;
+            var esOk=it.status==="ok", esNo=it.status==="no";
+            return(
+              <div key={idx} style={{border:"1px solid "+(esOk?"#3A7D4466":esNo?"#C1440E66":"#1A1A1A"),borderRadius:12,overflow:"hidden",background:esOk?"#0A1A0A":esNo?"#1A0A0A":"#0F0F0F"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:5,flexShrink:0}}>
+                    <button onClick={function(){marcar(area.id,idx,"ok");}} style={{border:"1px solid "+(esOk?"#3A7D44":"#3A7D4444"),borderRadius:8,width:34,height:30,fontSize:14,cursor:"pointer",background:esOk?"#3A7D44":"#3A7D4415"}}>✅</button>
+                    <button onClick={function(){marcar(area.id,idx,"no");}} style={{border:"1px solid "+(esNo?"#C1440E":"#C1440E44"),borderRadius:8,width:34,height:30,fontSize:14,cursor:"pointer",background:esNo?"#C1440E":"#C1440E15"}}>❌</button>
+                  </div>
+                  <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={function(){setExpand(abierto?null:idx);}}>
+                    <div style={{fontSize:13,lineHeight:1.4,color:esNo?"#E8B9A8":"#F0EDE8"}}>{tarea}</div>
+                    <div style={{display:"flex",gap:6,marginTop:4,alignItems:"center",flexWrap:"wrap"}}>
+                      {it.hora&&<span style={{fontSize:9,fontWeight:600,color:"#666",background:"#1A1A1A",borderRadius:99,padding:"1px 7px"}}>🕐 {it.hora}</span>}
+                      {(it.comentario||"").trim()&&<span style={{fontSize:11}}>💬</span>}
+                      {it.foto_url&&<span style={{fontSize:11}}>📷</span>}
+                      <span style={{fontSize:12,color:"#333",marginLeft:"auto"}}>{abierto?"⌃":"⌄"}</span>
+                    </div>
+                  </div>
+                </div>
+                {abierto&&(
+                  <div style={{borderTop:"1px solid #1A1A1A",padding:"11px 13px",display:"flex",flexDirection:"column",gap:8}}>
+                    <label style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>💬 Comentario</label>
+                    <textarea value={it.comentario||""} rows={2} placeholder="Agregá una observación..."
+                      onChange={function(e){guardarItem(area.id,idx,{comentario:e.target.value});}}
+                      style={{...INP,resize:"vertical",minHeight:54}}/>
+                    <label style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>📷 Evidencia fotográfica</label>
+                    {it.foto_url?(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <img src={it.foto_url} alt="foto" style={{width:"100%",borderRadius:10,maxHeight:220,objectFit:"cover"}}/>
+                        <button onClick={function(){guardarItem(area.id,idx,{foto_url:null});}} style={{background:"none",border:"1px solid #C1440E44",color:"#C1440E",borderRadius:8,padding:"6px 12px",fontSize:11,cursor:"pointer"}}>✕ Quitar foto</button>
+                      </div>
+                    ):(
+                      <label style={{display:"block",border:"1px dashed "+local.color+"66",borderRadius:10,padding:"13px",textAlign:"center",cursor:"pointer",color:local.color,fontSize:12,fontWeight:600,background:"#0A0A0A"}}>
+                        {subiendo===area.id+"_"+idx?"⏳ Subiendo...":"📷 Subir / tomar foto"}
+                        <input type="file" accept="image/*" capture="environment" onChange={function(e){subirFoto(area.id,idx,e.target.files&&e.target.files[0]);e.target.value="";}} style={{position:"absolute",width:1,height:1,opacity:0}}/>
+                      </label>
+                    )}
+                    <button onClick={function(){
+                      if(!window.confirm("¿Eliminar la tarea “"+tarea+"” de este turno?"))return;
+                      guardarTareas(area.id,turno,tareas.filter(function(_,i){return i!==idx;}));
+                      setExpand(null);
+                    }} style={{alignSelf:"flex-end",background:"none",border:"1px solid #C1440E33",color:"#C1440E",borderRadius:8,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>🗑 Eliminar tarea</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:"flex",gap:6,marginTop:12}}>
+          <input value={nuevaTarea} onChange={function(e){setNuevaTarea(e.target.value);}}
+            onKeyDown={function(e){if(e.key==="Enter"&&nuevaTarea.trim()){guardarTareas(area.id,turno,[...tareas,nuevaTarea.trim()]);setNuevaTarea("");}}}
+            placeholder="Nueva tarea para esta área y turno..." style={INP}/>
+          <button onClick={function(){if(!nuevaTarea.trim())return;guardarTareas(area.id,turno,[...tareas,nuevaTarea.trim()]);setNuevaTarea("");}}
+            disabled={!nuevaTarea.trim()}
+            style={{padding:"9px 16px",borderRadius:8,border:"none",background:nuevaTarea.trim()?local.color:"#1A1A1A",color:nuevaTarea.trim()?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:nuevaTarea.trim()?"pointer":"not-allowed",whiteSpace:"nowrap"}}>+ Agregar</button>
+        </div>
+
+        {Aviso}
+      </div>
+    );
+  }
+
+  // ══ Grilla de áreas ══
+  return(
+    <div>
+      {BannerSinTablas}
+      {/* Fecha y encargado */}
+      <div style={{background:"#0F0F0F",border:"1px solid "+local.color+"33",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 130px"}}>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>📅 Fecha</label>
+            <input type="date" value={fecha} onChange={function(e){setFecha(e.target.value||hoy);}} style={{...INP,fontSize:12}}/>
+          </div>
+          <div style={{flex:"1 1 130px"}}>
+            <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>👤 Encargado</label>
+            <button onClick={function(){setShowEncargado(true);}} style={{...INP,textAlign:"left",cursor:"pointer",borderColor:meta.encargado?local.color:"#2A2A2A",color:meta.encargado?"#F0EDE8":"#555"}}>{meta.encargado||"Seleccionar ▾"}</button>
+          </div>
+        </div>
+        {meta.firmado?(
+          <div style={{marginTop:10,border:"1px solid "+local.color,borderRadius:10,padding:"9px 12px",color:local.color,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span>✍️ Firmado por <b>{meta.encargado}</b> · {fmtDate(fecha)}</span>
+            <button onClick={function(){guardarMeta({firmado:false});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#888",fontSize:11,padding:"4px 10px",cursor:"pointer"}}>Deshacer</button>
+          </div>
+        ):(
+          <button onClick={firmar} style={{marginTop:10,width:"100%",padding:"11px",borderRadius:10,border:"none",background:local.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>✍️ Firmar turno</button>
+        )}
+      </div>
+
+      {/* Turnos */}
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {CHK_TURNOS.map(function(t){
+          var act=turno===t.id;
+          return <button key={t.id} onClick={function(){setTurno(t.id);}} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid "+(act?local.color:"#1E1E1E"),background:act?local.color+"22":"#111",color:act?local.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t.icon} {t.label}</button>;
+        })}
+      </div>
+
+      {/* Progreso del turno */}
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+          <span style={{fontSize:11,color:"#555"}}>✅ {progTurno.ok} · ❌ {progTurno.no} · ⏳ {progTurno.total-progTurno.done}</span>
+          <span style={{fontSize:16,fontWeight:800,color:progTurno.pct===100?"#3A7D44":local.color,fontFamily:"'Playfair Display',serif"}}>{progTurno.pct}%</span>
+        </div>
+        <div style={{height:6,background:"#1A1A1A",borderRadius:3,overflow:"hidden"}}>
+          <div style={{height:6,width:progTurno.pct+"%",background:progTurno.pct===100?"#3A7D44":local.color,borderRadius:3,transition:"width 0.25s"}}/>
+        </div>
+      </div>
+
+      {/* Áreas */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8}}>
+        {areas.map(function(a){
+          var p=progArea(a.id);
+          var full=p.pct===100&&p.total>0;
+          return(
+            <button key={a.id} onClick={function(){setAreaId(a.id);setExpand(null);}}
+              style={{position:"relative",textAlign:"left",border:"1px solid "+(full?local.color:"#1A1A1A"),background:full?local.color+"15":"#0F0F0F",borderRadius:12,padding:"13px",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+              {full&&<span style={{position:"absolute",top:9,right:11,color:local.color,fontWeight:700,fontSize:13}}>✓</span>}
+              <div style={{fontSize:22,marginBottom:5}}>{a.icon}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8",marginBottom:3}}>{a.label}</div>
+              <div style={{fontSize:18,fontWeight:800,color:full?local.color:"#444",fontFamily:"'Playfair Display',serif",marginBottom:3}}>{p.pct}%</div>
+              <div style={{display:"flex",gap:6,fontSize:10,marginBottom:7}}>
+                <span style={{color:"#3A7D44"}}>✅{p.ok}</span>
+                <span style={{color:"#C1440E"}}>❌{p.no}</span>
+                <span style={{color:"#555"}}>⏳{p.total-p.done}</span>
+              </div>
+              <div style={{height:4,background:"#1A1A1A",borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:4,width:p.pct+"%",background:local.color,borderRadius:2}}/>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <button onClick={enviarResumen} style={{width:"100%",marginTop:12,padding:"12px",borderRadius:10,border:"none",background:"#25D366",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+        Enviar resumen por WhatsApp
+      </button>
+
+      {Aviso}
+
+      {/* Modal encargado */}
+      {showEncargado&&(
+        <div onClick={function(){setShowEncargado(false);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:320,border:"1px solid "+local.color+"55"}}>
+            <div style={{fontSize:12,fontWeight:700,color:local.color,marginBottom:12}}>👤 Encargado — {turnoObj.label}</div>
+            {CHK_ENCARGADOS.map(function(e){
+              var sel=meta.encargado===e;
+              return <button key={e} onClick={function(){guardarMeta({encargado:e,firmado:false});setShowEncargado(false);}}
+                style={{width:"100%",marginBottom:7,padding:"11px",borderRadius:10,border:"1px solid "+(sel?local.color:"#2A2A2A"),background:sel?local.color+"22":"#0F0F0F",color:sel?"#F0EDE8":"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",textAlign:"left"}}>{e}{sel?" ✓":""}</button>;
+            })}
+            <button onClick={function(){setShowEncargado(false);}} style={{width:"100%",padding:"10px",borderRadius:10,border:"1px solid #333",background:"none",color:"#888",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
@@ -2421,7 +2869,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]].map(function(t){return(
+        {[["datos","📋 Datos"],["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]].map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -2452,6 +2900,8 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       )}
 
       {/* Tab Obras */}
+      {tab==="checklist"&&<PanelChecklist local={localSel} usuario={usuario}/>}
+
       {tab==="obras"&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>

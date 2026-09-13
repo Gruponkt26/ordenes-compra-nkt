@@ -131,6 +131,70 @@ disponibilidad de otro. No está duplicado: responden preguntas distintas.
 
 ---
 
+## ⚠️ Tablas nuevas en Supabase: checklist
+
+El **✅ Checklist** (módulo Locales → elegís un local → pestaña *Checklist*) es el
+checklist operativo diario, con turno de apertura y de cierre. Necesita tres tablas y un
+bucket de fotos. Creá las tablas una sola vez desde Supabase → SQL Editor:
+
+```sql
+-- Encargado y firma de cada local / turno / fecha
+create table if not exists checklist_turnos (
+  id         text primary key,
+  local      text,
+  fecha      date,
+  turno      text,
+  encargado  text,
+  firmado    boolean default false,
+  updated_at timestamptz default now()
+);
+
+-- Estado, hora, comentario y foto de cada tarea
+create table if not exists checklist_items (
+  id         text primary key,
+  turno_id   text,
+  local      text,
+  fecha      date,
+  turno      text,
+  area_id    text,
+  idx        integer,
+  status     text,
+  comentario text,
+  foto_url   text,
+  hora       text,
+  usuario    text,
+  updated_at timestamptz default now()
+);
+
+-- Tareas personalizadas de un local / área / turno (pisan la plantilla del código)
+create table if not exists checklist_tareas (
+  id         text primary key,
+  local      text,
+  area_id    text,
+  turno      text,
+  tareas     jsonb,
+  updated_at timestamptz default now()
+);
+```
+
+Y para las fotos: Supabase → **Storage** → **New bucket** → nombre `checklist`, marcado
+como **público**. Sin el bucket todo lo demás funciona, pero al subir una foto avisa que
+no se pudo.
+
+Hasta que existan las tablas, la pestaña abre y se puede usar, pero nada se guarda entre
+sesiones (y al tildar aparece un aviso diciéndolo).
+
+Cómo está armado:
+
+- Las **tareas base** de las 6 áreas (Salón, Depósito, Cocina, Baños, Patio y Vereda) están
+  en el código, en `CHK_AREAS`, separadas por turno. El **Patio es sólo del Bodegón**.
+- Si un local agrega o saca tareas, eso se guarda en `checklist_tareas` y pisa la plantilla
+  **para ese local, esa área y ese turno**. Los demás locales no se tocan.
+- El `id` de un ítem es `local_turno_fecha_area_idx`, así marcar y desmarcar pisa la misma
+  fila en vez de acumular filas muertas.
+
+---
+
 ## Estructura del proyecto
 ```
 compras-pro/

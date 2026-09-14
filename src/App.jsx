@@ -128,7 +128,7 @@ async function sbLoadProductos() {
     var result = {};
     d.forEach(function(p){
       if(!result[p.prov_id]) result[p.prov_id]=[];
-      result[p.prov_id].push({nombre:p.nombre, unidad:p.unidad||"unidad"});
+      result[p.prov_id].push({nombre:p.nombre, unidad:p.unidad||"unidad", contenido:p.contenido});
     });
     return result;
   } catch(e) { return null; }
@@ -138,9 +138,21 @@ async function sbSaveProducto(provId, prod) {
     var nombre=typeof prod==="string"?prod:prod.nombre;
     var unidad=typeof prod==="string"?"unidad":(prod.unidad||"unidad");
     if(!nombre||!nombre.trim())return;
+    var contenido=typeof prod==="string"?null:(parseFloat(prod.contenido)||null);
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=minimal"};
     var id = provId+"_"+nombre.trim().replace(/\s+/g,"_").toLowerCase();
-    var r = await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({ id, prov_id: provId, nombre: nombre.trim(), unidad: unidad }) });
+    var base = { id, prov_id: provId, nombre: nombre.trim(), unidad: unidad };
+    var r = await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify({...base, contenido: contenido}) });
+    // La columna "contenido" es nueva: si la base todavía no la tiene, se guarda
+    // el resto igual en vez de perder el producto entero (ver el ALTER del README).
+    if(!r.ok){
+      var detalle="";
+      try { detalle=JSON.stringify(await r.clone().json()); } catch(e2) { detalle=""; }
+      if(/contenido/.test(detalle)){
+        console.warn("sbSaveProducto: falta la columna 'contenido' en la tabla productos, se guarda sin ella.");
+        r = await fetch(SURL + "/rest/v1/productos", { method: "POST", headers: h, body: JSON.stringify(base) });
+      }
+    }
     return r;
   } catch(e) { console.error("sbSaveProducto error:", e); }
 }
@@ -1690,12 +1702,356 @@ function MisProductosModal(p) {
 // ─── GESTIÓN PROVEEDORES ──────────────────────────────────────────────────────
 
 // ─── GESTOR PROVEEDORES PANEL (inline, sin modal) ─────────────────────────────
+// ─── PRESENTACIÓN DE UN PRODUCTO ──────────────────────────────────────────────
+// "Atún x 6" son seis latas y "Aceite 900 ml" no llega al litro: comparar los
+// precios de frente no sirve, hay que llevarlos a precio por unidad. Cuánto trae
+// cada presentación sale del campo "contenido" del producto; cuando está vacío
+// —que es lo que pasa con todo lo cargado desde antes— se lee del propio nombre.
+// Las equivalencias llevan cada unidad a una base común: masa a gramos, volumen a
+// mililitros, conteo a unidades. Lo que no tiene contenido propio (una caja, un
+// atado) queda en su propia base y sólo se compara contra otra igual.
+var EQUIV_UNIDAD={
+  kg:{base:"g",factor:1000}, kgs:{base:"g",factor:1000}, kilo:{base:"g",factor:1000}, kilos:{base:"g",factor:1000},
+  g:{base:"g",factor:1}, gr:{base:"g",factor:1}, grs:{base:"g",factor:1}, gramo:{base:"g",factor:1}, gramos:{base:"g",factor:1},
+  litro:{base:"ml",factor:1000}, litros:{base:"ml",factor:1000}, lt:{base:"ml",factor:1000}, lts:{base:"ml",factor:1000}, l:{base:"ml",factor:1000},
+  ml:{base:"ml",factor:1}, cc:{base:"ml",factor:1},
+  unidad:{base:"u",factor:1}, unidades:{base:"u",factor:1}, unid:{base:"u",factor:1}, u:{base:"u",factor:1},
+  docena:{base:"u",factor:12}, docenas:{base:"u",factor:12}
+};
+// Cómo se muestra cada base: por gramo o por mililitro los números quedan ilegibles.
+var BASE_MOSTRAR={g:{label:"kg",mult:1000}, ml:{label:"lt",mult:1000}, u:{label:"u",mult:1}};
+
+function unidadBase(u){
+  var k=String(u||"").toLowerCase().trim();
+  return EQUIV_UNIDAD[k]||{base:k||"u",factor:1};
+}
+function sinAcentos(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+}
+// Lo que se le saca al nombre para agrupar y para deducir el contenido
+var RX_PESO=/\s(\d+(?:[.,]\d+)?)\s*(kgs?|kilos?|kg|gramos?|grs?|gr|g|litros?|lts?|lt|l|ml|cc)(?=\s)/;
+var RX_PACK=/\s(?:x|por)\s*(\d+(?:[.,]\d+)?)(?:\s*(?:unidades?|unid|u|latas?|botellas?|piezas?|paquetes?))?(?=\s)/;
+
+// "Aceite 900 ml" → 900 ml. "Atún x 6" → 6 de lo que sea que venda el proveedor.
+function leerPresentacionDelNombre(nombre){
+  var s=" "+sinAcentos(nombre)+" ";
+  var m=s.match(RX_PESO);
+  if(m)return{cantidad:parseFloat(m[1].replace(",",".")),unidad:m[2],texto:m[0].trim()};
+  var c=s.match(RX_PACK);
+  if(c)return{cantidad:parseFloat(c[1].replace(",",".")),unidad:null,texto:c[0].trim()};
+  return null;
+}
+
+// La clave con la que se agrupan los productos: el nombre sin la presentación,
+// así "Atún", "Atún x 6" y "Atun x6 unidades" terminan en la misma fila.
+function claveProducto(nombre){
+  var s=" "+sinAcentos(nombre)+" ";
+  s=s.replace(new RegExp(RX_PESO.source,"g")," ");
+  s=s.replace(new RegExp(RX_PACK.source,"g")," ");
+  return s.replace(/[^a-z0-9]+/g," ").trim();
+}
+
+// Cuánto trae un producto y en qué unidad base, para poder dividir el precio.
+// El contenido cargado a mano gana siempre; si no hay, se lee del nombre.
+function presentacionDe(prod){
+  var nombre=typeof prod==="string"?prod:((prod&&prod.nombre)||"");
+  var unidad=typeof prod==="string"?"unidad":((prod&&prod.unidad)||"unidad");
+  var manual=typeof prod==="string"?null:parseFloat(prod&&prod.contenido);
+  if(!isNaN(manual)&&manual>0){
+    var eqM=unidadBase(unidad);
+    return{cantidad:manual,unidad:unidad,base:eqM.base,cantidadBase:manual*eqM.factor,fuente:"manual"};
+  }
+  var leido=leerPresentacionDelNombre(nombre);
+  if(leido&&leido.cantidad>0){
+    var u=leido.unidad||unidad;
+    var eqL=unidadBase(u);
+    return{cantidad:leido.cantidad,unidad:u,base:eqL.base,cantidadBase:leido.cantidad*eqL.factor,fuente:"nombre",texto:leido.texto};
+  }
+  var eq=unidadBase(unidad);
+  return{cantidad:1,unidad:unidad,base:eq.base,cantidadBase:eq.factor,fuente:"defecto"};
+}
+
+// Lo que la app deduciría sola del nombre, para mostrarlo como sugerencia en el formulario
+function autoContenido(nombre){
+  var l=leerPresentacionDelNombre(nombre||"");
+  return (l&&l.cantidad>0)?String(l.cantidad):"1";
+}
+
+// ─── COMPARADOR DE PRECIOS ────────────────────────────────────────────────────
+// Tabla de productos × proveedores: cada fila es un producto, cada columna un
+// proveedor, y en cada fila queda resaltado el más barato. Lo que se compara es
+// el precio por unidad, no el precio de lista: una lata suelta contra un pack de
+// seis sólo se pueden mirar de frente después de dividir. Los nombres se tipean a
+// mano proveedor por proveedor, así que para cruzarlos se normalizan y se les
+// saca la presentación.
+function ComparadorPrecios(p) {
+  var proveedores=p.proveedores||[], productos=p.productos||{};
+  var [busca,setBusca]=useState("");
+  var [soloComunes,setSoloComunes]=useState(true); // sólo lo que cotiza más de un proveedor
+  var [ordenPor,setOrdenPor]=useState("diferencia"); // diferencia | nombre
+  var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
+
+  // Los precios de arriba mandan, pero al editar una celda se ve al toque sin
+  // esperar la vuelta de Supabase.
+  useEffect(function(){ setPreciosLocal(p.precios||{}); },[p.precios]);
+
+  function nombreDe(prod){return typeof prod==="string"?prod:((prod&&prod.nombre)||"");}
+  function precioDe(provId,nombre){
+    var v=preciosLocal[provId]&&preciosLocal[provId][nombre];
+    if(v===undefined||v===null||v==="")return null;
+    var n=parseFloat(v);
+    return (isNaN(n)||n<=0)?null:n;
+  }
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  // El precio por unidad puede ser chico (por gramo) o enorme (por kilo)
+  function fmtU(n){
+    if(n===null||n===undefined||isNaN(n))return "—";
+    if(n>=100)return "$"+Math.round(n).toLocaleString("es-AR");
+    if(n>=1)return "$"+n.toFixed(1).replace(".",",");
+    return "$"+n.toFixed(2).replace(".",",");
+  }
+
+  // Una fila por producto, con lo que tiene cargado cada proveedor
+  var filas=[], porClave={};
+  proveedores.forEach(function(pv){
+    (productos[pv.id]||[]).forEach(function(prod){
+      var nombre=nombreDe(prod);
+      var clave=claveProducto(nombre);
+      if(!clave)return;
+      if(!porClave[clave]){
+        porClave[clave]={clave:clave,nombre:nombre,bases:{},items:{}};
+        filas.push(porClave[clave]);
+      }
+      var fila=porClave[clave];
+      // Para el título de la fila queremos el nombre más corto: el que no arrastra presentación
+      if(nombre.length<fila.nombre.length)fila.nombre=nombre;
+      var pres=presentacionDe(prod);
+      var precio=precioDe(pv.id,nombre);
+      fila.bases[pres.base]=true;
+      fila.items[pv.id]={
+        nombre:nombre, unidad:pres.unidad, pres:pres, precio:precio,
+        // Lo que realmente se compara
+        unitario:(precio!==null&&pres.cantidadBase>0)?precio/pres.cantidadBase:null
+      };
+    });
+  });
+
+  filas.forEach(function(f){
+    // Que un proveedor cargue la coca por unidad no tiene que arruinar la comparación
+    // entre los que la cargaron por litro: se compara sobre la unidad que más se repite
+    // y el que quedó afuera se muestra igual, marcado y sin entrar en el ranking.
+    var conteo={};
+    Object.keys(f.items).forEach(function(id){
+      if(f.items[id].precio===null)return;
+      var b=f.items[id].pres.base;
+      conteo[b]=(conteo[b]||0)+1;
+    });
+    if(!Object.keys(conteo).length){
+      Object.keys(f.items).forEach(function(id){var b=f.items[id].pres.base;conteo[b]=(conteo[b]||0)+1;});
+    }
+    var base=null,mejor=-1;
+    Object.keys(conteo).forEach(function(b){ if(conteo[b]>mejor){mejor=conteo[b];base=b;} });
+    f.baseUnica=base;
+    f.fueraDeBase=Object.keys(f.items).filter(function(id){return f.items[id].pres.base!==base;}).length;
+    f.mixBases=f.fueraDeBase>0;
+    var comparables=Object.keys(f.items).filter(function(id){return f.items[id].unitario!==null&&f.items[id].pres.base===base;});
+    var valores=comparables.map(function(id){return f.items[id].unitario;});
+    f.cotizan=comparables.length;
+    f.min=valores.length?Math.min.apply(null,valores):null;
+    f.max=valores.length?Math.max.apply(null,valores):null;
+    f.difPct=(valores.length>1&&f.min>0)?Math.round((f.max-f.min)/f.min*100):0;
+    // Presentaciones distintas en la misma fila: es justamente lo que el comparador resuelve
+    var presentaciones={};
+    Object.keys(f.items).forEach(function(id){
+      var it=f.items[id];
+      presentaciones[it.pres.cantidad+" "+it.pres.unidad]=true;
+    });
+    f.mixPresentacion=Object.keys(presentaciones).length>1;
+  });
+
+  var conVarios=filas.filter(function(f){return f.cotizan>1;});
+  var difPromedio=conVarios.length?Math.round(conVarios.reduce(function(a,f){return a+f.difPct;},0)/conVarios.length):0;
+  var sinPrecio=filas.reduce(function(a,f){
+    return a+Object.keys(f.items).filter(function(id){return f.items[id].precio===null;}).length;
+  },0);
+  var noComparables=filas.filter(function(f){return f.fueraDeBase>0;}).length;
+
+  var q=claveProducto(busca)||sinAcentos(busca).trim();
+  var visibles=filas.filter(function(f){
+    if(q&&f.clave.indexOf(q)===-1)return false;
+    if(soloComunes&&f.cotizan<2)return false;
+    return true;
+  });
+  visibles.sort(function(a,b){
+    if(ordenPor==="nombre")return a.nombre.localeCompare(b.nombre);
+    if(b.difPct!==a.difPct)return b.difPct-a.difPct;
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  var colProvs=proveedores.filter(function(pv){
+    return visibles.some(function(f){return f.items[pv.id];});
+  });
+
+  var TD={padding:"7px 8px",borderBottom:"1px solid #1A1A1A",fontSize:12};
+  var TH={padding:"8px",borderBottom:"1px solid #2A2A2A",fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,textAlign:"center",whiteSpace:"nowrap"};
+  var STICKY={position:"sticky",left:0,background:"#0F0F0F",zIndex:1};
+
+  function guardar(provId,nombre,valor){
+    setPreciosLocal(function(prev){
+      var n={...prev};
+      n[provId]={...(n[provId]||{})};
+      n[provId][nombre]=valor;
+      return n;
+    });
+    if(p.onSavePrecio)p.onSavePrecio(provId,nombre,valor);
+  }
+
+  function Tarjeta(t){
+    return(
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 12px",flex:1,minWidth:110}}>
+        <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{t.titulo}</div>
+        <div style={{fontSize:16,fontWeight:700,color:t.color}}>{t.valor}</div>
+        {t.pie&&<div style={{fontSize:9,color:"#444",marginTop:2}}>{t.pie}</div>}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:11}}>
+        <input placeholder="🔍 Buscar producto..." value={busca} onChange={function(e){setBusca(e.target.value);}} style={{...INP,flex:1,minWidth:150}}/>
+        <button onClick={function(){setSoloComunes(!soloComunes);}} style={{padding:"9px 13px",borderRadius:8,border:"1px solid "+(soloComunes?"#3A7D44":"#1E1E1E"),background:soloComunes?"#3A7D4422":"#111",color:soloComunes?"#3A7D44":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+          {soloComunes?"✓ Sólo comparables":"Todos los productos"}
+        </button>
+        <select value={ordenPor} onChange={function(e){setOrdenPor(e.target.value);}} style={{...INP,width:150,fontSize:12}}>
+          <option value="diferencia">Mayor diferencia</option>
+          <option value="nombre">Por nombre</option>
+        </select>
+      </div>
+
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+        <Tarjeta titulo="Productos" valor={filas.length} color="#F0EDE8" pie={visibles.length+" en pantalla"}/>
+        <Tarjeta titulo="Comparables" valor={conVarios.length} color="#D4A017" pie="con 2 o más precios"/>
+        <Tarjeta titulo="Diferencia prom." valor={difPromedio+"%"} color={difPromedio>20?"#C1440E":"#3A7D44"} pie="por unidad, del más caro al más barato"/>
+        <Tarjeta titulo={noComparables>0?"Unidad dispar":"Sin precio"} valor={noComparables>0?noComparables:sinPrecio} color={noComparables>0?"#8B6914":(sinPrecio>0?"#8B6914":"#333")} pie={noComparables>0?"filas con alguien en otra unidad":"productos a cotizar"}/>
+      </div>
+
+      {visibles.length===0?(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"30px 16px",textAlign:"center"}}>
+          <div style={{fontSize:26,marginBottom:6}}>⚖️</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>
+            {busca?"Ningún producto coincide":soloComunes?"Todavía no hay productos con precio en dos proveedores":"Sin productos cargados"}
+          </div>
+          {soloComunes&&!busca&&(
+            <div style={{fontSize:11,color:"#444",marginTop:7}}>
+              Cargá el mismo producto en dos proveedores con su precio y aparece acá.
+            </div>
+          )}
+        </div>
+      ):(
+        <div style={{overflowX:"auto",border:"1px solid #1A1A1A",borderRadius:10,background:"#0F0F0F"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:200+colProvs.length*124}}>
+            <thead>
+              <tr>
+                <th style={{...TH,...STICKY,textAlign:"left",minWidth:150,zIndex:2}}>Producto</th>
+                {colProvs.map(function(pv){
+                  return <th key={pv.id} style={{...TH,minWidth:116}}>
+                    <div style={{color:"#D4A017",fontSize:11,fontWeight:700}}>{pv.nombre}</div>
+                    <div style={{color:"#444",fontSize:9,textTransform:"none",letterSpacing:0}}>{pv.categoria||""}</div>
+                  </th>;
+                })}
+                <th style={{...TH,minWidth:64}}>Dif.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map(function(f){
+                var mostrar=BASE_MOSTRAR[f.baseUnica]||{label:f.baseUnica||"u",mult:1};
+                return(
+                  <tr key={f.clave}>
+                    <td style={{...TD,...STICKY,color:"#BBB",minWidth:150}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.nombre}</span>
+                        {f.mixBases&&<span title={f.fueraDeBase+" proveedor(es) lo cargaron en otra unidad y quedan fuera de la comparación. Emparejá las unidades en el tab de Gestión."} style={{fontSize:10,color:"#8B6914",flexShrink:0}}>⚠️</span>}
+                      </div>
+                      <div style={{fontSize:9,color:"#444"}}>
+                        precio por {mostrar.label}
+                        {f.mixPresentacion&&<span style={{color:"#3A7D44"}}> · presentaciones distintas</span>}
+                        {f.mixBases&&<span style={{color:"#8B6914"}}> · {f.fueraDeBase} en otra unidad</span>}
+                      </div>
+                    </td>
+                    {colProvs.map(function(pv){
+                      var it=f.items[pv.id];
+                      if(!it)return <td key={pv.id} style={{...TD,textAlign:"center",color:"#252525"}}>—</td>;
+                      var enBase=it.pres.base===f.baseUnica;
+                      var esMin=enBase&&f.cotizan>1&&it.unitario!==null&&it.unitario===f.min;
+                      var esMax=enBase&&f.cotizan>1&&it.unitario!==null&&it.unitario===f.max&&f.max!==f.min;
+                      var color=!enBase?"#6B6B6B":(esMin?"#3A7D44":(esMax?"#C1440E":"#D4A017"));
+                      var suMostrar=enBase?mostrar:(BASE_MOSTRAR[it.pres.base]||{label:it.pres.base||"u",mult:1});
+                      var presTxt=it.pres.cantidad!==1?(it.pres.cantidad+" "+it.pres.unidad):it.pres.unidad;
+                      return(
+                        <td key={pv.id} style={{...TD,textAlign:"center",background:esMin?"#3A7D4415":"transparent"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                            {esMin&&<span style={{fontSize:10,color:"#3A7D44"}}>✓</span>}
+                            <span style={{fontSize:10,color:"#444"}}>$</span>
+                            <input type="number" defaultValue={it.precio!==null?String(it.precio):""} placeholder="—"
+                              key={pv.id+"_"+it.nombre+"_"+(it.precio===null?"":it.precio)}
+                              onBlur={function(e){
+                                var v=e.target.value;
+                                if(v===(it.precio!==null?String(it.precio):""))return;
+                                guardar(pv.id,it.nombre,v);
+                              }}
+                              title={it.nombre+" · "+presTxt}
+                              style={{width:58,padding:"3px 5px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:color,fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:esMin?700:400,textAlign:"right"}}/>
+                          </div>
+                          <div style={{fontSize:9,color:"#555",marginTop:2}}>
+                            <span style={{color:it.pres.fuente==="defecto"?"#444":"#6B5B2E"}}>{presTxt}</span>
+                            {it.unitario!==null&&(
+                              <span style={{color:color+"BB"}}> · {fmtU(it.unitario*suMostrar.mult)}/{suMostrar.label}</span>
+                            )}
+                          </div>
+                          {!enBase?(
+                            <div title="Está cargado en otra unidad, no entra en la comparación de la fila." style={{fontSize:9,color:"#8B6914"}}>otra unidad</div>
+                          ):(it.unitario!==null&&f.cotizan>1&&!esMin&&f.min>0&&(
+                            <div style={{fontSize:9,color:"#C1440E99"}}>+{Math.round((it.unitario-f.min)/f.min*100)}%</div>
+                          ))}
+                        </td>
+                      );
+                    })}
+                    <td style={{...TD,textAlign:"center"}}>
+                      {f.cotizan>1?(
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700,color:f.difPct>=20?"#C1440E":(f.difPct>0?"#D4A017":"#3A7D44")}}>{f.difPct}%</div>
+                          <div style={{fontSize:9,color:"#444"}}>{fmt((f.max-f.min)*mostrar.mult)}/{mostrar.label}</div>
+                        </div>
+                      ):(
+                        <span style={{fontSize:10,color:"#333"}}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{fontSize:10,color:"#3A3A3A",marginTop:9,lineHeight:1.5}}>
+        Lo que se compara es el <strong style={{color:"#555"}}>precio por unidad</strong>, no el de lista: un atún x 6 a $6.000
+        pierde contra uno suelto a $900. Cuánto trae cada presentación sale del campo "contenido" del producto y, cuando está
+        vacío, se lee del nombre ("Atún x 6", "Aceite 900 ml"). Si te parece que una fila compara mal, cargale el contenido
+        a mano en el tab de Gestión. Los precios se editan acá: tocá el número y salí del campo para guardarlo.
+      </div>
+    </div>
+  );
+}
+
 function GestProveedoresPanel(p) {
   var [provs,setProvs]=useState(p.proveedores||[]);
   var [prods,setProds]=useState(p.productos||{});
   var [sel,setSel]=useState(null);
   var [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});
-  var [newProd,setNewProd]=useState({nombre:"",unidad:"kg"});
+  var [newProd,setNewProd]=useState({nombre:"",unidad:"kg",contenido:""});
   var [showAdd,setShowAdd]=useState(false);
   var [ed,setEd]=useState(null);
   var [edProd,setEdProd]=useState(null);
@@ -1769,9 +2125,9 @@ function GestProveedoresPanel(p) {
 
   function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
   function delProv(id){if(!window.confirm("¿Eliminar proveedor?"))return;setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
-  function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad"};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg"});}
+  function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad",contenido:parseFloat(newProd.contenido)||null};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg",contenido:""});}
   function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
-  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
+  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad,contenido:parseFloat(edProd.contenido)||null}:p;});return n;});setEdProd(null);}
   function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
   function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
@@ -1991,6 +2347,7 @@ function GestProveedoresPanel(p) {
             <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Productos ({(prods[sel]||[]).length})</div>
             <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
               <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
+              <input type="number" placeholder={autoContenido(newProd.nombre)} title="Cuánto trae la presentación: 6 si es un pack de 6, 900 si es de 900 ml. Vacío = lo deduce del nombre." value={newProd.contenido||""} onChange={function(e){setNewProd(function(n){return{...n,contenido:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,width:62,flexShrink:0,textAlign:"right"}}/>
               <select value={newProd.unidad} onChange={function(e){setNewProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:80,flexShrink:0}}>
                 {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
               </select>
@@ -2000,6 +2357,8 @@ function GestProveedoresPanel(p) {
               {(prods[sel]||[]).length===0?<div style={{fontSize:12,color:"#333",fontStyle:"italic",padding:"10px 0"}}>Sin productos.</div>:(prods[sel]||[]).map(function(prod,idx){
                 var nombre=getProdNombre(prod);
                 var unidad=getProdUnidad(prod);
+                var contenido=(prod&&prod.contenido!==null&&prod.contenido!==undefined&&prod.contenido!=="")?parseFloat(prod.contenido):null;
+                var pres=presentacionDe(prod);
                 var editando=edProd&&edProd.idx===idx;
                 var precioActual=(preciosLocal&&preciosLocal[sel]&&preciosLocal[sel][nombre])?String(preciosLocal[sel][nombre]):"";
                 return(
@@ -2007,6 +2366,7 @@ function GestProveedoresPanel(p) {
                     {editando?(
                       <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
                         <input value={edProd.nombre} onChange={function(e){setEdProd(function(n){return{...n,nombre:e.target.value};});}} style={{...INP,flex:1,fontSize:12,padding:"5px 8px",minWidth:80}}/>
+                        <input type="number" placeholder={autoContenido(edProd.nombre)} title="Cuánto trae la presentación. Vacío = lo deduce del nombre." value={edProd.contenido||""} onChange={function(e){setEdProd(function(n){return{...n,contenido:e.target.value};});}} style={{...INP,width:56,fontSize:12,padding:"5px 8px",textAlign:"right"}}/>
                         <select value={edProd.unidad} onChange={function(e){setEdProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:75,fontSize:12,padding:"5px 8px"}}>
                           {UNIDADES_MEDIDA.map(function(u){return <option key={u}>{u}</option>;})}
                         </select>
@@ -2017,13 +2377,14 @@ function GestProveedoresPanel(p) {
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
                         <div style={{flex:1,minWidth:0}}>
                           <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre}</span>
-                          <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 5px",marginLeft:5}}>{unidad}</span>
+                          <span style={{fontSize:10,color:"#555",background:"#1A1A1A",borderRadius:4,padding:"1px 5px",marginLeft:5}}>{pres.cantidad!==1?pres.cantidad+" ":""}{unidad}</span>
+                          {pres.fuente==="nombre"&&<span title={"Se dedujo del nombre que trae "+pres.cantidad+" "+pres.unidad+". Si no es así, cargalo a mano."} style={{fontSize:9,color:"#6B5B2E",marginLeft:4}}>auto</span>}
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
                           <span style={{fontSize:10,color:"#555"}}>$</span>
                           <input type="number" defaultValue={precioActual} placeholder="—" key={sel+"_"+nombre} onBlur={function(e){var v=e.target.value;setPreciosLocal(function(prev){var n={...prev};if(!n[sel])n[sel]={};n[sel][nombre]=v;return n;});p.onSavePrecio&&p.onSavePrecio(sel,nombre,v);}} style={{width:65,padding:"4px 6px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,textAlign:"right"}}/>
                           <span style={{fontSize:9,color:"#444"}}>/{unidad}</span>
-                          <button onClick={function(){setEdProd({idx,nombre,unidad});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
+                          <button onClick={function(){setEdProd({idx,nombre,unidad,contenido:contenido===null?"":String(contenido)});}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:12}}>✏️</button>
                           <button onClick={function(){delProd(sel,idx);}} style={{background:"none",border:"none",color:"#C1440E55",cursor:"pointer",fontSize:13}}>✕</button>
                         </div>
                       </div>
@@ -4733,7 +5094,7 @@ function GestProveedores(p) {
   function delProv(id){setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
   function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad"};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg"});}
   function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
-  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
+  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{...(typeof p==="string"?{}:p),nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
   function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
   function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
@@ -11935,6 +12296,7 @@ export default function App() {
   var [subCompras,setSubCompras]=useState(null); // dentro de Compras: null (elección) | "ordenes" | "stock"
   // Default admin vista
   var [vista,setVista]=useState("despacho");
+  var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
@@ -12096,6 +12458,34 @@ export default function App() {
     monto:filtered.filter(function(o){return o.status!=="cancelada";}).reduce(function(a,o){return a+(o.provSections||[]).reduce(function(b,s){return b+s.items.reduce(function(c,i){return c+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);},0),
   };
 
+  // El panel de proveedores vive en dos lados: el módulo 🏭 Proveedores y el tab de
+  // Compras. Se arma una sola vez para que no se desincronicen.
+  function renderGestProveedores(){
+    return (
+      <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
+        saldos={saldosProveedores} usuario={cu.nombre}
+        onSave={async function(pv,pd,provIdActivo){
+          // Solo guardar el proveedor activo y sus productos
+          var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
+          if(pvActivo)await sbSaveProveedor(pvActivo);
+          if(provIdActivo&&pd[provIdActivo]){
+            await sbDeleteProducto(provIdActivo);
+            var prods=pd[provIdActivo]||[];
+            for(var j=0;j<prods.length;j++){
+              await sbSaveProducto(provIdActivo,prods[j]);
+            }
+          }
+          setProveedores(pv);setProductos(pd);
+        }}
+        onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
+        onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
+        onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
+        onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
+        onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
+        onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+      />
+    );
+  }
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
   function saveOrden(o){
@@ -12376,28 +12766,16 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
-              <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
-                saldos={saldosProveedores} usuario={cu.nombre}
-                onSave={async function(pv,pd,provIdActivo){
-                  // Solo guardar el proveedor activo y sus productos
-                  var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
-                  if(pvActivo)await sbSaveProveedor(pvActivo);
-                  if(provIdActivo&&pd[provIdActivo]){
-                    await sbDeleteProducto(provIdActivo);
-                    var prods=pd[provIdActivo]||[];
-                    for(var j=0;j<prods.length;j++){
-                      await sbSaveProducto(provIdActivo,prods[j]);
-                    }
-                  }
-                  setProveedores(pv);setProductos(pd);
-                }}
-                onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
-                onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
-                onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
-                onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
-                onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
-                onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
-              />
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                {[["gestion","🏭 Gestión","#D4A017"],["comparador","⚖️ Comparador","#3A7D44"]].map(function(t){
+                  var act=vistaProv===t[0];
+                  return <button key={t[0]} onClick={function(){setVistaProv(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+              {vistaProv==="comparador"?(
+                <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
+                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
+              ):renderGestProveedores()}
             </div>
           )}
 
@@ -12629,7 +13007,8 @@ export default function App() {
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
               </div>
-              <PanelPrecios precios={precios} onSave={function(p){sbSavePrecios(p);setPrecios(p);}}/>
+              <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
+                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
             </div>
           )}
 
@@ -12639,7 +13018,7 @@ export default function App() {
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
-              <PanelProveedores proveedores={proveedores} onSave={function(pv){sbSaveProv(pv);setProveedores(function(prev){var f=prev.filter(function(x){return x.id!==pv.id;});return[pv,...f];});}} onDelete={function(id){sbDeleteProv(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}/>
+              {renderGestProveedores()}
             </div>
           )}
 

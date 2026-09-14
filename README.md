@@ -186,6 +186,31 @@ que falta correr esto. Los adelantos ya cargados siguen funcionando: se leen por
 
 ---
 
+## ⚠️ Columna `contenido` en `productos`
+
+El **⚖️ Comparador** (módulo Proveedores → pestaña *Comparador*) compara **precio por
+unidad**, no precio de lista: un atún x 6 a $6.000 y uno suelto a $900 sólo se pueden
+mirar de frente después de dividir. Para eso necesita saber cuánto trae cada
+presentación, y eso va en una columna nueva:
+
+```sql
+alter table productos add column if not exists contenido numeric;
+```
+
+Hasta que la columna exista, el producto se guarda igual (sin el contenido) y el
+comparador sigue andando: cuando el campo está vacío deduce la presentación del propio
+nombre, así que "Atún x 6", "Aceite 900 ml" o "Coca 2 lt" se calculan solos. El campo a
+mano sirve para los nombres que no dicen la presentación, o cuando la app la deduce mal
+—ahí el producto muestra la etiqueta `auto` al lado de la unidad.
+
+Las equivalencias están fijas en el código: los kilos y los gramos se comparan entre sí,
+los litros y los mililitros también, y las docenas cuentan como 12 unidades. Lo que no
+tiene contenido propio (una caja, un atado, una bandeja) sólo se compara contra otra
+igual, y si dos proveedores cargan el mismo producto en unidades incompatibles la fila
+queda marcada y no se compara.
+
+---
+
 ## ⚠️ Tablas nuevas en Supabase: checklist
 
 El **✅ Checklist** (módulo Locales → elegís un local → pestaña *Checklist*) es el

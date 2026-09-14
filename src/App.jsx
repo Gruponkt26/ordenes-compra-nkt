@@ -7823,7 +7823,16 @@ function PanelAportes(p) {
             {ctaCorriente.map(function(c){
               return(
                 <div key={c.nombre} style={{display:"flex",fontSize:11,alignItems:"center",padding:"3px 0",minWidth:280}}>
-                  <div style={{flex:1,color:"#F0EDE8",fontWeight:600}}>{c.nombre}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#F0EDE8",fontWeight:600}}>{c.nombre}</div>
+                    {(c.aportadoBienes>0||c.retiradoBienes>0)&&(
+                      <div style={{fontSize:9,color:"#666"}}>
+                        📦 {c.aportadoBienes>0?"puso $"+Math.round(c.aportadoBienes).toLocaleString("es-AR"):""}
+                        {c.aportadoBienes>0&&c.retiradoBienes>0?" · ":""}
+                        {c.retiradoBienes>0?"sacó $"+Math.round(c.retiradoBienes).toLocaleString("es-AR"):""} en bienes
+                      </div>
+                    )}
+                  </div>
                   <div style={{width:88,color:ACC,textAlign:"right"}}>${c.aportado.toLocaleString("es-AR")}</div>
                   <div style={{width:88,color:"#8B2FC9",textAlign:"right"}}>${c.retirado.toLocaleString("es-AR")}</div>
                   <div style={{width:88,color:c.saldo>=0?ACC:"#C1440E",textAlign:"right",fontWeight:700}}>{c.saldo<0?"−":""}${Math.abs(c.saldo).toLocaleString("es-AR")}</div>
@@ -7832,7 +7841,8 @@ function PanelAportes(p) {
             })}
           </div>
           <div style={{fontSize:9,color:"#333",marginTop:8,lineHeight:1.5}}>
-            Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.
+            Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.<br/>
+            Incluye los bienes muebles por su valor estimado — cuentan como capital del socio, aunque no hayan pasado por ninguna caja.
           </div>
         </div>
       )}

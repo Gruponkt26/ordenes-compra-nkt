@@ -7214,7 +7214,7 @@ function PanelCierre(p) {
 
 // ─── PANEL RETIROS ────────────────────────────────────────────────────────────
 function PanelRetiros(p) {
-  var retiros=p.retiros, onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
+  var retiros=p.retiros||[], aportes=p.aportes||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var hoy=new Date().toISOString().split("T")[0];
   var [showForm,setShowForm]=useState(false);
   var [filtroFecha,setFiltroFecha]=useState("mes");
@@ -7267,7 +7267,7 @@ function PanelRetiros(p) {
 
   function abrirNuevo(){
     setEditando(null);
-    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([p.aportes,p.retiros,aportes,retiros])});
+    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([aportes,retiros])});
     setShowForm(true);
   }
   function abrirEdicion(r){
@@ -7624,7 +7624,7 @@ function PanelAportes(p) {
 
   function abrirNuevo(){
     setEditando(null);
-    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([p.aportes,p.retiros,aportes,retiros])});
+    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([aportes,retiros])});
     setShowForm(true);
   }
   function abrirEdicion(a){
@@ -12481,7 +12481,7 @@ export default function App() {
                 })}
               </div>
               {vista==="socios_retiros"?(
-                <PanelRetiros retiros={retiros} usuario={cu.nombre}
+                <PanelRetiros retiros={retiros} aportes={aportes} usuario={cu.nombre}
                   onSave={function(r){var res=sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});return res;}}
                   onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
                 />
@@ -12687,7 +12687,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="retiros"&&(
-            <PanelRetiros retiros={retiros} usuario={cu.nombre}
+            <PanelRetiros retiros={retiros} aportes={aportes} usuario={cu.nombre}
               onSave={function(r){var res=sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});return res;}}
               onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
             />

@@ -131,6 +131,28 @@ disponibilidad de otro. No está duplicado: responden preguntas distintas.
 
 ---
 
+## ⚠️ Columnas `clase` y `bien` en `aportes` y `retiros`
+
+El módulo **🤝 Socios** permite registrar aportes y retiros de **bienes muebles** (una
+heladera, mesas, un equipo), no sólo de plata. Eso necesita dos columnas más en cada tabla:
+
+```sql
+alter table aportes add column if not exists clase text default 'dinero';
+alter table aportes add column if not exists bien  text;
+alter table retiros add column if not exists clase text default 'dinero';
+alter table retiros add column if not exists bien  text;
+```
+
+Hasta que existan, al guardar un movimiento aparece un aviso diciendo que faltan. Todo lo
+ya cargado sigue funcionando: sin `clase` se lo toma como dinero, que es lo que era.
+
+**Un bien no toca ninguna caja.** No entró ni salió plata, así que queda afuera de la
+disponibilidad y del resultado del mes: sólo pesa en la cuenta corriente del socio. Por eso
+al elegir "📦 Bien mueble" el formulario esconde el medio de pago y la cuenta, y pide en
+cambio qué es y su valor estimado.
+
+---
+
 ## ⚠️ Columna `pagos` en `adelantos`
 
 Un adelanto de sueldo se puede repartir entre varios medios de pago (una parte en efectivo,

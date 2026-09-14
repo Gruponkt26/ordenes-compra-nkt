@@ -5115,6 +5115,11 @@ var AREA_COLORES={
 var AREAS_SOCIOS=["Retiros","Aportes"];
 function esAreaSocios(a){ return AREAS_SOCIOS.indexOf(a)!==-1; }
 
+// Un aporte o retiro puede ser plata o un bien mueble (una heladera, mesas, un equipo).
+// El bien suma o resta en la cuenta corriente del socio, pero no toca ninguna caja:
+// no salió ni entró plata, así que queda afuera de la disponibilidad y del resultado.
+function esMovDinero(x){ return !x.clase || x.clase==="dinero"; }
+
 var CONCEPTOS_POR_AREA={
   "Proveedores":{
     grupos:["Verdulería","Fiambería","Carnicería","Pescadería","Distribuidora","Bebidas","Hielo","Papelera","Forraje","Condimentos","Empanadas","Varios","Librería","Fumigación","Internet"],
@@ -5523,7 +5528,8 @@ function PanelEgresos(p){
   var gastos=p.gastos||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
   var areasCustom=p.areasCustom||[], onSaveArea=p.onSaveArea;
-  var todasLasAreas=[...AREAS_BASE,...areasCustom];
+  // Retiros y Aportes salieron de acá: se cargan en el módulo 🤝 Socios
+  var todasLasAreas=[...AREAS_BASE.filter(function(a){return !esAreaSocios(a);}),...areasCustom];
   var [areaActiva,setAreaActiva]=useState("Proveedores");
   var [localActual,setLocalActual]=useState("l1");
   var [showNuevaArea,setShowNuevaArea]=useState(false);
@@ -5892,14 +5898,6 @@ function PanelEgresos(p){
           onSaveEgresoSueldo={p.onSaveEgresoSueldo}
           onDeleteSueldo={p.onDeleteSueldo}
           p={p}
-        />
-      ):areaActiva==="Retiros"?(
-        <PanelRetiros retiros={p.retiros||[]} usuario={usuario}
-          onSave={p.onSaveRetiro} onDelete={p.onDeleteRetiro}
-        />
-      ):areaActiva==="Aportes"?(
-        <PanelAportes aportes={p.aportes||[]} retiros={p.retiros||[]} usuario={usuario}
-          onSave={p.onSaveAporte} onDelete={p.onDeleteAporte}
         />
       ):(
         <PanelFormEgreso
@@ -7205,7 +7203,7 @@ function PanelRetiros(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta de la que SALIÓ la plata, que puede no ser
   // el local al que corresponde el retiro (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",clase:"dinero",bien:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -7261,6 +7259,8 @@ function PanelRetiros(p) {
       local:r.local||"l1",
       local_cuenta:r.local_cuenta||r.local||"l1",
       cuentaTocada:true,
+      clase:r.clase||"dinero",
+      bien:r.bien||"",
       monto:String(r.monto||""),
       tipo_retiro:t.tipo,
       subtipo:t.subtipo,
@@ -7278,9 +7278,15 @@ function PanelRetiros(p) {
   function doSave(){
     // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
     // botón estaba roto.
+    var esBien=form.clase==="bien";
     if(!form.socio.trim()||!form.monto){
       setFaltanDatos(true);
-      setErrorGuardado("Falta completar el nombre del socio o el monto.");
+      setErrorGuardado(esBien?"Falta el nombre del socio o el valor estimado del bien.":"Falta completar el nombre del socio o el monto.");
+      return;
+    }
+    if(esBien&&!form.bien.trim()){
+      setFaltanDatos(true);
+      setErrorGuardado("Falta describir qué bien es.");
       return;
     }
     setFaltanDatos(false);
@@ -7288,9 +7294,11 @@ function PanelRetiros(p) {
       id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
       local:form.local,
-      local_cuenta:form.local_cuenta||form.local,
+      local_cuenta:esBien?form.local:(form.local_cuenta||form.local),
       monto:parseFloat(form.monto),
-      tipo_retiro:form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""),
+      tipo_retiro:esBien?"Bien mueble":form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""),
+      clase:form.clase||"dinero",
+      bien:esBien?form.bien.trim():"",
       notas:form.notas,
       fecha:form.fecha,
       usuario:editando?(editando.usuario||usuario):usuario,
@@ -7314,7 +7322,7 @@ function PanelRetiros(p) {
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Socios</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💼 Retiros de Socios</div>
         </div>
         <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar retiro"}</button>
@@ -7344,6 +7352,25 @@ function PanelRetiros(p) {
             <input value={form.socio} onChange={function(e){setForm(function(f){return{...f,socio:e.target.value};});}} placeholder="Nombre del socio..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
           </div>
 
+          {/* Plata o bien mueble */}
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿Qué sacó el socio?</label>
+            <div style={{display:"flex",gap:6}}>
+              {[["dinero","💵 Plata"],["bien","📦 Bien mueble"]].map(function(c){
+                var act=(form.clase||"dinero")===c[0];
+                return <button key={c[0]} onClick={function(){setForm(function(f){return{...f,clase:c[0]};});}} style={{flex:1,padding:"9px",borderRadius:8,border:"2px solid "+(act?"#8B2FC9":"#1E1E1E"),background:act?"#8B2FC9"+"22":"#111",color:act?"#8B2FC9":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{c[1]}</button>;
+              })}
+            </div>
+            {form.clase==="bien"&&<div style={{fontSize:9,color:"#333",marginTop:6,lineHeight:1.5}}>Un bien suma en la cuenta corriente del socio, pero no toca ninguna caja: no entró ni salió plata, así que no aparece en la disponibilidad ni en el resultado.</div>}
+          </div>
+
+          {form.clase==="bien"&&(
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>¿Qué es?</label>
+              <input value={form.bien} onChange={function(e){setForm(function(f){return{...f,bien:e.target.value};});}} placeholder="Heladera exhibidora, 6 mesas, equipo de música..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            </div>
+          )}
+
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el retiro?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -7354,7 +7381,7 @@ function PanelRetiros(p) {
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto $</label>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{form.clase==="bien"?"Valor estimado $":"Monto $"}</label>
               <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
             </div>
             <div>
@@ -7363,7 +7390,7 @@ function PanelRetiros(p) {
             </div>
           </div>
 
-          <div style={{marginBottom:12}}>
+          {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Tipo de retiro</label>
             <select value={form.tipo_retiro} onChange={function(e){setForm(function(f){return{...f,tipo_retiro:e.target.value,subtipo:""};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:6}}>
               {tiposOpts.map(function(t){return <option key={t}>{t}</option>;})}
@@ -7378,10 +7405,10 @@ function PanelRetiros(p) {
                 {subtiposOpts.map(function(s){return <option key={s}>{s}</option>;})}
               </select>
             )}
-          </div>
+          </div>)}
 
           {/* Local de la cuenta de la que salió la plata — puede no ser el local del retiro */}
-          <div style={{marginBottom:12}}>
+          {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿De qué local salió la plata?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local_cuenta:l.id,cuentaTocada:true};});}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
@@ -7393,7 +7420,7 @@ function PanelRetiros(p) {
             ):(
               <div style={{fontSize:9,color:"#333",marginTop:6}}>Si el socio sacó de una cuenta de otro local, cambialo acá.</div>
             )}
-          </div>
+          </div>)}
 
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
@@ -7458,7 +7485,7 @@ function PanelRetiros(p) {
                     <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>💼 {r.socio}</span>
                     {loc&&<span style={{fontSize:10,color:loc.color}}>{loc.emoji} {loc.nombre}</span>}
                   </div>
-                  <div style={{fontSize:11,color:"#555"}}>{r.tipo_retiro} · {fmtDate(r.fecha)}</div>
+                  <div style={{fontSize:11,color:"#555"}}>{r.clase==="bien"?"📦 "+(r.bien||"Bien mueble"):r.tipo_retiro} · {fmtDate(r.fecha)}</div>
                   {r.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginTop:3}}>📝 {r.notas}</div>}
                   <div style={{fontSize:10,color:"#333",marginTop:2}}>por {r.usuario} · {fmtDateTime(r.created_at)}</div>
                 </div>
@@ -7493,7 +7520,7 @@ function PanelAportes(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta por la que ENTRÓ la plata, que puede no ser
   // el local al que corresponde el aporte (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",clase:"dinero",bien:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null);
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -7535,20 +7562,22 @@ function PanelAportes(p) {
     function sumar(nombre,campo,monto){
       var key=(nombre||"").trim().toLowerCase();
       if(!key)return;
-      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0};
+      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0,aportadoBienes:0,retiradoBienes:0};
       mapa[key][campo]+=parseFloat(monto||0);
     }
     aportes.forEach(function(a){
       if(filtroLocal!=="all"&&a.local!==filtroLocal)return;
       sumar(a.socio,"aportado",a.monto);
+      if(!esMovDinero(a))sumar(a.socio,"aportadoBienes",a.monto);
     });
     retiros.forEach(function(r){
       if(filtroLocal!=="all"&&r.local!==filtroLocal)return;
       sumar(r.socio,"retirado",r.monto);
+      if(!esMovDinero(r))sumar(r.socio,"retiradoBienes",r.monto);
     });
     return Object.keys(mapa).map(function(k){
       var m=mapa[k];
-      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,saldo:m.aportado-m.retirado};
+      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,aportadoBienes:m.aportadoBienes,retiradoBienes:m.retiradoBienes,saldo:m.aportado-m.retirado};
     }).sort(function(a,b){return b.aportado-a.aportado;});
   })();
 
@@ -7572,6 +7601,8 @@ function PanelAportes(p) {
       local:a.local||"l1",
       local_cuenta:a.local_cuenta||a.local||"l1",
       cuentaTocada:true,
+      clase:a.clase||"dinero",
+      bien:a.bien||"",
       monto:String(a.monto||""),
       tipo_aporte:t.tipo,
       subtipo:t.subtipo,
@@ -7589,9 +7620,15 @@ function PanelAportes(p) {
   function doSave(){
     // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
     // botón estaba roto.
+    var esBien=form.clase==="bien";
     if(!form.socio.trim()||!form.monto){
       setFaltanDatos(true);
-      setErrorGuardado("Falta completar el nombre del socio o el monto.");
+      setErrorGuardado(esBien?"Falta el nombre del socio o el valor estimado del bien.":"Falta completar el nombre del socio o el monto.");
+      return;
+    }
+    if(esBien&&!form.bien.trim()){
+      setFaltanDatos(true);
+      setErrorGuardado("Falta describir qué bien es.");
       return;
     }
     setFaltanDatos(false);
@@ -7599,9 +7636,11 @@ function PanelAportes(p) {
       id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
       local:form.local,
-      local_cuenta:form.local_cuenta||form.local,
+      local_cuenta:esBien?form.local:(form.local_cuenta||form.local),
       monto:parseFloat(form.monto),
-      tipo_aporte:form.tipo_aporte+(form.subtipo?" - "+form.subtipo:""),
+      tipo_aporte:esBien?"Bien mueble":form.tipo_aporte+(form.subtipo?" - "+form.subtipo:""),
+      clase:form.clase||"dinero",
+      bien:esBien?form.bien.trim():"",
       notas:form.notas,
       fecha:form.fecha,
       usuario:editando?(editando.usuario||usuario):usuario,
@@ -7630,7 +7669,7 @@ function PanelAportes(p) {
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Administración</div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo Socios</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🤝 Aportes de Socios</div>
         </div>
         <button onClick={function(){if(showForm)cerrarForm();else abrirNuevo();}} style={{background:ACC,border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 16px"}}>{showForm?"✕ Cerrar":"+ Cargar aporte"}</button>
@@ -7664,6 +7703,25 @@ function PanelAportes(p) {
             <input value={form.socio} onChange={function(e){setForm(function(f){return{...f,socio:e.target.value};});}} placeholder="Nombre del socio..." style={inputStyle}/>
           </div>
 
+          {/* Plata o bien mueble */}
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿Qué puso el socio?</label>
+            <div style={{display:"flex",gap:6}}>
+              {[["dinero","💵 Plata"],["bien","📦 Bien mueble"]].map(function(c){
+                var act=(form.clase||"dinero")===c[0];
+                return <button key={c[0]} onClick={function(){setForm(function(f){return{...f,clase:c[0]};});}} style={{flex:1,padding:"9px",borderRadius:8,border:"2px solid "+(act?ACC:"#1E1E1E"),background:act?ACC+"22":"#111",color:act?ACC:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{c[1]}</button>;
+              })}
+            </div>
+            {form.clase==="bien"&&<div style={{fontSize:9,color:"#333",marginTop:6,lineHeight:1.5}}>Un bien suma en la cuenta corriente del socio, pero no toca ninguna caja: no entró ni salió plata, así que no aparece en la disponibilidad ni en el resultado.</div>}
+          </div>
+
+          {form.clase==="bien"&&(
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>¿Qué es?</label>
+              <input value={form.bien} onChange={function(e){setForm(function(f){return{...f,bien:e.target.value};});}} placeholder="Heladera exhibidora, 6 mesas, equipo de música..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            </div>
+          )}
+
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el aporte?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -7674,7 +7732,7 @@ function PanelAportes(p) {
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             <div>
-              <label style={labelStyle}>Monto $</label>
+              <label style={labelStyle}>{form.clase==="bien"?"Valor estimado $":"Monto $"}</label>
               <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0.00" style={inputStyle}/>
             </div>
             <div>
@@ -7683,7 +7741,7 @@ function PanelAportes(p) {
             </div>
           </div>
 
-          <div style={{marginBottom:12}}>
+          {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={labelStyle}>Cómo entró la plata</label>
             <select value={form.tipo_aporte} onChange={function(e){setForm(function(f){return{...f,tipo_aporte:e.target.value,subtipo:""};});}} style={{...inputStyle,marginBottom:6,cursor:"pointer"}}>
               {tiposOpts.map(function(t){return <option key={t}>{t}</option>;})}
@@ -7699,10 +7757,10 @@ function PanelAportes(p) {
                 {subtiposOpts.map(function(sb){return <option key={sb}>{sb}</option>;})}
               </select>
             )}
-          </div>
+          </div>)}
 
           {/* Local de la cuenta que recibió la plata — puede no ser el local del aporte */}
-          <div style={{marginBottom:12}}>
+          {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#555",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local entró la plata?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local_cuenta:l.id,cuentaTocada:true};});}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
@@ -7714,7 +7772,7 @@ function PanelAportes(p) {
             ):(
               <div style={{fontSize:9,color:"#333",marginTop:6}}>Si el socio depositó en una cuenta de otro local, cambialo acá.</div>
             )}
-          </div>
+          </div>)}
 
           <div style={{marginBottom:14}}>
             <label style={labelStyle}>Notas</label>
@@ -7734,6 +7792,10 @@ function PanelAportes(p) {
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Total aportes</div>
           <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:ACC}}>${totalFiltered.toLocaleString("es-AR")}</div>
           <div style={{fontSize:10,color:"#444",marginTop:3}}>{filtered.length} aportes</div>
+          {(function(){
+            var bienes=filtered.filter(function(a){return !esMovDinero(a);}).reduce(function(acc,a){return acc+parseFloat(a.monto||0);},0);
+            return bienes>0?<div style={{fontSize:10,color:"#888",marginTop:2}}>📦 incluye ${Math.round(bienes).toLocaleString("es-AR")} en bienes</div>:null;
+          })()}
         </div>
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:4}}>Por local</div>
@@ -7809,7 +7871,7 @@ function PanelAportes(p) {
                     <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>🤝 {a.socio}</span>
                     {loc&&<span style={{fontSize:10,color:loc.color}}>{loc.emoji} {loc.nombre}</span>}
                   </div>
-                  <div style={{fontSize:11,color:"#555"}}>{a.tipo_aporte} · {fmtDate(a.fecha)}</div>
+                  <div style={{fontSize:11,color:"#555"}}>{a.clase==="bien"?"📦 "+(a.bien||"Bien mueble"):a.tipo_aporte} · {fmtDate(a.fecha)}</div>
                   {a.notas&&<div style={{fontSize:11,color:"#444",fontStyle:"italic",marginTop:3}}>📝 {a.notas}</div>}
                   <div style={{fontSize:10,color:"#333",marginTop:2}}>por {a.usuario} · {fmtDateTime(a.created_at)}</div>
                 </div>
@@ -7984,8 +8046,10 @@ function PanelVentasEgresos(p){
 function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
-  var retirosSocios=p.retiros||[]; // retiros cargados desde "💼 Retiros de Socios" (tabla separada de cierre.retiro_socio)
-  var aportesSocios=p.aportes||[]; // aportes cargados desde "🤝 Aportes de Socios"
+  // Sólo los movimientos en plata: un bien mueble aportado o retirado no mueve ninguna caja
+  // ni cambia el resultado; sólo pesa en la cuenta corriente del socio, en el módulo Socios.
+  var retirosSocios=(p.retiros||[]).filter(esMovDinero);
+  var aportesSocios=(p.aportes||[]).filter(esMovDinero);
   var adelantosSueldo=p.adelantos||[]; // adelantos de sueldo (tabla separada) — cuentan como gasto en el mes que se dan, se hayan aplicado o no a una liquidación
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
@@ -11190,6 +11254,7 @@ async function sbSaveAporte(aporte) {
     } catch(e2) { detalle = "respuesta " + r.status; }
     if (r.status === 404) detalle = "La tabla \"aportes\" no existe en Supabase todavía. Creala con el SQL del README.";
     else if (/local_cuenta/.test(detalle)) detalle = "Falta la columna \"local_cuenta\" en la tabla aportes. Corré el ALTER TABLE del README.";
+    else if (/\bclase\b|\bbien\b/.test(detalle)) detalle = "Faltan las columnas \"clase\" y \"bien\" en la tabla aportes. Corré el ALTER TABLE del README.";
     else if (r.status === 401 || r.status === 403) detalle = "Supabase rechazó la escritura (permisos / RLS). Revisá las políticas de la tabla \"aportes\". Detalle: " + detalle;
     return { ok: false, error: detalle, status: r.status };
   } catch(e) {
@@ -12001,6 +12066,7 @@ export default function App() {
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
+              {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){setModulo("socios");setVista("socios_aportes");}},
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
@@ -12029,6 +12095,7 @@ export default function App() {
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
+                  {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){setModulo("socios");setVista("socios_aportes");}},
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
@@ -12329,6 +12396,33 @@ export default function App() {
           )}
 
           {/* MÓDULO LOCALES */}
+          {/* MÓDULO SOCIOS — todo lo que ponen y sacan los socios, en un solo lugar */}
+          {esSofia&&modulo==="socios"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🤝 Socios</div>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                {[["socios_aportes","🤝 Aportes","#3A7D44"],["socios_retiros","💼 Retiros","#8B2FC9"]].map(function(t){
+                  var act=vista===t[0];
+                  return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+              {vista==="socios_retiros"?(
+                <PanelRetiros retiros={retiros} usuario={cu.nombre}
+                  onSave={function(r){var res=sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});return res;}}
+                  onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}
+                />
+              ):(
+                <PanelAportes aportes={aportes} retiros={retiros} usuario={cu.nombre}
+                  onSave={function(a){var r=sbSaveAporte(a);setAportes(function(p){var f=p.filter(function(x){return x.id!==a.id;});return[a,...f];});return r;}}
+                  onDelete={function(id){sbDeleteAporte(id);setAportes(function(p){return p.filter(function(a){return a.id!==id;});});}}
+                />
+              )}
+            </div>
+          )}
+
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
               locales={LOCALES}

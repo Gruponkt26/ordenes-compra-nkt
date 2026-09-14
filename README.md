@@ -131,6 +131,46 @@ disponibilidad de otro. No está duplicado: responden preguntas distintas.
 
 ---
 
+## ⚠️ Columnas `clase` y `bien` en `aportes` y `retiros`
+
+El módulo **🤝 Socios** permite registrar aportes y retiros de **bienes muebles** (una
+heladera, mesas, un equipo), no sólo de plata. Eso necesita dos columnas más en cada tabla:
+
+```sql
+alter table aportes add column if not exists clase      text default 'dinero';
+alter table aportes add column if not exists bien       text;
+alter table aportes add column if not exists cotizacion numeric;
+alter table aportes add column if not exists usd        numeric;
+alter table retiros add column if not exists clase      text default 'dinero';
+alter table retiros add column if not exists bien       text;
+alter table retiros add column if not exists cotizacion numeric;
+alter table retiros add column if not exists usd        numeric;
+```
+
+### La cuenta corriente va en dólares
+
+Cada movimiento guarda además el **dólar blue del día** y su equivalente en USD, calculado
+al cargarlo y **congelado**: es el valor de ese día y no se recalcula nunca más. Sin eso,
+$800.000 puestos en 2024 y $800.000 puestos hoy figuran iguales en la cuenta corriente del
+socio, y no lo son.
+
+La cotización se carga a mano, con la última usada precargada. Se eligió a mano y no por
+API porque el CSP de `vercel.json` sólo permite conectarse a Supabase: traerla automática
+implicaría abrir el `connect-src` a un servicio externo que puede caerse o cambiar.
+
+Un movimiento sin cotización suma en pesos pero no en dólares, y la cuenta corriente avisa
+cuántos hay en esa situación para poder completarlos.
+
+Hasta que existan, al guardar un movimiento aparece un aviso diciendo que faltan. Todo lo
+ya cargado sigue funcionando: sin `clase` se lo toma como dinero, que es lo que era.
+
+**Un bien no toca ninguna caja.** No entró ni salió plata, así que queda afuera de la
+disponibilidad y del resultado del mes: sólo pesa en la cuenta corriente del socio. Por eso
+al elegir "📦 Bien mueble" el formulario esconde el medio de pago y la cuenta, y pide en
+cambio qué es y su valor estimado.
+
+---
+
 ## ⚠️ Columna `pagos` en `adelantos`
 
 Un adelanto de sueldo se puede repartir entre varios medios de pago (una parte en efectivo,

@@ -4046,12 +4046,22 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [modalPl,setModalPl]=useState(null);
   var [modalForm,setModalForm]=useState({estado:"pagado",monto_parcial:"",pagos:[{medio:"",monto:""}],notas:"",fecha_pago:hoy});
   var [showAdelantos,setShowAdelantos]=useState(false);
+  var [verAplicados,setVerAplicados]=useState(false);
   var [showAdelantoForm,setShowAdelantoForm]=useState(false);
   var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var fmtFechaCorta=function(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});};
   var adelantos=(p&&p.adelantos)||[];
   function adelantosDe(empleadoId){return adelantos.filter(function(a){return a.empleado_id===empleadoId&&!a.aplicado;});}
+  // A qué liquidación se descontó un adelanto ya aplicado
+  function periodoDeAdelanto(a){
+    if(!a.sueldo_id)return "";
+    var s=(sueldos||[]).find(function(x){return String(x.id)===String(a.sueldo_id);});
+    return s?s.periodo:"";
+  }
+  var adelantosPend=adelantos.filter(function(a){return !a.aplicado;});
+  var adelantosAplic=adelantos.filter(function(a){return a.aplicado;})
+    .sort(function(x,y){return (y.fecha||"").localeCompare(x.fecha||"");});
   // Un adelanto también se puede pagar con varios medios: si hay una sola fila y no se
   // escribe monto, se asume que cubre todo el adelanto.
   function pagosAdelanto(){
@@ -4238,7 +4248,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={function(){setShowAdelantos(function(v){return !v;});}}>
           <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>⏳ Adelantos pendientes {showAdelantos?"▾":"▸"}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:11,color:"#888"}}>{fmt(adelantos.filter(function(a){return !a.aplicado;}).reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
+            <span style={{fontSize:11,color:"#888"}}>{fmt(adelantosPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
             <button onClick={function(e){e.stopPropagation();setShowAdelantoForm(true);setShowAdelantos(true);}} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
           </div>
         </div>
@@ -4295,9 +4305,9 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 </div>
               </div>
             )}
-            {adelantos.filter(function(a){return !a.aplicado;}).length===0?(
+            {adelantosPend.length===0?(
               <div style={{fontSize:11,color:"#444",textAlign:"center",padding:"8px 0"}}>Sin adelantos pendientes</div>
-            ):adelantos.filter(function(a){return !a.aplicado;}).map(function(a){return(
+            ):adelantosPend.map(function(a){return(
               <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:"1px solid #1A1A1A"}}>
                 <div>
                   <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{a.empleado_nombre}</div>
@@ -4309,6 +4319,30 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 </div>
               </div>
             );})}
+
+            {/* Los ya descontados: al aplicarse desaparecían de todas las vistas y no quedaba
+                forma de mirar qué adelantos se habían dado. */}
+            {adelantosAplic.length>0&&(
+              <div style={{marginTop:10,paddingTop:8,borderTop:"1px solid #1A1A1A"}}>
+                <div onClick={function(){setVerAplicados(function(v){return !v;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+                  <span style={{fontSize:10,color:"#555"}}>✓ Ya descontados ({adelantosAplic.length}) {verAplicados?"▾":"▸"}</span>
+                  <span style={{fontSize:10,color:"#444"}}>{fmt(adelantosAplic.reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
+                </div>
+                {verAplicados&&adelantosAplic.map(function(a){
+                  var per=periodoDeAdelanto(a);
+                  return(
+                    <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderTop:"1px solid #141414"}}>
+                      <div>
+                        <div style={{fontSize:11,color:"#777"}}>{a.empleado_nombre}</div>
+                        <div style={{fontSize:9,color:"#444"}}>{fmtFechaCorta(a.fecha)} · {textoMedios(a)}{a.notas?" · "+a.notas:""}</div>
+                        <div style={{fontSize:9,color:"#3A7D44"}}>✓ descontado{per?" del sueldo de "+per:" de una liquidación"}</div>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:700,color:"#555"}}>{fmt(a.monto)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

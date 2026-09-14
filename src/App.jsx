@@ -1690,6 +1690,228 @@ function MisProductosModal(p) {
 // ─── GESTIÓN PROVEEDORES ──────────────────────────────────────────────────────
 
 // ─── GESTOR PROVEEDORES PANEL (inline, sin modal) ─────────────────────────────
+// ─── COMPARADOR DE PRECIOS ────────────────────────────────────────────────────
+// Tabla de productos × proveedores: cada fila es un producto, cada columna un
+// proveedor, y en cada fila queda resaltado el precio más bajo. Los nombres se
+// tipean a mano proveedor por proveedor ("Tomate", "tomate perita"), así que para
+// poder cruzarlos se comparan normalizados — sin acentos, sin mayúsculas y sin
+// signos — y se muestra la grafía más larga, que suele ser la más descriptiva.
+function ComparadorPrecios(p) {
+  var proveedores=p.proveedores||[], productos=p.productos||{};
+  var [busca,setBusca]=useState("");
+  var [soloComunes,setSoloComunes]=useState(true); // sólo lo que cotiza más de un proveedor
+  var [ordenPor,setOrdenPor]=useState("diferencia"); // diferencia | nombre
+  var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
+  var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
+
+  // Los precios de arriba mandan, pero al editar una celda se ve al toque sin
+  // esperar la vuelta de Supabase.
+  useEffect(function(){ setPreciosLocal(p.precios||{}); },[p.precios]);
+
+  function norm(s){
+    return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+  }
+  function nombreDe(prod){return typeof prod==="string"?prod:((prod&&prod.nombre)||"");}
+  function unidadDe(prod){return typeof prod==="string"?"unidad":((prod&&prod.unidad)||"unidad");}
+  function precioDe(provId,nombre){
+    var v=preciosLocal[provId]&&preciosLocal[provId][nombre];
+    if(v===undefined||v===null||v==="")return null;
+    var n=parseFloat(v);
+    return (isNaN(n)||n<=0)?null:n;
+  }
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+
+  // Una fila por producto normalizado, con lo que tiene cargado cada proveedor
+  var filas=[], porClave={};
+  proveedores.forEach(function(pv){
+    (productos[pv.id]||[]).forEach(function(prod){
+      var nombre=nombreDe(prod);
+      var clave=norm(nombre);
+      if(!clave)return;
+      if(!porClave[clave]){
+        porClave[clave]={clave:clave,nombre:nombre,unidades:{},items:{}};
+        filas.push(porClave[clave]);
+      }
+      var fila=porClave[clave];
+      if(nombre.length>fila.nombre.length)fila.nombre=nombre;
+      fila.unidades[unidadDe(prod)]=true;
+      fila.items[pv.id]={nombre:nombre,unidad:unidadDe(prod),precio:precioDe(pv.id,nombre)};
+    });
+  });
+
+  filas.forEach(function(f){
+    var conPrecio=Object.keys(f.items).filter(function(id){return f.items[id].precio!==null;});
+    var valores=conPrecio.map(function(id){return f.items[id].precio;});
+    f.cotizan=conPrecio.length;
+    f.loTienen=Object.keys(f.items).length;
+    f.min=valores.length?Math.min.apply(null,valores):null;
+    f.max=valores.length?Math.max.apply(null,valores):null;
+    // Cuánto más caro está el peor contra el mejor. Con un solo precio no hay nada que comparar.
+    f.difPct=(valores.length>1&&f.min>0)?Math.round((f.max-f.min)/f.min*100):0;
+    f.mixUnidades=Object.keys(f.unidades).length>1;
+  });
+
+  var comparables=filas.filter(function(f){return f.cotizan>1;});
+  var difPromedio=comparables.length?Math.round(comparables.reduce(function(a,f){return a+f.difPct;},0)/comparables.length):0;
+  var sinPrecio=filas.reduce(function(a,f){
+    return a+Object.keys(f.items).filter(function(id){return f.items[id].precio===null;}).length;
+  },0);
+
+  var q=norm(busca);
+  var visibles=filas.filter(function(f){
+    if(q&&f.clave.indexOf(q)===-1)return false;
+    if(soloComunes&&f.cotizan<2)return false;
+    return true;
+  });
+  visibles.sort(function(a,b){
+    if(ordenPor==="nombre")return a.nombre.localeCompare(b.nombre);
+    if(b.difPct!==a.difPct)return b.difPct-a.difPct;
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  // Sólo las columnas que aportan algo a lo que se está viendo
+  var colProvs=proveedores.filter(function(pv){
+    return visibles.some(function(f){return f.items[pv.id];});
+  });
+
+  var TD={padding:"7px 8px",borderBottom:"1px solid #1A1A1A",fontSize:12};
+  var TH={padding:"8px",borderBottom:"1px solid #2A2A2A",fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,textAlign:"center",whiteSpace:"nowrap"};
+  var STICKY={position:"sticky",left:0,background:"#0F0F0F",zIndex:1};
+
+  function guardar(provId,nombre,valor){
+    setPreciosLocal(function(prev){
+      var n={...prev};
+      n[provId]={...(n[provId]||{})};
+      n[provId][nombre]=valor;
+      return n;
+    });
+    if(p.onSavePrecio)p.onSavePrecio(provId,nombre,valor);
+  }
+
+  function Tarjeta(t){
+    return(
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 12px",flex:1,minWidth:110}}>
+        <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{t.titulo}</div>
+        <div style={{fontSize:16,fontWeight:700,color:t.color}}>{t.valor}</div>
+        {t.pie&&<div style={{fontSize:9,color:"#444",marginTop:2}}>{t.pie}</div>}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:11}}>
+        <input placeholder="🔍 Buscar producto..." value={busca} onChange={function(e){setBusca(e.target.value);}} style={{...INP,flex:1,minWidth:150}}/>
+        <button onClick={function(){setSoloComunes(!soloComunes);}} style={{padding:"9px 13px",borderRadius:8,border:"1px solid "+(soloComunes?"#3A7D44":"#1E1E1E"),background:soloComunes?"#3A7D4422":"#111",color:soloComunes?"#3A7D44":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+          {soloComunes?"✓ Sólo comparables":"Todos los productos"}
+        </button>
+        <select value={ordenPor} onChange={function(e){setOrdenPor(e.target.value);}} style={{...INP,width:150,fontSize:12}}>
+          <option value="diferencia">Mayor diferencia</option>
+          <option value="nombre">Por nombre</option>
+        </select>
+      </div>
+
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+        <Tarjeta titulo="Productos" valor={filas.length} color="#F0EDE8" pie={visibles.length+" en pantalla"}/>
+        <Tarjeta titulo="Comparables" valor={comparables.length} color="#D4A017" pie="con 2 o más precios"/>
+        <Tarjeta titulo="Diferencia prom." valor={difPromedio+"%"} color={difPromedio>20?"#C1440E":"#3A7D44"} pie="del más caro al más barato"/>
+        <Tarjeta titulo="Sin precio" valor={sinPrecio} color={sinPrecio>0?"#8B6914":"#333"} pie="productos a cotizar"/>
+      </div>
+
+      {visibles.length===0?(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"30px 16px",textAlign:"center"}}>
+          <div style={{fontSize:26,marginBottom:6}}>⚖️</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>
+            {busca?"Ningún producto coincide":soloComunes?"Todavía no hay productos con precio en dos proveedores":"Sin productos cargados"}
+          </div>
+          {soloComunes&&!busca&&(
+            <div style={{fontSize:11,color:"#444",marginTop:7}}>
+              Cargá el mismo producto en dos proveedores con su precio y aparece acá.
+            </div>
+          )}
+        </div>
+      ):(
+        <div style={{overflowX:"auto",border:"1px solid #1A1A1A",borderRadius:10,background:"#0F0F0F"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:180+colProvs.length*112}}>
+            <thead>
+              <tr>
+                <th style={{...TH,...STICKY,textAlign:"left",minWidth:140,zIndex:2}}>Producto</th>
+                {colProvs.map(function(pv){
+                  return <th key={pv.id} style={{...TH,minWidth:104}}>
+                    <div style={{color:"#D4A017",fontSize:11,fontWeight:700}}>{pv.nombre}</div>
+                    <div style={{color:"#444",fontSize:9,textTransform:"none",letterSpacing:0}}>{pv.categoria||""}</div>
+                  </th>;
+                })}
+                <th style={{...TH,minWidth:64}}>Dif.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map(function(f){
+                return(
+                  <tr key={f.clave}>
+                    <td style={{...TD,...STICKY,color:"#BBB",minWidth:140}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.nombre}</span>
+                        {f.mixUnidades&&<span title={"Se cargó con distintas unidades: "+Object.keys(f.unidades).join(", ")+". Los precios no son comparables tal cual."} style={{fontSize:10,color:"#8B6914",flexShrink:0}}>⚠️</span>}
+                      </div>
+                      <div style={{fontSize:9,color:"#444"}}>{Object.keys(f.unidades).join(" · ")}</div>
+                    </td>
+                    {colProvs.map(function(pv){
+                      var it=f.items[pv.id];
+                      if(!it)return <td key={pv.id} style={{...TD,textAlign:"center",color:"#252525"}}>—</td>;
+                      var esMin=f.cotizan>1&&it.precio!==null&&it.precio===f.min;
+                      var esMax=f.cotizan>1&&it.precio!==null&&it.precio===f.max&&f.max!==f.min;
+                      var color=esMin?"#3A7D44":(esMax?"#C1440E":"#D4A017");
+                      return(
+                        <td key={pv.id} style={{...TD,textAlign:"center",background:esMin?"#3A7D4415":"transparent"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                            {esMin&&<span style={{fontSize:10,color:"#3A7D44"}}>✓</span>}
+                            <span style={{fontSize:10,color:"#444"}}>$</span>
+                            <input type="number" defaultValue={it.precio!==null?String(it.precio):""} placeholder="—"
+                              key={pv.id+"_"+it.nombre+"_"+(it.precio===null?"":it.precio)}
+                              onBlur={function(e){
+                                var v=e.target.value;
+                                if(v===(it.precio!==null?String(it.precio):""))return;
+                                guardar(pv.id,it.nombre,v);
+                              }}
+                              title={it.nombre+" · "+it.unidad}
+                              style={{width:58,padding:"3px 5px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:color,fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:esMin?700:400,textAlign:"right"}}/>
+                          </div>
+                          {it.precio!==null&&f.cotizan>1&&!esMin&&f.min>0&&(
+                            <div style={{fontSize:9,color:"#C1440E99",marginTop:1}}>+{Math.round((it.precio-f.min)/f.min*100)}%</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td style={{...TD,textAlign:"center"}}>
+                      {f.cotizan>1?(
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700,color:f.difPct>=20?"#C1440E":(f.difPct>0?"#D4A017":"#3A7D44")}}>{f.difPct}%</div>
+                          <div style={{fontSize:9,color:"#444"}}>{fmt(f.max-f.min)}</div>
+                        </div>
+                      ):(
+                        <span style={{fontSize:10,color:"#333"}}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div style={{fontSize:10,color:"#3A3A3A",marginTop:9,lineHeight:1.5}}>
+        Los precios se editan acá mismo: tocá el número y salí del campo para guardarlo.
+        Los productos se cruzan por nombre sin distinguir mayúsculas ni acentos, así que
+        "Tomate" y "tomates" caen en la misma fila. El ⚠️ avisa cuando el mismo producto
+        está cargado con distinta unidad en cada proveedor — ahí el precio no se puede
+        comparar derecho.
+      </div>
+    </div>
+  );
+}
+
 function GestProveedoresPanel(p) {
   var [provs,setProvs]=useState(p.proveedores||[]);
   var [prods,setProds]=useState(p.productos||{});
@@ -11935,6 +12157,7 @@ export default function App() {
   var [subCompras,setSubCompras]=useState(null); // dentro de Compras: null (elección) | "ordenes" | "stock"
   // Default admin vista
   var [vista,setVista]=useState("despacho");
+  var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
   var [retiros,setRetiros]=useState([]);
@@ -12096,6 +12319,34 @@ export default function App() {
     monto:filtered.filter(function(o){return o.status!=="cancelada";}).reduce(function(a,o){return a+(o.provSections||[]).reduce(function(b,s){return b+s.items.reduce(function(c,i){return c+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);},0),
   };
 
+  // El panel de proveedores vive en dos lados: el módulo 🏭 Proveedores y el tab de
+  // Compras. Se arma una sola vez para que no se desincronicen.
+  function renderGestProveedores(){
+    return (
+      <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
+        saldos={saldosProveedores} usuario={cu.nombre}
+        onSave={async function(pv,pd,provIdActivo){
+          // Solo guardar el proveedor activo y sus productos
+          var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
+          if(pvActivo)await sbSaveProveedor(pvActivo);
+          if(provIdActivo&&pd[provIdActivo]){
+            await sbDeleteProducto(provIdActivo);
+            var prods=pd[provIdActivo]||[];
+            for(var j=0;j<prods.length;j++){
+              await sbSaveProducto(provIdActivo,prods[j]);
+            }
+          }
+          setProveedores(pv);setProductos(pd);
+        }}
+        onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
+        onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
+        onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
+        onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
+        onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
+        onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+      />
+    );
+  }
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
   function saveOrden(o){
@@ -12376,28 +12627,16 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
-              <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios}
-                saldos={saldosProveedores} usuario={cu.nombre}
-                onSave={async function(pv,pd,provIdActivo){
-                  // Solo guardar el proveedor activo y sus productos
-                  var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
-                  if(pvActivo)await sbSaveProveedor(pvActivo);
-                  if(provIdActivo&&pd[provIdActivo]){
-                    await sbDeleteProducto(provIdActivo);
-                    var prods=pd[provIdActivo]||[];
-                    for(var j=0;j<prods.length;j++){
-                      await sbSaveProducto(provIdActivo,prods[j]);
-                    }
-                  }
-                  setProveedores(pv);setProductos(pd);
-                }}
-                onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
-                onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
-                onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
-                onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
-                onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}
-                onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
-              />
+              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                {[["gestion","🏭 Gestión","#D4A017"],["comparador","⚖️ Comparador","#3A7D44"]].map(function(t){
+                  var act=vistaProv===t[0];
+                  return <button key={t[0]} onClick={function(){setVistaProv(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+              {vistaProv==="comparador"?(
+                <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
+                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
+              ):renderGestProveedores()}
             </div>
           )}
 
@@ -12629,7 +12868,8 @@ export default function App() {
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
               </div>
-              <PanelPrecios precios={precios} onSave={function(p){sbSavePrecios(p);setPrecios(p);}}/>
+              <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
+                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
             </div>
           )}
 
@@ -12639,7 +12879,7 @@ export default function App() {
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
-              <PanelProveedores proveedores={proveedores} onSave={function(pv){sbSaveProv(pv);setProveedores(function(prev){var f=prev.filter(function(x){return x.id!==pv.id;});return[pv,...f];});}} onDelete={function(id){sbDeleteProv(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}/>
+              {renderGestProveedores()}
             </div>
           )}
 

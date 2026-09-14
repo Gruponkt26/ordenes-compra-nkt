@@ -131,6 +131,21 @@ disponibilidad de otro. No está duplicado: responden preguntas distintas.
 
 ---
 
+## ⚠️ Columna `pagos` en `adelantos`
+
+Un adelanto de sueldo se puede repartir entre varios medios de pago (una parte en efectivo,
+el resto por transferencia), igual que los sueldos. Eso necesita una columna más:
+
+```sql
+alter table adelantos add column if not exists pagos jsonb default '[]'::jsonb;
+```
+
+Hasta que la columna exista, al guardar un adelanto aparece un aviso diciendo justamente
+que falta correr esto. Los adelantos ya cargados siguen funcionando: se leen por su
+`medio_pago` de siempre.
+
+---
+
 ## ⚠️ Tablas nuevas en Supabase: checklist
 
 El **✅ Checklist** (módulo Locales → elegís un local → pestaña *Checklist*) es el

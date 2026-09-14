@@ -5120,6 +5120,25 @@ function esAreaSocios(a){ return AREAS_SOCIOS.indexOf(a)!==-1; }
 // no salió ni entró plata, así que queda afuera de la disponibilidad y del resultado.
 function esMovDinero(x){ return !x.clase || x.clase==="dinero"; }
 
+// Los movimientos de socios se guardan en pesos y, además, en dólares al blue del día.
+// El peso se licúa: sin eso, $800.000 puestos en 2024 y $800.000 puestos hoy figuran
+// iguales en la cuenta corriente, y no lo son. El USD se calcula al cargar y queda
+// congelado — es el valor de ese día, no se recalcula nunca más.
+function usdDeMov(x){
+  var u=parseFloat(x&&x.usd)||0;
+  if(u>0)return u;
+  var c=parseFloat(x&&x.cotizacion)||0;
+  return c>0?(parseFloat(x.monto)||0)/c:0;
+}
+function tieneCotizacion(x){ return (parseFloat(x&&x.cotizacion)||0)>0||(parseFloat(x&&x.usd)||0)>0; }
+// La última cotización cargada, para no tipearla en cada movimiento
+function ultimaCotizacion(listas){
+  var todos=[];
+  (listas||[]).forEach(function(l){ (l||[]).forEach(function(x){ if(tieneCotizacion(x))todos.push(x); }); });
+  todos.sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
+  return todos.length?String(parseFloat(todos[0].cotizacion)||""):"";
+}
+
 var CONCEPTOS_POR_AREA={
   "Proveedores":{
     grupos:["Verdulería","Fiambería","Carnicería","Pescadería","Distribuidora","Bebidas","Hielo","Papelera","Forraje","Condimentos","Empanadas","Varios","Librería","Fumigación","Internet"],
@@ -7203,7 +7222,7 @@ function PanelRetiros(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta de la que SALIÓ la plata, que puede no ser
   // el local al que corresponde el retiro (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",clase:"dinero",bien:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -7248,7 +7267,7 @@ function PanelRetiros(p) {
 
   function abrirNuevo(){
     setEditando(null);
-    setForm(FORM_VACIO);
+    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([p.aportes,p.retiros,aportes,retiros])});
     setShowForm(true);
   }
   function abrirEdicion(r){
@@ -7261,6 +7280,7 @@ function PanelRetiros(p) {
       cuentaTocada:true,
       clase:r.clase||"dinero",
       bien:r.bien||"",
+      cotizacion:r.cotizacion?String(r.cotizacion):"",
       monto:String(r.monto||""),
       tipo_retiro:t.tipo,
       subtipo:t.subtipo,
@@ -7299,6 +7319,8 @@ function PanelRetiros(p) {
       tipo_retiro:esBien?"Bien mueble":form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""),
       clase:form.clase||"dinero",
       bien:esBien?form.bien.trim():"",
+      cotizacion:parseFloat(form.cotizacion)||0,
+      usd:(parseFloat(form.cotizacion)||0)>0?Math.round((parseFloat(form.monto)||0)/parseFloat(form.cotizacion)*100)/100:0,
       notas:form.notas,
       fecha:form.fecha,
       usuario:editando?(editando.usuario||usuario):usuario,
@@ -7387,6 +7409,16 @@ function PanelRetiros(p) {
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
               <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Dólar blue del día</label>
+            <input type="number" value={form.cotizacion} onChange={function(e){setForm(function(f){return{...f,cotizacion:e.target.value};});}} placeholder="Ej: 1300" style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            <div style={{fontSize:9,color:(parseFloat(form.cotizacion)>0&&parseFloat(form.monto)>0)?"#8B2FC9":"#333",marginTop:6,lineHeight:1.5}}>
+              {(parseFloat(form.cotizacion)>0&&parseFloat(form.monto)>0)
+                ?"Se guarda como US$ "+(Math.round(parseFloat(form.monto)/parseFloat(form.cotizacion)*100)/100).toLocaleString("es-AR")+" — queda congelado en ese valor."
+                :"Viene precargado con la última cotización usada. Si queda vacío, el movimiento no entra en el total en dólares."}
             </div>
           </div>
 
@@ -7520,7 +7552,7 @@ function PanelAportes(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta por la que ENTRÓ la plata, que puede no ser
   // el local al que corresponde el aporte (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",clase:"dinero",bien:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_aporte:"Efectivo",subtipo:"",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null);
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -7562,22 +7594,24 @@ function PanelAportes(p) {
     function sumar(nombre,campo,monto){
       var key=(nombre||"").trim().toLowerCase();
       if(!key)return;
-      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0,aportadoBienes:0,retiradoBienes:0};
+      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0,aportadoBienes:0,retiradoBienes:0,aportadoUsd:0,retiradoUsd:0,sinCotiz:0};
       mapa[key][campo]+=parseFloat(monto||0);
     }
     aportes.forEach(function(a){
       if(filtroLocal!=="all"&&a.local!==filtroLocal)return;
       sumar(a.socio,"aportado",a.monto);
       if(!esMovDinero(a))sumar(a.socio,"aportadoBienes",a.monto);
+      if(tieneCotizacion(a))sumar(a.socio,"aportadoUsd",usdDeMov(a));else sumar(a.socio,"sinCotiz",1);
     });
     retiros.forEach(function(r){
       if(filtroLocal!=="all"&&r.local!==filtroLocal)return;
       sumar(r.socio,"retirado",r.monto);
       if(!esMovDinero(r))sumar(r.socio,"retiradoBienes",r.monto);
+      if(tieneCotizacion(r))sumar(r.socio,"retiradoUsd",usdDeMov(r));else sumar(r.socio,"sinCotiz",1);
     });
     return Object.keys(mapa).map(function(k){
       var m=mapa[k];
-      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,aportadoBienes:m.aportadoBienes,retiradoBienes:m.retiradoBienes,saldo:m.aportado-m.retirado};
+      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,aportadoBienes:m.aportadoBienes,retiradoBienes:m.retiradoBienes,saldo:m.aportado-m.retirado,aportadoUsd:m.aportadoUsd,retiradoUsd:m.retiradoUsd,saldoUsd:m.aportadoUsd-m.retiradoUsd,sinCotiz:m.sinCotiz};
     }).sort(function(a,b){return b.aportado-a.aportado;});
   })();
 
@@ -7590,7 +7624,7 @@ function PanelAportes(p) {
 
   function abrirNuevo(){
     setEditando(null);
-    setForm(FORM_VACIO);
+    setForm({...FORM_VACIO,cotizacion:ultimaCotizacion([p.aportes,p.retiros,aportes,retiros])});
     setShowForm(true);
   }
   function abrirEdicion(a){
@@ -7603,6 +7637,7 @@ function PanelAportes(p) {
       cuentaTocada:true,
       clase:a.clase||"dinero",
       bien:a.bien||"",
+      cotizacion:a.cotizacion?String(a.cotizacion):"",
       monto:String(a.monto||""),
       tipo_aporte:t.tipo,
       subtipo:t.subtipo,
@@ -7641,6 +7676,8 @@ function PanelAportes(p) {
       tipo_aporte:esBien?"Bien mueble":form.tipo_aporte+(form.subtipo?" - "+form.subtipo:""),
       clase:form.clase||"dinero",
       bien:esBien?form.bien.trim():"",
+      cotizacion:parseFloat(form.cotizacion)||0,
+      usd:(parseFloat(form.cotizacion)||0)>0?Math.round((parseFloat(form.monto)||0)/parseFloat(form.cotizacion)*100)/100:0,
       notas:form.notas,
       fecha:form.fecha,
       usuario:editando?(editando.usuario||usuario):usuario,
@@ -7741,6 +7778,16 @@ function PanelAportes(p) {
             </div>
           </div>
 
+          <div style={{marginBottom:12}}>
+            <label style={labelStyle}>Dólar blue del día</label>
+            <input type="number" value={form.cotizacion} onChange={function(e){setForm(function(f){return{...f,cotizacion:e.target.value};});}} placeholder="Ej: 1300" style={inputStyle}/>
+            <div style={{fontSize:9,color:(parseFloat(form.cotizacion)>0&&parseFloat(form.monto)>0)?ACC:"#333",marginTop:6,lineHeight:1.5}}>
+              {(parseFloat(form.cotizacion)>0&&parseFloat(form.monto)>0)
+                ?"Se guarda como US$ "+(Math.round(parseFloat(form.monto)/parseFloat(form.cotizacion)*100)/100).toLocaleString("es-AR")+" — queda congelado en ese valor."
+                :"Viene precargado con la última cotización usada. Si queda vacío, el movimiento no entra en el total en dólares."}
+            </div>
+          </div>
+
           {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={labelStyle}>Cómo entró la plata</label>
             <select value={form.tipo_aporte} onChange={function(e){setForm(function(f){return{...f,tipo_aporte:e.target.value,subtipo:""};});}} style={{...inputStyle,marginBottom:6,cursor:"pointer"}}>
@@ -7816,13 +7863,13 @@ function PanelAportes(p) {
           <div style={{overflowX:"auto"}}>
             <div style={{display:"flex",fontSize:9,color:"#444",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",marginBottom:5,minWidth:280}}>
               <div style={{flex:1}}>Socio</div>
-              <div style={{width:88,textAlign:"right"}}>Aportó</div>
-              <div style={{width:88,textAlign:"right"}}>Retiró</div>
-              <div style={{width:88,textAlign:"right"}}>Saldo</div>
+              <div style={{width:96,textAlign:"right"}}>Aportó</div>
+              <div style={{width:96,textAlign:"right"}}>Retiró</div>
+              <div style={{width:96,textAlign:"right"}}>Saldo</div>
             </div>
             {ctaCorriente.map(function(c){
               return(
-                <div key={c.nombre} style={{display:"flex",fontSize:11,alignItems:"center",padding:"3px 0",minWidth:280}}>
+                <div key={c.nombre} style={{display:"flex",fontSize:11,alignItems:"flex-start",padding:"5px 0",minWidth:300,borderTop:"1px solid #141414"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:"#F0EDE8",fontWeight:600}}>{c.nombre}</div>
                     {(c.aportadoBienes>0||c.retiradoBienes>0)&&(
@@ -7833,16 +7880,30 @@ function PanelAportes(p) {
                       </div>
                     )}
                   </div>
-                  <div style={{width:88,color:ACC,textAlign:"right"}}>${c.aportado.toLocaleString("es-AR")}</div>
-                  <div style={{width:88,color:"#8B2FC9",textAlign:"right"}}>${c.retirado.toLocaleString("es-AR")}</div>
-                  <div style={{width:88,color:c.saldo>=0?ACC:"#C1440E",textAlign:"right",fontWeight:700}}>{c.saldo<0?"−":""}${Math.abs(c.saldo).toLocaleString("es-AR")}</div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:ACC,fontWeight:700}}>US$ {Math.round(c.aportadoUsd).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#555"}}>${Math.round(c.aportado).toLocaleString("es-AR")}</div>
+                  </div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:"#8B2FC9",fontWeight:700}}>US$ {Math.round(c.retiradoUsd).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#555"}}>${Math.round(c.retirado).toLocaleString("es-AR")}</div>
+                  </div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:c.saldoUsd>=0?ACC:"#C1440E",fontWeight:800}}>{c.saldoUsd<0?"−":""}US$ {Math.abs(Math.round(c.saldoUsd)).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#555"}}>{c.saldo<0?"−":""}${Math.abs(Math.round(c.saldo)).toLocaleString("es-AR")}</div>
+                  </div>
                 </div>
               );
             })}
           </div>
           <div style={{fontSize:9,color:"#333",marginTop:8,lineHeight:1.5}}>
             Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.<br/>
-            Incluye los bienes muebles por su valor estimado — cuentan como capital del socio, aunque no hayan pasado por ninguna caja.
+            El dólar es el <b style={{color:"#555"}}>blue del día de cada movimiento</b>, congelado — así $800.000 puestos en 2024 no se comparan de igual a igual con $800.000 puestos hoy.<br/>
+            Incluye los bienes muebles por su valor estimado: cuentan como capital del socio, aunque no hayan pasado por ninguna caja.
+            {(function(){
+              var sin=ctaCorriente.reduce(function(a,c){return a+(c.sinCotiz||0);},0);
+              return sin>0?<span><br/><b style={{color:"#D4A017"}}>⚠️ {sin} movimiento{sin===1?"":"s"} sin cotización cargada</b> — suma{sin===1?"":"n"} en pesos pero no en dólares. Editalo{sin===1?"":"s"} y completá el blue de ese día.</span>:null;
+            })()}
           </div>
         </div>
       )}

@@ -137,11 +137,29 @@ El módulo **🤝 Socios** permite registrar aportes y retiros de **bienes muebl
 heladera, mesas, un equipo), no sólo de plata. Eso necesita dos columnas más en cada tabla:
 
 ```sql
-alter table aportes add column if not exists clase text default 'dinero';
-alter table aportes add column if not exists bien  text;
-alter table retiros add column if not exists clase text default 'dinero';
-alter table retiros add column if not exists bien  text;
+alter table aportes add column if not exists clase      text default 'dinero';
+alter table aportes add column if not exists bien       text;
+alter table aportes add column if not exists cotizacion numeric;
+alter table aportes add column if not exists usd        numeric;
+alter table retiros add column if not exists clase      text default 'dinero';
+alter table retiros add column if not exists bien       text;
+alter table retiros add column if not exists cotizacion numeric;
+alter table retiros add column if not exists usd        numeric;
 ```
+
+### La cuenta corriente va en dólares
+
+Cada movimiento guarda además el **dólar blue del día** y su equivalente en USD, calculado
+al cargarlo y **congelado**: es el valor de ese día y no se recalcula nunca más. Sin eso,
+$800.000 puestos en 2024 y $800.000 puestos hoy figuran iguales en la cuenta corriente del
+socio, y no lo son.
+
+La cotización se carga a mano, con la última usada precargada. Se eligió a mano y no por
+API porque el CSP de `vercel.json` sólo permite conectarse a Supabase: traerla automática
+implicaría abrir el `connect-src` a un servicio externo que puede caerse o cambiar.
+
+Un movimiento sin cotización suma en pesos pero no en dólares, y la cuenta corriente avisa
+cuántos hay en esa situación para poder completarlos.
 
 Hasta que existan, al guardar un movimiento aparece un aviso diciendo que faltan. Todo lo
 ya cargado sigue funcionando: sin `clase` se lo toma como dinero, que es lo que era.

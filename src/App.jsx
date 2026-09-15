@@ -331,6 +331,19 @@ async function sbDeletePauta(id) {
 // ─── DEPORTES ─────────────────────────────────────────────────────────────────
 // Una sola tabla para los tres sub-módulos (tenis, pádel y galpón). Cada fila
 // dice de qué disciplina es y qué se anotó (clase, turno, profe o artículo).
+// ¿Está la tabla, y con la columna del medio de pago? Si falta algo conviene decirlo
+// antes de que alguien cargue un mes de alquileres y se pierdan todos al recargar.
+// Devuelve el error tal como lo manda Supabase (nombra la tabla o la columna que falta)
+// o null si está todo bien.
+async function sbDeportesDisponible() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/deportes?select=id,medio_pago&limit=1", { headers: SH });
+    if (r.ok) return null;
+    var txt = await r.text();
+    return txt || ("Error " + r.status);
+  } catch(e) { return String((e&&e.message)||e); }
+}
+
 async function sbLoadDeportes() {
   try {
     var r = await fetch(SURL + "/rest/v1/deportes?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache"} });
@@ -5029,7 +5042,7 @@ var DEP_CAMPOS={
   turno:[
     {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
     {k:"hora",      label:"Hora",           tipo:"time"},
-    {k:"nombre",    label:"Profe",          tipo:"text",  req:true, ph:"A quién se le alquila", sug:true},
+    {k:"nombre",    label:"Quién alquila",  tipo:"text",  req:true, ph:"Nombre de quien alquila la cancha", sug:true},
     {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
     {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"90"},
     {k:"monto",     label:"Alquiler $",     tipo:"num",   ph:"0"},
@@ -5075,6 +5088,13 @@ function PanelDeportes(p){
   var [abierto,setAbierto]=useState(false);
   var [filtroEstado,setFiltroEstado]=useState("todos");
   var [busqueda,setBusqueda]=useState("");
+  var [problemaTabla,setProblemaTabla]=useState(null);
+
+  useEffect(function(){
+    var vivo=true;
+    sbDeportesDisponible().then(function(err){ if(vivo)setProblemaTabla(err); });
+    return function(){vivo=false;};
+  },[]);
 
   var dis=DEP_DISCIPLINAS.find(function(d){return d.id===disciplina;})||DEP_DISCIPLINAS[0];
   var t=DEP_TIPOS[tipo]||DEP_TIPOS.clase;
@@ -5187,6 +5207,25 @@ function PanelDeportes(p){
         <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Deportes</div>
       </div>
+
+      {/* Si la base no está lista, decirlo antes de que se cargue nada */}
+      {problemaTabla&&(
+        <div style={{background:"#2A0A0A",border:"1px solid #C1440E",borderRadius:10,padding:"11px 13px",marginBottom:12,display:"flex",gap:10,alignItems:"flex-start"}}>
+          <span style={{fontSize:15}}>⚠️</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#C1440E",marginBottom:3}}>Deportes no está guardando</div>
+            <div style={{fontSize:11,color:"#E8B9A8",lineHeight:1.5}}>
+              Podés usarlo igual, pero todo lo que anotes se pierde al recargar. Lo que contesta la base:
+            </div>
+            <div style={{fontSize:10,color:"#E8B9A8",background:"#1A0505",border:"1px solid #C1440E33",borderRadius:6,padding:"6px 8px",marginTop:6,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"monospace"}}>
+              {String(problemaTabla).slice(0,400)}
+            </div>
+            <div style={{fontSize:10,color:"#8A6055",marginTop:6}}>
+              Supabase → SQL Editor → el bloque `deportes` del README. Si la tabla ya existe y el error nombra una columna, alcanza con el `alter table` que está ahí abajo.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sub-módulos: tenis, pádel, galpón */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>

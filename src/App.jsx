@@ -337,7 +337,7 @@ async function sbDeletePauta(id) {
 // o null si está todo bien.
 async function sbDeportesDisponible() {
   try {
-    var r = await fetch(SURL + "/rest/v1/deportes?select=id,medio_pago&limit=1", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/deportes?select=id,medio_pago,rubro&limit=1", { headers: SH });
     if (r.ok) return null;
     var txt = await r.text();
     return txt || ("Error " + r.status);
@@ -4999,14 +4999,27 @@ var DEP_DISCIPLINAS=[
   {id:"tenis", emoji:"🎾", nombre:"Tenis",  color:"#D4A017", tipos:["clase","turno"]},
   {id:"padel", emoji:"🏓", nombre:"Pádel",  color:"#1A6B8A", tipos:["profe","turno"]},
   {id:"galpon",emoji:"🏚️", nombre:"Galpón", color:"#8B5A2B", tipos:["articulo"]},
+  {id:"caja",  emoji:"💰", nombre:"Entradas y salidas", color:"#3A7D44", tipos:["entrada","salida"]},
 ];
 
 var DEP_TIPOS={
-  clase:   {label:"📘 Clases",    singular:"clase",    articulo:"la", color:"#D4A017", vacio:"Sin clases anotadas"},
-  turno:   {label:"🕑 Turnos",    singular:"turno",    articulo:"el", color:"#3A7D44", vacio:"Sin turnos anotados"},
+  clase:   {label:"📘 Clases",    singular:"clase",    articulo:"la", color:"#D4A017", vacio:"Sin clases anotadas",  ok:"cobrado"},
+  turno:   {label:"🕑 Turnos",    singular:"turno",    articulo:"el", color:"#3A7D44", vacio:"Sin turnos anotados",  ok:"cobrado"},
   profe:   {label:"👤 Profes",    singular:"profe",    articulo:"el", color:"#8B2FC9", vacio:"Sin profes cargados"},
   articulo:{label:"📦 Artículos", singular:"artículo", articulo:"el", color:"#C1440E", vacio:"Sin artículos cargados"},
+  entrada: {label:"📥 Entradas",  singular:"entrada",  articulo:"la", color:"#3A7D44", vacio:"Sin entradas cargadas", ok:"cobrado"},
+  salida:  {label:"📤 Salidas",   singular:"salida",   articulo:"la", color:"#C1440E", vacio:"Sin salidas cargadas",  ok:"pagado"},
 };
+
+// En qué se gasta la plata del predio. Los cuatro primeros son los rubros reales;
+// "Otros" existe para que nada quede sin clasificar por no encontrar dónde ponerlo.
+var DEP_RUBROS=[
+  {id:"mantenimiento",label:"🔧 Mantenimiento del predio", corto:"Mantenimiento"},
+  {id:"servicios",    label:"💡 Servicios",                corto:"Servicios"},
+  {id:"obras",        label:"🏗️ Obras",                    corto:"Obras"},
+  {id:"canchero",     label:"👷 Sueldo canchero",          corto:"Canchero"},
+  {id:"otros",        label:"📦 Otros",                    corto:"Otros"},
+];
 
 // Por dónde entra la plata del alquiler. Son sólo estos tres: agregar uno es
 // sumarlo acá, sin tocar ni el formulario ni el resumen.
@@ -5021,6 +5034,8 @@ var DEP_MEDIOS=[
 var DEP_ESTADOS={
   clase:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
   turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
+  entrada: [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
+  salida:  [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#C1440E"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
   articulo:[{id:"disponible",label:"📦 En galpón",color:"#3A7D44"},{id:"prestado",label:"📤 Prestado",color:"#D4A017"},{id:"reparacion",label:"🔧 En reparación",color:"#E07B00"},{id:"baja",label:"🗑️ Dado de baja",color:"#C1440E"}],
 };
@@ -5049,6 +5064,19 @@ var DEP_CAMPOS={
     {k:"medio_pago",label:"Medio de pago",  tipo:"select",opciones:DEP_MEDIOS},
     {k:"contacto",  label:"Teléfono",       tipo:"text",  ph:"Opcional"},
   ],
+  entrada:[
+    {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
+    {k:"nombre",    label:"Concepto",      tipo:"text",  req:true, ph:"Qué entró (torneo, kiosco, seña...)"},
+    {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
+  ],
+  salida:[
+    {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
+    {k:"nombre",    label:"Concepto",      tipo:"text",  req:true, ph:"Qué se pagó"},
+    {k:"rubro",     label:"Rubro",         tipo:"select",req:true, opciones:DEP_RUBROS},
+    {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
+  ],
   profe:[
     {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
     {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
@@ -5066,6 +5094,10 @@ var DEP_CAMPOS={
 
 function depNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
 function depMedio(id){ return DEP_MEDIOS.find(function(m){return m.id===id;})||null; }
+function depRubro(id){ return DEP_RUBROS.find(function(r){return r.id===id;})||null; }
+// El estado que significa "la plata se movió": cobrado para lo que entra, pagado
+// para lo que sale.
+function depOk(tipo){ return (DEP_TIPOS[tipo]||{}).ok||"cobrado"; }
 // Un tipo maneja plata cobrada si tiene medio de pago; lo demás (profes, artículos)
 // se valoriza pero no se cobra.
 function depConCobranza(tipo){ return (DEP_CAMPOS[tipo]||[]).some(function(c){return c.k==="medio_pago";}); }
@@ -5087,6 +5119,7 @@ function PanelDeportes(p){
   var [editId,setEditId]=useState(null);
   var [abierto,setAbierto]=useState(false);
   var [filtroEstado,setFiltroEstado]=useState("todos");
+  var [filtroMes,setFiltroMes]=useState("todos");
   var [busqueda,setBusqueda]=useState("");
   var [problemaTabla,setProblemaTabla]=useState(null);
 
@@ -5110,12 +5143,12 @@ function PanelDeportes(p){
     setDisciplina(id);
     setTipo(primer);
     setForm(depFormVacio(primer));
-    setEditId(null);setAbierto(false);setFiltroEstado("todos");setBusqueda("");
+    setEditId(null);setAbierto(false);setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
   }
   function cambiarTipo(id){
     setTipo(id);
     setForm(depFormVacio(id));
-    setEditId(null);setAbierto(false);setFiltroEstado("todos");setBusqueda("");
+    setEditId(null);setAbierto(false);setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
   }
   function set(k,v){ setForm(function(prev){var n={...prev};n[k]=v;return n;}); }
 
@@ -5142,7 +5175,7 @@ function PanelDeportes(p){
     });
     // Las columnas que este tipo no usa se mandan vacías: si un registro pasó de
     // un tipo a otro al editarlo, no puede quedar con datos del anterior colgando.
-    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","contacto"].forEach(function(k){
+    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","contacto"].forEach(function(k){
       if(!campos.some(function(c){return c.k===k;}))fila[k]=null;
     });
     p.onSave(fila);
@@ -5162,9 +5195,31 @@ function PanelDeportes(p){
     setAbierto(true);
   }
 
-  var delTipo=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===tipo;});
+  // Un alquiler o una clase que ya se cobró ES una entrada del predio: se muestra
+  // en Entradas sin volver a cargarla, marcada como automática y sin poder editarse
+  // desde acá (se toca donde se anotó). Si no, o se carga dos veces o la caja miente.
+  var entradasAuto=registros.filter(function(x){
+    return (x.tipo==="clase"||x.tipo==="turno")&&x.estado==="cobrado";
+  }).map(function(x){
+    var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
+    return {
+      id:"auto_"+x.id, auto:true, tipo:"entrada", disciplina:"caja",
+      fecha:x.fecha, monto:x.monto, medio_pago:x.medio_pago, estado:"cobrado",
+      nombre:(x.tipo==="clase"?"Clase":"Alquiler")+" — "+(x.nombre||""),
+      origen:(d?d.emoji+" "+d.nombre:x.disciplina), notas:x.notas, usuario:x.usuario,
+    };
+  });
+
+  var delTipo=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===tipo;})
+    .concat(tipo==="entrada"?entradasAuto:[]);
+
+  // Meses con movimiento, para poder mirar un mes solo. Sin esto la caja se vuelve
+  // ilegible al tercer mes cargado.
+  var meses=[...new Set(delTipo.map(function(x){return String(x.fecha||"").slice(0,7);}).filter(Boolean))].sort().reverse();
+
   var q=busqueda.trim().toLowerCase();
   var lista=delTipo.filter(function(x){
+    if(filtroMes!=="todos"&&String(x.fecha||"").slice(0,7)!==filtroMes)return false;
     if(filtroEstado!=="todos"&&x.estado!==filtroEstado)return false;
     if(!q)return true;
     return [x.nombre,x.profe,x.cancha,x.contacto,x.notas].some(function(v){return String(v||"").toLowerCase().includes(q);});
@@ -5181,16 +5236,33 @@ function PanelDeportes(p){
   },0);
   var totalUnidades=tipo==="articulo"?lista.reduce(function(acc,x){return acc+(depNum(x.cantidad)||1);},0):lista.length;
 
-  // Lo que se cobra (clases y alquileres) se mira distinto: cuánto entró, cuánto
-  // falta cobrar y por qué medio. Lo cancelado no es plata, así que no suma en ninguno.
+  // Lo que mueve plata se mira distinto: cuánto se movió, cuánto falta y por qué
+  // medio. Lo cancelado no es plata, así que no suma en ninguno.
   var conCobranza=depConCobranza(tipo);
+  var estadoOk=depOk(tipo);
   function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
-  var cobrado=conCobranza?sumaSi(function(x){return x.estado==="cobrado";}):0;
+  var cobrado=conCobranza?sumaSi(function(x){return x.estado===estadoOk;}):0;
   var aCobrar=conCobranza?sumaSi(function(x){return x.estado==="pendiente";}):0;
   var porMedio=!conCobranza?[]:DEP_MEDIOS.map(function(m){
-    return {id:m.id,corto:m.corto,label:m.label,total:sumaSi(function(x){return x.estado==="cobrado"&&x.medio_pago===m.id;})};
-  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaSi(function(x){return x.estado==="cobrado"&&!x.medio_pago;})}])
+    return {id:m.id,corto:m.corto,label:m.label,total:sumaSi(function(x){return x.estado===estadoOk&&x.medio_pago===m.id;})};
+  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaSi(function(x){return x.estado===estadoOk&&!x.medio_pago;})}])
     .filter(function(m){return m.id!==""||m.total>0;});
+
+  // Las salidas, además, por rubro: es la pregunta que se hace uno al mirar los gastos
+  // del predio (cuánto se fue en mantenimiento, cuánto en el canchero).
+  var porRubro=tipo!=="salida"?[]:DEP_RUBROS.map(function(r){
+    return {id:r.id,label:r.label,total:sumaSi(function(x){return x.estado==="pagado"&&x.rubro===r.id;})};
+  }).concat([{id:"",label:"❓ Sin rubro",total:sumaSi(function(x){return x.estado==="pagado"&&!x.rubro;})}])
+    .filter(function(r){return r.id!==""||r.total>0;});
+
+  // El saldo del predio: todo lo que entró (incluidos los alquileres cobrados) menos
+  // todo lo que salió, en el mes que se esté mirando. Es el número por el que existe
+  // este sub-módulo, así que va arriba de las dos pestañas y no dentro de una.
+  function enMes(x){ return filtroMes==="todos"||String(x.fecha||"").slice(0,7)===filtroMes; }
+  var entradasCaja=registros.filter(function(x){return x.disciplina==="caja"&&x.tipo==="entrada";}).concat(entradasAuto);
+  var totalEntradas=entradasCaja.filter(function(x){return x.estado==="cobrado"&&enMes(x);}).reduce(function(a,x){return a+depNum(x.monto);},0);
+  var totalSalidas=registros.filter(function(x){return x.disciplina==="caja"&&x.tipo==="salida"&&x.estado==="pagado"&&enMes(x);}).reduce(function(a,x){return a+depNum(x.monto);},0);
+  var saldo=totalEntradas-totalSalidas;
 
   // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
   // dio una clase) se ofrecen como sugerencia: el mismo profe alquila todas las semanas.
@@ -5240,6 +5312,24 @@ function PanelDeportes(p){
           );
         })}
       </div>
+
+      {/* El saldo del predio, que es para lo que existe este sub-módulo */}
+      {disciplina==="caja"&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
+          <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Entró</div>
+            <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(totalEntradas).toLocaleString("es-AR")}</div>
+          </div>
+          <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Salió</div>
+            <div style={{fontSize:17,fontWeight:800,color:"#C1440E"}}>${Math.round(totalSalidas).toLocaleString("es-AR")}</div>
+          </div>
+          <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
+            <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+          </div>
+        </div>
+      )}
 
       {/* Qué se anota dentro del sub-módulo */}
       {dis.tipos.length>1&&(
@@ -5320,6 +5410,16 @@ function PanelDeportes(p){
       {/* Filtros y búsqueda */}
       {delTipo.length>0&&(
         <div style={{marginBottom:12}}>
+          {meses.length>1&&(
+            <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:12,marginBottom:8}}>
+              <option value="todos">📅 Todos los meses</option>
+              {meses.map(function(m){
+                var pt=m.split("-");
+                var nom=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pt[1],10)]||m;
+                return <option key={m} value={m}>{nom+" "+pt[0]}</option>;
+              })}
+            </select>
+          )}
           <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={function(){setFiltroEstado("todos");}}
               style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtroEstado==="todos"?color:"#1A1A1A"),background:filtroEstado==="todos"?color+"22":"none",color:filtroEstado==="todos"?color:"#444",fontSize:11,cursor:"pointer"}}>
@@ -5350,15 +5450,28 @@ function PanelDeportes(p){
               <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
             </div>
             <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Cobrado</div>
-              <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="salida"?"Pagado":"Cobrado"}</div>
+              <div style={{fontSize:17,fontWeight:800,color:tipo==="salida"?"#C1440E":"#3A7D44"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
             </div>
             <div style={{background:"#0F0F0F",border:"1px solid "+(aCobrar>0?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>A cobrar</div>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="salida"?"A pagar":"A cobrar"}</div>
               <div style={{fontSize:17,fontWeight:800,color:aCobrar>0?"#D4A017":"#333"}}>${Math.round(aCobrar).toLocaleString("es-AR")}</div>
             </div>
           </div>
-          {/* Por dónde entró lo cobrado */}
+          {/* En qué se fue lo pagado */}
+          {porRubro.length>0&&(
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:7}}>
+              {porRubro.map(function(r){
+                return(
+                  <div key={r.id||"sin"} style={{background:"#0D0D0D",border:"1px solid "+(r.total>0?"#C1440E33":"#151515"),borderRadius:20,padding:"5px 12px",fontSize:11,color:r.total>0?"#888":"#3A3A3A"}}>
+                    {r.label} <span style={{fontWeight:800,color:r.total>0?"#F0EDE8":"#333"}}>${Math.round(r.total).toLocaleString("es-AR")}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Por dónde se movió la plata */}
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {porMedio.map(function(m){
               return(
@@ -5394,6 +5507,22 @@ function PanelDeportes(p){
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lista.map(function(x){
             var est=depEstadoDe(tipo,x.estado);
+            // Viene de un alquiler o una clase ya cobrada: se muestra para que la caja
+            // cuadre, pero se edita donde se anotó, no acá.
+            if(x.auto)return(
+              <div key={x.id} style={{background:"#0D0D0D",border:"1px dashed #3A7D4433",borderRadius:10,padding:"12px 13px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,marginBottom:6}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#C8C4BE"}}>{x.nombre}</div>
+                  <span style={{padding:"3px 9px",borderRadius:20,background:"#3A7D4422",border:"1px solid #3A7D4444",color:"#3A7D44",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>✅ Cobrado</span>
+                </div>
+                <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>
+                  {[x.fecha?"Fecha: "+fmtDate(String(x.fecha)):null,
+                    "Monto: $"+Math.round(depNum(x.monto)).toLocaleString("es-AR"),
+                    depMedio(x.medio_pago)?depMedio(x.medio_pago).label:null].filter(Boolean).join(" · ")}
+                </div>
+                <div style={{fontSize:9,color:"#3A3A3A",marginTop:8}}>Automático · viene de {x.origen}</div>
+              </div>
+            );
             var detalle=campos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
               var v=x[c.k];
               if(c.tipo==="date")return c.label+": "+fmtDate(String(v));

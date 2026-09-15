@@ -283,6 +283,7 @@ El módulo **🏅 Deportes** tiene tres sub-módulos —**🎾 Tenis**, **🏓 P
 - **Tenis** → clases (alumno, profe, cancha, duración y precio) y turnos de cancha.
 - **Pádel** → profes (con su teléfono y su precio por hora) y turnos de cancha.
 - **Galpón** → artículos guardados, con cantidad, valor unitario y ubicación.
+- **Entradas y salidas** → la caja del predio.
 
 El grueso del módulo es el **alquiler de cancha que se le cobra a cada profe**: eso son
 los turnos. Por eso las clases y los turnos guardan **medio de pago** (efectivo, Mercado
@@ -309,6 +310,7 @@ create table if not exists deportes (
   precio      numeric,
   monto       numeric,
   medio_pago  text,      -- efectivo | mp_sofia | belo
+  rubro       text,      -- salidas: mantenimiento | servicios | obras | canchero | otros
   estado      text,
   contacto    text,
   notas       text,
@@ -321,6 +323,7 @@ Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza
 
 ```sql
 alter table deportes add column if not exists medio_pago text;
+alter table deportes add column if not exists rubro      text;
 ```
 
 Hasta que la tabla exista, el módulo abre y se puede usar, pero nada se guarda entre
@@ -333,6 +336,29 @@ Los estados y los medios de pago salen del código (`DEP_ESTADOS` y `DEP_MEDIOS`
 la base: una clase o un alquiler va de *a cobrar* a *cobrado* o *cancelado*, un profe está
 activo o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
 Sumar un medio de pago nuevo es agregarlo a `DEP_MEDIOS` y nada más.
+
+### Entradas y salidas: la caja del predio
+
+El cuarto sub-módulo lleva **lo que entra y lo que sale del predio**, con su saldo arriba
+de todo (entró − salió, del mes que se esté mirando).
+
+Las **salidas** se clasifican por rubro, obligatorio: 🔧 mantenimiento del predio,
+💡 servicios, 🏗️ obras, 👷 sueldo canchero y 📦 otros (`DEP_RUBROS`). El resumen muestra
+cuánto se fue en cada uno.
+
+Las **entradas** tienen una particularidad: un alquiler o una clase ya cobrada **aparece
+sola** en la lista, calculada de los turnos y las clases, sin volver a cargarla. Se
+distingue con borde punteado y la leyenda *Automático*, y no se edita desde acá sino donde
+se anotó. Si no fuera así, o se carga dos veces o la caja miente. Las entradas cargadas a
+mano son para todo lo demás (un torneo, el kiosco, una seña).
+
+Dos criterios que conviene tener presentes:
+
+- El saldo cuenta **sólo lo que ya se movió**: entradas cobradas y salidas pagadas. Lo
+  pendiente se ve aparte, en el resumen de cada pestaña, y lo cancelado no suma en ningún
+  lado.
+- La caja del predio **no se cruza con Administración**: no entra al resultado del mes ni
+  a la disponibilidad de caja del grupo. Es un circuito propio.
 Agregar un campo nuevo a un tipo es tocar `DEP_CAMPOS` y sumar la columna en Supabase:
 el formulario y el listado se arman solos a partir de esa lista.
 

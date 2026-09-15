@@ -277,19 +277,25 @@ Cómo está armado:
 
 ## ⚠️ Tabla nueva en Supabase: `deportes`
 
-El módulo **🏅 Deportes** tiene tres sub-módulos —**🎾 Tenis**, **🏓 Pádel** y
-**🏚️ Galpón**— y en cada uno se anota algo distinto:
+El módulo **🏅 Deportes** lleva la plata del predio. Lo que se hace ahí adentro es casi
+siempre lo mismo —anotar algo que entró o algo que salió—, así que **la caja es la única
+puerta** y el módulo abre directo en ella:
 
-- **Tenis** → clases (alumno, profe, cancha, duración y precio) y turnos de cancha.
-- **Pádel** → profes (con su teléfono y su precio por hora) y turnos de cancha.
-- **Galpón** → artículos guardados, con cantidad, valor unitario y ubicación.
-- **Entradas y salidas** → la caja del predio.
+- **📥 Entradas** → todo lo que entra, con el saldo del predio arriba.
+- **📤 Salidas** → todo lo que sale, clasificado por rubro.
+- **Fichas** (👤 Profes y 🏚️ Galpón) → aparte, en chico. Un profe es una persona y un
+  artículo es stock: ninguno de los dos es plata que entró, y no tocan el saldo.
 
-El grueso del módulo es el **alquiler de cancha que se le cobra a cada profe**: eso son
-los turnos. Por eso las clases y los turnos guardan **medio de pago** (efectivo, Mercado
-Pago Sofía o Belo) y sus estados son de cobranza —*a cobrar*, *cobrado*, *cancelado*—, no
-de agenda. El resumen muestra cuánto se cobró, cuánto falta cobrar y por qué medio entró
-cada peso; lo cancelado no suma en ninguno de los dos.
+Al tocar *Anotar entrada* se elige primero **qué entró** —🎾 turno de tenis, 🏓 turno de
+pádel, 🎾 clase de tenis, o 💰 otra entrada (un torneo, el kiosco, una seña)— y se abre el
+formulario que corresponde. El registro se guarda como lo que es: un turno de tenis sigue
+siendo un turno de tenis, con su cancha y su duración, no una fila suelta de caja. Por eso
+en la lista de Entradas conviven las tres cosas, cada una rotulada con lo que es.
+
+El grueso son los **alquileres de cancha que se le cobran a los profes**. Todo lo que mueve
+plata guarda **medio de pago** (efectivo, Mercado Pago Sofía o Belo) y su estado es de
+cobranza —*a cobrar*, *cobrado*/*pagado*, *cancelado*—, no de agenda. El resumen muestra
+cuánto se movió, cuánto falta y por qué medio; lo cancelado no suma en ningún lado.
 
 Todo eso vive en **una sola tabla**: cada fila guarda de qué `disciplina` es y qué
 `tipo` de registro es, así un turno de tenis y uno de pádel no se pisan aunque usen
@@ -337,20 +343,21 @@ la base: una clase o un alquiler va de *a cobrar* a *cobrado* o *cancelado*, un 
 activo o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
 Sumar un medio de pago nuevo es agregarlo a `DEP_MEDIOS` y nada más.
 
-### Entradas y salidas: la caja del predio
+### Cómo está armada la navegación
 
-El cuarto sub-módulo lleva **lo que entra y lo que sale del predio**, con su saldo arriba
-de todo (entró − salió, del mes que se esté mirando).
+Las cuatro secciones están en `DEP_SECCIONES`; las dos marcadas `caja:true` son las que
+mueven plata. Lo que puede ser una entrada está en `DEP_ORIGENES`: cada opción dice qué
+`disciplina` y qué `tipo` va a guardar, así que sumar "turno de fútbol" al selector es
+agregar una línea ahí.
+
+El formulario no se arma con el tipo de la sección sino con el que se está cargando
+(`formTipo`/`formDisciplina`), que es lo que permite anotar un turno de tenis sin salir de
+la caja. Y cada fila del listado se lee con **su propio** tipo, porque en Entradas conviven
+una entrada suelta, una clase y un alquiler, y cada uno tiene sus campos y sus estados.
 
 Las **salidas** se clasifican por rubro, obligatorio: 🔧 mantenimiento del predio,
 💡 servicios, 🏗️ obras, 👷 sueldo canchero y 📦 otros (`DEP_RUBROS`). El resumen muestra
 cuánto se fue en cada uno.
-
-Las **entradas** tienen una particularidad: un alquiler o una clase ya cobrada **aparece
-sola** en la lista, calculada de los turnos y las clases, sin volver a cargarla. Se
-distingue con borde punteado y la leyenda *Automático*, y no se edita desde acá sino donde
-se anotó. Si no fuera así, o se carga dos veces o la caja miente. Las entradas cargadas a
-mano son para todo lo demás (un torneo, el kiosco, una seña).
 
 Todo lo que tiene fecha se puede mirar **mes por mes**, con un selector arriba de los
 filtros de estado. No es cosmético: el saldo de arriba se recalcula con el mes elegido, así
@@ -358,9 +365,9 @@ que es la forma de preguntarle al módulo cómo cerró septiembre.
 
 Dos criterios que conviene tener presentes:
 
-- El saldo cuenta **sólo lo que ya se movió**: entradas cobradas y salidas pagadas. Lo
-  pendiente se ve aparte, en el resumen de cada pestaña, y lo cancelado no suma en ningún
-  lado.
+- El saldo cuenta **sólo lo que ya se movió**: entradas cobradas —incluidos los turnos y
+  las clases— y salidas pagadas. Lo pendiente se ve aparte, en el resumen de cada pestaña,
+  y lo cancelado no suma en ningún lado.
 - La caja del predio **no se cruza con Administración**: no entra al resultado del mes ni
   a la disponibilidad de caja del grupo. Es un circuito propio.
 Agregar un campo nuevo a un tipo es tocar `DEP_CAMPOS` y sumar la columna en Supabase:

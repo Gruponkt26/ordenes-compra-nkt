@@ -5410,7 +5410,7 @@ function PanelDeportes(p){
       {/* Filtros y búsqueda */}
       {delTipo.length>0&&(
         <div style={{marginBottom:12}}>
-          {meses.length>1&&(
+          {meses.length>0&&(
             <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:12,marginBottom:8}}>
               <option value="todos">📅 Todos los meses</option>
               {meses.map(function(m){

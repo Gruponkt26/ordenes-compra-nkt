@@ -352,6 +352,10 @@ distingue con borde punteado y la leyenda *Automático*, y no se edita desde ac�
 se anotó. Si no fuera así, o se carga dos veces o la caja miente. Las entradas cargadas a
 mano son para todo lo demás (un torneo, el kiosco, una seña).
 
+Todo lo que tiene fecha se puede mirar **mes por mes**, con un selector arriba de los
+filtros de estado. No es cosmético: el saldo de arriba se recalcula con el mes elegido, así
+que es la forma de preguntarle al módulo cómo cerró septiembre.
+
 Dos criterios que conviene tener presentes:
 
 - El saldo cuenta **sólo lo que ya se movió**: entradas cobradas y salidas pagadas. Lo

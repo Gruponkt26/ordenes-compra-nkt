@@ -328,6 +328,30 @@ async function sbDeletePauta(id) {
   } catch(e) {}
 }
 
+// ─── DEPORTES ─────────────────────────────────────────────────────────────────
+// Una sola tabla para los tres sub-módulos (tenis, pádel y galpón). Cada fila
+// dice de qué disciplina es y qué se anotó (clase, turno, profe o artículo).
+async function sbLoadDeportes() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/deportes?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveDeporte(x) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/deportes",{method:"POST",headers:h,body:JSON.stringify(x)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveDeporte error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSaveDeporte catch:",e); return String((e&&e.message)||e); }
+}
+async function sbDeleteDeporte(id) {
+  try {
+    await fetch(SURL+"/rest/v1/deportes?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e) {}
+}
+
 // ─── RECETAS ──────────────────────────────────────────────────────────────────
 async function sbLoadRecetas() {
   try {
@@ -4949,6 +4973,422 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   );
 }
 
+
+// ─── PANEL DEPORTES ───────────────────────────────────────────────────────────
+// Tres sub-módulos que comparten una sola tabla (`deportes`, el SQL está en el
+// README): lo que se anota en cada uno cambia de campos, no de lugar.
+//  · Tenis  → clases y turnos de cancha
+//  · Pádel  → profes y turnos de cancha
+//  · Galpón → artículos guardados
+// Cada registro guarda su `disciplina` y su `tipo`, así una fila de turno de tenis
+// y una de pádel no se pisan aunque compartan las mismas columnas.
+var DEP_DISCIPLINAS=[
+  {id:"tenis", emoji:"🎾", nombre:"Tenis",  color:"#D4A017", tipos:["clase","turno"]},
+  {id:"padel", emoji:"🏓", nombre:"Pádel",  color:"#1A6B8A", tipos:["profe","turno"]},
+  {id:"galpon",emoji:"🏚️", nombre:"Galpón", color:"#8B5A2B", tipos:["articulo"]},
+];
+
+var DEP_TIPOS={
+  clase:   {label:"📘 Clases",    singular:"clase",    articulo:"la", color:"#D4A017", vacio:"Sin clases anotadas"},
+  turno:   {label:"🕑 Turnos",    singular:"turno",    articulo:"el", color:"#3A7D44", vacio:"Sin turnos anotados"},
+  profe:   {label:"👤 Profes",    singular:"profe",    articulo:"el", color:"#8B2FC9", vacio:"Sin profes cargados"},
+  articulo:{label:"📦 Artículos", singular:"artículo", articulo:"el", color:"#C1440E", vacio:"Sin artículos cargados"},
+};
+
+// Por dónde entra la plata del alquiler. Son sólo estos tres: agregar uno es
+// sumarlo acá, sin tocar ni el formulario ni el resumen.
+var DEP_MEDIOS=[
+  {id:"efectivo", label:"💵 Efectivo",            corto:"Efectivo"},
+  {id:"mp_sofia", label:"📱 Mercado Pago Sofía",  corto:"MP Sofía"},
+  {id:"belo",     label:"🔷 Belo",                corto:"Belo"},
+];
+
+// Lo que importa de una clase o un alquiler es si ya se cobró: por eso los tres
+// estados son de cobranza y no de agenda.
+var DEP_ESTADOS={
+  clase:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
+  turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
+  profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
+  articulo:[{id:"disponible",label:"📦 En galpón",color:"#3A7D44"},{id:"prestado",label:"📤 Prestado",color:"#D4A017"},{id:"reparacion",label:"🔧 En reparación",color:"#E07B00"},{id:"baja",label:"🗑️ Dado de baja",color:"#C1440E"}],
+};
+
+// Los campos de cada tipo. `k` es la columna en Supabase, así que un tipo nuevo
+// se agrega acá y no hay que tocar ni el formulario ni el listado.
+var DEP_CAMPOS={
+  clase:[
+    {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
+    {k:"hora",      label:"Hora",           tipo:"time"},
+    {k:"nombre",    label:"Alumno",         tipo:"text",  req:true, ph:"Nombre del alumno"},
+    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:true},
+    {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
+    {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"60"},
+    {k:"monto",     label:"Precio $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago",  tipo:"select",opciones:DEP_MEDIOS},
+    {k:"contacto",  label:"Teléfono",       tipo:"text",  ph:"Opcional"},
+  ],
+  turno:[
+    {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
+    {k:"hora",      label:"Hora",           tipo:"time"},
+    {k:"nombre",    label:"Profe",          tipo:"text",  req:true, ph:"A quién se le alquila", sug:true},
+    {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
+    {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"90"},
+    {k:"monto",     label:"Alquiler $",     tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago",  tipo:"select",opciones:DEP_MEDIOS},
+    {k:"contacto",  label:"Teléfono",       tipo:"text",  ph:"Opcional"},
+  ],
+  profe:[
+    {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
+    {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
+    {k:"precio",  label:"$ por hora",     tipo:"num",   ph:"0"},
+    {k:"fecha",   label:"Desde",          tipo:"date"},
+  ],
+  articulo:[
+    {k:"nombre",  label:"Artículo",       tipo:"text",  req:true, ph:"Qué es"},
+    {k:"cantidad",label:"Cantidad",       tipo:"num",   ph:"1"},
+    {k:"precio",  label:"$ unitario",     tipo:"num",   ph:"0"},
+    {k:"fecha",   label:"Ingreso",        tipo:"date"},
+    {k:"cancha",  label:"Ubicación",      tipo:"text",  ph:"Ej: Estante 2"},
+  ],
+};
+
+function depNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
+function depMedio(id){ return DEP_MEDIOS.find(function(m){return m.id===id;})||null; }
+// Un tipo maneja plata cobrada si tiene medio de pago; lo demás (profes, artículos)
+// se valoriza pero no se cobra.
+function depConCobranza(tipo){ return (DEP_CAMPOS[tipo]||[]).some(function(c){return c.k==="medio_pago";}); }
+function depEstadoDe(tipo,estado){
+  var lista=DEP_ESTADOS[tipo]||[];
+  return lista.find(function(e){return e.id===estado;})||lista[0];
+}
+function depFormVacio(tipo){
+  var f={estado:(DEP_ESTADOS[tipo]||[{}])[0].id||"",notas:""};
+  (DEP_CAMPOS[tipo]||[]).forEach(function(c){ f[c.k]=c.tipo==="date"?new Date().toISOString().split("T")[0]:""; });
+  return f;
+}
+
+function PanelDeportes(p){
+  var registros=p.deportes||[];
+  var [disciplina,setDisciplina]=useState("tenis");
+  var [tipo,setTipo]=useState("clase");
+  var [form,setForm]=useState(function(){return depFormVacio("clase");});
+  var [editId,setEditId]=useState(null);
+  var [abierto,setAbierto]=useState(false);
+  var [filtroEstado,setFiltroEstado]=useState("todos");
+  var [busqueda,setBusqueda]=useState("");
+
+  var dis=DEP_DISCIPLINAS.find(function(d){return d.id===disciplina;})||DEP_DISCIPLINAS[0];
+  var t=DEP_TIPOS[tipo]||DEP_TIPOS.clase;
+  var campos=DEP_CAMPOS[tipo]||[];
+  var estados=DEP_ESTADOS[tipo]||[];
+  // Los turnos son de cancha: el color lo pone la disciplina, no el tipo, para que
+  // se vea de un saque si lo que está en pantalla es tenis o pádel.
+  var color=tipo==="turno"?dis.color:t.color;
+
+  function cambiarDisciplina(id){
+    var d=DEP_DISCIPLINAS.find(function(x){return x.id===id;})||DEP_DISCIPLINAS[0];
+    var primer=d.tipos[0];
+    setDisciplina(id);
+    setTipo(primer);
+    setForm(depFormVacio(primer));
+    setEditId(null);setAbierto(false);setFiltroEstado("todos");setBusqueda("");
+  }
+  function cambiarTipo(id){
+    setTipo(id);
+    setForm(depFormVacio(id));
+    setEditId(null);setAbierto(false);setFiltroEstado("todos");setBusqueda("");
+  }
+  function set(k,v){ setForm(function(prev){var n={...prev};n[k]=v;return n;}); }
+
+  var reqOk=campos.filter(function(c){return c.req;}).every(function(c){return String(form[c.k]||"").trim();});
+
+  function guardar(){
+    if(!reqOk)return;
+    var ahora=new Date().toISOString();
+    var base=editId?(registros.find(function(x){return x.id===editId;})||{}):{};
+    var fila={
+      ...base,
+      id:editId||("dep_"+Date.now()),
+      disciplina:disciplina,
+      tipo:tipo,
+      estado:form.estado||estados[0].id,
+      notas:String(form.notas||"").trim()||null,
+      usuario:p.usuario||"",
+      created_at:base.created_at||ahora,
+    };
+    campos.forEach(function(c){
+      var v=form[c.k];
+      if(c.tipo==="num")fila[c.k]=String(v||"").trim()===""?null:depNum(v);
+      else fila[c.k]=String(v||"").trim()||null;
+    });
+    // Las columnas que este tipo no usa se mandan vacías: si un registro pasó de
+    // un tipo a otro al editarlo, no puede quedar con datos del anterior colgando.
+    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","contacto"].forEach(function(k){
+      if(!campos.some(function(c){return c.k===k;}))fila[k]=null;
+    });
+    p.onSave(fila);
+    setForm(depFormVacio(tipo));
+    setEditId(null);
+    setAbierto(false);
+  }
+
+  function editar(x){
+    var f=depFormVacio(x.tipo||tipo);
+    (DEP_CAMPOS[x.tipo||tipo]||[]).forEach(function(c){ f[c.k]=x[c.k]==null?"":String(x[c.k]); });
+    f.estado=x.estado||f.estado;
+    f.notas=x.notas||"";
+    setTipo(x.tipo||tipo);
+    setForm(f);
+    setEditId(x.id);
+    setAbierto(true);
+  }
+
+  var delTipo=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===tipo;});
+  var q=busqueda.trim().toLowerCase();
+  var lista=delTipo.filter(function(x){
+    if(filtroEstado!=="todos"&&x.estado!==filtroEstado)return false;
+    if(!q)return true;
+    return [x.nombre,x.profe,x.cancha,x.contacto,x.notas].some(function(v){return String(v||"").toLowerCase().includes(q);});
+  }).sort(function(a,b){
+    if(tipo==="profe"||tipo==="articulo")return String(a.nombre||"").localeCompare(String(b.nombre||""));
+    var fa=(a.fecha||"")+" "+(a.hora||""), fb=(b.fecha||"")+" "+(b.hora||"");
+    return fb.localeCompare(fa);
+  });
+
+  // Los artículos se valorizan por cantidad; los profes por su precio por hora.
+  var totalPlata=lista.reduce(function(acc,x){
+    if(tipo==="articulo")return acc+depNum(x.precio)*(depNum(x.cantidad)||1);
+    return acc+depNum(x.precio);
+  },0);
+  var totalUnidades=tipo==="articulo"?lista.reduce(function(acc,x){return acc+(depNum(x.cantidad)||1);},0):lista.length;
+
+  // Lo que se cobra (clases y alquileres) se mira distinto: cuánto entró, cuánto
+  // falta cobrar y por qué medio. Lo cancelado no es plata, así que no suma en ninguno.
+  var conCobranza=depConCobranza(tipo);
+  function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
+  var cobrado=conCobranza?sumaSi(function(x){return x.estado==="cobrado";}):0;
+  var aCobrar=conCobranza?sumaSi(function(x){return x.estado==="pendiente";}):0;
+  var porMedio=!conCobranza?[]:DEP_MEDIOS.map(function(m){
+    return {id:m.id,corto:m.corto,label:m.label,total:sumaSi(function(x){return x.estado==="cobrado"&&x.medio_pago===m.id;})};
+  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaSi(function(x){return x.estado==="cobrado"&&!x.medio_pago;})}])
+    .filter(function(m){return m.id!==""||m.total>0;});
+
+  // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
+  // dio una clase) se ofrecen como sugerencia: el mismo profe alquila todas las semanas.
+  var nombresSugeridos=[...new Set(registros.map(function(x){
+    return x.tipo==="profe"||x.tipo==="turno"?x.nombre:x.profe;
+  }).map(function(v){return String(v||"").trim();}).filter(Boolean))].sort();
+
+  var TA={...INP,resize:"vertical"};
+  function LBL(txt){ return <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{txt}</label>; }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Deportes</div>
+      </div>
+
+      {/* Sub-módulos: tenis, pádel, galpón */}
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {DEP_DISCIPLINAS.map(function(d){
+          var act=disciplina===d.id;
+          var cuenta=registros.filter(function(x){return x.disciplina===d.id;}).length;
+          return(
+            <button key={d.id} onClick={function(){cambiarDisciplina(d.id);}}
+              style={{padding:"9px 16px",borderRadius:9,border:"1px solid "+(act?d.color:"#1E1E1E"),background:act?d.color+"22":"#111",color:act?d.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              {d.emoji} {d.nombre}{cuenta>0?" ("+cuenta+")":""}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Qué se anota dentro del sub-módulo */}
+      {dis.tipos.length>1&&(
+        <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+          {dis.tipos.map(function(id){
+            var act=tipo===id;
+            var c=id==="turno"?dis.color:DEP_TIPOS[id].color;
+            var cuenta=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===id;}).length;
+            return(
+              <button key={id} onClick={function(){cambiarTipo(id);}}
+                style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?c:"#1E1E1E"),background:act?c+"22":"#111",color:act?c:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                {DEP_TIPOS[id].label}{cuenta>0?" ("+cuenta+")":""}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Alta / edición */}
+      {!abierto?(
+        <button onClick={function(){setForm(depFormVacio(tipo));setEditId(null);setAbierto(true);}}
+          style={{width:"100%",padding:"12px",borderRadius:10,border:"1px solid "+color+"44",background:color+"11",color:color,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer",marginBottom:14}}>
+          + Anotar {t.singular}
+        </button>
+      ):(
+        <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:12}}>
+            {editId?"Editar ":(t.articulo==="la"?"Nueva ":"Nuevo ")}{t.singular} · {dis.emoji} {dis.nombre}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+            {campos.map(function(c){
+              return(
+                <div key={c.k} style={{gridColumn:c.tipo==="text"&&c.req?"1 / -1":"auto"}}>
+                  {LBL(c.label+(c.req?" *":""))}
+                  {c.tipo==="select"?(
+                    <select value={form[c.k]||""} onChange={function(e){set(c.k,e.target.value);}} style={INP}>
+                      <option value="">— Sin especificar —</option>
+                      {(c.opciones||[]).map(function(o){return <option key={o.id} value={o.id}>{o.label}</option>;})}
+                    </select>
+                  ):(
+                    <input
+                      type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
+                      inputMode={c.tipo==="num"?"decimal":undefined}
+                      list={c.sug?"dep-nombres":undefined}
+                      value={form[c.k]||""}
+                      placeholder={c.ph||""}
+                      onChange={function(e){set(c.k,e.target.value);}}
+                      style={INP}/>
+                  )}
+                </div>
+              );
+            })}
+            <div>
+              {LBL("Estado")}
+              <select value={form.estado||estados[0].id} onChange={function(e){set("estado",e.target.value);}} style={INP}>
+                {estados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
+              </select>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            {LBL("Notas")}
+            <textarea value={form.notas||""} rows={2} placeholder="Opcional"
+              onChange={function(e){set("notas",e.target.value);}} style={TA}/>
+          </div>
+          <datalist id="dep-nombres">
+            {nombresSugeridos.map(function(n){return <option key={n} value={n}/>;})}
+          </datalist>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} disabled={!reqOk}
+              style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:reqOk?color:"#1A1A1A",color:reqOk?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:reqOk?"pointer":"not-allowed"}}>
+              {editId?"Guardar cambios":"+ Anotar "+t.singular}
+            </button>
+            <button onClick={function(){setAbierto(false);setEditId(null);setForm(depFormVacio(tipo));}} style={{...GH,padding:"11px 16px",fontSize:13}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Filtros y búsqueda */}
+      {delTipo.length>0&&(
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+            <button onClick={function(){setFiltroEstado("todos");}}
+              style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtroEstado==="todos"?color:"#1A1A1A"),background:filtroEstado==="todos"?color+"22":"none",color:filtroEstado==="todos"?color:"#444",fontSize:11,cursor:"pointer"}}>
+              Todos ({delTipo.length})
+            </button>
+            {estados.map(function(e){
+              var cuenta=delTipo.filter(function(x){return x.estado===e.id;}).length;
+              var act=filtroEstado===e.id;
+              return(
+                <button key={e.id} onClick={function(){setFiltroEstado(e.id);}}
+                  style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(act?e.color:"#1A1A1A"),background:act?e.color+"22":"none",color:act?e.color:"#444",fontSize:11,cursor:"pointer"}}>
+                  {e.label} ({cuenta})
+                </button>
+              );
+            })}
+          </div>
+          <input value={busqueda} onChange={function(e){setBusqueda(e.target.value);}}
+            placeholder={"Buscar "+t.singular+"..."} style={{...INP,fontSize:12}}/>
+        </div>
+      )}
+
+      {/* Resumen de lo que está en pantalla */}
+      {lista.length>0&&(conCobranza?(
+        <div style={{marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:7}}>
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{t.singular+"s"}</div>
+              <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
+            </div>
+            <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Cobrado</div>
+              <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
+            </div>
+            <div style={{background:"#0F0F0F",border:"1px solid "+(aCobrar>0?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>A cobrar</div>
+              <div style={{fontSize:17,fontWeight:800,color:aCobrar>0?"#D4A017":"#333"}}>${Math.round(aCobrar).toLocaleString("es-AR")}</div>
+            </div>
+          </div>
+          {/* Por dónde entró lo cobrado */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {porMedio.map(function(m){
+              return(
+                <div key={m.id||"sin"} style={{background:"#0D0D0D",border:"1px solid "+(m.total>0?"#1E1E1E":"#151515"),borderRadius:20,padding:"5px 12px",fontSize:11,color:m.total>0?"#888":"#3A3A3A"}}>
+                  {m.label} <span style={{fontWeight:800,color:m.total>0?"#F0EDE8":"#333"}}>${Math.round(m.total).toLocaleString("es-AR")}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Unidades":t.singular+"s"}</div>
+            <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
+          </div>
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Valorizado":"$ por hora"}</div>
+            <div style={{fontSize:17,fontWeight:800,color:color}}>${Math.round(totalPlata).toLocaleString("es-AR")}</div>
+          </div>
+        </div>
+      ))}
+
+      {/* Listado */}
+      {lista.length===0?(
+        <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
+          <div style={{fontSize:30,marginBottom:8}}>{dis.emoji}</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>
+            {delTipo.length===0?t.vacio+" en "+dis.nombre:"Nada con ese filtro"}
+          </div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {lista.map(function(x){
+            var est=depEstadoDe(tipo,x.estado);
+            var detalle=campos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
+              var v=x[c.k];
+              if(c.tipo==="date")return c.label+": "+fmtDate(String(v));
+              if(c.tipo==="select"){var op=(c.opciones||[]).find(function(o){return o.id===v;});return op?op.label:c.label+": "+v;}
+              if(c.tipo==="num"&&(c.k==="precio"||c.k==="monto"))return c.label.replace(" $","")+": $"+Math.round(depNum(v)).toLocaleString("es-AR");
+              return c.label+": "+v;
+            });
+            return(
+              <div key={x.id} style={{background:"#111",border:"1px solid "+(est?est.color+"33":"#1A1A1A"),borderRadius:10,padding:"12px 13px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,marginBottom:6}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.nombre||"—"}</div>
+                  {est&&<span style={{padding:"3px 9px",borderRadius:20,background:est.color+"22",border:"1px solid "+est.color+"44",color:est.color,fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{est.label}</span>}
+                </div>
+                <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>{detalle.join(" · ")}</div>
+                {x.notas&&<div style={{fontSize:12,color:"#999",whiteSpace:"pre-wrap",marginTop:7,paddingTop:7,borderTop:"1px solid #1A1A1A"}}>{x.notas}</div>}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
+                  <div style={{fontSize:9,color:"#3A3A3A"}}>{x.usuario||""}</div>
+                  <div style={{display:"flex",gap:6}}>
+                    <select value={x.estado||est.id} onChange={function(e){p.onSave({...x,estado:e.target.value});}}
+                      style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+est.color+"44",background:"#111",color:est.color,fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+                      {estados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
+                    </select>
+                    <button onClick={function(){editar(x);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#666",fontSize:11,cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar "+t.articulo+" "+t.singular+"?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── MAPEO MEDIOS DE PAGO POR LOCAL ──────────────────────────────────────────
 var MEDIO_LOCAL_MAP={
@@ -12321,6 +12761,7 @@ export default function App() {
   var [vacaciones,setVacaciones]=useState([]);
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
+  var [deportes,setDeportes]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
 
@@ -12379,6 +12820,7 @@ export default function App() {
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
     sbLoadIdeas().then(function(d){setIdeas(d||[]);}).catch(function(){});
+    sbLoadDeportes().then(function(d){setDeportes(d||[]);}).catch(function(){});
     sbLoadConceptosGastos().then(function(d){setConceptosGastos(d||[]);}).catch(function(){});
   }
 
@@ -12399,6 +12841,14 @@ export default function App() {
   function borrarPauta(id){
     sbDeletePauta(id);
     setPautas(function(prev){return prev.filter(function(x){return x.id!==id;});});
+  }
+  function guardarDeporte(x){
+    sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README).");});
+    setDeportes(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+  }
+  function borrarDeporte(id){
+    sbDeleteDeporte(id);
+    setDeportes(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
 
   function borrarReceta(id){
@@ -12531,6 +12981,7 @@ export default function App() {
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
+              {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -12560,6 +13011,7 @@ export default function App() {
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
+                  {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -12842,6 +13294,12 @@ export default function App() {
           {esSofia&&modulo==="pautas"&&(
             <PanelPautas pautas={pautas} usuario={cu.nombre}
               onSave={guardarPauta} onDelete={borrarPauta}/>
+          )}
+
+          {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
+          {esSofia&&modulo==="deportes"&&(
+            <PanelDeportes deportes={deportes} usuario={cu.nombre}
+              onSave={guardarDeporte} onDelete={borrarDeporte}/>
           )}
 
           {/* MÓDULO LOCALES */}

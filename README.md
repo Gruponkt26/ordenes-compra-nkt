@@ -275,6 +275,52 @@ Cómo está armado:
 
 ---
 
+## ⚠️ Tabla nueva en Supabase: `deportes`
+
+El módulo **🏅 Deportes** tiene tres sub-módulos —**🎾 Tenis**, **🏓 Pádel** y
+**🏚️ Galpón**— y en cada uno se anota algo distinto:
+
+- **Tenis** → clases (alumno, profe, cancha, duración y precio) y turnos de cancha.
+- **Pádel** → profes (con su teléfono y su precio por hora) y turnos de cancha.
+- **Galpón** → artículos guardados, con cantidad, valor unitario y ubicación.
+
+Todo eso vive en **una sola tabla**: cada fila guarda de qué `disciplina` es y qué
+`tipo` de registro es, así un turno de tenis y uno de pádel no se pisan aunque usen
+las mismas columnas. Creala una sola vez desde Supabase → SQL Editor:
+
+```sql
+create table if not exists deportes (
+  id          text primary key,
+  disciplina  text,      -- tenis | padel | galpon
+  tipo        text,      -- clase | turno | profe | articulo
+  fecha       date,
+  hora        text,
+  nombre      text,      -- alumno, cliente, profe o artículo, según el tipo
+  profe       text,
+  cancha      text,      -- en Galpón se usa como ubicación
+  duracion    numeric,
+  cantidad    numeric,
+  precio      numeric,
+  monto       numeric,
+  estado      text,
+  contacto    text,
+  notas       text,
+  usuario     text,
+  created_at  timestamptz default now()
+);
+```
+
+Hasta que la tabla exista, el módulo abre y se puede usar, pero al guardar aparece un
+aviso diciendo justamente que falta crearla y nada se guarda entre sesiones.
+
+Los estados salen del código (`DEP_ESTADOS`), no de la base: una clase va de pendiente
+a dictada o cancelada, un turno de reservado a jugado o cancelado, un profe está activo
+o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
+Agregar un campo nuevo a un tipo es tocar `DEP_CAMPOS` y sumar la columna en Supabase:
+el formulario y el listado se arman solos a partir de esa lista.
+
+---
+
 ## Estructura del proyecto
 ```
 compras-pro/

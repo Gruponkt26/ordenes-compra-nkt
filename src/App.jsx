@@ -4995,11 +4995,13 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
 //  · Galpón → artículos guardados
 // Cada registro guarda su `disciplina` y su `tipo`, así una fila de turno de tenis
 // y una de pádel no se pisan aunque compartan las mismas columnas.
+// De qué es cada registro. Ya no es navegación —la navegación son las secciones,
+// más abajo—: es de dónde salen el emoji, el nombre y el color con que se muestra
+// un turno de tenis o uno de pádel.
 var DEP_DISCIPLINAS=[
-  {id:"tenis", emoji:"🎾", nombre:"Tenis",  color:"#D4A017", tipos:["clase","turno"]},
-  {id:"padel", emoji:"🏓", nombre:"Pádel",  color:"#1A6B8A", tipos:["profe","turno"]},
-  {id:"galpon",emoji:"🏚️", nombre:"Galpón", color:"#8B5A2B", tipos:["articulo"]},
-  {id:"caja",  emoji:"💰", nombre:"Entradas y salidas", color:"#3A7D44", tipos:["entrada","salida"]},
+  {id:"tenis", emoji:"🎾", nombre:"Tenis",  color:"#D4A017"},
+  {id:"padel", emoji:"🏓", nombre:"Pádel",  color:"#1A6B8A"},
+  {id:"galpon",emoji:"🏚️", nombre:"Galpón", color:"#8B5A2B"},
 ];
 
 var DEP_TIPOS={
@@ -5111,13 +5113,48 @@ function depFormVacio(tipo){
   return f;
 }
 
+// Las cuatro secciones del módulo. Las dos primeras son la caja, por donde pasa toda
+// la plata del predio. Las dos últimas son fichas: un profe es una persona y un
+// artículo es stock — ninguno de los dos es plata que entró, así que quedan aparte
+// y no tocan el saldo.
+var DEP_SECCIONES=[
+  {id:"entradas",emoji:"📥",nombre:"Entradas",color:"#3A7D44",tipo:"entrada", disciplina:"caja",  caja:true},
+  {id:"salidas", emoji:"📤",nombre:"Salidas", color:"#C1440E",tipo:"salida",  disciplina:"caja",  caja:true},
+  {id:"profes",  emoji:"👤",nombre:"Profes",  color:"#8B2FC9",tipo:"profe",   disciplina:"padel"},
+  {id:"galpon",  emoji:"🏚️",nombre:"Galpón",  color:"#8B5A2B",tipo:"articulo",disciplina:"galpon"},
+];
+
+// Qué puede ser una entrada. Una clase y un alquiler son plata que entra, así que se
+// cargan desde acá, con el formulario que les corresponde, y se guardan como lo que
+// son: el registro sigue siendo un turno de tenis, no una fila suelta de caja.
+var DEP_ORIGENES=[
+  {id:"tenis_turno",label:"🎾 Turno de tenis",desc:"Alquiler de cancha",      disciplina:"tenis",tipo:"turno"},
+  {id:"padel_turno",label:"🏓 Turno de pádel",desc:"Alquiler de cancha",      disciplina:"padel",tipo:"turno"},
+  {id:"tenis_clase",label:"🎾 Clase de tenis",desc:"Clase con un alumno",     disciplina:"tenis",tipo:"clase"},
+  {id:"otra",       label:"💰 Otra entrada",  desc:"Torneo, kiosco, seña...", disciplina:"caja", tipo:"entrada"},
+];
+
+// Qué es cada fila, para distinguir de un vistazo un alquiler de tenis de una
+// entrada suelta sin tener que abrirla.
+function depQueEs(x){
+  if(x.tipo==="entrada")return "💰 Entrada";
+  var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
+  var n=x.tipo==="clase"?"Clase":x.tipo==="turno"?"Turno":"";
+  if(!n)return "";
+  return (d?d.emoji+" ":"")+n+(d?" de "+d.nombre.toLowerCase():"");
+}
+
 function PanelDeportes(p){
   var registros=p.deportes||[];
-  var [disciplina,setDisciplina]=useState("tenis");
-  var [tipo,setTipo]=useState("clase");
-  var [form,setForm]=useState(function(){return depFormVacio("clase");});
+  var [seccion,setSeccion]=useState("entradas");
+  // Lo que edita el formulario abierto, que no es necesariamente lo de la sección:
+  // desde Entradas se carga un turno de tenis sin salir de la caja.
+  var [formTipo,setFormTipo]=useState("entrada");
+  var [formDisciplina,setFormDisciplina]=useState("caja");
+  var [form,setForm]=useState(function(){return depFormVacio("entrada");});
   var [editId,setEditId]=useState(null);
   var [abierto,setAbierto]=useState(false);
+  var [eligiendo,setEligiendo]=useState(false);
   var [filtroEstado,setFiltroEstado]=useState("todos");
   var [filtroMes,setFiltroMes]=useState("todos");
   var [busqueda,setBusqueda]=useState("");
@@ -5129,30 +5166,40 @@ function PanelDeportes(p){
     return function(){vivo=false;};
   },[]);
 
-  var dis=DEP_DISCIPLINAS.find(function(d){return d.id===disciplina;})||DEP_DISCIPLINAS[0];
-  var t=DEP_TIPOS[tipo]||DEP_TIPOS.clase;
-  var campos=DEP_CAMPOS[tipo]||[];
+  var sec=DEP_SECCIONES.find(function(s){return s.id===seccion;})||DEP_SECCIONES[0];
+  var tipo=sec.tipo;
+  var t=DEP_TIPOS[tipo];
   var estados=DEP_ESTADOS[tipo]||[];
-  // Los turnos son de cancha: el color lo pone la disciplina, no el tipo, para que
-  // se vea de un saque si lo que está en pantalla es tenis o pádel.
-  var color=tipo==="turno"?dis.color:t.color;
+  var color=sec.color;
 
-  function cambiarDisciplina(id){
-    var d=DEP_DISCIPLINAS.find(function(x){return x.id===id;})||DEP_DISCIPLINAS[0];
-    var primer=d.tipos[0];
-    setDisciplina(id);
-    setTipo(primer);
-    setForm(depFormVacio(primer));
-    setEditId(null);setAbierto(false);setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
+  // El formulario se arma con el tipo que se está cargando, no con el de la sección.
+  var fTipo=formTipo;
+  var fT=DEP_TIPOS[fTipo]||t;
+  var fCampos=DEP_CAMPOS[fTipo]||[];
+  var fEstados=DEP_ESTADOS[fTipo]||[];
+  var fDis=DEP_DISCIPLINAS.find(function(d){return d.id===formDisciplina;});
+
+  function cambiarSeccion(id){
+    var s=DEP_SECCIONES.find(function(x){return x.id===id;})||DEP_SECCIONES[0];
+    setSeccion(id);
+    setFormTipo(s.tipo);setFormDisciplina(s.disciplina);
+    setForm(depFormVacio(s.tipo));
+    setEditId(null);setAbierto(false);setEligiendo(false);
+    setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
   }
-  function cambiarTipo(id){
-    setTipo(id);
-    setForm(depFormVacio(id));
-    setEditId(null);setAbierto(false);setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
+  function abrirForm(disc,tp){
+    setFormDisciplina(disc);setFormTipo(tp);
+    setForm(depFormVacio(tp));
+    setEditId(null);setAbierto(true);setEligiendo(false);
+  }
+  function cerrarForm(){
+    setAbierto(false);setEligiendo(false);setEditId(null);
+    setFormTipo(sec.tipo);setFormDisciplina(sec.disciplina);
+    setForm(depFormVacio(sec.tipo));
   }
   function set(k,v){ setForm(function(prev){var n={...prev};n[k]=v;return n;}); }
 
-  var reqOk=campos.filter(function(c){return c.req;}).every(function(c){return String(form[c.k]||"").trim();});
+  var reqOk=fCampos.filter(function(c){return c.req;}).every(function(c){return String(form[c.k]||"").trim();});
 
   function guardar(){
     if(!reqOk)return;
@@ -5161,14 +5208,14 @@ function PanelDeportes(p){
     var fila={
       ...base,
       id:editId||("dep_"+Date.now()),
-      disciplina:disciplina,
-      tipo:tipo,
-      estado:form.estado||estados[0].id,
+      disciplina:formDisciplina,
+      tipo:fTipo,
+      estado:form.estado||fEstados[0].id,
       notas:String(form.notas||"").trim()||null,
       usuario:p.usuario||"",
       created_at:base.created_at||ahora,
     };
-    campos.forEach(function(c){
+    fCampos.forEach(function(c){
       var v=form[c.k];
       if(c.tipo==="num")fila[c.k]=String(v||"").trim()===""?null:depNum(v);
       else fila[c.k]=String(v||"").trim()||null;
@@ -5176,42 +5223,30 @@ function PanelDeportes(p){
     // Las columnas que este tipo no usa se mandan vacías: si un registro pasó de
     // un tipo a otro al editarlo, no puede quedar con datos del anterior colgando.
     ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","contacto"].forEach(function(k){
-      if(!campos.some(function(c){return c.k===k;}))fila[k]=null;
+      if(!fCampos.some(function(c){return c.k===k;}))fila[k]=null;
     });
     p.onSave(fila);
-    setForm(depFormVacio(tipo));
-    setEditId(null);
-    setAbierto(false);
+    cerrarForm();
   }
 
   function editar(x){
-    var f=depFormVacio(x.tipo||tipo);
-    (DEP_CAMPOS[x.tipo||tipo]||[]).forEach(function(c){ f[c.k]=x[c.k]==null?"":String(x[c.k]); });
+    var tp=x.tipo||sec.tipo;
+    var f=depFormVacio(tp);
+    (DEP_CAMPOS[tp]||[]).forEach(function(c){ f[c.k]=x[c.k]==null?"":String(x[c.k]); });
     f.estado=x.estado||f.estado;
     f.notas=x.notas||"";
-    setTipo(x.tipo||tipo);
+    setFormTipo(tp);setFormDisciplina(x.disciplina||sec.disciplina);
     setForm(f);
     setEditId(x.id);
-    setAbierto(true);
+    setAbierto(true);setEligiendo(false);
   }
 
-  // Un alquiler o una clase que ya se cobró ES una entrada del predio: se muestra
-  // en Entradas sin volver a cargarla, marcada como automática y sin poder editarse
-  // desde acá (se toca donde se anotó). Si no, o se carga dos veces o la caja miente.
-  var entradasAuto=registros.filter(function(x){
-    return (x.tipo==="clase"||x.tipo==="turno")&&x.estado==="cobrado";
-  }).map(function(x){
-    var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
-    return {
-      id:"auto_"+x.id, auto:true, tipo:"entrada", disciplina:"caja",
-      fecha:x.fecha, monto:x.monto, medio_pago:x.medio_pago, estado:"cobrado",
-      nombre:(x.tipo==="clase"?"Clase":"Alquiler")+" — "+(x.nombre||""),
-      origen:(d?d.emoji+" "+d.nombre:x.disciplina), notas:x.notas, usuario:x.usuario,
-    };
+  // Entradas junta todo lo que entra: las entradas sueltas y las clases y alquileres,
+  // cobrados o no. El resto de las secciones muestra su propio tipo.
+  var delTipo=registros.filter(function(x){
+    if(sec.id==="entradas")return x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno";
+    return x.tipo===tipo;
   });
-
-  var delTipo=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===tipo;})
-    .concat(tipo==="entrada"?entradasAuto:[]);
 
   // Meses con movimiento, para poder mirar un mes solo. Sin esto la caja se vuelve
   // ilegible al tercer mes cargado.
@@ -5238,7 +5273,7 @@ function PanelDeportes(p){
 
   // Lo que mueve plata se mira distinto: cuánto se movió, cuánto falta y por qué
   // medio. Lo cancelado no es plata, así que no suma en ninguno.
-  var conCobranza=depConCobranza(tipo);
+  var conCobranza=!!sec.caja;
   var estadoOk=depOk(tipo);
   function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
   var cobrado=conCobranza?sumaSi(function(x){return x.estado===estadoOk;}):0;
@@ -5255,13 +5290,15 @@ function PanelDeportes(p){
   }).concat([{id:"",label:"❓ Sin rubro",total:sumaSi(function(x){return x.estado==="pagado"&&!x.rubro;})}])
     .filter(function(r){return r.id!==""||r.total>0;});
 
-  // El saldo del predio: todo lo que entró (incluidos los alquileres cobrados) menos
-  // todo lo que salió, en el mes que se esté mirando. Es el número por el que existe
-  // este sub-módulo, así que va arriba de las dos pestañas y no dentro de una.
+  // El saldo del predio: todo lo que entró menos todo lo que salió, en el mes que se
+  // esté mirando. Es el número por el que existe el módulo, así que va arriba.
   function enMes(x){ return filtroMes==="todos"||String(x.fecha||"").slice(0,7)===filtroMes; }
-  var entradasCaja=registros.filter(function(x){return x.disciplina==="caja"&&x.tipo==="entrada";}).concat(entradasAuto);
-  var totalEntradas=entradasCaja.filter(function(x){return x.estado==="cobrado"&&enMes(x);}).reduce(function(a,x){return a+depNum(x.monto);},0);
-  var totalSalidas=registros.filter(function(x){return x.disciplina==="caja"&&x.tipo==="salida"&&x.estado==="pagado"&&enMes(x);}).reduce(function(a,x){return a+depNum(x.monto);},0);
+  var totalEntradas=registros.filter(function(x){
+    return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno")&&x.estado==="cobrado"&&enMes(x);
+  }).reduce(function(a,x){return a+depNum(x.monto);},0);
+  var totalSalidas=registros.filter(function(x){
+    return x.tipo==="salida"&&x.estado==="pagado"&&enMes(x);
+  }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var saldo=totalEntradas-totalSalidas;
 
   // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
@@ -5299,68 +5336,88 @@ function PanelDeportes(p){
         </div>
       )}
 
-      {/* Sub-módulos: tenis, pádel, galpón */}
+      {/* La caja: entradas y salidas */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {DEP_DISCIPLINAS.map(function(d){
-          var act=disciplina===d.id;
-          var cuenta=registros.filter(function(x){return x.disciplina===d.id;}).length;
+        {DEP_SECCIONES.filter(function(s){return s.caja;}).map(function(s){
+          var act=seccion===s.id;
+          var cuenta=registros.filter(function(x){
+            return s.id==="entradas"?(x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno"):x.tipo===s.tipo;
+          }).length;
           return(
-            <button key={d.id} onClick={function(){cambiarDisciplina(d.id);}}
-              style={{padding:"9px 16px",borderRadius:9,border:"1px solid "+(act?d.color:"#1E1E1E"),background:act?d.color+"22":"#111",color:act?d.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-              {d.emoji} {d.nombre}{cuenta>0?" ("+cuenta+")":""}
+            <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
+              style={{flex:1,minWidth:130,padding:"11px 16px",borderRadius:9,border:"1px solid "+(act?s.color:"#1E1E1E"),background:act?s.color+"22":"#111",color:act?s.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+              {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
             </button>
           );
         })}
       </div>
 
-      {/* El saldo del predio, que es para lo que existe este sub-módulo */}
-      {disciplina==="caja"&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
-          <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Entró</div>
-            <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(totalEntradas).toLocaleString("es-AR")}</div>
-          </div>
-          <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Salió</div>
-            <div style={{fontSize:17,fontWeight:800,color:"#C1440E"}}>${Math.round(totalSalidas).toLocaleString("es-AR")}</div>
-          </div>
-          <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
-            <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
-          </div>
+      {/* El saldo del predio */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
+        <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Entró</div>
+          <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(totalEntradas).toLocaleString("es-AR")}</div>
         </div>
-      )}
+        <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Salió</div>
+          <div style={{fontSize:17,fontWeight:800,color:"#C1440E"}}>${Math.round(totalSalidas).toLocaleString("es-AR")}</div>
+        </div>
+        <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
+          <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+        </div>
+      </div>
 
-      {/* Qué se anota dentro del sub-módulo */}
-      {dis.tipos.length>1&&(
-        <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-          {dis.tipos.map(function(id){
-            var act=tipo===id;
-            var c=id==="turno"?dis.color:DEP_TIPOS[id].color;
-            var cuenta=registros.filter(function(x){return x.disciplina===disciplina&&x.tipo===id;}).length;
-            return(
-              <button key={id} onClick={function(){cambiarTipo(id);}}
-                style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?c:"#1E1E1E"),background:act?c+"22":"#111",color:act?c:"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                {DEP_TIPOS[id].label}{cuenta>0?" ("+cuenta+")":""}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Fichas: no son movimientos, por eso van aparte y más chicas */}
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>Fichas</span>
+        {DEP_SECCIONES.filter(function(s){return !s.caja;}).map(function(s){
+          var act=seccion===s.id;
+          var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
+          return(
+            <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
+              style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?s.color:"#1A1A1A"),background:act?s.color+"22":"transparent",color:act?s.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Alta / edición */}
-      {!abierto?(
-        <button onClick={function(){setForm(depFormVacio(tipo));setEditId(null);setAbierto(true);}}
+      {!abierto&&!eligiendo?(
+        <button onClick={function(){
+          if(sec.id==="entradas")setEligiendo(true);
+          else abrirForm(sec.disciplina,sec.tipo);
+        }}
           style={{width:"100%",padding:"12px",borderRadius:10,border:"1px solid "+color+"44",background:color+"11",color:color,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer",marginBottom:14}}>
           + Anotar {t.singular}
         </button>
+      ):eligiendo?(
+        /* Qué entró: cada opción abre el formulario que le corresponde */
+        <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:4}}>¿Qué entró?</div>
+          <div style={{fontSize:11,color:"#555",marginBottom:11}}>Se guarda en su lugar y suma en la caja.</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:9}}>
+            {DEP_ORIGENES.map(function(o){
+              return(
+                <button key={o.id} onClick={function(){abrirForm(o.disciplina,o.tipo);}}
+                  style={{padding:"14px 12px",borderRadius:10,border:"1px solid #1E1E1E",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",textAlign:"left",cursor:"pointer"}}>
+                  <div style={{fontSize:13,fontWeight:800,marginBottom:3}}>{o.label}</div>
+                  <div style={{fontSize:10,color:"#555"}}>{o.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={cerrarForm} style={{...GH,width:"100%",padding:"9px",fontSize:12}}>Cancelar</button>
+        </div>
       ):(
         <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
           <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:12}}>
-            {editId?"Editar ":(t.articulo==="la"?"Nueva ":"Nuevo ")}{t.singular} · {dis.emoji} {dis.nombre}
+            {editId?"Editar ":(fT.articulo==="la"?"Nueva ":"Nuevo ")}{fT.singular}
+            {fDis&&formDisciplina!=="caja"?" · "+fDis.emoji+" "+fDis.nombre:""}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
-            {campos.map(function(c){
+            {fCampos.map(function(c){
               return(
                 <div key={c.k} style={{gridColumn:c.tipo==="text"&&c.req?"1 / -1":"auto"}}>
                   {LBL(c.label+(c.req?" *":""))}
@@ -5384,8 +5441,8 @@ function PanelDeportes(p){
             })}
             <div>
               {LBL("Estado")}
-              <select value={form.estado||estados[0].id} onChange={function(e){set("estado",e.target.value);}} style={INP}>
-                {estados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
+              <select value={form.estado||fEstados[0].id} onChange={function(e){set("estado",e.target.value);}} style={INP}>
+                {fEstados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
               </select>
             </div>
           </div>
@@ -5400,9 +5457,9 @@ function PanelDeportes(p){
           <div style={{display:"flex",gap:8}}>
             <button onClick={guardar} disabled={!reqOk}
               style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:reqOk?color:"#1A1A1A",color:reqOk?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:reqOk?"pointer":"not-allowed"}}>
-              {editId?"Guardar cambios":"+ Anotar "+t.singular}
+              {editId?"Guardar cambios":"+ Anotar "+fT.singular}
             </button>
-            <button onClick={function(){setAbierto(false);setEditId(null);setForm(depFormVacio(tipo));}} style={{...GH,padding:"11px 16px",fontSize:13}}>Cancelar</button>
+            <button onClick={cerrarForm} style={{...GH,padding:"11px 16px",fontSize:13}}>Cancelar</button>
           </div>
         </div>
       )}
@@ -5437,7 +5494,7 @@ function PanelDeportes(p){
             })}
           </div>
           <input value={busqueda} onChange={function(e){setBusqueda(e.target.value);}}
-            placeholder={"Buscar "+t.singular+"..."} style={{...INP,fontSize:12}}/>
+            placeholder={"Buscar en "+sec.nombre.toLowerCase()+"..."} style={{...INP,fontSize:12}}/>
         </div>
       )}
 
@@ -5446,7 +5503,7 @@ function PanelDeportes(p){
         <div style={{marginBottom:12}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:7}}>
             <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{t.singular+"s"}</div>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{sec.nombre}</div>
               <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
             </div>
             <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
@@ -5485,7 +5542,7 @@ function PanelDeportes(p){
       ):(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
           <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Unidades":t.singular+"s"}</div>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Unidades":sec.nombre}</div>
             <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
           </div>
           <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
@@ -5498,32 +5555,23 @@ function PanelDeportes(p){
       {/* Listado */}
       {lista.length===0?(
         <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
-          <div style={{fontSize:30,marginBottom:8}}>{dis.emoji}</div>
+          <div style={{fontSize:30,marginBottom:8}}>{sec.emoji}</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>
-            {delTipo.length===0?t.vacio+" en "+dis.nombre:"Nada con ese filtro"}
+            {delTipo.length===0?t.vacio:"Nada con ese filtro"}
           </div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lista.map(function(x){
-            var est=depEstadoDe(tipo,x.estado);
-            // Viene de un alquiler o una clase ya cobrada: se muestra para que la caja
-            // cuadre, pero se edita donde se anotó, no acá.
-            if(x.auto)return(
-              <div key={x.id} style={{background:"#0D0D0D",border:"1px dashed #3A7D4433",borderRadius:10,padding:"12px 13px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,marginBottom:6}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#C8C4BE"}}>{x.nombre}</div>
-                  <span style={{padding:"3px 9px",borderRadius:20,background:"#3A7D4422",border:"1px solid #3A7D4444",color:"#3A7D44",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>✅ Cobrado</span>
-                </div>
-                <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>
-                  {[x.fecha?"Fecha: "+fmtDate(String(x.fecha)):null,
-                    "Monto: $"+Math.round(depNum(x.monto)).toLocaleString("es-AR"),
-                    depMedio(x.medio_pago)?depMedio(x.medio_pago).label:null].filter(Boolean).join(" · ")}
-                </div>
-                <div style={{fontSize:9,color:"#3A3A3A",marginTop:8}}>Automático · viene de {x.origen}</div>
-              </div>
-            );
-            var detalle=campos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
+            // Cada fila se lee con su propio tipo: en Entradas conviven una entrada
+            // suelta, una clase y un alquiler, y cada uno tiene sus campos.
+            var xTipo=x.tipo||tipo;
+            var xCampos=DEP_CAMPOS[xTipo]||[];
+            var xEstados=DEP_ESTADOS[xTipo]||estados;
+            var xT=DEP_TIPOS[xTipo]||t;
+            var est=depEstadoDe(xTipo,x.estado);
+            var queEs=sec.id==="entradas"?depQueEs(x):"";
+            var detalle=xCampos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
               var v=x[c.k];
               if(c.tipo==="date")return c.label+": "+fmtDate(String(v));
               if(c.tipo==="select"){var op=(c.opciones||[]).find(function(o){return o.id===v;});return op?op.label:c.label+": "+v;}
@@ -5533,7 +5581,10 @@ function PanelDeportes(p){
             return(
               <div key={x.id} style={{background:"#111",border:"1px solid "+(est?est.color+"33":"#1A1A1A"),borderRadius:10,padding:"12px 13px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,marginBottom:6}}>
-                  <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.nombre||"—"}</div>
+                  <div style={{minWidth:0}}>
+                    {queEs&&<div style={{fontSize:10,color:"#555",marginBottom:2}}>{queEs}</div>}
+                    <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.nombre||"—"}</div>
+                  </div>
                   {est&&<span style={{padding:"3px 9px",borderRadius:20,background:est.color+"22",border:"1px solid "+est.color+"44",color:est.color,fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{est.label}</span>}
                 </div>
                 <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>{detalle.join(" · ")}</div>
@@ -5543,10 +5594,10 @@ function PanelDeportes(p){
                   <div style={{display:"flex",gap:6}}>
                     <select value={x.estado||est.id} onChange={function(e){p.onSave({...x,estado:e.target.value});}}
                       style={{padding:"4px 8px",borderRadius:6,border:"1px solid "+est.color+"44",background:"#111",color:est.color,fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
-                      {estados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
+                      {xEstados.map(function(e){return <option key={e.id} value={e.id}>{e.label}</option>;})}
                     </select>
                     <button onClick={function(){editar(x);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#666",fontSize:11,cursor:"pointer"}}>✏️</button>
-                    <button onClick={function(){if(window.confirm("¿Eliminar "+t.articulo+" "+t.singular+"?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar "+xT.articulo+" "+xT.singular+"?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
                   </div>
                 </div>
               </div>
@@ -5557,6 +5608,7 @@ function PanelDeportes(p){
     </div>
   );
 }
+
 
 // ─── MAPEO MEDIOS DE PAGO POR LOCAL ──────────────────────────────────────────
 var MEDIO_LOCAL_MAP={

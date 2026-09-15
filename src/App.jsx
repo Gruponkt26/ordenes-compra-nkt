@@ -4995,9 +4995,19 @@ var DEP_TIPOS={
   articulo:{label:"📦 Artículos", singular:"artículo", articulo:"el", color:"#C1440E", vacio:"Sin artículos cargados"},
 };
 
+// Por dónde entra la plata del alquiler. Son sólo estos tres: agregar uno es
+// sumarlo acá, sin tocar ni el formulario ni el resumen.
+var DEP_MEDIOS=[
+  {id:"efectivo", label:"💵 Efectivo",            corto:"Efectivo"},
+  {id:"mp_sofia", label:"📱 Mercado Pago Sofía",  corto:"MP Sofía"},
+  {id:"belo",     label:"🔷 Belo",                corto:"Belo"},
+];
+
+// Lo que importa de una clase o un alquiler es si ya se cobró: por eso los tres
+// estados son de cobranza y no de agenda.
 var DEP_ESTADOS={
-  clase:   [{id:"pendiente",label:"🕓 Pendiente",color:"#D4A017"},{id:"dictada",label:"✅ Dictada",color:"#3A7D44"},{id:"cancelada",label:"✖️ Cancelada",color:"#C1440E"}],
-  turno:   [{id:"reservado",label:"🕓 Reservado",color:"#D4A017"},{id:"jugado",label:"✅ Jugado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
+  clase:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
+  turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
   articulo:[{id:"disponible",label:"📦 En galpón",color:"#3A7D44"},{id:"prestado",label:"📤 Prestado",color:"#D4A017"},{id:"reparacion",label:"🔧 En reparación",color:"#E07B00"},{id:"baja",label:"🗑️ Dado de baja",color:"#C1440E"}],
 };
@@ -5006,23 +5016,25 @@ var DEP_ESTADOS={
 // se agrega acá y no hay que tocar ni el formulario ni el listado.
 var DEP_CAMPOS={
   clase:[
-    {k:"fecha",   label:"Fecha",          tipo:"date",  req:true},
-    {k:"hora",    label:"Hora",           tipo:"time"},
-    {k:"nombre",  label:"Alumno",         tipo:"text",  req:true, ph:"Nombre del alumno"},
-    {k:"profe",   label:"Profe",          tipo:"text",  ph:"Quién la da"},
-    {k:"cancha",  label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
-    {k:"duracion",label:"Duración (min)", tipo:"num",   ph:"60"},
-    {k:"monto",   label:"Precio $",       tipo:"num",   ph:"0"},
-    {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
+    {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
+    {k:"hora",      label:"Hora",           tipo:"time"},
+    {k:"nombre",    label:"Alumno",         tipo:"text",  req:true, ph:"Nombre del alumno"},
+    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:true},
+    {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
+    {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"60"},
+    {k:"monto",     label:"Precio $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago",  tipo:"select",opciones:DEP_MEDIOS},
+    {k:"contacto",  label:"Teléfono",       tipo:"text",  ph:"Opcional"},
   ],
   turno:[
-    {k:"fecha",   label:"Fecha",          tipo:"date",  req:true},
-    {k:"hora",    label:"Hora",           tipo:"time"},
-    {k:"nombre",  label:"Cliente",        tipo:"text",  req:true, ph:"A nombre de quién"},
-    {k:"cancha",  label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
-    {k:"duracion",label:"Duración (min)", tipo:"num",   ph:"90"},
-    {k:"monto",   label:"Precio $",       tipo:"num",   ph:"0"},
-    {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
+    {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
+    {k:"hora",      label:"Hora",           tipo:"time"},
+    {k:"nombre",    label:"Profe",          tipo:"text",  req:true, ph:"A quién se le alquila", sug:true},
+    {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
+    {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"90"},
+    {k:"monto",     label:"Alquiler $",     tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago",  tipo:"select",opciones:DEP_MEDIOS},
+    {k:"contacto",  label:"Teléfono",       tipo:"text",  ph:"Opcional"},
   ],
   profe:[
     {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
@@ -5040,6 +5052,10 @@ var DEP_CAMPOS={
 };
 
 function depNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
+function depMedio(id){ return DEP_MEDIOS.find(function(m){return m.id===id;})||null; }
+// Un tipo maneja plata cobrada si tiene medio de pago; lo demás (profes, artículos)
+// se valoriza pero no se cobra.
+function depConCobranza(tipo){ return (DEP_CAMPOS[tipo]||[]).some(function(c){return c.k==="medio_pago";}); }
 function depEstadoDe(tipo,estado){
   var lista=DEP_ESTADOS[tipo]||[];
   return lista.find(function(e){return e.id===estado;})||lista[0];
@@ -5106,7 +5122,7 @@ function PanelDeportes(p){
     });
     // Las columnas que este tipo no usa se mandan vacías: si un registro pasó de
     // un tipo a otro al editarlo, no puede quedar con datos del anterior colgando.
-    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","contacto"].forEach(function(k){
+    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","contacto"].forEach(function(k){
       if(!campos.some(function(c){return c.k===k;}))fila[k]=null;
     });
     p.onSave(fila);
@@ -5138,13 +5154,29 @@ function PanelDeportes(p){
     return fb.localeCompare(fa);
   });
 
-  // Los artículos se valorizan por cantidad; lo demás se suma por su precio.
+  // Los artículos se valorizan por cantidad; los profes por su precio por hora.
   var totalPlata=lista.reduce(function(acc,x){
     if(tipo==="articulo")return acc+depNum(x.precio)*(depNum(x.cantidad)||1);
-    if(tipo==="profe")return acc+depNum(x.precio);
-    return acc+depNum(x.monto);
+    return acc+depNum(x.precio);
   },0);
   var totalUnidades=tipo==="articulo"?lista.reduce(function(acc,x){return acc+(depNum(x.cantidad)||1);},0):lista.length;
+
+  // Lo que se cobra (clases y alquileres) se mira distinto: cuánto entró, cuánto
+  // falta cobrar y por qué medio. Lo cancelado no es plata, así que no suma en ninguno.
+  var conCobranza=depConCobranza(tipo);
+  function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
+  var cobrado=conCobranza?sumaSi(function(x){return x.estado==="cobrado";}):0;
+  var aCobrar=conCobranza?sumaSi(function(x){return x.estado==="pendiente";}):0;
+  var porMedio=!conCobranza?[]:DEP_MEDIOS.map(function(m){
+    return {id:m.id,corto:m.corto,label:m.label,total:sumaSi(function(x){return x.estado==="cobrado"&&x.medio_pago===m.id;})};
+  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaSi(function(x){return x.estado==="cobrado"&&!x.medio_pago;})}])
+    .filter(function(m){return m.id!==""||m.total>0;});
+
+  // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
+  // dio una clase) se ofrecen como sugerencia: el mismo profe alquila todas las semanas.
+  var nombresSugeridos=[...new Set(registros.map(function(x){
+    return x.tipo==="profe"||x.tipo==="turno"?x.nombre:x.profe;
+  }).map(function(v){return String(v||"").trim();}).filter(Boolean))].sort();
 
   var TA={...INP,resize:"vertical"};
   function LBL(txt){ return <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{txt}</label>; }
@@ -5203,13 +5235,21 @@ function PanelDeportes(p){
               return(
                 <div key={c.k} style={{gridColumn:c.tipo==="text"&&c.req?"1 / -1":"auto"}}>
                   {LBL(c.label+(c.req?" *":""))}
-                  <input
-                    type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
-                    inputMode={c.tipo==="num"?"decimal":undefined}
-                    value={form[c.k]||""}
-                    placeholder={c.ph||""}
-                    onChange={function(e){set(c.k,e.target.value);}}
-                    style={INP}/>
+                  {c.tipo==="select"?(
+                    <select value={form[c.k]||""} onChange={function(e){set(c.k,e.target.value);}} style={INP}>
+                      <option value="">— Sin especificar —</option>
+                      {(c.opciones||[]).map(function(o){return <option key={o.id} value={o.id}>{o.label}</option>;})}
+                    </select>
+                  ):(
+                    <input
+                      type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
+                      inputMode={c.tipo==="num"?"decimal":undefined}
+                      list={c.sug?"dep-nombres":undefined}
+                      value={form[c.k]||""}
+                      placeholder={c.ph||""}
+                      onChange={function(e){set(c.k,e.target.value);}}
+                      style={INP}/>
+                  )}
                 </div>
               );
             })}
@@ -5225,6 +5265,9 @@ function PanelDeportes(p){
             <textarea value={form.notas||""} rows={2} placeholder="Opcional"
               onChange={function(e){set("notas",e.target.value);}} style={TA}/>
           </div>
+          <datalist id="dep-nombres">
+            {nombresSugeridos.map(function(n){return <option key={n} value={n}/>;})}
+          </datalist>
           <div style={{display:"flex",gap:8}}>
             <button onClick={guardar} disabled={!reqOk}
               style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:reqOk?color:"#1A1A1A",color:reqOk?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:reqOk?"pointer":"not-allowed"}}>
@@ -5260,18 +5303,45 @@ function PanelDeportes(p){
       )}
 
       {/* Resumen de lo que está en pantalla */}
-      {lista.length>0&&(
+      {lista.length>0&&(conCobranza?(
+        <div style={{marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:7}}>
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{t.singular+"s"}</div>
+              <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
+            </div>
+            <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Cobrado</div>
+              <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
+            </div>
+            <div style={{background:"#0F0F0F",border:"1px solid "+(aCobrar>0?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>A cobrar</div>
+              <div style={{fontSize:17,fontWeight:800,color:aCobrar>0?"#D4A017":"#333"}}>${Math.round(aCobrar).toLocaleString("es-AR")}</div>
+            </div>
+          </div>
+          {/* Por dónde entró lo cobrado */}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {porMedio.map(function(m){
+              return(
+                <div key={m.id||"sin"} style={{background:"#0D0D0D",border:"1px solid "+(m.total>0?"#1E1E1E":"#151515"),borderRadius:20,padding:"5px 12px",fontSize:11,color:m.total>0?"#888":"#3A3A3A"}}>
+                  {m.label} <span style={{fontWeight:800,color:m.total>0?"#F0EDE8":"#333"}}>${Math.round(m.total).toLocaleString("es-AR")}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ):(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
           <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
             <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Unidades":t.singular+"s"}</div>
             <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
           </div>
           <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Valorizado":tipo==="profe"?"$ por hora":"Total"}</div>
+            <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="articulo"?"Valorizado":"$ por hora"}</div>
             <div style={{fontSize:17,fontWeight:800,color:color}}>${Math.round(totalPlata).toLocaleString("es-AR")}</div>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Listado */}
       {lista.length===0?(
@@ -5288,6 +5358,7 @@ function PanelDeportes(p){
             var detalle=campos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
               var v=x[c.k];
               if(c.tipo==="date")return c.label+": "+fmtDate(String(v));
+              if(c.tipo==="select"){var op=(c.opciones||[]).find(function(o){return o.id===v;});return op?op.label:c.label+": "+v;}
               if(c.tipo==="num"&&(c.k==="precio"||c.k==="monto"))return c.label.replace(" $","")+": $"+Math.round(depNum(v)).toLocaleString("es-AR");
               return c.label+": "+v;
             });

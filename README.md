@@ -284,6 +284,12 @@ El módulo **🏅 Deportes** tiene tres sub-módulos —**🎾 Tenis**, **🏓 P
 - **Pádel** → profes (con su teléfono y su precio por hora) y turnos de cancha.
 - **Galpón** → artículos guardados, con cantidad, valor unitario y ubicación.
 
+El grueso del módulo es el **alquiler de cancha que se le cobra a cada profe**: eso son
+los turnos. Por eso las clases y los turnos guardan **medio de pago** (efectivo, Mercado
+Pago Sofía o Belo) y sus estados son de cobranza —*a cobrar*, *cobrado*, *cancelado*—, no
+de agenda. El resumen muestra cuánto se cobró, cuánto falta cobrar y por qué medio entró
+cada peso; lo cancelado no suma en ninguno de los dos.
+
 Todo eso vive en **una sola tabla**: cada fila guarda de qué `disciplina` es y qué
 `tipo` de registro es, así un turno de tenis y uno de pádel no se pisan aunque usen
 las mismas columnas. Creala una sola vez desde Supabase → SQL Editor:
@@ -302,6 +308,7 @@ create table if not exists deportes (
   cantidad    numeric,
   precio      numeric,
   monto       numeric,
+  medio_pago  text,      -- efectivo | mp_sofia | belo
   estado      text,
   contacto    text,
   notas       text,
@@ -310,12 +317,19 @@ create table if not exists deportes (
 );
 ```
 
+Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza con:
+
+```sql
+alter table deportes add column if not exists medio_pago text;
+```
+
 Hasta que la tabla exista, el módulo abre y se puede usar, pero al guardar aparece un
 aviso diciendo justamente que falta crearla y nada se guarda entre sesiones.
 
-Los estados salen del código (`DEP_ESTADOS`), no de la base: una clase va de pendiente
-a dictada o cancelada, un turno de reservado a jugado o cancelado, un profe está activo
-o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
+Los estados y los medios de pago salen del código (`DEP_ESTADOS` y `DEP_MEDIOS`), no de
+la base: una clase o un alquiler va de *a cobrar* a *cobrado* o *cancelado*, un profe está
+activo o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
+Sumar un medio de pago nuevo es agregarlo a `DEP_MEDIOS` y nada más.
 Agregar un campo nuevo a un tipo es tocar `DEP_CAMPOS` y sumar la columna en Supabase:
 el formulario y el listado se arman solos a partir de esa lista.
 

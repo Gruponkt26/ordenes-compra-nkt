@@ -323,8 +323,11 @@ Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza
 alter table deportes add column if not exists medio_pago text;
 ```
 
-Hasta que la tabla exista, el módulo abre y se puede usar, pero al guardar aparece un
-aviso diciendo justamente que falta crearla y nada se guarda entre sesiones.
+Hasta que la tabla exista, el módulo abre y se puede usar, pero nada se guarda entre
+sesiones. Al entrar, el módulo consulta la tabla y —si falta ella o alguna columna— muestra
+un cartel rojo arriba de todo con **la respuesta textual de Supabase**, que nombra qué es lo
+que falta. Es el mismo criterio que el checklist: más vale decirlo antes de que alguien
+cargue un mes de alquileres y se pierdan todos al recargar.
 
 Los estados y los medios de pago salen del código (`DEP_ESTADOS` y `DEP_MEDIOS`), no de
 la base: una clase o un alquiler va de *a cobrar* a *cobrado* o *cancelado*, un profe está

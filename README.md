@@ -69,6 +69,37 @@ Luego en `src/App.jsx`, en el fetch de la IA, agregá el header:
 
 ---
 
+## ⚠️ Antes de crear cualquier tabla: el RLS
+
+**Toda tabla nueva de este proyecto nace con Row Level Security prendido**, se cree desde
+el SQL Editor o desde el botón *New table*. Con RLS activo y sin políticas, la key anónima
+—que es con la que funciona toda la app— no puede leer ni escribir: la pantalla abre, se
+carga algo, y al recargar no está. No da error visible, así que es difícil de adivinar.
+
+Después de crear una tabla, siempre:
+
+```sql
+alter table <la_tabla> disable row level security;
+```
+
+Para verificar que quedó como el resto:
+
+```sql
+select relname as tabla, relrowsecurity as rls
+from pg_class
+where relname = '<la_tabla>';
+```
+
+Tiene que dar `false`. Algunas tablas viejas (`ordenes`, `gastos`, `ideas`) están al revés:
+RLS prendido con una política `Allow all` que no filtra nada. Es equivalente en la práctica;
+lo que no funciona es RLS prendido **sin** política.
+
+Esto no es una recomendación de seguridad, es cómo está armada la app: la `SKEY` viaja en
+el bundle de JavaScript y es pública. Cerrar eso de verdad es un trabajo para todas las
+tablas juntas, y está anotado en los pendientes.
+
+---
+
 ## ⚠️ Tabla nueva en Supabase: `aportes`
 
 El módulo **🤝 Aportes de Socios** (Administración → Egresos → pestaña *Aportes*)

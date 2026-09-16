@@ -58,6 +58,25 @@ async function sbSaveComanda(c) {
   } catch(e) { return String((e && e.message) || e); }
 }
 
+async function sbLoadCarta() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/carta?order=categoria,orden", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveCarta(x) {
+  try {
+    var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(x) });
+    if (!r.ok) { var e = await r.text(); console.error("sbSaveCarta:", r.status, e); return e || ("Error " + r.status); }
+    return null;
+  } catch(e) { return String((e && e.message) || e); }
+}
+async function sbDeleteCarta(id) {
+  try { await fetch(SURL + "/rest/v1/carta?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
+}
+
 // ─── SECTORES ─────────────────────────────────────────────────────────────────
 // Los mismos que usa el checklist para las áreas de un local, que son los que la
 // gente nombra: "las del patio", "la de la vereda".
@@ -72,7 +91,10 @@ var CMD_VISTAS = [
   { id:"mesas",     emoji:"🪑", nombre:"Mesas",     tipo:"mesa"      },
   { id:"delivery",  emoji:"🛵", nombre:"Delivery",  tipo:"delivery"  },
   { id:"mostrador", emoji:"🥡", nombre:"Mostrador", tipo:"mostrador" },
+  { id:"carta",     emoji:"📖", nombre:"Carta"                       },
 ];
+
+function pesos(n) { return "$" + Math.round(Number(n) || 0).toLocaleString("es-AR"); }
 
 // Cuánto hace que está abierta. Es el dato que mira un encargado para saber qué
 // mesa se está demorando, así que va en la tarjeta y no escondido adentro.
@@ -96,6 +118,7 @@ export default function PanelComandas(p) {
   var [cargando, setCargando] = useState(true);
   var [problemaTabla, setProblemaTabla] = useState(null);
   var [config, setConfig] = useState(false);
+  var [carta, setCarta] = useState([]);
   var [ahora, setAhora] = useState(Date.now());
 
   function cargar() {
@@ -103,11 +126,13 @@ export default function PanelComandas(p) {
       setMesas(r[0]); setComandas(r[1]); setCargando(false);
     }).catch(function() { setCargando(false); });
   }
+  function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
 
   useEffect(function() {
     var vivo = true;
     sbComandasDisponible().then(function(err) { if (vivo) setProblemaTabla(err); });
     cargar();
+    cargarCarta();
     // Durante el servicio la pantalla la miran varios a la vez: el mozo abre la
     // mesa y el encargado tiene que verla sin apretar nada. Refrescar solo cada 20
     // segundos es lo mínimo para que no sea una foto vieja. Lo correcto sería
@@ -268,6 +293,184 @@ export default function PanelComandas(p) {
     );
   }
 
+  // ─── CARTA ─────────────────────────────────────────────────────────────────
+  // Los platos con su precio de venta, por local. Los nombres ya existen en el menú
+  // de stock, así que se traen de ahí y sólo hay que ponerles precio: tipear cien
+  // platos a mano, habiendo estado ya cargados, no lo hace nadie.
+  function Carta() {
+    var [nuevoPlato, setNuevoPlato] = useState({});
+    var [nuevaCat, setNuevaCat] = useState("");
+    var [trayendo, setTrayendo] = useState(false);
+
+    var delLocal = carta.filter(function(x) { return x.local === localId; });
+    // Las categorías van en el orden de la carta —entradas, pizzas, principales—, que
+    // es el del menú de stock. Alfabético pondría las ensaladas antes que las entradas,
+    // y una carta no se lee así. Lo que no esté en el menú va al final.
+    var ordenMenu = Object.keys((p.menuStock || {})[localId] || {});
+    var categorias = [];
+    delLocal.forEach(function(x) { if (categorias.indexOf(x.categoria) === -1) categorias.push(x.categoria); });
+    categorias.sort(function(a, b) {
+      var ia = ordenMenu.indexOf(a), ib = ordenMenu.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    var sinPrecio = delLocal.filter(function(x) { return x.precio === null || x.precio === undefined || x.precio === ""; }).length;
+
+    function guardarPlato(x) {
+      setCarta(function(prev) {
+        var f = prev.filter(function(y) { return y.id !== x.id; });
+        return f.concat([x]);
+      });
+      sbSaveCarta(x).then(function(err) {
+        if (err) alert("No se pudo guardar el plato:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README).");
+      });
+    }
+    function borrarPlato(x) {
+      if (!window.confirm("¿Sacar \"" + x.nombre + "\" de la carta?")) return;
+      setCarta(function(prev) { return prev.filter(function(y) { return y.id !== x.id; }); });
+      sbDeleteCarta(x.id);
+    }
+    // Trae los platos del menú de stock de este local. No pisa lo que ya está: si un
+    // plato ya figura en la carta, se saltea, así se puede volver a apretar cuando se
+    // agrega algo al menú sin perder los precios cargados.
+    function traerDelMenu() {
+      var menu = (p.menuStock || {})[localId] || {};
+      var existentes = {};
+      delLocal.forEach(function(x) { existentes[String(x.nombre).toLowerCase()] = true; });
+      var nuevos = [];
+      Object.keys(menu).forEach(function(cat) {
+        (menu[cat] || []).forEach(function(nombre, i) {
+          if (existentes[String(nombre).toLowerCase()]) return;
+          nuevos.push({ id:"carta_"+localId+"_"+Date.now()+"_"+nuevos.length, local:localId, categoria:cat, nombre:nombre, precio:null, activo:true, orden:i });
+        });
+      });
+      if (!nuevos.length) { alert("No hay platos nuevos para traer: la carta ya tiene todos los del menú de stock."); return; }
+      setTrayendo(true);
+      setCarta(function(prev) { return prev.concat(nuevos); });
+      Promise.all(nuevos.map(function(x) { return sbSaveCarta(x); })).then(function(res) {
+        var err = res.find(Boolean);
+        if (err) alert("No se pudieron guardar los platos:\n\n" + err);
+        setTrayendo(false);
+        cargarCarta();
+      });
+    }
+
+    return (
+      <div>
+        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"13px", marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:9 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:800, color:color }}>Carta de {local && local.nombre}</div>
+              <div style={{ fontSize:11, color:"#555", marginTop:3 }}>
+                {delLocal.length} plato{delLocal.length === 1 ? "" : "s"}
+                {sinPrecio > 0 ? " · " + sinPrecio + " sin precio" : delLocal.length ? " · todos con precio" : ""}
+              </div>
+            </div>
+            <button onClick={traerDelMenu} disabled={trayendo}
+              style={{ padding:"9px 14px", borderRadius:8, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:trayendo?"wait":"pointer" }}>
+              {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}
+            </button>
+          </div>
+          {sinPrecio > 0 && (
+            <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
+              Un plato sin precio no se puede cobrar. Se puede mandar igual a la cocina, así que
+              sirve para empezar, pero conviene completarlos antes de usar la cuenta.
+            </div>
+          )}
+        </div>
+
+        {/* Categoría nueva */}
+        <div style={{ display:"flex", gap:7, marginBottom:14 }}>
+          <input value={nuevaCat} onChange={function(e) { setNuevaCat(e.target.value); }}
+            placeholder="Categoría nueva (Bebidas, Postres...)" style={{ ...INP, fontSize:12 }} />
+          <button onClick={function() {
+              var cat = nuevaCat.trim();
+              if (!cat || categorias.indexOf(cat) !== -1) return;
+              guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
+              setNuevaCat("");
+            }} disabled={!nuevaCat.trim()}
+            style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nuevaCat.trim()?color:"#1A1A1A", color:nuevaCat.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nuevaCat.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+            + Categoría
+          </button>
+        </div>
+
+        {delLocal.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"30px 0" }}>
+            <div style={{ fontSize:30, marginBottom:8 }}>📖</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:6 }}>La carta está vacía</div>
+            <div style={{ fontSize:11, color:"#444", maxWidth:360, margin:"0 auto", lineHeight:1.6 }}>
+              Los platos de este local ya están cargados en el menú de stock. Traelos con el botón de
+              arriba y completá los precios: es mucho menos trabajo que escribirlos de nuevo.
+            </div>
+          </div>
+        ) : categorias.map(function(cat) {
+          // Dentro de cada categoría, el orden del menú; lo agregado a mano al final.
+          var platos = delLocal.filter(function(x) { return x.categoria === cat; })
+            .sort(function(a, b) {
+              var oa = a.orden === null || a.orden === undefined ? 999 : a.orden;
+              var ob = b.orden === null || b.orden === undefined ? 999 : b.orden;
+              return oa !== ob ? oa - ob : String(a.nombre).localeCompare(String(b.nombre));
+            });
+          return (
+            <div key={cat} style={{ marginBottom:16 }}>
+              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>{cat} ({platos.length})</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                {platos.map(function(x) {
+                  var faltaPrecio = x.precio === null || x.precio === undefined || x.precio === "";
+                  return (
+                    <div key={x.id} style={{ display:"flex", gap:7, alignItems:"center", background:"#111", border:"1px solid "+(faltaPrecio?"#D4A01733":"#1A1A1A"), borderRadius:8, padding:"7px 10px", opacity:x.activo===false?0.45:1 }}>
+                      <input defaultValue={x.nombre}
+                        onBlur={function(e) { var v = e.target.value.trim(); if (v && v !== x.nombre) guardarPlato({ ...x, nombre:v }); }}
+                        style={{ ...INP, border:"none", background:"none", padding:"3px 0", fontSize:13, flex:1 }} />
+                      <span style={{ color:"#444", fontSize:12 }}>$</span>
+                      <input defaultValue={x.precio === null || x.precio === undefined ? "" : x.precio}
+                        onBlur={function(e) {
+                          var v = e.target.value.trim();
+                          var n = v === "" ? null : parseFloat(v);
+                          if (v !== "" && isNaN(n)) { e.target.value = x.precio === null || x.precio === undefined ? "" : x.precio; return; }
+                          if (n !== x.precio) guardarPlato({ ...x, precio:n });
+                        }}
+                        placeholder="0" inputMode="decimal"
+                        style={{ ...INP, width:88, flex:"none", textAlign:"right", fontSize:13, padding:"5px 8px", border:"1px solid "+(faltaPrecio?"#D4A01744":"#2A2A2A") }} />
+                      <button onClick={function() { guardarPlato({ ...x, activo:x.activo===false }); }}
+                        title={x.activo===false ? "Está fuera de la carta — tocar para volver a ofrecerlo" : "Sacar de la carta por un tiempo"}
+                        style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:x.activo===false?"#555":"#3A7D44", fontSize:11, cursor:"pointer" }}>
+                        {x.activo===false ? "✖️" : "✓"}
+                      </button>
+                      <button onClick={function() { borrarPlato(x); }}
+                        style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:"#555", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                    </div>
+                  );
+                })}
+                <button onClick={function() {
+                    var nombre = (nuevoPlato[cat] || "").trim();
+                    if (!nombre) return;
+                    guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:nombre, precio:null, activo:true, orden:500 });
+                    setNuevoPlato(function(prev) { var n = {...prev}; n[cat] = ""; return n; });
+                  }} style={{ display:"none" }} />
+                <div style={{ display:"flex", gap:6, marginTop:2 }}>
+                  <input value={nuevoPlato[cat] || ""} onChange={function(e) { var v = e.target.value; setNuevoPlato(function(prev) { var n = {...prev}; n[cat] = v; return n; }); }}
+                    placeholder={"Agregar a " + cat + "..."} style={{ ...INP, fontSize:12, padding:"7px 10px" }} />
+                  <button onClick={function() {
+                      var nombre = (nuevoPlato[cat] || "").trim();
+                      if (!nombre) return;
+                      guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:nombre, precio:null, activo:true, orden:500 });
+                      setNuevoPlato(function(prev) { var n = {...prev}; n[cat] = ""; return n; });
+                    }} disabled={!(nuevoPlato[cat] || "").trim()}
+                    style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #1E1E1E", background:"#111", color:(nuevoPlato[cat]||"").trim()?color:"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:(nuevoPlato[cat]||"").trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   // ─── TARJETA DE MESA ───────────────────────────────────────────────────────
   function Mesa(props) {
     var m = props.mesa;
@@ -386,7 +589,7 @@ export default function PanelComandas(p) {
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
         {CMD_VISTAS.map(function(v) {
           var act = vista === v.id && !config;
-          var cuenta = abiertas.filter(function(c) { return c.tipo === v.tipo; }).length;
+          var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
           return (
             <button key={v.id} onClick={function() { setVista(v.id); setConfig(false); }}
               style={{ flex:1, minWidth:110, padding:"11px 12px", borderRadius:9, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#666", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -403,6 +606,8 @@ export default function PanelComandas(p) {
           <button onClick={function() { setConfig(false); }} style={{ ...GH, padding:"7px 13px", fontSize:12, marginBottom:12 }}>← Volver al plano</button>
           <ConfigMesas />
         </>
+      ) : vista === "carta" ? (
+        <Carta />
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>
@@ -479,7 +684,7 @@ export default function PanelComandas(p) {
       {/* Lo que falta, dicho en la pantalla y no sólo en el README: una mesa que se
           abre y se cierra sin poder cargar nada todavía es una pantalla a medias, y
           conviene que quede claro que es un paso y no un olvido. */}
-      {!cargando && !config && (
+      {!cargando && !config && vista !== "carta" && (
         <div style={{ marginTop:18, padding:"10px 12px", background:"#0D0D0D", border:"1px dashed #1E1E1E", borderRadius:10, fontSize:11, color:"#444", lineHeight:1.6 }}>
           <b style={{ color:"#666" }}>Esto es la estructura.</b> Por ahora una mesa se abre y se cierra: falta cargarle
           los platos. El paso siguiente es la carta —los platos con su precio de venta, que hoy no existen en ningún

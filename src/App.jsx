@@ -13586,7 +13586,7 @@ export default function App() {
 
           {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}
           {esSofia&&modulo==="comandas"&&(
-            <PanelComandas usuario={cu.nombre}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock}/>
           )}
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}

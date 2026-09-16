@@ -675,10 +675,32 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
 ### Más grande
 
-6. **El predio no se cruza con Administración.** Lo que entra y sale de la caja del predio
-   no pesa en el resultado del mes ni en la disponibilidad de caja del grupo: es un
-   circuito propio. Cruzarlo requiere definir antes a qué local se imputan **Belo** y
-   **Mercado Pago Sofía**, que hoy no están en `MEDIO_LOCAL_MAP`.
+6. **El predio no se cruza con Administración**, y eso está decidido así por ahora. Lo que
+   entra y sale de su caja no pesa en el resultado del mes ni en la disponibilidad del
+   grupo: es un circuito propio.
+
+   Se deja independiente **hasta que la caja de los cuatro locales esté depurada** en
+   ingresos y egresos. Enchufar una quinta fuente de plata a una contabilidad que todavía
+   se está ajustando agrega un lugar más donde buscar cuando un número no cierra.
+
+   No se pierde nada esperando: cada movimiento del predio ya guarda fecha, monto, medio de
+   pago y rubro, que es lo que hace falta para imputarlo. Lo acumulado se migra con un SQL,
+   no cargándolo de nuevo.
+
+   Cuando se haga, hay tres cosas que hoy no existen y hay que resolver:
+
+   - **El predio no es un local.** Hay cuatro (`l1` a `l4`) y todo lo que gestión imputa
+     cuelga de uno. Tendría que ser un quinto, o imputarse a alguno. Lo más limpio es que
+     sea un local: es una unidad de negocio como las otras.
+   - **Belo y Mercado Pago Sofía sólo existen dentro de Deportes** (`DEP_MEDIOS`). La
+     disponibilidad del grupo no sabe qué son ni de qué local, así que esa plata no
+     aparecería en ningún lado hasta agregarlos a `MEDIO_LOCAL_MAP`.
+   - **Los ingresos del grupo entran por los cierres de caja diarios**, uno por local por
+     día. El predio no cierra caja: sus entradas son turnos y porcentajes sueltos. Hay que
+     decidir si genera su propio cierre o entra por otro camino.
+
+   Las salidas son lo fácil: mantenimiento, servicios, canchero y obras son gastos como
+   cualquier otro y pueden escribirse en `gastos` con su rubro.
 7. **El acceso a Supabase es anónimo y abierto.** La `SKEY` viaja en el bundle de
    JavaScript, así que es pública, y las tablas o no tienen RLS o tienen una política
    `Allow all`. La app entera funciona así desde siempre —no es algo que haya roto un

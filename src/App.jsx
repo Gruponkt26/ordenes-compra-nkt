@@ -1,11 +1,10 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
+import { SURL, SKEY, SH, LOCALES, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
+import PanelComandas from "./comandas.jsx";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
-var SURL = "https://qcfwqnqtrqyjdfvakwxt.supabase.co";
-var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjZndxbnF0cnF5amRmdmFrd3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzYxODMsImV4cCI6MjA5NjE1MjE4M30.Zh5jN_oGXde0JGBJ_NTBn5Mkr2m6lI3VPjAsqrzd6Gc";
-var SH = { "Content-Type": "application/json", "apikey": SKEY, "Authorization": "Bearer " + SKEY, "Prefer": "return=representation" };
 
 async function sbLoad() {
   try {
@@ -449,12 +448,6 @@ async function sbSavePrecio(provId, producto, precio) {
 }
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-var LOCALES = [
-  { id: "l1", nombre: "El Bodegón Nkt", emoji: "🍷", color: "#C1440E" },
-  { id: "l2", nombre: "Kusama",          emoji: "🌸", color: "#8B2FC9" },
-  { id: "l3", nombre: "Colantonio's",    emoji: "🍝", color: "#1A6B8A" },
-  { id: "l4", nombre: "Oficina",         emoji: "🏢", color: "#3A7D44" },
-];
 
 var FACTURACION = [
   { id: "f1", razonSocial: "Calzon Gitano SRL",         cuit: "30-71844629-1", condicion: "Resp. Inscripto", domicilio: "Humberto 376, Punta Alta" },
@@ -539,27 +532,15 @@ function initContadores(ordenes) {
 }
 function genProv() { return "p" + String(Date.now()).slice(-8); }
 function genUser() { return "u" + _uc++; }
-function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || null; }
 function getFact(id) { return FACTURACION.find(function(f) { return f.id === id; }) || null; }
-function fmtDate(s) { if (!s) return "—"; var p = s.split("-"); return p[2]+"/"+p[1]+"/"+p[0]; }
 function fmtDateTime(s) {
   if (!s) return "—";
   var d = new Date(s);
   var pad = function(n) { return n < 10 ? "0"+n : n; };
   return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
 }
-function fmtHora(s) {
-  if (!s) return "";
-  var d = new Date(s);
-  if (isNaN(d.getTime())) return "";
-  var pad = function(n) { return n < 10 ? "0"+n : n; };
-  return pad(d.getHours())+":"+pad(d.getMinutes());
-}
 function cleanPhone(s) { return s.replace(/\D/g,""); }
 
-var INP = { padding:"9px 12px", borderRadius:8, border:"1px solid #2A2A2A", background:"#0F0F0F", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:13, boxSizing:"border-box", width:"100%" };
-function BS(bg,col) { return { padding:"10px 18px", borderRadius:8, border:"none", background:bg, color:col||"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }; }
-var GH = { padding:"10px 18px", borderRadius:8, border:"1px solid #2A2A2A", background:"none", color:"#888", fontFamily:"'Inter',sans-serif", fontSize:13, cursor:"pointer" };
 
 function Badge(p) { return <span style={{ background:p.color+"22", color:p.color, border:"1px solid "+p.color+"44", borderRadius:4, padding:"2px 10px", fontSize:11, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>{p.children}</span>; }
 function SBadge(p) {
@@ -13287,6 +13268,7 @@ export default function App() {
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
+              {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){setModulo("comandas");setVista("comandas_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -13317,6 +13299,7 @@ export default function App() {
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
+                  {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){setModulo("comandas");setVista("comandas_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -13599,6 +13582,11 @@ export default function App() {
           {esSofia&&modulo==="pautas"&&(
             <PanelPautas pautas={pautas} usuario={cu.nombre}
               onSave={guardarPauta} onDelete={borrarPauta}/>
+          )}
+
+          {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}
+          {esSofia&&modulo==="comandas"&&(
+            <PanelComandas usuario={cu.nombre}/>
           )}
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}

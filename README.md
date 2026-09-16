@@ -409,6 +409,48 @@ Los ámbitos salen de `IDEAS_AMBITOS`, que son los de las pautas más el predio.
 
 ---
 
+## 📋 Pendientes
+
+Cosas decididas a medias o dejadas para después, con el porqué. No están hechas ni
+empezadas: si alguien retoma el proyecto, esto es lo que falta.
+
+### Del predio (módulo Deportes)
+
+1. **Un artículo del galpón no genera el gasto.** Si se compra una red y se anota como
+   *ingreso al galpón*, queda el stock pero no la salida de plata: hay que cargar la salida
+   aparte. Lo razonable sería que al anotar un ingreso pregunte si se compró y por cuánto,
+   y genere las dos cosas de una.
+2. **El filtro de mes en Profes no sirve.** Filtra por el campo *Desde*, o sea cuándo
+   empezó el profe, que no es un movimiento de ningún mes. Conviene esconderlo para ese
+   tipo; en clases, turnos, entradas y salidas sí tiene sentido.
+3. **Un artículo sin fecha de ingreso desaparece al filtrar por mes.** El campo es
+   opcional, así que sólo aparece en *Todos los meses*. O se hace obligatorio, o los
+   registros sin fecha se muestran siempre.
+
+### De permisos
+
+4. **Ideas no distingue quién ve qué.** Cualquier usuario ve y publica en todos los
+   ámbitos, el predio incluido, y puede cambiar el estado de una idea ajena (borrar, en
+   cambio, sólo puede el autor). Viene de cuando Ideas era un buzón abierto para todo el
+   grupo; si el predio pasa a ser otro negocio, habría que acotarlo.
+5. **Deportes lo ve sólo `sofia`**, como el resto de los módulos de la barra. Si el
+   canchero o un profe tuvieran que anotar sus propios turnos, hay que darles acceso, como
+   se hizo con Compras para encargadas y cajeros.
+
+### Más grande
+
+6. **El predio no se cruza con Administración.** Lo que entra y sale de la caja del predio
+   no pesa en el resultado del mes ni en la disponibilidad de caja del grupo: es un
+   circuito propio. Cruzarlo requiere definir antes a qué local se imputan **Belo** y
+   **Mercado Pago Sofía**, que hoy no están en `MEDIO_LOCAL_MAP`.
+7. **El acceso a Supabase es anónimo y abierto.** La `SKEY` viaja en el bundle de
+   JavaScript, así que es pública, y las tablas o no tienen RLS o tienen una política
+   `Allow all`. La app entera funciona así desde siempre —no es algo que haya roto un
+   cambio puntual—, pero si algún día se quiere cerrar, es un trabajo para todas las tablas
+   juntas y no para una sola.
+
+---
+
 ## Estructura del proyecto
 ```
 compras-pro/

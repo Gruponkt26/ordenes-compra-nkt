@@ -5022,6 +5022,10 @@ var DEP_TIPOS={
   entrada: {label:"📥 Entradas",  singular:"entrada",  articulo:"la", color:"#3A7D44", vacio:"Sin entradas cargadas", ok:"cobrado"},
   salida:  {label:"📤 Salidas",   singular:"salida",   articulo:"la", color:"#C1440E", vacio:"Sin salidas cargadas",  ok:"pagado"},
   obra:    {label:"🏗️ Obras",     singular:"obra",     articulo:"la", color:"#E07B00", vacio:"Sin obras cargadas",    ok:"pagado"},
+  // Un turno es alquilar la cancha; el porcentaje es la parte que queda de lo que el
+  // profe le cobra a sus alumnos. Entra plata en los dos casos, pero por motivos
+  // distintos, y mezclarlos haría imposible saber de dónde viene cada peso.
+  porcentaje:{label:"🤝 Porcentajes",singular:"porcentaje",articulo:"el",color:"#8B2FC9",vacio:"Sin porcentajes cargados",ok:"cobrado"},
 };
 
 // En qué se gasta la plata del predio. Los cuatro primeros son los rubros reales;
@@ -5048,6 +5052,7 @@ var DEP_ESTADOS={
   clase:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
   turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   entrada: [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
+  porcentaje:[{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   salida:  [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#C1440E"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   obra:    [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#E07B00"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
@@ -5061,7 +5066,7 @@ var DEP_CAMPOS={
     {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
     {k:"hora",      label:"Hora",           tipo:"time"},
     {k:"nombre",    label:"Alumno",         tipo:"text",  req:true, ph:"Nombre del alumno"},
-    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:true},
+    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:"profes"},
     {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
     {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"60"},
     {k:"monto",     label:"Precio $",       tipo:"num",   ph:"0"},
@@ -5071,7 +5076,7 @@ var DEP_CAMPOS={
   turno:[
     {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
     {k:"hora",      label:"Hora",           tipo:"time"},
-    {k:"nombre",    label:"Quién alquila",  tipo:"text",  req:true, ph:"Nombre de quien alquila la cancha", sug:true},
+    {k:"nombre",    label:"Quién alquila",  tipo:"text",  req:true, ph:"Nombre de quien alquila la cancha", sug:"clientes"},
     {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
     {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"90"},
     {k:"monto",     label:"Alquiler $",     tipo:"num",   ph:"0"},
@@ -5091,19 +5096,30 @@ var DEP_CAMPOS={
     {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
     {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
+  porcentaje:[
+    {k:"fecha",     label:"Fecha",              tipo:"date",  req:true},
+    {k:"nombre",    label:"Profe",              tipo:"text",  req:true, ph:"De quién es el porcentaje", sug:"profes"},
+    {k:"base",      label:"Cobró el profe $",   tipo:"num",   ph:"0"},
+    {k:"porcentaje",label:"% para el predio",   tipo:"num",   ph:"30"},
+    {k:"monto",     label:"Nos toca $",         tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago",      tipo:"select",opciones:DEP_MEDIOS},
+  ],
   obra:[
     {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
     {k:"nombre",    label:"Obra",          tipo:"text",  req:true, ph:"Qué se hizo o se va a hacer"},
-    {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:true},
+    {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:"obras"},
     {k:"contacto",  label:"Teléfono",      tipo:"text",  ph:"Opcional"},
     {k:"monto",     label:"Costo $",       tipo:"num",   ph:"0"},
     {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
   profe:[
-    {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
-    {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
-    {k:"precio",  label:"$ por hora",     tipo:"num",   ph:"0"},
-    {k:"fecha",   label:"Desde",          tipo:"date"},
+    {k:"nombre",     label:"Profe",      tipo:"text",  req:true, ph:"Nombre y apellido"},
+    // Un profe da clases de un deporte o del otro, y hasta que esto existió todos
+    // quedaban como de pádel: era el valor fijo de la sección.
+    {k:"disciplina", label:"Deporte",    tipo:"select",req:true, opciones:[{id:"tenis",label:"🎾 Tenis"},{id:"padel",label:"🏓 Pádel"}]},
+    {k:"contacto",   label:"Teléfono",   tipo:"text",  ph:"Opcional"},
+    {k:"precio",     label:"$ por hora", tipo:"num",   ph:"0"},
+    {k:"fecha",      label:"Desde",      tipo:"date"},
   ],
   articulo:[
     {k:"nombre",  label:"Artículo",       tipo:"text",  req:true, ph:"Qué es"},
@@ -5149,7 +5165,7 @@ var DEP_SECCIONES=[
 // sale, así que vive en Salidas aunque tenga su propia vista; un turno es plata que
 // entra, aunque sea un turno de tenis.
 function depTiposDe(seccionId){
-  if(seccionId==="entradas")return ["entrada","clase","turno"];
+  if(seccionId==="entradas")return ["entrada","clase","turno","porcentaje"];
   if(seccionId==="salidas") return ["salida","obra"];
   var s=DEP_SECCIONES.find(function(x){return x.id===seccionId;});
   return s?[s.tipo]:[];
@@ -5169,6 +5185,7 @@ var DEP_ORIGENES=[
   {id:"tenis_turno",label:"🎾 Turno de tenis",desc:"Alquiler de cancha",      disciplina:"tenis",tipo:"turno"},
   {id:"padel_turno",label:"🏓 Turno de pádel",desc:"Alquiler de cancha",      disciplina:"padel",tipo:"turno"},
   {id:"tenis_clase",label:"🎾 Clase de tenis",desc:"Clase con un alumno",     disciplina:"tenis",tipo:"clase"},
+  {id:"porcentaje", label:"🤝 Porcentaje del profe",desc:"Su parte de las clases", disciplina:"caja", tipo:"porcentaje"},
   {id:"otra",       label:"💰 Otra entrada",  desc:"Torneo, kiosco, seña...", disciplina:"caja", tipo:"entrada"},
   {id:"galpon",     label:"🏚️ Ingreso al galpón",desc:"Un artículo que entró", disciplina:"galpon",tipo:"articulo"},
 ];
@@ -5189,6 +5206,7 @@ function depQueEs(x){
   if(x.tipo==="entrada")return "💰 Entrada";
   if(x.tipo==="salida"){var r=depRubro(x.rubro);return r?r.label:"📤 Salida";}
   if(x.tipo==="obra")return "🏗️ Obra";
+  if(x.tipo==="porcentaje")return "🤝 Porcentaje del profe";
   var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
   var n=x.tipo==="clase"?"Clase":x.tipo==="turno"?"Turno":"";
   if(!n)return "";
@@ -5210,6 +5228,7 @@ function PanelDeportes(p){
   var [filtroMes,setFiltroMes]=useState("todos");
   var [busqueda,setBusqueda]=useState("");
   var [problemaTabla,setProblemaTabla]=useState(null);
+  var [verFichas,setVerFichas]=useState(false);
 
   useEffect(function(){
     var vivo=true;
@@ -5248,7 +5267,19 @@ function PanelDeportes(p){
     setFormTipo(sec.tipo);setFormDisciplina(sec.disciplina);
     setForm(depFormVacio(sec.tipo));
   }
-  function set(k,v){ setForm(function(prev){var n={...prev};n[k]=v;return n;}); }
+  function set(k,v){
+    setForm(function(prev){
+      var n={...prev};n[k]=v;
+      // En un porcentaje, lo que entra sale de una multiplicación que nadie tiene por
+      // qué hacer a mano en el medio del mostrador. Se puede pisar igual: si el profe
+      // pagó otra cosa, manda lo que pagó y no la cuenta.
+      if(fTipo==="porcentaje"&&(k==="base"||k==="porcentaje")){
+        var b=parseFloat(k==="base"?v:n.base), pc=parseFloat(k==="porcentaje"?v:n.porcentaje);
+        if(!isNaN(b)&&!isNaN(pc))n.monto=String(Math.round(b*pc/100));
+      }
+      return n;
+    });
+  }
 
   var reqOk=fCampos.filter(function(c){return c.req;}).every(function(c){return String(form[c.k]||"").trim();});
 
@@ -5259,7 +5290,9 @@ function PanelDeportes(p){
     var fila={
       ...base,
       id:editId||("dep_"+Date.now()),
-      disciplina:formDisciplina,
+      // Si el tipo pregunta el deporte —un profe lo hace— vale lo que se eligió, no el
+      // de la sección desde donde se abrió el formulario.
+      disciplina:(fCampos.some(function(c){return c.k==="disciplina";})&&form.disciplina)||formDisciplina,
       tipo:fTipo,
       estado:form.estado||fEstados[0].id,
       notas:String(form.notas||"").trim()||null,
@@ -5273,7 +5306,7 @@ function PanelDeportes(p){
     });
     // Las columnas que este tipo no usa se mandan vacías: si un registro pasó de
     // un tipo a otro al editarlo, no puede quedar con datos del anterior colgando.
-    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","contacto"].forEach(function(k){
+    ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","base","porcentaje","contacto"].forEach(function(k){
       if(!fCampos.some(function(c){return c.k===k;}))fila[k]=null;
     });
     // Una obra es un gasto del rubro obras: así entra en el desglose de las salidas
@@ -5350,18 +5383,30 @@ function PanelDeportes(p){
   // esté mirando. Es el número por el que existe el módulo, así que va arriba.
   function enMes(x){ return filtroMes==="todos"||String(x.fecha||"").slice(0,7)===filtroMes; }
   var totalEntradas=registros.filter(function(x){
-    return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno")&&x.estado==="cobrado"&&enMes(x);
+    return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno"||x.tipo==="porcentaje")&&x.estado==="cobrado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var totalSalidas=registros.filter(function(x){
     return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var saldo=totalEntradas-totalSalidas;
 
-  // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
-  // dio una clase) se ofrecen como sugerencia: el mismo profe alquila todas las semanas.
-  var nombresSugeridos=[...new Set(registros.map(function(x){
-    return x.tipo==="profe"||x.tipo==="turno"?x.nombre:x.profe;
-  }).map(function(v){return String(v||"").trim();}).filter(Boolean))].sort();
+  // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
+  // los nombres del módulo hacía que al cargar un profe aparecieran los que alquilaron
+  // una cancha de tenis, que no son profes de nada.
+  function listaDe(filtro, campo){
+    return [...new Set(registros.filter(filtro).map(function(x){return String(x[campo]||"").trim();}).filter(Boolean))].sort();
+  }
+  var sugerencias={
+    // Los profes cargados, con su deporte al lado para no confundir dos homónimos.
+    profes:listaDe(function(x){return x.tipo==="profe";},"nombre"),
+    // Quién alquila una cancha puede ser un profe o cualquiera que ya vino antes.
+    clientes:[...new Set(
+      listaDe(function(x){return x.tipo==="turno";},"nombre")
+        .concat(listaDe(function(x){return x.tipo==="profe";},"nombre"))
+    )].sort(),
+    // Quién hace una obra no tiene nada que ver con los profes ni con los clientes.
+    obras:listaDe(function(x){return x.tipo==="obra";},"profe"),
+  };
 
   var TA={...INP,resize:"vertical"};
   function LBL(txt){ return <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{txt}</label>; }
@@ -5423,20 +5468,35 @@ function PanelDeportes(p){
         </div>
       </div>
 
-      {/* Fichas: no son movimientos, por eso van aparte y más chicas */}
-      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>Ver</span>
-        {DEP_SECCIONES.filter(function(s){return !s.principal;}).map(function(s){
-          var act=seccion===s.id;
-          var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
-          return(
-            <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
-              style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?s.color:"#1A1A1A"),background:act?s.color+"22":"transparent",color:act?s.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-              {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
+      {/* Obras, profes y galpón no son el día a día: las obras ya se ven en Salidas y
+          los otros dos son fichas que se miran de vez en cuando. Por eso no ocupan una
+          fila fija —era ruido arriba de todo— pero siguen a un toque: esconderlas del
+          todo dejaría los artículos y los profes cargados sin ninguna pantalla donde
+          verlos. Si estás parado en una de ellas, la fila queda abierta sola. */}
+      {(function(){
+        var otras=DEP_SECCIONES.filter(function(s){return !s.principal;});
+        var enOtra=otras.some(function(s){return s.id===seccion;});
+        var abiertaFila=verFichas||enOtra;
+        return(
+          <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={function(){setVerFichas(!abiertaFila);if(enOtra)cambiarSeccion("entradas");}}
+              title={abiertaFila?"Ocultar":"Obras, profes y galpón"}
+              style={{padding:"5px 9px",borderRadius:8,border:"1px solid "+(abiertaFila?"#2A2A2A":"#151515"),background:"transparent",color:abiertaFila?"#666":"#333",fontSize:12,cursor:"pointer"}}>
+              {abiertaFila?"✕":"⚙️"}
             </button>
-          );
-        })}
-      </div>
+            {abiertaFila&&otras.map(function(s){
+              var act=seccion===s.id;
+              var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
+              return(
+                <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?s.color:"#1A1A1A"),background:act?s.color+"22":"transparent",color:act?s.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Alta / edición */}
       {!abierto&&!eligiendo?(
@@ -5493,7 +5553,7 @@ function PanelDeportes(p){
                     <input
                       type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
                       inputMode={c.tipo==="num"?"decimal":undefined}
-                      list={c.sug?"dep-nombres":undefined}
+                      list={c.sug?("dep-"+(c.sug===true?"clientes":c.sug)):undefined}
                       value={form[c.k]||""}
                       placeholder={c.ph||""}
                       onChange={function(e){set(c.k,e.target.value);}}
@@ -5514,9 +5574,13 @@ function PanelDeportes(p){
             <textarea value={form.notas||""} rows={2} placeholder="Opcional"
               onChange={function(e){set("notas",e.target.value);}} style={TA}/>
           </div>
-          <datalist id="dep-nombres">
-            {nombresSugeridos.map(function(n){return <option key={n} value={n}/>;})}
-          </datalist>
+          {Object.keys(sugerencias).map(function(k){
+            return(
+              <datalist key={k} id={"dep-"+k}>
+                {sugerencias[k].map(function(n){return <option key={n} value={n}/>;})}
+              </datalist>
+            );
+          })}
           <div style={{display:"flex",gap:8}}>
             <button onClick={guardar} disabled={!reqOk}
               style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:reqOk?color:"#1A1A1A",color:reqOk?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:reqOk?"pointer":"not-allowed"}}>

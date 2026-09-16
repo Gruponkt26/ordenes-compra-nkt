@@ -314,9 +314,15 @@ puerta** y el módulo abre directo en ella:
 
 - **📥 Entradas** → todo lo que entra, con el saldo del predio arriba.
 - **📤 Salidas** → todo lo que sale, clasificado por rubro.
-- **Ver** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → vistas de detalle, en chico. Las obras sí
-  son plata (salen), pero profes y artículos no: un profe es una persona y un artículo es
-  stock, y ninguno de los dos toca el saldo.
+- **⚙️** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → detrás del engranaje, porque no son el día a
+  día: las obras ya se ven en Salidas y las otras dos son fichas que se miran de vez en
+  cuando. Tampoco hacen falta para *cargar*: el selector de *Anotar entrada* ya ofrece el
+  ingreso al galpón. Se esconden pero no se sacan, porque los artículos y los profes no
+  aparecen en ninguna otra pantalla y quedarían cargados sin forma de verlos. Estando
+  parado en una de ellas la fila se abre sola.
+
+  Las obras sí son plata (salen), pero profes y artículos no: un profe es una persona y un
+  artículo es stock, y ninguno de los dos toca el saldo.
 
 Las dos secciones preguntan primero **qué fue**, y recién después piden los datos:
 
@@ -330,6 +336,24 @@ su cancha y su duración, no una fila suelta de caja. Por eso en las listas conv
 distintas, cada una rotulada. La excepción es el **ingreso al galpón**: se carga por la
 misma puerta, por comodidad, pero un artículo es stock y no plata, así que no suma al saldo
 y el módulo lleva a la ficha de Galpón al guardarlo, para que se vea dónde quedó.
+
+Un **profe** guarda de qué deporte es —🎾 tenis o 🏓 pádel—, porque de un lado y del otro
+son personas distintas y la lista los mezclaba: antes todos quedaban como de pádel, que era
+el valor fijo de la sección.
+
+Las **sugerencias de nombres** se separan por lo que pide cada campo, y no salen todas de
+la misma bolsa: quien alquila una cancha puede ser cualquiera que ya vino antes, pero al
+cargar un porcentaje o el profe de una clase sólo tienen que aparecer **profes**, y quien
+hace una obra no tiene nada que ver con ninguno de los dos.
+
+Un **🤝 porcentaje del profe** no es lo mismo que un turno, y por eso es un tipo aparte. El
+turno es alquilar la cancha; el porcentaje es la parte que queda de lo que el profe le cobra
+a sus alumnos. Entra plata en los dos casos, pero por motivos distintos, y mezclarlos haría
+imposible saber de dónde viene cada peso.
+
+Se carga con lo que cobró el profe y qué porcentaje corresponde, y **la cuenta se hace
+sola**: nadie tiene por qué multiplicar a mano en el medio del mostrador. El resultado se
+puede pisar igual — si el profe pagó otra cosa, manda lo que pagó y no la cuenta.
 
 Una **🏗️ obra** es plata que sale, así que vive en Salidas y se imputa sola al rubro obras.
 Además tiene su propia vista, en la fila de abajo, para verlas todas juntas con lo que
@@ -349,7 +373,7 @@ las mismas columnas. Creala una sola vez desde Supabase → SQL Editor:
 create table if not exists deportes (
   id          text primary key,
   disciplina  text,      -- tenis | padel | galpon
-  tipo        text,      -- clase | turno | profe | articulo | entrada | salida | obra
+  tipo        text,      -- clase | turno | profe | articulo | entrada | salida | obra | porcentaje
   fecha       date,
   hora        text,
   nombre      text,      -- alumno, cliente, profe o artículo, según el tipo
@@ -361,6 +385,8 @@ create table if not exists deportes (
   monto       numeric,
   medio_pago  text,      -- efectivo | mp_sofia | belo
   rubro       text,      -- salidas y obras: mantenimiento | servicios | obras | canchero | otros
+  base        numeric,   -- porcentajes: cuánto cobró el profe
+  porcentaje  numeric,   -- porcentajes: qué parte queda para el predio
   estado      text,
   contacto    text,
   notas       text,
@@ -383,6 +409,8 @@ Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza
 ```sql
 alter table deportes add column if not exists medio_pago text;
 alter table deportes add column if not exists rubro      text;
+alter table deportes add column if not exists base       numeric;
+alter table deportes add column if not exists porcentaje numeric;
 ```
 
 Hasta que la tabla exista, el módulo abre y se puede usar, pero nada se guarda entre

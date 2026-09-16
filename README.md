@@ -337,6 +337,15 @@ distintas, cada una rotulada. La excepción es el **ingreso al galpón**: se car
 misma puerta, por comodidad, pero un artículo es stock y no plata, así que no suma al saldo
 y el módulo lleva a la ficha de Galpón al guardarlo, para que se vea dónde quedó.
 
+Un **profe** guarda de qué deporte es —🎾 tenis o 🏓 pádel—, porque de un lado y del otro
+son personas distintas y la lista los mezclaba: antes todos quedaban como de pádel, que era
+el valor fijo de la sección.
+
+Las **sugerencias de nombres** se separan por lo que pide cada campo, y no salen todas de
+la misma bolsa: quien alquila una cancha puede ser cualquiera que ya vino antes, pero al
+cargar un porcentaje o el profe de una clase sólo tienen que aparecer **profes**, y quien
+hace una obra no tiene nada que ver con ninguno de los dos.
+
 Un **🤝 porcentaje del profe** no es lo mismo que un turno, y por eso es un tipo aparte. El
 turno es alquilar la cancha; el porcentaje es la parte que queda de lo que el profe le cobra
 a sus alumnos. Entra plata en los dos casos, pero por motivos distintos, y mezclarlos haría

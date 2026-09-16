@@ -5066,7 +5066,7 @@ var DEP_CAMPOS={
     {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
     {k:"hora",      label:"Hora",           tipo:"time"},
     {k:"nombre",    label:"Alumno",         tipo:"text",  req:true, ph:"Nombre del alumno"},
-    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:true},
+    {k:"profe",     label:"Profe",          tipo:"text",  ph:"Quién la da", sug:"profes"},
     {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
     {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"60"},
     {k:"monto",     label:"Precio $",       tipo:"num",   ph:"0"},
@@ -5076,7 +5076,7 @@ var DEP_CAMPOS={
   turno:[
     {k:"fecha",     label:"Fecha",          tipo:"date",  req:true},
     {k:"hora",      label:"Hora",           tipo:"time"},
-    {k:"nombre",    label:"Quién alquila",  tipo:"text",  req:true, ph:"Nombre de quien alquila la cancha", sug:true},
+    {k:"nombre",    label:"Quién alquila",  tipo:"text",  req:true, ph:"Nombre de quien alquila la cancha", sug:"clientes"},
     {k:"cancha",    label:"Cancha",         tipo:"text",  ph:"Ej: Cancha 1"},
     {k:"duracion",  label:"Duración (min)", tipo:"num",   ph:"90"},
     {k:"monto",     label:"Alquiler $",     tipo:"num",   ph:"0"},
@@ -5098,7 +5098,7 @@ var DEP_CAMPOS={
   ],
   porcentaje:[
     {k:"fecha",     label:"Fecha",              tipo:"date",  req:true},
-    {k:"nombre",    label:"Profe",              tipo:"text",  req:true, ph:"De quién es el porcentaje", sug:true},
+    {k:"nombre",    label:"Profe",              tipo:"text",  req:true, ph:"De quién es el porcentaje", sug:"profes"},
     {k:"base",      label:"Cobró el profe $",   tipo:"num",   ph:"0"},
     {k:"porcentaje",label:"% para el predio",   tipo:"num",   ph:"30"},
     {k:"monto",     label:"Nos toca $",         tipo:"num",   ph:"0"},
@@ -5107,16 +5107,19 @@ var DEP_CAMPOS={
   obra:[
     {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
     {k:"nombre",    label:"Obra",          tipo:"text",  req:true, ph:"Qué se hizo o se va a hacer"},
-    {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:true},
+    {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:"obras"},
     {k:"contacto",  label:"Teléfono",      tipo:"text",  ph:"Opcional"},
     {k:"monto",     label:"Costo $",       tipo:"num",   ph:"0"},
     {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
   profe:[
-    {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
-    {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
-    {k:"precio",  label:"$ por hora",     tipo:"num",   ph:"0"},
-    {k:"fecha",   label:"Desde",          tipo:"date"},
+    {k:"nombre",     label:"Profe",      tipo:"text",  req:true, ph:"Nombre y apellido"},
+    // Un profe da clases de un deporte o del otro, y hasta que esto existió todos
+    // quedaban como de pádel: era el valor fijo de la sección.
+    {k:"disciplina", label:"Deporte",    tipo:"select",req:true, opciones:[{id:"tenis",label:"🎾 Tenis"},{id:"padel",label:"🏓 Pádel"}]},
+    {k:"contacto",   label:"Teléfono",   tipo:"text",  ph:"Opcional"},
+    {k:"precio",     label:"$ por hora", tipo:"num",   ph:"0"},
+    {k:"fecha",      label:"Desde",      tipo:"date"},
   ],
   articulo:[
     {k:"nombre",  label:"Artículo",       tipo:"text",  req:true, ph:"Qué es"},
@@ -5287,7 +5290,9 @@ function PanelDeportes(p){
     var fila={
       ...base,
       id:editId||("dep_"+Date.now()),
-      disciplina:formDisciplina,
+      // Si el tipo pregunta el deporte —un profe lo hace— vale lo que se eligió, no el
+      // de la sección desde donde se abrió el formulario.
+      disciplina:(fCampos.some(function(c){return c.k==="disciplina";})&&form.disciplina)||formDisciplina,
       tipo:fTipo,
       estado:form.estado||fEstados[0].id,
       notas:String(form.notas||"").trim()||null,
@@ -5385,11 +5390,23 @@ function PanelDeportes(p){
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var saldo=totalEntradas-totalSalidas;
 
-  // Los nombres que ya pasaron por el módulo (profes cargados, quién alquiló, quién
-  // dio una clase) se ofrecen como sugerencia: el mismo profe alquila todas las semanas.
-  var nombresSugeridos=[...new Set(registros.map(function(x){
-    return x.tipo==="profe"||x.tipo==="turno"?x.nombre:x.profe;
-  }).map(function(v){return String(v||"").trim();}).filter(Boolean))].sort();
+  // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
+  // los nombres del módulo hacía que al cargar un profe aparecieran los que alquilaron
+  // una cancha de tenis, que no son profes de nada.
+  function listaDe(filtro, campo){
+    return [...new Set(registros.filter(filtro).map(function(x){return String(x[campo]||"").trim();}).filter(Boolean))].sort();
+  }
+  var sugerencias={
+    // Los profes cargados, con su deporte al lado para no confundir dos homónimos.
+    profes:listaDe(function(x){return x.tipo==="profe";},"nombre"),
+    // Quién alquila una cancha puede ser un profe o cualquiera que ya vino antes.
+    clientes:[...new Set(
+      listaDe(function(x){return x.tipo==="turno";},"nombre")
+        .concat(listaDe(function(x){return x.tipo==="profe";},"nombre"))
+    )].sort(),
+    // Quién hace una obra no tiene nada que ver con los profes ni con los clientes.
+    obras:listaDe(function(x){return x.tipo==="obra";},"profe"),
+  };
 
   var TA={...INP,resize:"vertical"};
   function LBL(txt){ return <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>{txt}</label>; }
@@ -5536,7 +5553,7 @@ function PanelDeportes(p){
                     <input
                       type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
                       inputMode={c.tipo==="num"?"decimal":undefined}
-                      list={c.sug?"dep-nombres":undefined}
+                      list={c.sug?("dep-"+(c.sug===true?"clientes":c.sug)):undefined}
                       value={form[c.k]||""}
                       placeholder={c.ph||""}
                       onChange={function(e){set(c.k,e.target.value);}}
@@ -5557,9 +5574,13 @@ function PanelDeportes(p){
             <textarea value={form.notas||""} rows={2} placeholder="Opcional"
               onChange={function(e){set("notas",e.target.value);}} style={TA}/>
           </div>
-          <datalist id="dep-nombres">
-            {nombresSugeridos.map(function(n){return <option key={n} value={n}/>;})}
-          </datalist>
+          {Object.keys(sugerencias).map(function(k){
+            return(
+              <datalist key={k} id={"dep-"+k}>
+                {sugerencias[k].map(function(n){return <option key={n} value={n}/>;})}
+              </datalist>
+            );
+          })}
           <div style={{display:"flex",gap:8}}>
             <button onClick={guardar} disabled={!reqOk}
               style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:reqOk?color:"#1A1A1A",color:reqOk?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:reqOk?"pointer":"not-allowed"}}>

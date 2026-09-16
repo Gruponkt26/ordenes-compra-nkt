@@ -65,6 +65,17 @@ async function sbLoadCarta() {
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
 }
+// PostgREST inserta un array entero en una sola llamada. Mandar 75 requests en
+// paralelo —uno por plato— es la forma más fácil de que la red o el servidor corten
+// la mitad y la carta quede a medio traer.
+async function sbSaveCartaMuchos(filas) {
+  try {
+    var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(filas) });
+    if (!r.ok) { var e = await r.text(); console.error("sbSaveCartaMuchos:", r.status, e); return e || ("Error " + r.status); }
+    return null;
+  } catch(e) { return String((e && e.message) || e); }
+}
 async function sbSaveCarta(x) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
@@ -107,197 +118,15 @@ function hace(iso) {
   return h + "h " + String(min % 60).padStart(2, "0");
 }
 
-export default function PanelComandas(p) {
-  var usuario = p.usuario || "";
-  // Un mozo ve su local y nada más; administración elige.
-  var localFijo = p.localFijo || null;
-  var [localId, setLocalId] = useState(localFijo || "l1");
-  var [vista, setVista] = useState("mesas");
-  var [mesas, setMesas] = useState([]);
-  var [comandas, setComandas] = useState([]);
-  var [cargando, setCargando] = useState(true);
-  var [problemaTabla, setProblemaTabla] = useState(null);
-  var [config, setConfig] = useState(false);
-  var [carta, setCarta] = useState([]);
-  var [ahora, setAhora] = useState(Date.now());
+// Los tres formularios viven acá afuera y no adentro de PanelComandas. Definidos
+// adentro, cada render del panel crea funciones nuevas, React las toma por
+// componentes distintos y los vuelve a montar: con el refresco cada 20 segundos,
+// eso le borra a cualquiera lo que esté tipeando. Cargar 75 precios así es imposible.
+function Carta(props) {
+  var localId = props.localId, local = props.local, color = props.color;
+  var carta = props.carta, setCarta = props.setCarta, cargarCarta = props.cargarCarta;
+  var p = { menuStock: props.menuStock };
 
-  function cargar() {
-    return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
-      setMesas(r[0]); setComandas(r[1]); setCargando(false);
-    }).catch(function() { setCargando(false); });
-  }
-  function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
-
-  useEffect(function() {
-    var vivo = true;
-    sbComandasDisponible().then(function(err) { if (vivo) setProblemaTabla(err); });
-    cargar();
-    cargarCarta();
-    // Durante el servicio la pantalla la miran varios a la vez: el mozo abre la
-    // mesa y el encargado tiene que verla sin apretar nada. Refrescar solo cada 20
-    // segundos es lo mínimo para que no sea una foto vieja. Lo correcto sería
-    // Supabase Realtime, que además necesita abrir el CSP a wss://.
-    var t = setInterval(function() { if (vivo) { cargar(); setAhora(Date.now()); } }, 20000);
-    // El reloj de "hace cuánto" corre aparte, más seguido y sin pegarle a la base.
-    var reloj = setInterval(function() { if (vivo) setAhora(Date.now()); }, 30000);
-    return function() { vivo = false; clearInterval(t); clearInterval(reloj); };
-  }, []);
-
-  var local = getLocal(localId);
-  var color = (local && local.color) || "#C1440E";
-  var vistaActual = CMD_VISTAS.find(function(v) { return v.id === vista; }) || CMD_VISTAS[0];
-
-  var mesasLocal = mesas.filter(function(m) { return m.local === localId && m.activa !== false; });
-  var abiertas = comandas.filter(function(c) { return c.local === localId; });
-  function comandaDeMesa(mesaId) { return abiertas.find(function(c) { return c.tipo === "mesa" && c.mesa_id === mesaId; }); }
-  var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo; });
-
-  function proximoNumero() {
-    var hoy = new Date().toISOString().slice(0, 10);
-    var nums = comandas.filter(function(c) { return c.local === localId && String(c.abierta_at || "").slice(0, 10) === hoy; })
-      .map(function(c) { return parseInt(c.numero, 10) || 0; });
-    return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
-  }
-
-  // Se pinta primero y se guarda después, porque durante el servicio esperar a la
-  // base para que la mesa cambie de color es insoportable. Pero si la base rechaza,
-  // se vuelve atrás: una mesa pintada de ocupada que en realidad no se guardó es
-  // peor que una que no se pintó, porque nadie se entera hasta que es tarde.
-  function guardar(c) {
-    var antes = comandas;
-    setComandas(function(prev) {
-      var f = prev.filter(function(x) { return x.id !== c.id; });
-      return c.estado === "abierta" ? [c].concat(f) : f;
-    });
-    return sbSaveComanda(c).then(function(err) {
-      if (err) {
-        setComandas(antes);
-        alert("No se pudo guardar la comanda:\n\n" + err + "\n\nSi el error menciona la tabla comandas, hay que crearla en Supabase (el SQL está en el README).");
-        return err;
-      }
-      cargar();
-      return null;
-    });
-  }
-
-  function abrirMesa(mesa) {
-    var ya = comandaDeMesa(mesa.id);
-    if (ya) return;
-    guardar({
-      id: "cmd_" + Date.now(),
-      local: localId, tipo: "mesa", mesa_id: mesa.id,
-      numero: proximoNumero(), estado: "abierta",
-      mozo: usuario, abierta_at: new Date().toISOString(), usuario: usuario,
-    });
-  }
-  function cerrar(c) {
-    guardar({ ...c, estado: "cerrada", cerrada_at: new Date().toISOString() });
-  }
-
-  // ─── CONFIGURACIÓN DE MESAS ────────────────────────────────────────────────
-  function ConfigMesas() {
-    var [sector, setSector] = useState("salon");
-    var [desde, setDesde] = useState("");
-    var [hasta, setHasta] = useState("");
-    var [nombre, setNombre] = useState("");
-
-    function agregarRango() {
-      var a = parseInt(desde, 10), b = parseInt(hasta, 10);
-      if (isNaN(a)) return;
-      if (isNaN(b) || b < a) b = a;
-      var nuevas = [];
-      for (var n = a; n <= b && n - a < 60; n++) {
-        nuevas.push({ id: "mesa_" + localId + "_" + sector + "_" + n + "_" + Date.now(), local: localId, sector: sector, nombre: String(n), orden: n, activa: true });
-      }
-      setMesas(function(prev) { return prev.concat(nuevas); });
-      nuevas.forEach(function(m, i) {
-        sbSaveMesa(m).then(function(err) {
-          if (err && i === 0) alert("No se pudieron guardar las mesas:\n\n" + err + "\n\nSi el error menciona la tabla comanda_mesas, hay que crearla en Supabase.");
-        });
-      });
-      setDesde(""); setHasta("");
-    }
-    function agregarUna() {
-      if (!nombre.trim()) return;
-      var m = { id: "mesa_" + localId + "_" + Date.now(), local: localId, sector: sector, nombre: nombre.trim(), orden: 900, activa: true };
-      setMesas(function(prev) { return prev.concat([m]); });
-      sbSaveMesa(m);
-      setNombre("");
-    }
-    function borrar(m) {
-      if (comandaDeMesa(m.id)) { alert("Esa mesa tiene una comanda abierta. Cerrala antes de sacarla del plano."); return; }
-      if (!window.confirm("¿Sacar la mesa " + m.nombre + " del plano?")) return;
-      setMesas(function(prev) { return prev.filter(function(x) { return x.id !== m.id; }); });
-      sbDeleteMesa(m.id);
-    }
-
-    return (
-      <div>
-        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"14px", marginBottom:14 }}>
-          <div style={{ fontSize:13, fontWeight:800, color:color, marginBottom:11 }}>Agregar mesas a {local && local.nombre}</div>
-          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Sector</label>
-          <div style={{ display:"flex", gap:5, marginBottom:11, flexWrap:"wrap" }}>
-            {CMD_SECTORES.map(function(s) {
-              var act = sector === s.id;
-              return (
-                <button key={s.id} onClick={function() { setSector(s.id); }}
-                  style={{ padding:"7px 13px", borderRadius:8, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#555", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                  {s.emoji} {s.nombre}
-                </button>
-              );
-            })}
-          </div>
-          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Por número, de una vez</label>
-          <div style={{ display:"flex", gap:7, marginBottom:11, alignItems:"center" }}>
-            <input value={desde} onChange={function(e) { setDesde(e.target.value); }} placeholder="de la 1" inputMode="numeric" style={{ ...INP, fontSize:12 }} />
-            <span style={{ color:"#444", fontSize:12 }}>a la</span>
-            <input value={hasta} onChange={function(e) { setHasta(e.target.value); }} placeholder="10" inputMode="numeric" style={{ ...INP, fontSize:12 }} />
-            <button onClick={agregarRango} disabled={!String(desde).trim()}
-              style={{ padding:"9px 15px", borderRadius:8, border:"none", background:String(desde).trim()?color:"#1A1A1A", color:String(desde).trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:String(desde).trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
-              + Agregar
-            </button>
-          </div>
-          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>O una con nombre propio</label>
-          <div style={{ display:"flex", gap:7 }}>
-            <input value={nombre} onChange={function(e) { setNombre(e.target.value); }} placeholder="Ej: Barra 1, Reservado" style={{ ...INP, fontSize:12 }} />
-            <button onClick={agregarUna} disabled={!nombre.trim()}
-              style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nombre.trim()?color:"#1A1A1A", color:nombre.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nombre.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
-              + Agregar
-            </button>
-          </div>
-        </div>
-
-        {CMD_SECTORES.map(function(s) {
-          var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
-          if (!delSector.length) return null;
-          return (
-            <div key={s.id} style={{ marginBottom:12 }}>
-              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>{s.emoji} {s.nombre} ({delSector.length})</div>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                {delSector.map(function(m) {
-                  return (
-                    <button key={m.id} onClick={function() { borrar(m); }} title="Sacar del plano"
-                      style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #1E1E1E", background:"#111", color:"#666", fontFamily:"'Inter',sans-serif", fontSize:12, cursor:"pointer" }}>
-                      {m.nombre} <span style={{ color:"#C1440E", marginLeft:3 }}>×</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        {mesasLocal.length === 0 && (
-          <div style={{ textAlign:"center", padding:"20px 0", color:"#333", fontSize:12 }}>Todavía no hay mesas en este local.</div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── CARTA ─────────────────────────────────────────────────────────────────
-  // Los platos con su precio de venta, por local. Los nombres ya existen en el menú
-  // de stock, así que se traen de ahí y sólo hay que ponerles precio: tipear cien
-  // platos a mano, habiendo estado ya cargados, no lo hace nadie.
-  function Carta() {
     var [nuevoPlato, setNuevoPlato] = useState({});
     var [nuevaCat, setNuevaCat] = useState("");
     var [trayendo, setTrayendo] = useState(false);
@@ -337,22 +166,38 @@ export default function PanelComandas(p) {
     // agrega algo al menú sin perder los precios cargados.
     function traerDelMenu() {
       var menu = (p.menuStock || {})[localId] || {};
+      var cuantosEnMenu = Object.keys(menu).reduce(function(a, cat) { return a + (menu[cat] || []).length; }, 0);
+      // Un local sin menú de stock y una carta ya completa terminan los dos sin platos
+      // para traer, pero se arreglan de maneras muy distintas: hay que decir cuál es.
+      if (cuantosEnMenu === 0) {
+        alert("El menú de stock de " + ((local && local.nombre) || "este local") + " está vacío, así que no hay platos para traer.\n\nSe cargan en Compras → Stock, o se pueden escribir acá a mano con \"+ Categoría\" y el campo de agregar de cada una.");
+        return;
+      }
       var existentes = {};
       delLocal.forEach(function(x) { existentes[String(x.nombre).toLowerCase()] = true; });
       var nuevos = [];
       Object.keys(menu).forEach(function(cat) {
-        (menu[cat] || []).forEach(function(nombre, i) {
-          if (existentes[String(nombre).toLowerCase()]) return;
+        (menu[cat] || []).forEach(function(plato, i) {
+          // El menú de stock guarda nombres sueltos, pero por las dudas se acepta
+          // también un objeto con nombre: un dato viejo no tiene que romper la carta.
+          var nombre = typeof plato === "string" ? plato : (plato && plato.nombre) || "";
+          if (!nombre || existentes[nombre.toLowerCase()]) return;
           nuevos.push({ id:"carta_"+localId+"_"+Date.now()+"_"+nuevos.length, local:localId, categoria:cat, nombre:nombre, precio:null, activo:true, orden:i });
         });
       });
-      if (!nuevos.length) { alert("No hay platos nuevos para traer: la carta ya tiene todos los del menú de stock."); return; }
+      if (!nuevos.length) {
+        alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cuantosEnMenu + " platos del menú de stock. No hay nada nuevo para traer.");
+        return;
+      }
       setTrayendo(true);
       setCarta(function(prev) { return prev.concat(nuevos); });
-      Promise.all(nuevos.map(function(x) { return sbSaveCarta(x); })).then(function(res) {
-        var err = res.find(Boolean);
-        if (err) alert("No se pudieron guardar los platos:\n\n" + err);
+      sbSaveCartaMuchos(nuevos).then(function(err) {
         setTrayendo(false);
+        if (err) {
+          setCarta(function(prev) { return prev.filter(function(x) { return nuevos.indexOf(x) === -1; }); });
+          alert("No se pudieron traer los platos:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README). Acordate del alter de RLS.");
+          return;
+        }
         cargarCarta();
       });
     }
@@ -471,40 +316,111 @@ export default function PanelComandas(p) {
     );
   }
 
-  // ─── TARJETA DE MESA ───────────────────────────────────────────────────────
-  function Mesa(props) {
-    var m = props.mesa;
-    var c = comandaDeMesa(m.id);
-    var ocupada = !!c;
-    var nom = String(m.nombre || "");
+function ConfigMesas(props) {
+  var localId = props.localId, local = props.local, color = props.color;
+  var mesasLocal = props.mesasLocal, setMesas = props.setMesas, comandaDeMesa = props.comandaDeMesa;
+
+    var [sector, setSector] = useState("salon");
+    var [desde, setDesde] = useState("");
+    var [hasta, setHasta] = useState("");
+    var [nombre, setNombre] = useState("");
+
+    function agregarRango() {
+      var a = parseInt(desde, 10), b = parseInt(hasta, 10);
+      if (isNaN(a)) return;
+      if (isNaN(b) || b < a) b = a;
+      var nuevas = [];
+      for (var n = a; n <= b && n - a < 60; n++) {
+        nuevas.push({ id: "mesa_" + localId + "_" + sector + "_" + n + "_" + Date.now(), local: localId, sector: sector, nombre: String(n), orden: n, activa: true });
+      }
+      setMesas(function(prev) { return prev.concat(nuevas); });
+      nuevas.forEach(function(m, i) {
+        sbSaveMesa(m).then(function(err) {
+          if (err && i === 0) alert("No se pudieron guardar las mesas:\n\n" + err + "\n\nSi el error menciona la tabla comanda_mesas, hay que crearla en Supabase.");
+        });
+      });
+      setDesde(""); setHasta("");
+    }
+    function agregarUna() {
+      if (!nombre.trim()) return;
+      var m = { id: "mesa_" + localId + "_" + Date.now(), local: localId, sector: sector, nombre: nombre.trim(), orden: 900, activa: true };
+      setMesas(function(prev) { return prev.concat([m]); });
+      sbSaveMesa(m);
+      setNombre("");
+    }
+    function borrar(m) {
+      if (comandaDeMesa(m.id)) { alert("Esa mesa tiene una comanda abierta. Cerrala antes de sacarla del plano."); return; }
+      if (!window.confirm("¿Sacar la mesa " + m.nombre + " del plano?")) return;
+      setMesas(function(prev) { return prev.filter(function(x) { return x.id !== m.id; }); });
+      sbDeleteMesa(m.id);
+    }
+
     return (
-      <button onClick={function() { ocupada ? cerrar(c) : abrirMesa(m); }}
-        title={ocupada ? "Abierta hace " + hace(c.abierta_at) + " · tocar para cerrar" : "Tocar para abrir"}
-        style={{
-          width:82, height:82, borderRadius:12, cursor:"pointer",
-          border:"1px solid " + (ocupada ? color : "#1E1E1E"),
-          background: ocupada ? color + "22" : "#0F0F0F",
-          color: ocupada ? color : "#555",
-          fontFamily:"'Inter',sans-serif", display:"flex", flexDirection:"column",
-          alignItems:"center", justifyContent:"center", gap:2, padding:4,
-        }}>
-        {/* Una mesa se llama "12", pero también "Reservado": el número entra grande
-            y el nombre largo se achica para no desbordar la tarjeta. */}
-        <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
-        {ocupada ? (
-          <>
-            <div style={{ fontSize:9, opacity:0.85 }}>⏱ {hace(c.abierta_at)}</div>
-            {c.mozo && <div style={{ fontSize:8, opacity:0.6, maxWidth:74, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.mozo}</div>}
-          </>
-        ) : (
-          <div style={{ fontSize:9, color:"#333" }}>libre</div>
+      <div>
+        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"14px", marginBottom:14 }}>
+          <div style={{ fontSize:13, fontWeight:800, color:color, marginBottom:11 }}>Agregar mesas a {local && local.nombre}</div>
+          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Sector</label>
+          <div style={{ display:"flex", gap:5, marginBottom:11, flexWrap:"wrap" }}>
+            {CMD_SECTORES.map(function(s) {
+              var act = sector === s.id;
+              return (
+                <button key={s.id} onClick={function() { setSector(s.id); }}
+                  style={{ padding:"7px 13px", borderRadius:8, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#555", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  {s.emoji} {s.nombre}
+                </button>
+              );
+            })}
+          </div>
+          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Por número, de una vez</label>
+          <div style={{ display:"flex", gap:7, marginBottom:11, alignItems:"center" }}>
+            <input value={desde} onChange={function(e) { setDesde(e.target.value); }} placeholder="de la 1" inputMode="numeric" style={{ ...INP, fontSize:12 }} />
+            <span style={{ color:"#444", fontSize:12 }}>a la</span>
+            <input value={hasta} onChange={function(e) { setHasta(e.target.value); }} placeholder="10" inputMode="numeric" style={{ ...INP, fontSize:12 }} />
+            <button onClick={agregarRango} disabled={!String(desde).trim()}
+              style={{ padding:"9px 15px", borderRadius:8, border:"none", background:String(desde).trim()?color:"#1A1A1A", color:String(desde).trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:String(desde).trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+              + Agregar
+            </button>
+          </div>
+          <label style={{ display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>O una con nombre propio</label>
+          <div style={{ display:"flex", gap:7 }}>
+            <input value={nombre} onChange={function(e) { setNombre(e.target.value); }} placeholder="Ej: Barra 1, Reservado" style={{ ...INP, fontSize:12 }} />
+            <button onClick={agregarUna} disabled={!nombre.trim()}
+              style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nombre.trim()?color:"#1A1A1A", color:nombre.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nombre.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+              + Agregar
+            </button>
+          </div>
+        </div>
+
+        {CMD_SECTORES.map(function(s) {
+          var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
+          if (!delSector.length) return null;
+          return (
+            <div key={s.id} style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>{s.emoji} {s.nombre} ({delSector.length})</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {delSector.map(function(m) {
+                  return (
+                    <button key={m.id} onClick={function() { borrar(m); }} title="Sacar del plano"
+                      style={{ padding:"7px 12px", borderRadius:8, border:"1px solid #1E1E1E", background:"#111", color:"#666", fontFamily:"'Inter',sans-serif", fontSize:12, cursor:"pointer" }}>
+                      {m.nombre} <span style={{ color:"#C1440E", marginLeft:3 }}>×</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {mesasLocal.length === 0 && (
+          <div style={{ textAlign:"center", padding:"20px 0", color:"#333", fontSize:12 }}>Todavía no hay mesas en este local.</div>
         )}
-      </button>
+      </div>
     );
   }
 
-  // ─── ALTA DE DELIVERY Y MOSTRADOR ──────────────────────────────────────────
-  function NuevaComanda(props) {
+function NuevaComanda(props) {
+  var color = props.color, localId = props.localId, usuario = props.usuario;
+  var guardar = props.guardar, proximoNumero = props.proximoNumero;
+
     var esDelivery = props.tipo === "delivery";
     var [abierto, setAbierto] = useState(false);
     var [cliente, setCliente] = useState("");
@@ -546,6 +462,137 @@ export default function PanelComandas(p) {
       </div>
     );
   }
+
+export default function PanelComandas(p) {
+  var usuario = p.usuario || "";
+  // Un mozo ve su local y nada más; administración elige.
+  var localFijo = p.localFijo || null;
+  var [localId, setLocalId] = useState(localFijo || "l1");
+  var [vista, setVista] = useState("mesas");
+  var [mesas, setMesas] = useState([]);
+  var [comandas, setComandas] = useState([]);
+  var [cargando, setCargando] = useState(true);
+  var [problemaTabla, setProblemaTabla] = useState(null);
+  var [config, setConfig] = useState(false);
+  var [carta, setCarta] = useState([]);
+  var [ahora, setAhora] = useState(Date.now());
+
+  function cargar() {
+    return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
+      setMesas(r[0]); setComandas(r[1]); setCargando(false);
+    }).catch(function() { setCargando(false); });
+  }
+  function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
+
+  useEffect(function() {
+    var vivo = true;
+    sbComandasDisponible().then(function(err) { if (vivo) setProblemaTabla(err); });
+    cargar();
+    cargarCarta();
+    // Durante el servicio la pantalla la miran varios a la vez: el mozo abre la
+    // mesa y el encargado tiene que verla sin apretar nada. Refrescar solo cada 20
+    // segundos es lo mínimo para que no sea una foto vieja. Lo correcto sería
+    // Supabase Realtime, que además necesita abrir el CSP a wss://.
+    var t = setInterval(function() { if (vivo) { cargar(); setAhora(Date.now()); } }, 20000);
+    // El reloj de "hace cuánto" corre aparte, más seguido y sin pegarle a la base.
+    var reloj = setInterval(function() { if (vivo) setAhora(Date.now()); }, 30000);
+    return function() { vivo = false; clearInterval(t); clearInterval(reloj); };
+  }, []);
+
+  var local = getLocal(localId);
+  var color = (local && local.color) || "#C1440E";
+  var vistaActual = CMD_VISTAS.find(function(v) { return v.id === vista; }) || CMD_VISTAS[0];
+
+  var mesasLocal = mesas.filter(function(m) { return m.local === localId && m.activa !== false; });
+  var abiertas = comandas.filter(function(c) { return c.local === localId; });
+  function comandaDeMesa(mesaId) { return abiertas.find(function(c) { return c.tipo === "mesa" && c.mesa_id === mesaId; }); }
+  var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo; });
+
+  function proximoNumero() {
+    var hoy = new Date().toISOString().slice(0, 10);
+    var nums = comandas.filter(function(c) { return c.local === localId && String(c.abierta_at || "").slice(0, 10) === hoy; })
+      .map(function(c) { return parseInt(c.numero, 10) || 0; });
+    return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
+  }
+
+  // Se pinta primero y se guarda después, porque durante el servicio esperar a la
+  // base para que la mesa cambie de color es insoportable. Pero si la base rechaza,
+  // se vuelve atrás: una mesa pintada de ocupada que en realidad no se guardó es
+  // peor que una que no se pintó, porque nadie se entera hasta que es tarde.
+  function guardar(c) {
+    var antes = comandas;
+    setComandas(function(prev) {
+      var f = prev.filter(function(x) { return x.id !== c.id; });
+      return c.estado === "abierta" ? [c].concat(f) : f;
+    });
+    return sbSaveComanda(c).then(function(err) {
+      if (err) {
+        setComandas(antes);
+        alert("No se pudo guardar la comanda:\n\n" + err + "\n\nSi el error menciona la tabla comandas, hay que crearla en Supabase (el SQL está en el README).");
+        return err;
+      }
+      cargar();
+      return null;
+    });
+  }
+
+  function abrirMesa(mesa) {
+    var ya = comandaDeMesa(mesa.id);
+    if (ya) return;
+    guardar({
+      id: "cmd_" + Date.now(),
+      local: localId, tipo: "mesa", mesa_id: mesa.id,
+      numero: proximoNumero(), estado: "abierta",
+      mozo: usuario, abierta_at: new Date().toISOString(), usuario: usuario,
+    });
+  }
+  function cerrar(c) {
+    guardar({ ...c, estado: "cerrada", cerrada_at: new Date().toISOString() });
+  }
+
+  // ─── CONFIGURACIÓN DE MESAS ────────────────────────────────────────────────
+
+
+  // ─── CARTA ─────────────────────────────────────────────────────────────────
+  // Los platos con su precio de venta, por local. Los nombres ya existen en el menú
+  // de stock, así que se traen de ahí y sólo hay que ponerles precio: tipear cien
+  // platos a mano, habiendo estado ya cargados, no lo hace nadie.
+
+
+  // ─── TARJETA DE MESA ───────────────────────────────────────────────────────
+  function Mesa(props) {
+    var m = props.mesa;
+    var c = comandaDeMesa(m.id);
+    var ocupada = !!c;
+    var nom = String(m.nombre || "");
+    return (
+      <button onClick={function() { ocupada ? cerrar(c) : abrirMesa(m); }}
+        title={ocupada ? "Abierta hace " + hace(c.abierta_at) + " · tocar para cerrar" : "Tocar para abrir"}
+        style={{
+          width:82, height:82, borderRadius:12, cursor:"pointer",
+          border:"1px solid " + (ocupada ? color : "#1E1E1E"),
+          background: ocupada ? color + "22" : "#0F0F0F",
+          color: ocupada ? color : "#555",
+          fontFamily:"'Inter',sans-serif", display:"flex", flexDirection:"column",
+          alignItems:"center", justifyContent:"center", gap:2, padding:4,
+        }}>
+        {/* Una mesa se llama "12", pero también "Reservado": el número entra grande
+            y el nombre largo se achica para no desbordar la tarjeta. */}
+        <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
+        {ocupada ? (
+          <>
+            <div style={{ fontSize:9, opacity:0.85 }}>⏱ {hace(c.abierta_at)}</div>
+            {c.mozo && <div style={{ fontSize:8, opacity:0.6, maxWidth:74, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.mozo}</div>}
+          </>
+        ) : (
+          <div style={{ fontSize:9, color:"#333" }}>libre</div>
+        )}
+      </button>
+    );
+  }
+
+  // ─── ALTA DE DELIVERY Y MOSTRADOR ──────────────────────────────────────────
+
 
   // ─── PANTALLA ──────────────────────────────────────────────────────────────
   return (
@@ -604,10 +651,10 @@ export default function PanelComandas(p) {
       ) : config ? (
         <>
           <button onClick={function() { setConfig(false); }} style={{ ...GH, padding:"7px 13px", fontSize:12, marginBottom:12 }}>← Volver al plano</button>
-          <ConfigMesas />
+          <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
       ) : vista === "carta" ? (
-        <Carta />
+        <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>
@@ -642,7 +689,7 @@ export default function PanelComandas(p) {
         )
       ) : (
         <>
-          <NuevaComanda tipo={vistaActual.tipo} />
+          <NuevaComanda tipo={vistaActual.tipo} color={color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>

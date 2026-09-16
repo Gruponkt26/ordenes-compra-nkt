@@ -312,6 +312,10 @@ El módulo **🏅 Deportes** lleva la plata del predio. Lo que se hace ahí aden
 siempre lo mismo —anotar algo que entró o algo que salió—, así que **la caja es la única
 puerta** y el módulo abre directo en ella:
 
+- **📊 Resumen** → de dónde entró y en qué se fue, en una pantalla. Las entradas agrupadas
+  por concepto (turnos de tenis, de pádel, clases, horas de profes, otras) y las salidas
+  por rubro, con el saldo abajo. Lo pendiente va aparte y en amarillo: prometer plata no es
+  lo mismo que tenerla, y sumarlo al total haría que el mes parezca mejor de lo que es.
 - **📥 Entradas** → todo lo que entra, con el saldo del predio arriba.
 - **📤 Salidas** → todo lo que sale, clasificado por rubro.
 - **⚙️** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → detrás del engranaje, porque no son el día a

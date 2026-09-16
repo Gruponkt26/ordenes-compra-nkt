@@ -5154,6 +5154,7 @@ function depFormVacio(tipo){
 // artículo es stock — ninguno de los dos es plata que entró, así que quedan aparte
 // y no tocan el saldo.
 var DEP_SECCIONES=[
+  {id:"resumen", emoji:"📊",nombre:"Resumen", color:"#D4A017",                                    principal:true},
   {id:"entradas",emoji:"📥",nombre:"Entradas",color:"#3A7D44",tipo:"entrada", disciplina:"caja",  principal:true,plata:true},
   {id:"salidas", emoji:"📤",nombre:"Salidas", color:"#C1440E",tipo:"salida",  disciplina:"caja",  principal:true,plata:true},
   {id:"obras",   emoji:"🏗️",nombre:"Obras",   color:"#E07B00",tipo:"obra",    disciplina:"caja",  plata:true},
@@ -5198,6 +5199,16 @@ var DEP_ORIGENES_SALIDA=[
   {id:"canchero",     label:"👷 Sueldo canchero",desc:"El sueldo del mes",     tipo:"salida",rubro:"canchero"},
   {id:"obra",         label:"🏗️ Obra",           desc:"Una obra en el predio", tipo:"obra"},
   {id:"otros",        label:"📦 Otra salida",    desc:"Cualquier otro gasto",  tipo:"salida",rubro:"otros"},
+];
+
+// Las entradas agrupadas por concepto: un turno de tenis y uno de pádel son las dos
+// alquileres, pero al mirar el mes uno quiere saber cuánto vino de cada cancha.
+var DEP_CONCEPTOS=[
+  {id:"turno_tenis", label:"🎾 Turnos de tenis",  test:function(x){return x.tipo==="turno"&&x.disciplina==="tenis";}},
+  {id:"turno_padel", label:"🏓 Turnos de pádel",  test:function(x){return x.tipo==="turno"&&x.disciplina==="padel";}},
+  {id:"clases",      label:"📘 Clases",           test:function(x){return x.tipo==="clase";}},
+  {id:"uso",         label:"🤝 Horas de profes",  test:function(x){return x.tipo==="uso";}},
+  {id:"otras",       label:"💰 Otras entradas",   test:function(x){return x.tipo==="entrada";}},
 ];
 
 // Qué es cada fila, para distinguir de un vistazo un alquiler de tenis de una
@@ -5506,8 +5517,89 @@ function PanelDeportes(p){
         );
       })()}
 
+      {/* RESUMEN — de dónde entró y en qué se fue, sin leer una lista larga */}
+      {seccion==="resumen"&&(function(){
+        // Todo lo del mes elegido que efectivamente se movió. Lo pendiente se muestra
+        // aparte: prometer plata no es lo mismo que tenerla.
+        function delMes(f){ return registros.filter(function(x){return enMes(x)&&f(x);}); }
+        function suma(lista){ return lista.reduce(function(a,x){return a+depNum(x.monto);},0); }
+
+        var entradas=DEP_CONCEPTOS.map(function(c){
+          var todas=delMes(c.test);
+          return {label:c.label, cobrado:suma(todas.filter(function(x){return x.estado==="cobrado";})),
+                  pendiente:suma(todas.filter(function(x){return x.estado==="pendiente";})),
+                  cuantas:todas.filter(function(x){return x.estado!=="cancelado";}).length};
+        });
+        var salidas=DEP_RUBROS.map(function(r){
+          var todas=delMes(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.rubro===r.id;});
+          return {label:r.label, cobrado:suma(todas.filter(function(x){return x.estado==="pagado";})),
+                  pendiente:suma(todas.filter(function(x){return x.estado==="pendiente";})),
+                  cuantas:todas.filter(function(x){return x.estado!=="cancelado";}).length};
+        });
+        var sinRubro=delMes(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&!x.rubro;});
+        if(sinRubro.length)salidas.push({label:"❓ Sin rubro",
+          cobrado:suma(sinRubro.filter(function(x){return x.estado==="pagado";})),
+          pendiente:suma(sinRubro.filter(function(x){return x.estado==="pendiente";})),
+          cuantas:sinRubro.length});
+
+        var aCobrarTotal=entradas.reduce(function(a,e){return a+e.pendiente;},0);
+        var aPagarTotal=salidas.reduce(function(a,e){return a+e.pendiente;},0);
+        var mesesTodos=[...new Set(registros.map(function(x){return String(x.fecha||"").slice(0,7);}).filter(Boolean))].sort().reverse();
+
+        function Bloque(props){
+          var hay=props.filas.some(function(f){return f.cuantas>0;});
+          return(
+            <div style={{background:"#0F0F0F",border:"1px solid "+props.color+"33",borderRadius:12,padding:"13px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:hay?10:0}}>
+                <div style={{fontSize:12,fontWeight:800,color:props.color}}>{props.titulo}</div>
+                <div style={{fontSize:18,fontWeight:800,color:props.color}}>${Math.round(props.total).toLocaleString("es-AR")}</div>
+              </div>
+              {props.filas.filter(function(f){return f.cuantas>0;}).map(function(f){
+                return(
+                  <div key={f.label} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:9,padding:"5px 0",borderTop:"1px solid #161616"}}>
+                    <div style={{fontSize:12,color:"#999",flex:1,minWidth:0}}>{f.label}</div>
+                    {f.pendiente>0&&<div style={{fontSize:10,color:"#D4A017",whiteSpace:"nowrap"}}>+${Math.round(f.pendiente).toLocaleString("es-AR")} sin {props.verbo}</div>}
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8",whiteSpace:"nowrap"}}>${Math.round(f.cobrado).toLocaleString("es-AR")}</div>
+                  </div>
+                );
+              })}
+              {!hay&&<div style={{fontSize:11,color:"#3A3A3A"}}>Sin movimientos</div>}
+            </div>
+          );
+        }
+
+        return(
+          <div>
+            {mesesTodos.length>0&&(
+              <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:12,marginBottom:12}}>
+                <option value="todos">📅 Todos los meses</option>
+                {mesesTodos.map(function(m){
+                  var pt=m.split("-");
+                  var nom=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pt[1],10)]||m;
+                  return <option key={m} value={m}>{nom+" "+pt[0]}</option>;
+                })}
+              </select>
+            )}
+            <Bloque titulo="📥 Entró" color="#3A7D44" verbo="cobrar" filas={entradas} total={totalEntradas}/>
+            <Bloque titulo="📤 Salió" color="#C1440E" verbo="pagar"  filas={salidas}  total={totalSalidas}/>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 15px",background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:12}}>
+              <div>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
+                {(aCobrarTotal>0||aPagarTotal>0)&&(
+                  <div style={{fontSize:10,color:"#D4A017",marginTop:3}}>
+                    {[aCobrarTotal>0?"$"+Math.round(aCobrarTotal).toLocaleString("es-AR")+" por cobrar":null,
+                      aPagarTotal>0?"$"+Math.round(aPagarTotal).toLocaleString("es-AR")+" por pagar":null].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </div>
+              <div style={{fontSize:26,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Alta / edición */}
-      {!abierto&&!eligiendo?(
+      {seccion!=="resumen"&&(!abierto&&!eligiendo?(
         <button onClick={function(){
           if(sec.id==="entradas"||sec.id==="salidas")setEligiendo(true);
           else abrirForm(sec.disciplina,sec.tipo);
@@ -5597,7 +5689,7 @@ function PanelDeportes(p){
             <button onClick={cerrarForm} style={{...GH,padding:"11px 16px",fontSize:13}}>Cancelar</button>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Filtros y búsqueda */}
       {delTipo.length>0&&(
@@ -5688,7 +5780,7 @@ function PanelDeportes(p){
       ))}
 
       {/* Listado */}
-      {lista.length===0?(
+      {seccion==="resumen"?null:lista.length===0?(
         <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
           <div style={{fontSize:30,marginBottom:8}}>{sec.emoji}</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>

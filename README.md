@@ -283,14 +283,27 @@ puerta** y el módulo abre directo en ella:
 
 - **📥 Entradas** → todo lo que entra, con el saldo del predio arriba.
 - **📤 Salidas** → todo lo que sale, clasificado por rubro.
-- **Fichas** (👤 Profes y 🏚️ Galpón) → aparte, en chico. Un profe es una persona y un
-  artículo es stock: ninguno de los dos es plata que entró, y no tocan el saldo.
+- **Ver** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → vistas de detalle, en chico. Las obras sí
+  son plata (salen), pero profes y artículos no: un profe es una persona y un artículo es
+  stock, y ninguno de los dos toca el saldo.
 
-Al tocar *Anotar entrada* se elige primero **qué entró** —🎾 turno de tenis, 🏓 turno de
-pádel, 🎾 clase de tenis, o 💰 otra entrada (un torneo, el kiosco, una seña)— y se abre el
-formulario que corresponde. El registro se guarda como lo que es: un turno de tenis sigue
-siendo un turno de tenis, con su cancha y su duración, no una fila suelta de caja. Por eso
-en la lista de Entradas conviven las tres cosas, cada una rotulada con lo que es.
+Las dos secciones preguntan primero **qué fue**, y recién después piden los datos:
+
+- *Anotar entrada* → 🎾 turno de tenis, 🏓 turno de pádel, 🎾 clase de tenis, 💰 otra
+  entrada (un torneo, el kiosco, una seña) o 🏚️ ingreso al galpón.
+- *Anotar salida* → 🔧 mantenimiento, 💡 servicios, 👷 sueldo canchero, 🏗️ obra o
+  📦 otra salida. El rubro queda elegido de entrada.
+
+El registro se guarda como lo que es: un turno de tenis sigue siendo un turno de tenis, con
+su cancha y su duración, no una fila suelta de caja. Por eso en las listas conviven cosas
+distintas, cada una rotulada. La excepción es el **ingreso al galpón**: se carga por la
+misma puerta, por comodidad, pero un artículo es stock y no plata, así que no suma al saldo
+y el módulo lleva a la ficha de Galpón al guardarlo, para que se vea dónde quedó.
+
+Una **🏗️ obra** es plata que sale, así que vive en Salidas y se imputa sola al rubro obras.
+Además tiene su propia vista, en la fila de abajo, para verlas todas juntas con lo que
+llevan gastado. Guarda a cargo de quién está y su teléfono, que es lo que se busca cuando
+hay que llamar al que la hizo.
 
 El grueso son los **alquileres de cancha que se le cobran a los profes**. Todo lo que mueve
 plata guarda **medio de pago** (efectivo, Mercado Pago Sofía o Belo) y su estado es de
@@ -305,7 +318,7 @@ las mismas columnas. Creala una sola vez desde Supabase → SQL Editor:
 create table if not exists deportes (
   id          text primary key,
   disciplina  text,      -- tenis | padel | galpon
-  tipo        text,      -- clase | turno | profe | articulo
+  tipo        text,      -- clase | turno | profe | articulo | entrada | salida | obra
   fecha       date,
   hora        text,
   nombre      text,      -- alumno, cliente, profe o artículo, según el tipo
@@ -316,7 +329,7 @@ create table if not exists deportes (
   precio      numeric,
   monto       numeric,
   medio_pago  text,      -- efectivo | mp_sofia | belo
-  rubro       text,      -- salidas: mantenimiento | servicios | obras | canchero | otros
+  rubro       text,      -- salidas y obras: mantenimiento | servicios | obras | canchero | otros
   estado      text,
   contacto    text,
   notas       text,
@@ -345,10 +358,14 @@ Sumar un medio de pago nuevo es agregarlo a `DEP_MEDIOS` y nada más.
 
 ### Cómo está armada la navegación
 
-Las cuatro secciones están en `DEP_SECCIONES`; las dos marcadas `caja:true` son las que
-mueven plata. Lo que puede ser una entrada está en `DEP_ORIGENES`: cada opción dice qué
-`disciplina` y qué `tipo` va a guardar, así que sumar "turno de fútbol" al selector es
-agregar una línea ahí.
+Las secciones están en `DEP_SECCIONES`, con dos flags que no son lo mismo: `principal`
+(va en la fila de arriba) y `plata` (se resume como plata, no como inventario). Una obra
+tiene `plata` pero no `principal`.
+
+Qué tipos junta cada sección lo decide `depTiposDe()` —Entradas son `entrada`, `clase` y
+`turno`; Salidas son `salida` y `obra`—, y las opciones de los dos selectores están en
+`DEP_ORIGENES` y `DEP_ORIGENES_SALIDA`: cada una dice qué `disciplina`, qué `tipo` y, si
+hace falta, con qué `rubro` ya puesto. Sumar "turno de fútbol" es agregar una línea ahí.
 
 El formulario no se arma con el tipo de la sección sino con el que se está cargando
 (`formTipo`/`formDisciplina`), que es lo que permite anotar un turno de tenis sin salir de

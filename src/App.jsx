@@ -5022,10 +5022,10 @@ var DEP_TIPOS={
   entrada: {label:"📥 Entradas",  singular:"entrada",  articulo:"la", color:"#3A7D44", vacio:"Sin entradas cargadas", ok:"cobrado"},
   salida:  {label:"📤 Salidas",   singular:"salida",   articulo:"la", color:"#C1440E", vacio:"Sin salidas cargadas",  ok:"pagado"},
   obra:    {label:"🏗️ Obras",     singular:"obra",     articulo:"la", color:"#E07B00", vacio:"Sin obras cargadas",    ok:"pagado"},
-  // Un turno es alquilar la cancha; el porcentaje es la parte que queda de lo que el
-  // profe le cobra a sus alumnos. Entra plata en los dos casos, pero por motivos
-  // distintos, y mezclarlos haría imposible saber de dónde viene cada peso.
-  porcentaje:{label:"🤝 Porcentajes",singular:"porcentaje",articulo:"el",color:"#8B2FC9",vacio:"Sin porcentajes cargados",ok:"cobrado"},
+  // Un turno es alquilar la cancha a quien venga; esto es lo que paga un profe por las
+  // horas que usa para sus clases, a su tarifa. Entra plata en los dos casos, pero por
+  // motivos distintos, y mezclarlos haría imposible saber de dónde viene cada peso.
+  uso:{label:"🤝 Horas de profes",singular:"uso",articulo:"el",color:"#8B2FC9",vacio:"Sin horas de profes cargadas",ok:"cobrado"},
 };
 
 // En qué se gasta la plata del predio. Los cuatro primeros son los rubros reales;
@@ -5052,7 +5052,7 @@ var DEP_ESTADOS={
   clase:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
   turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   entrada: [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
-  porcentaje:[{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
+  uso:     [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   salida:  [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#C1440E"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   obra:    [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#E07B00"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
@@ -5096,13 +5096,13 @@ var DEP_CAMPOS={
     {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
     {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
-  porcentaje:[
-    {k:"fecha",     label:"Fecha",              tipo:"date",  req:true},
-    {k:"nombre",    label:"Profe",              tipo:"text",  req:true, ph:"De quién es el porcentaje", sug:"profes"},
-    {k:"base",      label:"Cobró el profe $",   tipo:"num",   ph:"0"},
-    {k:"porcentaje",label:"% para el predio",   tipo:"num",   ph:"30"},
-    {k:"monto",     label:"Nos toca $",         tipo:"num",   ph:"0"},
-    {k:"medio_pago",label:"Medio de pago",      tipo:"select",opciones:DEP_MEDIOS},
+  uso:[
+    {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
+    {k:"nombre",    label:"Profe",         tipo:"text",  req:true, ph:"Quién usó la cancha", sug:"profes"},
+    {k:"cantidad",  label:"Horas usadas",  tipo:"num",   ph:"1"},
+    {k:"precio",    label:"$ por hora",    tipo:"num",   ph:"0"},
+    {k:"monto",     label:"Total $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
   obra:[
     {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
@@ -5165,7 +5165,7 @@ var DEP_SECCIONES=[
 // sale, así que vive en Salidas aunque tenga su propia vista; un turno es plata que
 // entra, aunque sea un turno de tenis.
 function depTiposDe(seccionId){
-  if(seccionId==="entradas")return ["entrada","clase","turno","porcentaje"];
+  if(seccionId==="entradas")return ["entrada","clase","turno","uso"];
   if(seccionId==="salidas") return ["salida","obra"];
   var s=DEP_SECCIONES.find(function(x){return x.id===seccionId;});
   return s?[s.tipo]:[];
@@ -5185,7 +5185,7 @@ var DEP_ORIGENES=[
   {id:"tenis_turno",label:"🎾 Turno de tenis",desc:"Alquiler de cancha",      disciplina:"tenis",tipo:"turno"},
   {id:"padel_turno",label:"🏓 Turno de pádel",desc:"Alquiler de cancha",      disciplina:"padel",tipo:"turno"},
   {id:"tenis_clase",label:"🎾 Clase de tenis",desc:"Clase con un alumno",     disciplina:"tenis",tipo:"clase"},
-  {id:"porcentaje", label:"🤝 Porcentaje del profe",desc:"Su parte de las clases", disciplina:"caja", tipo:"porcentaje"},
+  {id:"uso",        label:"🤝 Horas de un profe",desc:"Lo que paga por las que usó", disciplina:"caja", tipo:"uso"},
   {id:"otra",       label:"💰 Otra entrada",  desc:"Torneo, kiosco, seña...", disciplina:"caja", tipo:"entrada"},
   {id:"galpon",     label:"🏚️ Ingreso al galpón",desc:"Un artículo que entró", disciplina:"galpon",tipo:"articulo"},
 ];
@@ -5206,7 +5206,7 @@ function depQueEs(x){
   if(x.tipo==="entrada")return "💰 Entrada";
   if(x.tipo==="salida"){var r=depRubro(x.rubro);return r?r.label:"📤 Salida";}
   if(x.tipo==="obra")return "🏗️ Obra";
-  if(x.tipo==="porcentaje")return "🤝 Porcentaje del profe";
+  if(x.tipo==="uso")return "🤝 Horas de profe";
   var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
   var n=x.tipo==="clase"?"Clase":x.tipo==="turno"?"Turno":"";
   if(!n)return "";
@@ -5273,9 +5273,17 @@ function PanelDeportes(p){
       // En un porcentaje, lo que entra sale de una multiplicación que nadie tiene por
       // qué hacer a mano en el medio del mostrador. Se puede pisar igual: si el profe
       // pagó otra cosa, manda lo que pagó y no la cuenta.
-      if(fTipo==="porcentaje"&&(k==="base"||k==="porcentaje")){
-        var b=parseFloat(k==="base"?v:n.base), pc=parseFloat(k==="porcentaje"?v:n.porcentaje);
-        if(!isNaN(b)&&!isNaN(pc))n.monto=String(Math.round(b*pc/100));
+      if(fTipo==="uso"){
+        // Al elegir el profe se trae su tarifa de la ficha, que es donde vive el precio
+        // por hora: tenerlo en un solo lugar evita que cada carga diga una cosa distinta.
+        if(k==="nombre"&&!String(n.precio||"").trim()){
+          var ficha=registros.find(function(x){
+            return x.tipo==="profe"&&String(x.nombre||"").trim().toLowerCase()===String(v||"").trim().toLowerCase();
+          });
+          if(ficha&&ficha.precio)n.precio=String(ficha.precio);
+        }
+        var h=parseFloat(n.cantidad), pr=parseFloat(n.precio);
+        if(!isNaN(h)&&!isNaN(pr))n.monto=String(Math.round(h*pr));
       }
       return n;
     });
@@ -5383,7 +5391,7 @@ function PanelDeportes(p){
   // esté mirando. Es el número por el que existe el módulo, así que va arriba.
   function enMes(x){ return filtroMes==="todos"||String(x.fecha||"").slice(0,7)===filtroMes; }
   var totalEntradas=registros.filter(function(x){
-    return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno"||x.tipo==="porcentaje")&&x.estado==="cobrado"&&enMes(x);
+    return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno"||x.tipo==="uso")&&x.estado==="cobrado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var totalSalidas=registros.filter(function(x){
     return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enMes(x);

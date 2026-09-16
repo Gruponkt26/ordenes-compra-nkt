@@ -346,14 +346,19 @@ la misma bolsa: quien alquila una cancha puede ser cualquiera que ya vino antes,
 cargar un porcentaje o el profe de una clase sólo tienen que aparecer **profes**, y quien
 hace una obra no tiene nada que ver con ninguno de los dos.
 
-Un **🤝 porcentaje del profe** no es lo mismo que un turno, y por eso es un tipo aparte. El
-turno es alquilar la cancha; el porcentaje es la parte que queda de lo que el profe le cobra
-a sus alumnos. Entra plata en los dos casos, pero por motivos distintos, y mezclarlos haría
-imposible saber de dónde viene cada peso.
+Las **🤝 horas de un profe** no son lo mismo que un turno, y por eso son un tipo aparte. El
+turno es alquilar la cancha a quien venga; esto es lo que paga un profe por las horas que
+usa para sus clases, a su tarifa. Entra plata en los dos casos, pero por motivos distintos,
+y mezclarlos haría imposible saber de dónde viene cada peso.
 
-Se carga con lo que cobró el profe y qué porcentaje corresponde, y **la cuenta se hace
-sola**: nadie tiene por qué multiplicar a mano en el medio del mostrador. El resultado se
-puede pisar igual — si el profe pagó otra cosa, manda lo que pagó y no la cuenta.
+Se cargan las horas usadas y **la cuenta se hace sola**. La tarifa sale de la ficha del
+profe —el campo *$ por hora* que ya tenía— y se trae al elegir el nombre: el precio vive en
+un solo lugar, así no termina diciendo una cosa distinta en cada carga. Todo se puede pisar
+igual, porque si el profe pagó otra cosa manda lo que pagó y no la cuenta.
+
+> Antes esto era un porcentaje sobre lo que el profe le cobraba a sus alumnos. Resultó ser
+> una tarifa por hora, así que el tipo cambió de `porcentaje` a `uso`. Las columnas `base` y
+> `porcentaje` quedaron sin uso; se dejan por si algún día aparece un arreglo de ese tipo.
 
 Una **🏗️ obra** es plata que sale, así que vive en Salidas y se imputa sola al rubro obras.
 Además tiene su propia vista, en la fila de abajo, para verlas todas juntas con lo que
@@ -373,7 +378,7 @@ las mismas columnas. Creala una sola vez desde Supabase → SQL Editor:
 create table if not exists deportes (
   id          text primary key,
   disciplina  text,      -- tenis | padel | galpon
-  tipo        text,      -- clase | turno | profe | articulo | entrada | salida | obra | porcentaje
+  tipo        text,      -- clase | turno | profe | articulo | entrada | salida | obra | uso
   fecha       date,
   hora        text,
   nombre      text,      -- alumno, cliente, profe o artículo, según el tipo
@@ -385,8 +390,8 @@ create table if not exists deportes (
   monto       numeric,
   medio_pago  text,      -- efectivo | mp_sofia | belo
   rubro       text,      -- salidas y obras: mantenimiento | servicios | obras | canchero | otros
-  base        numeric,   -- porcentajes: cuánto cobró el profe
-  porcentaje  numeric,   -- porcentajes: qué parte queda para el predio
+  base        numeric,   -- sin uso (quedó de cuando las horas de profe eran un porcentaje)
+  porcentaje  numeric,   -- sin uso, ídem
   estado      text,
   contacto    text,
   notas       text,

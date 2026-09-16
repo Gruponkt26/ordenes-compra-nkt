@@ -392,6 +392,23 @@ el formulario y el listado se arman solos a partir de esa lista.
 
 ---
 
+## ⚠️ Columna `ambito` en `ideas`
+
+El módulo **💡 Ideas** separa las ideas por ámbito —Generales, 🏅 Predio y cada local—,
+con solapas para filtrar, igual que 📌 Pautas. Eso necesita una columna más:
+
+```sql
+alter table ideas add column if not exists ambito text;
+```
+
+Hasta que exista, al publicar una idea aparece un aviso diciendo justamente que falta
+correr esto. Las ideas ya cargadas siguen funcionando: sin `ambito` se las toma como
+**generales**, que es lo que eran antes de que esto existiera.
+
+Los ámbitos salen de `IDEAS_AMBITOS`, que son los de las pautas más el predio.
+
+---
+
 ## Estructura del proyecto
 ```
 compras-pro/

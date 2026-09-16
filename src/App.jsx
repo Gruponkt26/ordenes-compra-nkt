@@ -187,8 +187,10 @@ async function sbLoadIdeas() {
 async function sbSaveIdea(idea) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/ideas",{method:"POST",headers:h,body:JSON.stringify(idea)});
-  } catch(e){}
+    var r=await fetch(SURL+"/rest/v1/ideas",{method:"POST",headers:h,body:JSON.stringify(idea)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveIdea error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e){ console.error("sbSaveIdea catch:",e); return String((e&&e.message)||e); }
 }
 async function sbDeleteIdea(id) {
   try {
@@ -4890,9 +4892,20 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
 
 
 // ─── PANEL IDEAS ──────────────────────────────────────────────────────────────
+// De qué es una idea. Son los mismos ámbitos de las pautas más el predio, que no es
+// un local pero genera sus propias ideas. Una idea vieja, sin ámbito, es general:
+// es lo que era antes de que esto existiera.
+var IDEAS_AMBITOS=[
+  {id:"general",emoji:"🏢",nombre:"Generales",color:"#1A8A7B"},
+  {id:"predio", emoji:"🏅",nombre:"Predio",   color:"#E07B00"},
+].concat(PAUTAS_AMBITOS.filter(function(a){return a.id!=="general";}));
+
+function ideaAmbito(i){ return (i&&i.ambito)||"general"; }
+
 function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   var [texto,setTexto]=useState("");
   var [guardando,setGuardando]=useState(false);
+  var [ambito,setAmbito]=useState("general");
   var [filtro,setFiltro]=useState("todas"); // todas | pendiente | en_revision | implementada
 
   var ESTADOS=[
@@ -4910,13 +4923,15 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   function doGuardar(){
     if(!texto.trim())return;
     setGuardando(true);
-    var idea={id:String(Date.now()),texto:texto.trim(),estado:"pendiente",usuario:usuario||"",created_at:new Date().toISOString()};
+    var idea={id:String(Date.now()),texto:texto.trim(),estado:"pendiente",ambito:ambito,usuario:usuario||"",created_at:new Date().toISOString()};
     onSave(idea);
     setTexto("");
     setTimeout(function(){setGuardando(false);},500);
   }
 
-  var ideasFiltradas=(ideas||[]).filter(function(i){return filtro==="todas"||i.estado===filtro;});
+  var amb=IDEAS_AMBITOS.find(function(a){return a.id===ambito;})||IDEAS_AMBITOS[0];
+  var delAmbito=(ideas||[]).filter(function(i){return ideaAmbito(i)===ambito;});
+  var ideasFiltradas=delAmbito.filter(function(i){return filtro==="todas"||i.estado===filtro;});
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -4925,12 +4940,26 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💡 Ideas</div>
       </div>
 
+      {/* Ámbitos: general, predio y cada local */}
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+        {IDEAS_AMBITOS.map(function(a){
+          var activo=ambito===a.id;
+          var cuenta=(ideas||[]).filter(function(i){return ideaAmbito(i)===a.id;}).length;
+          return(
+            <button key={a.id} onClick={function(){setAmbito(a.id);setFiltro("todas");}}
+              style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(activo?a.color:"#1E1E1E"),background:activo?a.color+"22":"#111",color:activo?a.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {a.emoji} {a.nombre}{cuenta>0?" ("+cuenta+")":""}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Nueva idea */}
-      <div style={{background:"#0F0F0F",border:"1px solid #E07B0033",borderRadius:12,padding:"14px",marginBottom:14}}>
+      <div style={{background:"#0F0F0F",border:"1px solid "+amb.color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
         <textarea
           value={texto}
           onChange={function(e){setTexto(e.target.value);}}
-          placeholder="¿Qué idea tenés? Escribila acá..."
+          placeholder={"¿Qué idea tenés para "+(ambito==="general"?"el grupo":amb.nombre)+"? Escribila acá..."}
           rows={3}
           style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#080808",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,resize:"vertical",boxSizing:"border-box",outline:"none"}}
         />
@@ -4944,9 +4973,9 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
 
       {/* Filtros */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        <button onClick={function(){setFiltro("todas");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro==="todas"?"#E07B00":"#1A1A1A"),background:filtro==="todas"?"#E07B0022":"none",color:filtro==="todas"?"#E07B00":"#444",fontSize:11,cursor:"pointer"}}>Todas ({(ideas||[]).length})</button>
+        <button onClick={function(){setFiltro("todas");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro==="todas"?"#E07B00":"#1A1A1A"),background:filtro==="todas"?"#E07B0022":"none",color:filtro==="todas"?"#E07B00":"#444",fontSize:11,cursor:"pointer"}}>Todas ({delAmbito.length})</button>
         {ESTADOS.map(function(e){
-          var count=(ideas||[]).filter(function(i){return i.estado===e.id;}).length;
+          var count=delAmbito.filter(function(i){return i.estado===e.id;}).length;
           return(
             <button key={e.id} onClick={function(){setFiltro(e.id);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro===e.id?e.color:"#1A1A1A"),background:filtro===e.id?e.color+"22":"none",color:filtro===e.id?e.color:"#444",fontSize:11,cursor:"pointer"}}>{e.label} ({count})</button>
           );
@@ -4957,7 +4986,7 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
       {ideasFiltradas.length===0?(
         <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>
           <div style={{fontSize:28,marginBottom:8}}>💭</div>
-          <div>No hay ideas {filtro!=="todas"?"con este estado":""}</div>
+          <div>No hay ideas {filtro!=="todas"?"con este estado":"en "+amb.nombre.toLowerCase()}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -13115,6 +13144,9 @@ export default function App() {
     sbDeletePauta(id);
     setPautas(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
+  function guardarIdea(x){
+    sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
+  }
   function guardarDeporte(x){
     sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README).");});
     setDeportes(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
@@ -13410,9 +13442,9 @@ export default function App() {
             <PanelIdeas
               ideas={ideas}
               usuario={cu.nombre}
-              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onSave={function(idea){guardarIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
               onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
-              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              onUpdate={function(idea){guardarIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
             />
           )}
 
@@ -13557,9 +13589,9 @@ export default function App() {
             <PanelIdeas
               ideas={ideas}
               usuario={cu.nombre}
-              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onSave={function(idea){guardarIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
               onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
-              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              onUpdate={function(idea){guardarIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
             />
           )}
 

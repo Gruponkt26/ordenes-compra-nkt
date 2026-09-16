@@ -187,8 +187,10 @@ async function sbLoadIdeas() {
 async function sbSaveIdea(idea) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/ideas",{method:"POST",headers:h,body:JSON.stringify(idea)});
-  } catch(e){}
+    var r=await fetch(SURL+"/rest/v1/ideas",{method:"POST",headers:h,body:JSON.stringify(idea)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveIdea error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e){ console.error("sbSaveIdea catch:",e); return String((e&&e.message)||e); }
 }
 async function sbDeleteIdea(id) {
   try {
@@ -4890,9 +4892,20 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
 
 
 // ─── PANEL IDEAS ──────────────────────────────────────────────────────────────
+// De qué es una idea. Son los mismos ámbitos de las pautas más el predio, que no es
+// un local pero genera sus propias ideas. Una idea vieja, sin ámbito, es general:
+// es lo que era antes de que esto existiera.
+var IDEAS_AMBITOS=[
+  {id:"general",emoji:"🏢",nombre:"Generales",color:"#1A8A7B"},
+  {id:"predio", emoji:"🏅",nombre:"Predio",   color:"#E07B00"},
+].concat(PAUTAS_AMBITOS.filter(function(a){return a.id!=="general";}));
+
+function ideaAmbito(i){ return (i&&i.ambito)||"general"; }
+
 function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   var [texto,setTexto]=useState("");
   var [guardando,setGuardando]=useState(false);
+  var [ambito,setAmbito]=useState("general");
   var [filtro,setFiltro]=useState("todas"); // todas | pendiente | en_revision | implementada
 
   var ESTADOS=[
@@ -4910,13 +4923,15 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
   function doGuardar(){
     if(!texto.trim())return;
     setGuardando(true);
-    var idea={id:String(Date.now()),texto:texto.trim(),estado:"pendiente",usuario:usuario||"",created_at:new Date().toISOString()};
+    var idea={id:String(Date.now()),texto:texto.trim(),estado:"pendiente",ambito:ambito,usuario:usuario||"",created_at:new Date().toISOString()};
     onSave(idea);
     setTexto("");
     setTimeout(function(){setGuardando(false);},500);
   }
 
-  var ideasFiltradas=(ideas||[]).filter(function(i){return filtro==="todas"||i.estado===filtro;});
+  var amb=IDEAS_AMBITOS.find(function(a){return a.id===ambito;})||IDEAS_AMBITOS[0];
+  var delAmbito=(ideas||[]).filter(function(i){return ideaAmbito(i)===ambito;});
+  var ideasFiltradas=delAmbito.filter(function(i){return filtro==="todas"||i.estado===filtro;});
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -4925,12 +4940,26 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💡 Ideas</div>
       </div>
 
+      {/* Ámbitos: general, predio y cada local */}
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+        {IDEAS_AMBITOS.map(function(a){
+          var activo=ambito===a.id;
+          var cuenta=(ideas||[]).filter(function(i){return ideaAmbito(i)===a.id;}).length;
+          return(
+            <button key={a.id} onClick={function(){setAmbito(a.id);setFiltro("todas");}}
+              style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(activo?a.color:"#1E1E1E"),background:activo?a.color+"22":"#111",color:activo?a.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              {a.emoji} {a.nombre}{cuenta>0?" ("+cuenta+")":""}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Nueva idea */}
-      <div style={{background:"#0F0F0F",border:"1px solid #E07B0033",borderRadius:12,padding:"14px",marginBottom:14}}>
+      <div style={{background:"#0F0F0F",border:"1px solid "+amb.color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
         <textarea
           value={texto}
           onChange={function(e){setTexto(e.target.value);}}
-          placeholder="¿Qué idea tenés? Escribila acá..."
+          placeholder={"¿Qué idea tenés para "+(ambito==="general"?"el grupo":amb.nombre)+"? Escribila acá..."}
           rows={3}
           style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#080808",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,resize:"vertical",boxSizing:"border-box",outline:"none"}}
         />
@@ -4944,9 +4973,9 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
 
       {/* Filtros */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        <button onClick={function(){setFiltro("todas");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro==="todas"?"#E07B00":"#1A1A1A"),background:filtro==="todas"?"#E07B0022":"none",color:filtro==="todas"?"#E07B00":"#444",fontSize:11,cursor:"pointer"}}>Todas ({(ideas||[]).length})</button>
+        <button onClick={function(){setFiltro("todas");}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro==="todas"?"#E07B00":"#1A1A1A"),background:filtro==="todas"?"#E07B0022":"none",color:filtro==="todas"?"#E07B00":"#444",fontSize:11,cursor:"pointer"}}>Todas ({delAmbito.length})</button>
         {ESTADOS.map(function(e){
-          var count=(ideas||[]).filter(function(i){return i.estado===e.id;}).length;
+          var count=delAmbito.filter(function(i){return i.estado===e.id;}).length;
           return(
             <button key={e.id} onClick={function(){setFiltro(e.id);}} style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtro===e.id?e.color:"#1A1A1A"),background:filtro===e.id?e.color+"22":"none",color:filtro===e.id?e.color:"#444",fontSize:11,cursor:"pointer"}}>{e.label} ({count})</button>
           );
@@ -4957,7 +4986,7 @@ function PanelIdeas({ideas, usuario, onSave, onDelete, onUpdate}){
       {ideasFiltradas.length===0?(
         <div style={{textAlign:"center",padding:"30px 0",color:"#333"}}>
           <div style={{fontSize:28,marginBottom:8}}>💭</div>
-          <div>No hay ideas {filtro!=="todas"?"con este estado":""}</div>
+          <div>No hay ideas {filtro!=="todas"?"con este estado":"en "+amb.nombre.toLowerCase()}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -5011,6 +5040,7 @@ var DEP_TIPOS={
   articulo:{label:"📦 Artículos", singular:"artículo", articulo:"el", color:"#C1440E", vacio:"Sin artículos cargados"},
   entrada: {label:"📥 Entradas",  singular:"entrada",  articulo:"la", color:"#3A7D44", vacio:"Sin entradas cargadas", ok:"cobrado"},
   salida:  {label:"📤 Salidas",   singular:"salida",   articulo:"la", color:"#C1440E", vacio:"Sin salidas cargadas",  ok:"pagado"},
+  obra:    {label:"🏗️ Obras",     singular:"obra",     articulo:"la", color:"#E07B00", vacio:"Sin obras cargadas",    ok:"pagado"},
 };
 
 // En qué se gasta la plata del predio. Los cuatro primeros son los rubros reales;
@@ -5038,6 +5068,7 @@ var DEP_ESTADOS={
   turno:   [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrado",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelado",color:"#C1440E"}],
   entrada: [{id:"pendiente",label:"🕓 A cobrar",color:"#D4A017"},{id:"cobrado",label:"✅ Cobrada",color:"#3A7D44"},{id:"cancelado",label:"✖️ Cancelada",color:"#C1440E"}],
   salida:  [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#C1440E"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
+  obra:    [{id:"pendiente",label:"🕓 A pagar",color:"#D4A017"},{id:"pagado",label:"✅ Pagada",color:"#E07B00"},{id:"cancelado",label:"✖️ Cancelada",color:"#555"}],
   profe:   [{id:"activo",label:"✅ Activo",color:"#3A7D44"},{id:"inactivo",label:"💤 Inactivo",color:"#555"}],
   articulo:[{id:"disponible",label:"📦 En galpón",color:"#3A7D44"},{id:"prestado",label:"📤 Prestado",color:"#D4A017"},{id:"reparacion",label:"🔧 En reparación",color:"#E07B00"},{id:"baja",label:"🗑️ Dado de baja",color:"#C1440E"}],
 };
@@ -5079,6 +5110,14 @@ var DEP_CAMPOS={
     {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
     {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
   ],
+  obra:[
+    {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
+    {k:"nombre",    label:"Obra",          tipo:"text",  req:true, ph:"Qué se hizo o se va a hacer"},
+    {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:true},
+    {k:"contacto",  label:"Teléfono",      tipo:"text",  ph:"Opcional"},
+    {k:"monto",     label:"Costo $",       tipo:"num",   ph:"0"},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
+  ],
   profe:[
     {k:"nombre",  label:"Profe",          tipo:"text",  req:true, ph:"Nombre y apellido"},
     {k:"contacto",label:"Teléfono",       tipo:"text",  ph:"Opcional"},
@@ -5118,11 +5157,29 @@ function depFormVacio(tipo){
 // artículo es stock — ninguno de los dos es plata que entró, así que quedan aparte
 // y no tocan el saldo.
 var DEP_SECCIONES=[
-  {id:"entradas",emoji:"📥",nombre:"Entradas",color:"#3A7D44",tipo:"entrada", disciplina:"caja",  caja:true},
-  {id:"salidas", emoji:"📤",nombre:"Salidas", color:"#C1440E",tipo:"salida",  disciplina:"caja",  caja:true},
+  {id:"entradas",emoji:"📥",nombre:"Entradas",color:"#3A7D44",tipo:"entrada", disciplina:"caja",  principal:true,plata:true},
+  {id:"salidas", emoji:"📤",nombre:"Salidas", color:"#C1440E",tipo:"salida",  disciplina:"caja",  principal:true,plata:true},
+  {id:"obras",   emoji:"🏗️",nombre:"Obras",   color:"#E07B00",tipo:"obra",    disciplina:"caja",  plata:true},
   {id:"profes",  emoji:"👤",nombre:"Profes",  color:"#8B2FC9",tipo:"profe",   disciplina:"padel"},
   {id:"galpon",  emoji:"🏚️",nombre:"Galpón",  color:"#8B5A2B",tipo:"articulo",disciplina:"galpon"},
 ];
+
+// Qué tipos junta cada una de las dos secciones de la caja. Una obra es plata que
+// sale, así que vive en Salidas aunque tenga su propia vista; un turno es plata que
+// entra, aunque sea un turno de tenis.
+function depTiposDe(seccionId){
+  if(seccionId==="entradas")return ["entrada","clase","turno"];
+  if(seccionId==="salidas") return ["salida","obra"];
+  var s=DEP_SECCIONES.find(function(x){return x.id===seccionId;});
+  return s?[s.tipo]:[];
+}
+// Dónde va a aparecer lo que se acaba de cargar, para llevar ahí después de guardar.
+function depSeccionDe(tipo){
+  var s=DEP_SECCIONES.find(function(x){return depTiposDe(x.id).indexOf(tipo)!==-1&&x.principal;});
+  if(s)return s.id;
+  var f=DEP_SECCIONES.find(function(x){return x.tipo===tipo;});
+  return f?f.id:"entradas";
+}
 
 // Qué puede ser una entrada. Una clase y un alquiler son plata que entra, así que se
 // cargan desde acá, con el formulario que les corresponde, y se guardan como lo que
@@ -5132,12 +5189,25 @@ var DEP_ORIGENES=[
   {id:"padel_turno",label:"🏓 Turno de pádel",desc:"Alquiler de cancha",      disciplina:"padel",tipo:"turno"},
   {id:"tenis_clase",label:"🎾 Clase de tenis",desc:"Clase con un alumno",     disciplina:"tenis",tipo:"clase"},
   {id:"otra",       label:"💰 Otra entrada",  desc:"Torneo, kiosco, seña...", disciplina:"caja", tipo:"entrada"},
+  {id:"galpon",     label:"🏚️ Ingreso al galpón",desc:"Un artículo que entró", disciplina:"galpon",tipo:"articulo"},
+];
+
+// Y lo mismo del otro lado: qué salió. El rubro queda elegido de entrada, que es la
+// pregunta que uno se hace antes de ponerse a cargar el gasto.
+var DEP_ORIGENES_SALIDA=[
+  {id:"mantenimiento",label:"🔧 Mantenimiento",  desc:"Arreglos del predio",   tipo:"salida",rubro:"mantenimiento"},
+  {id:"servicios",    label:"💡 Servicios",      desc:"Luz, agua, gas...",     tipo:"salida",rubro:"servicios"},
+  {id:"canchero",     label:"👷 Sueldo canchero",desc:"El sueldo del mes",     tipo:"salida",rubro:"canchero"},
+  {id:"obra",         label:"🏗️ Obra",           desc:"Una obra en el predio", tipo:"obra"},
+  {id:"otros",        label:"📦 Otra salida",    desc:"Cualquier otro gasto",  tipo:"salida",rubro:"otros"},
 ];
 
 // Qué es cada fila, para distinguir de un vistazo un alquiler de tenis de una
 // entrada suelta sin tener que abrirla.
 function depQueEs(x){
   if(x.tipo==="entrada")return "💰 Entrada";
+  if(x.tipo==="salida"){var r=depRubro(x.rubro);return r?r.label:"📤 Salida";}
+  if(x.tipo==="obra")return "🏗️ Obra";
   var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
   var n=x.tipo==="clase"?"Clase":x.tipo==="turno"?"Turno":"";
   if(!n)return "";
@@ -5187,9 +5257,9 @@ function PanelDeportes(p){
     setEditId(null);setAbierto(false);setEligiendo(false);
     setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
   }
-  function abrirForm(disc,tp){
+  function abrirForm(disc,tp,previo){
     setFormDisciplina(disc);setFormTipo(tp);
-    setForm(depFormVacio(tp));
+    setForm({...depFormVacio(tp),...(previo||{})});
     setEditId(null);setAbierto(true);setEligiendo(false);
   }
   function cerrarForm(){
@@ -5225,8 +5295,15 @@ function PanelDeportes(p){
     ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","contacto"].forEach(function(k){
       if(!fCampos.some(function(c){return c.k===k;}))fila[k]=null;
     });
+    // Una obra es un gasto del rubro obras: así entra en el desglose de las salidas
+    // sin tener que elegirlo a mano cada vez.
+    if(fTipo==="obra")fila.rubro="obras";
     p.onSave(fila);
-    cerrarForm();
+    // Si lo cargado no se ve en la sección actual (un artículo anotado desde Entradas,
+    // por ejemplo), llevar a donde quedó en vez de dejar la pantalla como si nada.
+    var destino=depSeccionDe(fTipo);
+    if(destino!==seccion)cambiarSeccion(destino);
+    else cerrarForm();
   }
 
   function editar(x){
@@ -5243,10 +5320,8 @@ function PanelDeportes(p){
 
   // Entradas junta todo lo que entra: las entradas sueltas y las clases y alquileres,
   // cobrados o no. El resto de las secciones muestra su propio tipo.
-  var delTipo=registros.filter(function(x){
-    if(sec.id==="entradas")return x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno";
-    return x.tipo===tipo;
-  });
+  var tiposSec=depTiposDe(sec.id);
+  var delTipo=registros.filter(function(x){return tiposSec.indexOf(x.tipo)!==-1;});
 
   // Meses con movimiento, para poder mirar un mes solo. Sin esto la caja se vuelve
   // ilegible al tercer mes cargado.
@@ -5273,7 +5348,7 @@ function PanelDeportes(p){
 
   // Lo que mueve plata se mira distinto: cuánto se movió, cuánto falta y por qué
   // medio. Lo cancelado no es plata, así que no suma en ninguno.
-  var conCobranza=!!sec.caja;
+  var conCobranza=!!sec.plata;
   var estadoOk=depOk(tipo);
   function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
   var cobrado=conCobranza?sumaSi(function(x){return x.estado===estadoOk;}):0;
@@ -5285,7 +5360,7 @@ function PanelDeportes(p){
 
   // Las salidas, además, por rubro: es la pregunta que se hace uno al mirar los gastos
   // del predio (cuánto se fue en mantenimiento, cuánto en el canchero).
-  var porRubro=tipo!=="salida"?[]:DEP_RUBROS.map(function(r){
+  var porRubro=sec.id!=="salidas"?[]:DEP_RUBROS.map(function(r){
     return {id:r.id,label:r.label,total:sumaSi(function(x){return x.estado==="pagado"&&x.rubro===r.id;})};
   }).concat([{id:"",label:"❓ Sin rubro",total:sumaSi(function(x){return x.estado==="pagado"&&!x.rubro;})}])
     .filter(function(r){return r.id!==""||r.total>0;});
@@ -5297,7 +5372,7 @@ function PanelDeportes(p){
     return (x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno")&&x.estado==="cobrado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var totalSalidas=registros.filter(function(x){
-    return x.tipo==="salida"&&x.estado==="pagado"&&enMes(x);
+    return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
   var saldo=totalEntradas-totalSalidas;
 
@@ -5338,11 +5413,10 @@ function PanelDeportes(p){
 
       {/* La caja: entradas y salidas */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {DEP_SECCIONES.filter(function(s){return s.caja;}).map(function(s){
+        {DEP_SECCIONES.filter(function(s){return s.principal;}).map(function(s){
           var act=seccion===s.id;
-          var cuenta=registros.filter(function(x){
-            return s.id==="entradas"?(x.tipo==="entrada"||x.tipo==="clase"||x.tipo==="turno"):x.tipo===s.tipo;
-          }).length;
+          var tps=depTiposDe(s.id);
+          var cuenta=registros.filter(function(x){return tps.indexOf(x.tipo)!==-1;}).length;
           return(
             <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
               style={{flex:1,minWidth:130,padding:"11px 16px",borderRadius:9,border:"1px solid "+(act?s.color:"#1E1E1E"),background:act?s.color+"22":"#111",color:act?s.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>
@@ -5370,8 +5444,8 @@ function PanelDeportes(p){
 
       {/* Fichas: no son movimientos, por eso van aparte y más chicas */}
       <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>Fichas</span>
-        {DEP_SECCIONES.filter(function(s){return !s.caja;}).map(function(s){
+        <span style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>Ver</span>
+        {DEP_SECCIONES.filter(function(s){return !s.principal;}).map(function(s){
           var act=seccion===s.id;
           var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
           return(
@@ -5386,30 +5460,38 @@ function PanelDeportes(p){
       {/* Alta / edición */}
       {!abierto&&!eligiendo?(
         <button onClick={function(){
-          if(sec.id==="entradas")setEligiendo(true);
+          if(sec.id==="entradas"||sec.id==="salidas")setEligiendo(true);
           else abrirForm(sec.disciplina,sec.tipo);
         }}
           style={{width:"100%",padding:"12px",borderRadius:10,border:"1px solid "+color+"44",background:color+"11",color:color,fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer",marginBottom:14}}>
           + Anotar {t.singular}
         </button>
       ):eligiendo?(
-        /* Qué entró: cada opción abre el formulario que le corresponde */
-        <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:4}}>¿Qué entró?</div>
-          <div style={{fontSize:11,color:"#555",marginBottom:11}}>Se guarda en su lugar y suma en la caja.</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:9}}>
-            {DEP_ORIGENES.map(function(o){
-              return(
-                <button key={o.id} onClick={function(){abrirForm(o.disciplina,o.tipo);}}
-                  style={{padding:"14px 12px",borderRadius:10,border:"1px solid #1E1E1E",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",textAlign:"left",cursor:"pointer"}}>
-                  <div style={{fontSize:13,fontWeight:800,marginBottom:3}}>{o.label}</div>
-                  <div style={{fontSize:10,color:"#555"}}>{o.desc}</div>
-                </button>
-              );
-            })}
-          </div>
-          <button onClick={cerrarForm} style={{...GH,width:"100%",padding:"9px",fontSize:12}}>Cancelar</button>
-        </div>
+        /* Qué entró o qué salió: cada opción abre el formulario que le corresponde */
+        (function(){
+          var entrando=sec.id==="entradas";
+          var ops=entrando?DEP_ORIGENES:DEP_ORIGENES_SALIDA;
+          return(
+            <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:4}}>{entrando?"¿Qué entró?":"¿Qué salió?"}</div>
+              <div style={{fontSize:11,color:"#555",marginBottom:11}}>Se guarda en su lugar y suma en la caja.</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:9}}>
+                {ops.map(function(o){
+                  return(
+                    <button key={o.id} onClick={function(){
+                      abrirForm(o.disciplina||"caja",o.tipo,o.rubro?{rubro:o.rubro}:null);
+                    }}
+                      style={{padding:"14px 12px",borderRadius:10,border:"1px solid #1E1E1E",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",textAlign:"left",cursor:"pointer"}}>
+                      <div style={{fontSize:13,fontWeight:800,marginBottom:3}}>{o.label}</div>
+                      <div style={{fontSize:10,color:"#555"}}>{o.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={cerrarForm} style={{...GH,width:"100%",padding:"9px",fontSize:12}}>Cancelar</button>
+            </div>
+          );
+        })()
       ):(
         <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"14px",marginBottom:14}}>
           <div style={{fontSize:13,fontWeight:800,color:color,marginBottom:12}}>
@@ -5507,11 +5589,11 @@ function PanelDeportes(p){
               <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8"}}>{totalUnidades}</div>
             </div>
             <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="salida"?"Pagado":"Cobrado"}</div>
-              <div style={{fontSize:17,fontWeight:800,color:tipo==="salida"?"#C1440E":"#3A7D44"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{sec.id==="entradas"?"Cobrado":"Pagado"}</div>
+              <div style={{fontSize:17,fontWeight:800,color:sec.id==="entradas"?"#3A7D44":"#C1440E"}}>${Math.round(cobrado).toLocaleString("es-AR")}</div>
             </div>
             <div style={{background:"#0F0F0F",border:"1px solid "+(aCobrar>0?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
-              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{tipo==="salida"?"A pagar":"A cobrar"}</div>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{sec.id==="entradas"?"A cobrar":"A pagar"}</div>
               <div style={{fontSize:17,fontWeight:800,color:aCobrar>0?"#D4A017":"#333"}}>${Math.round(aCobrar).toLocaleString("es-AR")}</div>
             </div>
           </div>
@@ -5570,7 +5652,7 @@ function PanelDeportes(p){
             var xEstados=DEP_ESTADOS[xTipo]||estados;
             var xT=DEP_TIPOS[xTipo]||t;
             var est=depEstadoDe(xTipo,x.estado);
-            var queEs=sec.id==="entradas"?depQueEs(x):"";
+            var queEs=tiposSec.length>1?depQueEs(x):"";
             var detalle=xCampos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
               var v=x[c.k];
               if(c.tipo==="date")return c.label+": "+fmtDate(String(v));
@@ -13062,6 +13144,9 @@ export default function App() {
     sbDeletePauta(id);
     setPautas(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
+  function guardarIdea(x){
+    sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
+  }
   function guardarDeporte(x){
     sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README).");});
     setDeportes(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
@@ -13357,9 +13442,9 @@ export default function App() {
             <PanelIdeas
               ideas={ideas}
               usuario={cu.nombre}
-              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onSave={function(idea){guardarIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
               onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
-              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              onUpdate={function(idea){guardarIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
             />
           )}
 
@@ -13504,9 +13589,9 @@ export default function App() {
             <PanelIdeas
               ideas={ideas}
               usuario={cu.nombre}
-              onSave={function(idea){sbSaveIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
+              onSave={function(idea){guardarIdea(idea);setIdeas(function(prev){return[idea,...prev];});}}
               onDelete={function(id){sbDeleteIdea(id);setIdeas(function(prev){return prev.filter(function(i){return i.id!==id;});});}}
-              onUpdate={function(idea){sbSaveIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
+              onUpdate={function(idea){guardarIdea(idea);setIdeas(function(prev){var f=prev.filter(function(x){return x.id!==idea.id;});return[idea,...f];});}}
             />
           )}
 

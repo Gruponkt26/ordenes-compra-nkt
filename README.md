@@ -479,6 +479,18 @@ create table if not exists comandas (
   usuario    text
 );
 
+-- La carta: los platos con su precio de venta, por local
+create table if not exists carta (
+  id         text primary key,
+  local      text,
+  categoria  text,
+  nombre     text,
+  precio     numeric,
+  activo     boolean default true,
+  orden      integer,
+  created_at timestamptz default now()
+);
+
 -- Los ítems de cada comanda. Todavía no se usa, pero conviene crearla ahora y no
 -- correr SQL otra vez en el medio del próximo paso.
 create table if not exists comanda_items (
@@ -509,12 +521,27 @@ una foto de hace diez minutos, el sistema no sirve. Por ahora vuelve a leer cada
 segundos, que es lo mínimo razonable; lo correcto sería Supabase Realtime, que además
 necesita abrir el `connect-src` del CSP a `wss://*.supabase.co`.
 
-### Lo que falta
+### La carta
 
-La **carta con precios de venta**, que hoy no existe en ningún lado: la tabla `precios` es
-de *compra* (cuánto cobra cada proveedor), y `MENU_POR_LOCAL` tiene los nombres de los
-platos pero ningún precio. Sin eso no hay cuenta ni total. Los nombres sí alcanzan para
-mandar a la cocina, así que la comanda impresa puede venir antes que el cobro.
+Hasta ahora la app no tenía precios de venta: la tabla `precios` es de *compra* (cuánto
+cobra cada proveedor) y `MENU_POR_LOCAL` tiene los nombres de los platos pero ningún
+precio. La pestaña **📖 Carta** es donde se cargan.
+
+Lo importante es de dónde salen los platos: **del menú de stock**, con el botón *Traer los
+platos del stock*. Los nombres ya estaban cargados —son los mismos que se usan para contar
+stock—, así que no hay que escribir cien platos de nuevo, sólo ponerles precio. El botón no
+pisa lo que ya está, así que se puede volver a apretar cuando se agrega algo al menú sin
+perder los precios cargados.
+
+Las categorías se muestran en el orden de la carta (entradas, pizzas, principales), que es
+el del menú de stock, y no alfabético: una carta no se lee así. Lo que se agregue a mano
+—Bebidas, Postres, que no están en el stock— va al final.
+
+Un plato sin precio no se puede cobrar, pero sí mandar a la cocina. Por eso el contador
+avisa cuántos faltan en vez de impedir usar la carta a medio cargar.
+
+El ✓ de cada plato lo saca de la carta sin borrarlo, para lo que está fuera de temporada o
+se acabó: vuelve con otro toque, sin perder el precio.
 
 ---
 
@@ -548,8 +575,12 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
 ### Del módulo de comandas
 
-8. **La carta con precios de venta**, prerequisito de todo lo que sea cobrar.
-9. **Cargar ítems a una comanda**: hoy la mesa se abre y se cierra, nada más.
+8. **Cargar ítems a una comanda**: hoy la mesa se abre y se cierra, nada más. Con la carta
+   ya cargada, es el paso siguiente.
+9. **El cronómetro de cocina**: desde que la tanda sale a la cocina hasta que se entrega.
+   Va por ronda y no por mesa —una mesa pide entradas, principales y postre, y un solo
+   reloj mezcla los tres— y la mesa muestra el de la tanda más vieja sin entregar. Necesita
+   que exista "mandar a cocina", o sea los ítems.
 10. **Imprimir en la comandera**: el puente está en `comandera/` y hay que engancharlo al
     bucle que mira las comandas nuevas. Ojo con el ticket duplicado si corre en las dos PC.
 11. **Quién ve Comandas**: hoy sólo `sofia`. Los mozos necesitan entrar, y acotados a su

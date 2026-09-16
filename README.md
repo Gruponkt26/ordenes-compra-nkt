@@ -369,6 +369,15 @@ create table if not exists deportes (
 );
 ```
 
+Si `comanda_items` se creó antes de que existiera la carga de pedidos, le faltan tres
+columnas:
+
+```sql
+alter table comanda_items add column if not exists ronda        integer;
+alter table comanda_items add column if not exists enviado_at   timestamptz;
+alter table comanda_items add column if not exists entregado_at timestamptz;
+```
+
 Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza con:
 
 ```sql
@@ -386,6 +395,38 @@ Los estados y los medios de pago salen del código (`DEP_ESTADOS` y `DEP_MEDIOS`
 la base: una clase o un alquiler va de *a cobrar* a *cobrado* o *cancelado*, un profe está
 activo o inactivo, y un artículo está en el galpón, prestado, en reparación o dado de baja.
 Sumar un medio de pago nuevo es agregarlo a `DEP_MEDIOS` y nada más.
+
+### Comandar: cargar, mandar, entregar
+
+Al tocar una mesa se abre **su comanda**, no se cierra la mesa. Adentro:
+
+1. **Se arma el pedido.** *Agregar de la carta* → categoría o buscador → tocar un plato lo
+   suma. Si ese plato ya está sin mandar, sube la cantidad en vez de repetir el renglón:
+   una mesa que pide cuatro cervezas quiere `4x Heineken` y no cuatro líneas iguales. Cada
+   ítem tiene su ✎ para la aclaración ("sin cebolla"), que es lo que arruina un plato si no
+   se lee.
+2. **Se manda a la cocina**, todo junto. El pedido se arma primero y se manda después a
+   propósito: el mozo toma la mesa entera y la cocina recibe **una tanda**, no siete
+   papelitos sueltos.
+3. **Se entrega**, ítem por ítem, a medida que sale.
+
+Una mesa **no se puede cerrar con ítems sin mandar**: o se mandan o se sacan. Un plato
+cargado que nunca llegó a la cocina es un plato que el cliente pidió y no va a recibir.
+
+### El cronómetro de cocina
+
+Cuenta desde que la tanda **sale a la cocina**, no desde que se abrió la mesa: entre que se
+sientan y piden pueden pasar quince minutos que no son culpa de nadie.
+
+Y va **por tanda, no por mesa**. Una mesa pide entradas, después principales, después
+postre; un solo reloj mezcla los tres y no dice nada. En el plano, cada mesa muestra el de
+**la tanda más vieja que todavía no se entregó**, con el color de la demora: verde hasta 10
+minutos, amarillo hasta 20, rojo después. Mientras no haya nada en la cocina la mesa va en
+el color del local — una mesa recién abierta sin pedir no es un problema, y una con una
+tanda de hace media hora sí.
+
+Eso permite pararse en el salón, mirar la pantalla y saber en un segundo qué mesa está
+demorada, que es para lo que sirve.
 
 ### Cómo está armada la navegación
 
@@ -491,18 +532,20 @@ create table if not exists carta (
   created_at timestamptz default now()
 );
 
--- Los ítems de cada comanda. Todavía no se usa, pero conviene crearla ahora y no
--- correr SQL otra vez en el medio del próximo paso.
+-- Los ítems de cada comanda
 create table if not exists comanda_items (
-  id         text primary key,
-  comanda_id text,
-  nombre     text,
-  cant       numeric default 1,
-  precio     numeric,
-  nota       text,
-  estado     text,      -- pedido | listo | entregado
-  usuario    text,
-  created_at timestamptz default now()
+  id           text primary key,
+  comanda_id   text,
+  nombre       text,
+  cant         numeric default 1,
+  precio       numeric,
+  nota         text,
+  estado       text,      -- pendiente | enviado | entregado | cancelado
+  ronda        integer,   -- la tanda con la que salió a la cocina
+  enviado_at   timestamptz,
+  entregado_at timestamptz,
+  usuario      text,
+  created_at   timestamptz default now()
 );
 ```
 

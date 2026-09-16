@@ -13,7 +13,7 @@
 // y cada uno guarda la comanda entera, el último pisa lo que agregó el otro.
 
 import { useState, useEffect } from "react";
-import { SURL, SH, LOCALES, getLocal, INP, GH } from "./comun.js";
+import { SURL, SH, LOCALES, getLocal, fmtHora, INP, GH } from "./comun.js";
 
 // ─── DATOS ────────────────────────────────────────────────────────────────────
 async function sbComandasDisponible() {
@@ -88,6 +88,33 @@ async function sbDeleteCarta(id) {
   try { await fetch(SURL + "/rest/v1/carta?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
 }
 
+// ─── ÍTEMS ────────────────────────────────────────────────────────────────────
+// Una fila por ítem, no un JSON adentro de la comanda. Si dos mozos tocan la misma
+// mesa —uno agrega el postre y el otro una bebida— con un objeto entero el último
+// pisa lo del primero y falta un plato. Con filas sueltas, cada uno agrega la suya.
+async function sbLoadItems(ids) {
+  if (!ids || !ids.length) return [];
+  try {
+    var lista = ids.join(",");
+    var r = await fetch(SURL + "/rest/v1/comanda_items?comanda_id=in.(" + lista + ")&order=created_at", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+// Guarda uno o varios. Mandar una tanda entera a la cocina son N ítems que cambian
+// de estado a la vez: va en una sola llamada y no en N.
+async function sbSaveItems(filas) {
+  try {
+    var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL + "/rest/v1/comanda_items", { method:"POST", headers:h, body:JSON.stringify(filas) });
+    if (!r.ok) { var e = await r.text(); console.error("sbSaveItems:", r.status, e); return e || ("Error " + r.status); }
+    return null;
+  } catch(e) { return String((e && e.message) || e); }
+}
+async function sbDeleteItem(id) {
+  try { await fetch(SURL + "/rest/v1/comanda_items?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
+}
+
 // ─── SECTORES ─────────────────────────────────────────────────────────────────
 // Los mismos que usa el checklist para las áreas de un local, que son los que la
 // gente nombra: "las del patio", "la de la vereda".
@@ -107,6 +134,28 @@ var CMD_VISTAS = [
 
 function pesos(n) { return "$" + Math.round(Number(n) || 0).toLocaleString("es-AR"); }
 
+// Minutos desde que salió la tanda. Es el número por el que existe el cronómetro:
+// no cuánto hace que se sentaron, sino cuánto hace que la cocina tiene el pedido.
+function minutosDesde(iso) {
+  if (!iso) return null;
+  var m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  return isNaN(m) || m < 0 ? null : m;
+}
+// Verde hasta 10, amarillo hasta 20, rojo después. Son los tiempos con los que se
+// mira una cocina: a los veinte minutos sin salir, alguien tiene que ir a ver.
+function colorDemora(min) {
+  if (min === null) return "#555";
+  return min < 10 ? "#3A7D44" : min < 20 ? "#D4A017" : "#C1440E";
+}
+// La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
+// color de la mesa: si hay tres rondas, la que importa es la que más espera.
+function demoraDe(itemsComanda) {
+  var enviados = (itemsComanda || []).filter(function(i) { return i.estado === "enviado" && i.enviado_at; });
+  if (!enviados.length) return null;
+  var viejo = enviados.reduce(function(a, b) { return a.enviado_at < b.enviado_at ? a : b; });
+  return minutosDesde(viejo.enviado_at);
+}
+
 // Cuánto hace que está abierta. Es el dato que mira un encargado para saber qué
 // mesa se está demorando, así que va en la tarjeta y no escondido adentro.
 function hace(iso) {
@@ -116,6 +165,219 @@ function hace(iso) {
   if (min < 60) return min + " min";
   var h = Math.floor(min / 60);
   return h + "h " + String(min % 60).padStart(2, "0");
+}
+
+// ─── DETALLE DE UNA COMANDA ───────────────────────────────────────────────────
+// Lo que se ve al tocar una mesa: lo que ya pidió, lo que falta mandar, y la carta
+// para agregar. El pedido se arma primero y se manda después, a propósito: el mozo
+// toma toda la mesa y recién ahí la cocina recibe una tanda, no siete papelitos.
+function ComandaDetalle(props) {
+  var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
+  var [agregando, setAgregando] = useState(false);
+  var [categoria, setCategoria] = useState(null);
+  var [busqueda, setBusqueda] = useState("");
+  var [notaDe, setNotaDe] = useState(null);
+
+  var mios = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+  var pendientes = mios.filter(function(i) { return i.estado === "pendiente"; });
+  var mandados = mios.filter(function(i) { return i.estado !== "pendiente"; });
+  var total = mios.reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0);
+
+  // Las tandas ya mandadas, de la más nueva a la más vieja.
+  var rondas = [];
+  mandados.forEach(function(i) {
+    var r = rondas.find(function(x) { return x.ronda === i.ronda; });
+    if (!r) { r = { ronda:i.ronda, enviado_at:i.enviado_at, items:[] }; rondas.push(r); }
+    r.items.push(i);
+    if (i.enviado_at && (!r.enviado_at || i.enviado_at < r.enviado_at)) r.enviado_at = i.enviado_at;
+  });
+  rondas.sort(function(a, b) { return (b.ronda || 0) - (a.ronda || 0); });
+
+  var delLocal = carta.filter(function(x) { return x.local === c.local && x.activo !== false; });
+  var cats = [];
+  var minOrden = {};
+  delLocal.forEach(function(x) {
+    var o = x.orden === null || x.orden === undefined ? 9999 : x.orden;
+    if (minOrden[x.categoria] === undefined || o < minOrden[x.categoria]) minOrden[x.categoria] = o;
+  });
+  cats = Object.keys(minOrden).sort(function(a, b) { return minOrden[a] - minOrden[b]; });
+  var q = busqueda.trim().toLowerCase();
+  var platos = delLocal.filter(function(x) {
+    if (q) return String(x.nombre).toLowerCase().indexOf(q) !== -1;
+    return !categoria || x.categoria === categoria;
+  }).sort(function(a, b) { return (a.orden || 0) - (b.orden || 0); });
+
+  function agregar(plato) {
+    // Si ya está sin mandar, suma uno en vez de repetir la línea: una mesa que pide
+    // cuatro cervezas quiere "4x Heineken" y no cuatro renglones iguales.
+    var ya = pendientes.find(function(i) { return i.nombre === plato.nombre && !i.nota; });
+    if (ya) { props.onGuardarItems([{ ...ya, cant: (Number(ya.cant) || 1) + 1 }]); return; }
+    props.onGuardarItems([{
+      id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      comanda_id: c.id, nombre: plato.nombre, cant: 1, precio: plato.precio,
+      nota: null, estado: "pendiente", ronda: null, enviado_at: null, entregado_at: null,
+      usuario: props.usuario || "", created_at: new Date().toISOString(),
+    }]);
+  }
+  function mandar() {
+    if (!pendientes.length) return;
+    var ronda = mandados.reduce(function(a, i) { return Math.max(a, Number(i.ronda) || 0); }, 0) + 1;
+    var ahora = new Date().toISOString();
+    props.onGuardarItems(pendientes.map(function(i) {
+      return { ...i, estado:"enviado", ronda:ronda, enviado_at:ahora };
+    }));
+  }
+
+  var LBL = { display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6 };
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:12, flexWrap:"wrap" }}>
+        <button onClick={props.onVolver} style={{ ...GH, padding:"7px 13px", fontSize:12 }}>← Volver</button>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:15, fontWeight:800, color:color }}>{props.titulo}</div>
+          <div style={{ fontSize:10, color:"#555" }}>
+            #{c.numero}{c.mozo ? " · " + c.mozo : ""}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""}
+          </div>
+        </div>
+      </div>
+
+      {/* Lo cargado y todavía no mandado */}
+      {pendientes.length > 0 && (
+        <div style={{ background:"#0F0F0F", border:"1px dashed "+color+"55", borderRadius:12, padding:"12px", marginBottom:12 }}>
+          <div style={LBL}>Sin mandar</div>
+          {pendientes.map(function(i) {
+            return (
+              <div key={i.id} style={{ marginBottom:7 }}>
+                <div style={{ display:"flex", gap:7, alignItems:"center" }}>
+                  <button onClick={function() {
+                      var n = (Number(i.cant) || 1) - 1;
+                      if (n <= 0) props.onBorrarItem(i.id); else props.onGuardarItems([{ ...i, cant:n }]);
+                    }}
+                    style={{ width:28, height:28, borderRadius:7, border:"1px solid #2A2A2A", background:"#111", color:"#888", fontSize:15, cursor:"pointer", flex:"none" }}>−</button>
+                  <span style={{ fontSize:14, fontWeight:800, color:"#F0EDE8", minWidth:22, textAlign:"center" }}>{i.cant}</span>
+                  <button onClick={function() { props.onGuardarItems([{ ...i, cant:(Number(i.cant) || 1) + 1 }]); }}
+                    style={{ width:28, height:28, borderRadius:7, border:"1px solid #2A2A2A", background:"#111", color:"#888", fontSize:15, cursor:"pointer", flex:"none" }}>+</button>
+                  <span style={{ fontSize:13, color:"#F0EDE8", flex:1, minWidth:0 }}>{i.nombre}</span>
+                  <span style={{ fontSize:12, color:"#666", whiteSpace:"nowrap" }}>{pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</span>
+                  <button onClick={function() { setNotaDe(notaDe === i.id ? null : i.id); }} title="Aclaración"
+                    style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:i.nota?color:"#555", fontSize:11, cursor:"pointer" }}>✎</button>
+                </div>
+                {(notaDe === i.id || i.nota) && (
+                  <input defaultValue={i.nota || ""} placeholder="Sin cebolla, bien cocido…"
+                    onBlur={function(e) { var v = e.target.value.trim(); if (v !== (i.nota || "")) props.onGuardarItems([{ ...i, nota:v || null }]); }}
+                    style={{ ...INP, fontSize:12, marginTop:5, marginLeft:70, width:"calc(100% - 70px)" }} />
+                )}
+              </div>
+            );
+          })}
+          <button onClick={mandar}
+            style={{ width:"100%", marginTop:8, padding:"12px", borderRadius:9, border:"none", background:color, color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+            🔔 Mandar a la cocina ({pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)})
+          </button>
+        </div>
+      )}
+
+      {/* Agregar de la carta */}
+      {!agregando ? (
+        <button onClick={function() { setAgregando(true); }}
+          style={{ width:"100%", padding:"12px", borderRadius:10, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer", marginBottom:12 }}>
+          + Agregar de la carta
+        </button>
+      ) : (
+        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"12px", marginBottom:12 }}>
+          <div style={{ display:"flex", gap:7, marginBottom:9 }}>
+            <input value={busqueda} onChange={function(e) { setBusqueda(e.target.value); }} placeholder="Buscar un plato…" style={{ ...INP, fontSize:12 }} />
+            <button onClick={function() { setAgregando(false); setBusqueda(""); }} style={{ ...GH, padding:"8px 13px", fontSize:12 }}>Listo</button>
+          </div>
+          {!q && (
+            <div style={{ display:"flex", gap:5, marginBottom:9, flexWrap:"wrap" }}>
+              {cats.map(function(cat) {
+                var act = categoria === cat;
+                return (
+                  <button key={cat} onClick={function() { setCategoria(act ? null : cat); }}
+                    style={{ padding:"6px 11px", borderRadius:7, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#666", fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {delLocal.length === 0 ? (
+            <div style={{ fontSize:12, color:"#8A6055", lineHeight:1.6 }}>
+              Este local todavía no tiene carta cargada. Se carga en la pestaña 📖 Carta.
+            </div>
+          ) : (!categoria && !q) ? (
+            <div style={{ fontSize:11, color:"#444" }}>Elegí una categoría o buscá un plato.</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
+              {platos.map(function(x) {
+                return (
+                  <button key={x.id} onClick={function() { agregar(x); }}
+                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, padding:"9px 11px", borderRadius:8, border:"1px solid #1A1A1A", background:"#111", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:12, cursor:"pointer", textAlign:"left" }}>
+                    <span style={{ flex:1, minWidth:0 }}>{x.nombre}</span>
+                    <span style={{ color:x.precio ? "#666" : "#D4A017", whiteSpace:"nowrap" }}>{x.precio ? pesos(x.precio) : "sin precio"}</span>
+                  </button>
+                );
+              })}
+              {platos.length === 0 && <div style={{ fontSize:11, color:"#444", padding:"6px 0" }}>Nada con ese nombre.</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lo que ya está en la cocina, por tanda */}
+      {rondas.map(function(r) {
+        var min = r.items.some(function(i) { return i.estado === "enviado"; }) ? minutosDesde(r.enviado_at) : null;
+        var col = min === null ? "#3A7D44" : colorDemora(min);
+        var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
+        return (
+          <div key={r.ronda} style={{ background:"#111", border:"1px solid "+col+"33", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:9 }}>
+              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>
+                Tanda {r.ronda}{r.enviado_at ? " · " + fmtHora(r.enviado_at) : ""}
+              </div>
+              <div style={{ fontSize:12, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
+                {entregada ? "✅ entregada" : min === null ? "" : "⏱ " + min + " min"}
+              </div>
+            </div>
+            {r.items.map(function(i) {
+              var listo = i.estado === "entregado";
+              return (
+                <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 0", opacity:listo?0.5:1 }}>
+                  <span style={{ fontSize:13, fontWeight:800, color:"#888", minWidth:24 }}>{i.cant}x</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, color:"#F0EDE8", textDecoration:listo?"line-through":"none" }}>{i.nombre}</div>
+                    {i.nota && <div style={{ fontSize:11, color:"#D4A017" }}>▸ {i.nota}</div>}
+                  </div>
+                  <span style={{ fontSize:11, color:"#555", whiteSpace:"nowrap" }}>{pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</span>
+                  <button onClick={function() {
+                      props.onGuardarItems([{ ...i, estado: listo ? "enviado" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
+                    }}
+                    title={listo ? "Marcar como no entregado" : "Marcar como entregado"}
+                    style={{ background:"none", border:"1px solid "+(listo?"#2A2A2A":col+"55"), borderRadius:6, padding:"3px 9px", color:listo?"#444":col, fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
+                    {listo ? "✓" : "entregar"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Total y cierre */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, marginTop:14, padding:"12px 13px", background:"#0F0F0F", border:"1px solid #1A1A1A", borderRadius:10 }}>
+        <div>
+          <div style={{ fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>Total</div>
+          <div style={{ fontSize:20, fontWeight:800, color:"#F0EDE8" }}>{pesos(total)}</div>
+        </div>
+        <button onClick={function() { props.onCerrar(total, pendientes.length); }}
+          style={{ padding:"11px 18px", borderRadius:9, border:"none", background:mios.length?"#3A7D44":"#1A1A1A", color:mios.length?"#fff":"#555", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+          Cerrar mesa
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // Los tres formularios viven acá afuera y no adentro de PanelComandas. Definidos
@@ -486,11 +748,14 @@ export default function PanelComandas(p) {
   var [problemaTabla, setProblemaTabla] = useState(null);
   var [config, setConfig] = useState(false);
   var [carta, setCarta] = useState([]);
+  var [items, setItems] = useState([]);
+  var [abiertaId, setAbiertaId] = useState(null);
   var [ahora, setAhora] = useState(Date.now());
 
   function cargar() {
     return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
       setMesas(r[0]); setComandas(r[1]); setCargando(false);
+      return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
   function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
@@ -518,6 +783,16 @@ export default function PanelComandas(p) {
   var abiertas = comandas.filter(function(c) { return c.local === localId; });
   function comandaDeMesa(mesaId) { return abiertas.find(function(c) { return c.tipo === "mesa" && c.mesa_id === mesaId; }); }
   var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo; });
+
+  var comandaAbierta = abiertaId ? comandas.find(function(x) { return x.id === abiertaId; }) : null;
+  function tituloDe(c) {
+    if (!c) return "";
+    if (c.tipo === "mesa") {
+      var m = mesas.find(function(x) { return x.id === c.mesa_id; });
+      return "🪑 Mesa " + ((m && m.nombre) || "");
+    }
+    return (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
+  }
 
   function proximoNumero() {
     var hoy = new Date().toISOString().slice(0, 10);
@@ -547,18 +822,43 @@ export default function PanelComandas(p) {
     });
   }
 
+  // Se pinta primero y se guarda después; si la base rechaza, vuelve atrás. Un plato
+  // que se ve cargado pero no se guardó es un plato que la cocina nunca recibe.
+  function guardarItems(filas) {
+    var antes = items;
+    setItems(function(prev) {
+      var ids = filas.map(function(f) { return f.id; });
+      return prev.filter(function(x) { return ids.indexOf(x.id) === -1; }).concat(filas);
+    });
+    return sbSaveItems(filas).then(function(err) {
+      if (err) {
+        setItems(antes);
+        alert("No se pudo guardar el pedido:\n\n" + err + "\n\nSi el error menciona comanda_items o alguna columna, falta correr el SQL del README. Acordate del alter de RLS.");
+        return err;
+      }
+      return null;
+    });
+  }
+  function borrarItem(id) {
+    setItems(function(prev) { return prev.filter(function(x) { return x.id !== id; }); });
+    sbDeleteItem(id);
+  }
+
   function abrirMesa(mesa) {
     var ya = comandaDeMesa(mesa.id);
-    if (ya) return;
-    guardar({
+    if (ya) { setAbiertaId(ya.id); return; }
+    var nueva = {
       id: "cmd_" + Date.now(),
       local: localId, tipo: "mesa", mesa_id: mesa.id,
       numero: proximoNumero(), estado: "abierta",
       mozo: usuario, abierta_at: new Date().toISOString(), usuario: usuario,
-    });
+    };
+    guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
   }
-  function cerrar(c) {
-    guardar({ ...c, estado: "cerrada", cerrada_at: new Date().toISOString() });
+  function cerrar(c, total, sinMandar) {
+    if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin mandar a la cocina. Mandalos o sacalos antes de cerrar."); return; }
+    guardar({ ...c, estado:"cerrada", cerrada_at:new Date().toISOString(), total: total === undefined ? c.total : total });
+    setAbiertaId(null);
   }
 
   // ─── CONFIGURACIÓN DE MESAS ────────────────────────────────────────────────
@@ -576,14 +876,19 @@ export default function PanelComandas(p) {
     var c = comandaDeMesa(m.id);
     var ocupada = !!c;
     var nom = String(m.nombre || "");
+    // El color lo manda la cocina, no la mesa: una mesa recién abierta sin pedir no
+    // es un problema, y una con una tanda de hace media hora sí. Por eso mientras no
+    // haya nada en cocina va en el color del local, y cuando hay, en el de la demora.
+    var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) : null;
+    var col = demora === null ? color : colorDemora(demora);
     return (
-      <button onClick={function() { ocupada ? cerrar(c) : abrirMesa(m); }}
-        title={ocupada ? "Abierta hace " + hace(c.abierta_at) + " · tocar para cerrar" : "Tocar para abrir"}
+      <button onClick={function() { ocupada ? setAbiertaId(c.id) : abrirMesa(m); }}
+        title={ocupada ? "Abierta hace " + hace(c.abierta_at) : "Tocar para abrir"}
         style={{
           width:82, height:82, borderRadius:12, cursor:"pointer",
-          border:"1px solid " + (ocupada ? color : "#1E1E1E"),
-          background: ocupada ? color + "22" : "#0F0F0F",
-          color: ocupada ? color : "#555",
+          border:"1px solid " + (ocupada ? col : "#1E1E1E"),
+          background: ocupada ? col + "22" : "#0F0F0F",
+          color: ocupada ? col : "#555",
           fontFamily:"'Inter',sans-serif", display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center", gap:2, padding:4,
         }}>
@@ -592,7 +897,9 @@ export default function PanelComandas(p) {
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
         {ocupada ? (
           <>
-            <div style={{ fontSize:9, opacity:0.85 }}>⏱ {hace(c.abierta_at)}</div>
+            <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
+              {demora !== null ? "🍳 " + demora + " min" : "⏱ " + hace(c.abierta_at)}
+            </div>
             {c.mozo && <div style={{ fontSize:8, opacity:0.6, maxWidth:74, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.mozo}</div>}
           </>
         ) : (
@@ -659,6 +966,15 @@ export default function PanelComandas(p) {
 
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
+      ) : comandaAbierta ? (
+        <ComandaDetalle
+          comanda={comandaAbierta} items={items} carta={carta} color={color} usuario={usuario}
+          titulo={tituloDe(comandaAbierta)}
+          onVolver={function() { setAbiertaId(null); }}
+          onGuardarItems={guardarItems}
+          onBorrarItem={borrarItem}
+          onCerrar={function(total, sinMandar) { cerrar(comandaAbierta, total, sinMandar); }}
+        />
       ) : config ? (
         <>
           <button onClick={function() { setConfig(false); }} style={{ ...GH, padding:"7px 13px", fontSize:12, marginBottom:12 }}>← Volver al plano</button>
@@ -726,9 +1042,9 @@ export default function PanelComandas(p) {
                       </div>
                     </div>
                     <div style={{ display:"flex", justifyContent:"flex-end", marginTop:9 }}>
-                      <button onClick={function() { cerrar(c); }}
-                        style={{ padding:"6px 14px", borderRadius:7, border:"1px solid #2A2A2A", background:"none", color:"#888", fontFamily:"'Inter',sans-serif", fontSize:11, cursor:"pointer" }}>
-                        Cerrar
+                      <button onClick={function() { setAbiertaId(c.id); }}
+                        style={{ padding:"6px 14px", borderRadius:7, border:"1px solid "+color+"55", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                        Abrir pedido →
                       </button>
                     </div>
                   </div>
@@ -739,16 +1055,6 @@ export default function PanelComandas(p) {
         </>
       )}
 
-      {/* Lo que falta, dicho en la pantalla y no sólo en el README: una mesa que se
-          abre y se cierra sin poder cargar nada todavía es una pantalla a medias, y
-          conviene que quede claro que es un paso y no un olvido. */}
-      {!cargando && !config && vista !== "carta" && (
-        <div style={{ marginTop:18, padding:"10px 12px", background:"#0D0D0D", border:"1px dashed #1E1E1E", borderRadius:10, fontSize:11, color:"#444", lineHeight:1.6 }}>
-          <b style={{ color:"#666" }}>Esto es la estructura.</b> Por ahora una mesa se abre y se cierra: falta cargarle
-          los platos. El paso siguiente es la carta —los platos con su precio de venta, que hoy no existen en ningún
-          lado— y de ahí la comanda a la cocina.
-        </div>
-      )}
     </div>
   );
 }

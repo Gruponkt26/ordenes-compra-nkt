@@ -641,6 +641,29 @@ Sirve de molde para los otros locales. Dos cosas que hace y conviene mantener:
 
 ---
 
+## 🧾 IVA: la reserva diaria
+
+La pestaña **📅 Reserva diaria** del módulo IVA dice, día por día y local por local, cuánto
+hay que separar de cada caja por el IVA que generó la venta. No necesita nada nuevo en la
+base: sale de los cierres que ya se cargan.
+
+Dos cosas que hay que tener claras para leerla, y son la razón de que exista:
+
+**El IVA ya está adentro del precio.** De $100.000 facturados, el IVA son **$17.355**, no
+$21.000: el 21% se calcula sobre el neto ($82.645) y no sobre el total. Reservar el 21% del
+bruto sería guardar de más; calcularlo mal para el otro lado es gastarse plata ajena. Por
+eso cada celda muestra también de cuánto sale, para poder controlarla contra el cierre.
+
+**Cuenta sólo lo cobrado por medios electrónicos** —transferencias y tarjetas—, que es el
+mismo criterio de facturado que ya usaba el resto del módulo. Si además se facturan ventas
+en efectivo, lo que hay que reservar es más que lo que muestra el cuadro.
+
+Y es el **débito fiscal**, no lo que se termina pagando: al cerrar el mes se le descuenta el
+crédito de las compras, que está en 📊 Posición. Guardar el débito y ajustar al final nunca
+deja corto, que para una reserva es lo que conviene.
+
+---
+
 ## 📋 Pendientes
 
 Cosas decididas a medias o dejadas para después, con el porqué. No están hechas ni

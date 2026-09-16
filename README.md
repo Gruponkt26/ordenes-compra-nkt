@@ -543,6 +543,22 @@ avisa cuántos faltan en vez de impedir usar la carta a medio cargar.
 El ✓ de cada plato lo saca de la carta sin borrarlo, para lo que está fuera de temporada o
 se acabó: vuelve con otro toque, sin perder el precio.
 
+#### Cargar una carta entera de una vez
+
+`sql/carta-bodegon.sql` carga los 160 platos del Bodegón con sus precios, sacados de la
+carta publicada en `menu.maxirest.com/24076`. Reemplaza la carta del local entera: borra y
+vuelve a insertar, dentro de una transacción.
+
+Sirve de molde para los otros locales. Dos cosas que hace y conviene mantener:
+
+- **Numera los platos de corrido** (1 a 160, de punta a punta de la carta). Las categorías
+  se ordenan en pantalla por el `orden` más chico de sus platos, así que numerar seguido
+  alcanza para que la carta se vea igual que la impresa —las bebidas al final— sin guardar
+  el orden de las categorías en ningún lado.
+- **Distingue lo que se repite.** Una Grolsh en lata y una en litro son dos platos con el
+  mismo nombre y distinto precio, así que van como `GROLSH (lata)` y `GROLSH (litro)`. Sin
+  eso el mozo no sabe cuál está tocando.
+
 ---
 
 ## 📋 Pendientes

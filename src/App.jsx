@@ -5210,6 +5210,7 @@ function PanelDeportes(p){
   var [filtroMes,setFiltroMes]=useState("todos");
   var [busqueda,setBusqueda]=useState("");
   var [problemaTabla,setProblemaTabla]=useState(null);
+  var [verFichas,setVerFichas]=useState(false);
 
   useEffect(function(){
     var vivo=true;
@@ -5423,20 +5424,35 @@ function PanelDeportes(p){
         </div>
       </div>
 
-      {/* Fichas: no son movimientos, por eso van aparte y más chicas */}
-      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:9,color:"#3A3A3A",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>Ver</span>
-        {DEP_SECCIONES.filter(function(s){return !s.principal;}).map(function(s){
-          var act=seccion===s.id;
-          var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
-          return(
-            <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
-              style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?s.color:"#1A1A1A"),background:act?s.color+"22":"transparent",color:act?s.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-              {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
+      {/* Obras, profes y galpón no son el día a día: las obras ya se ven en Salidas y
+          los otros dos son fichas que se miran de vez en cuando. Por eso no ocupan una
+          fila fija —era ruido arriba de todo— pero siguen a un toque: esconderlas del
+          todo dejaría los artículos y los profes cargados sin ninguna pantalla donde
+          verlos. Si estás parado en una de ellas, la fila queda abierta sola. */}
+      {(function(){
+        var otras=DEP_SECCIONES.filter(function(s){return !s.principal;});
+        var enOtra=otras.some(function(s){return s.id===seccion;});
+        var abiertaFila=verFichas||enOtra;
+        return(
+          <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={function(){setVerFichas(!abiertaFila);if(enOtra)cambiarSeccion("entradas");}}
+              title={abiertaFila?"Ocultar":"Obras, profes y galpón"}
+              style={{padding:"5px 9px",borderRadius:8,border:"1px solid "+(abiertaFila?"#2A2A2A":"#151515"),background:"transparent",color:abiertaFila?"#666":"#333",fontSize:12,cursor:"pointer"}}>
+              {abiertaFila?"✕":"⚙️"}
             </button>
-          );
-        })}
-      </div>
+            {abiertaFila&&otras.map(function(s){
+              var act=seccion===s.id;
+              var cuenta=registros.filter(function(x){return x.tipo===s.tipo;}).length;
+              return(
+                <button key={s.id} onClick={function(){cambiarSeccion(s.id);}}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?s.color:"#1A1A1A"),background:act?s.color+"22":"transparent",color:act?s.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  {s.emoji} {s.nombre}{cuenta>0?" ("+cuenta+")":""}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Alta / edición */}
       {!abierto&&!eligiendo?(

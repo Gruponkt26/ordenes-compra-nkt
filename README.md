@@ -314,9 +314,15 @@ puerta** y el módulo abre directo en ella:
 
 - **📥 Entradas** → todo lo que entra, con el saldo del predio arriba.
 - **📤 Salidas** → todo lo que sale, clasificado por rubro.
-- **Ver** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → vistas de detalle, en chico. Las obras sí
-  son plata (salen), pero profes y artículos no: un profe es una persona y un artículo es
-  stock, y ninguno de los dos toca el saldo.
+- **⚙️** (🏗️ Obras, 👤 Profes y 🏚️ Galpón) → detrás del engranaje, porque no son el día a
+  día: las obras ya se ven en Salidas y las otras dos son fichas que se miran de vez en
+  cuando. Tampoco hacen falta para *cargar*: el selector de *Anotar entrada* ya ofrece el
+  ingreso al galpón. Se esconden pero no se sacan, porque los artículos y los profes no
+  aparecen en ninguna otra pantalla y quedarían cargados sin forma de verlos. Estando
+  parado en una de ellas la fila se abre sola.
+
+  Las obras sí son plata (salen), pero profes y artículos no: un profe es una persona y un
+  artículo es stock, y ninguno de los dos toca el saldo.
 
 Las dos secciones preguntan primero **qué fue**, y recién después piden los datos:
 

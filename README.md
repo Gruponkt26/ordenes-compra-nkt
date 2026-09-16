@@ -409,6 +409,84 @@ Los ámbitos salen de `IDEAS_AMBITOS`, que son los de las pautas más el predio.
 
 ---
 
+## ⚠️ Tablas nuevas en Supabase: comandas
+
+El módulo **🍽️ Comandas** es la pantalla de servicio: el plano de mesas, los deliverys y
+los mostradores. Por ahora es **la estructura**: una mesa se abre y se cierra, pero todavía
+no se le cargan platos.
+
+```sql
+-- Las mesas de cada local, por sector
+create table if not exists comanda_mesas (
+  id         text primary key,
+  local      text,
+  sector     text,      -- salon | patio | vereda | barra
+  nombre     text,      -- "12", "Barra 1", "Reservado"
+  orden      integer,
+  activa     boolean default true,
+  created_at timestamptz default now()
+);
+
+-- Una fila por mesa abierta, delivery o pedido de mostrador
+create table if not exists comandas (
+  id         text primary key,
+  local      text,
+  tipo       text,      -- mesa | delivery | mostrador
+  mesa_id    text,
+  numero     integer,
+  estado     text,      -- abierta | cerrada | cancelada
+  mozo       text,
+  cliente    text,
+  direccion  text,
+  telefono   text,
+  personas   integer,
+  total      numeric,
+  medio_pago text,
+  notas      text,
+  abierta_at timestamptz default now(),
+  cerrada_at timestamptz,
+  usuario    text
+);
+
+-- Los ítems de cada comanda. Todavía no se usa, pero conviene crearla ahora y no
+-- correr SQL otra vez en el medio del próximo paso.
+create table if not exists comanda_items (
+  id         text primary key,
+  comanda_id text,
+  nombre     text,
+  cant       numeric default 1,
+  precio     numeric,
+  nota       text,
+  estado     text,      -- pedido | listo | entregado
+  usuario    text,
+  created_at timestamptz default now()
+);
+```
+
+### Una fila por ítem, no un JSON adentro de la comanda
+
+Es la decisión de fondo del módulo. Todo el resto de la app guarda cada cosa como un objeto
+entero y lo manda con `merge-duplicates`: se lee la fila, se modifica y se pisa. Para una
+comanda eso no sirve. Si dos mozos tocan la misma mesa —uno agrega el postre y el otro una
+bebida— el último en guardar borra lo que agregó el primero, y nadie se entera hasta que
+falta un plato. Con una fila por ítem, cada uno agrega lo suyo y nada se pisa.
+
+### La pantalla se refresca sola
+
+Durante el servicio la misma mesa la miran el mozo, el encargado y la caja. Si cada uno ve
+una foto de hace diez minutos, el sistema no sirve. Por ahora vuelve a leer cada 20
+segundos, que es lo mínimo razonable; lo correcto sería Supabase Realtime, que además
+necesita abrir el `connect-src` del CSP a `wss://*.supabase.co`.
+
+### Lo que falta
+
+La **carta con precios de venta**, que hoy no existe en ningún lado: la tabla `precios` es
+de *compra* (cuánto cobra cada proveedor), y `MENU_POR_LOCAL` tiene los nombres de los
+platos pero ningún precio. Sin eso no hay cuenta ni total. Los nombres sí alcanzan para
+mandar a la cocina, así que la comanda impresa puede venir antes que el cobro.
+
+---
+
 ## 📋 Pendientes
 
 Cosas decididas a medias o dejadas para después, con el porqué. No están hechas ni
@@ -436,6 +514,15 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 5. **Deportes lo ve sólo `sofia`**, como el resto de los módulos de la barra. Si el
    canchero o un profe tuvieran que anotar sus propios turnos, hay que darles acceso, como
    se hizo con Compras para encargadas y cajeros.
+
+### Del módulo de comandas
+
+8. **La carta con precios de venta**, prerequisito de todo lo que sea cobrar.
+9. **Cargar ítems a una comanda**: hoy la mesa se abre y se cierra, nada más.
+10. **Imprimir en la comandera**: el puente está en `comandera/` y hay que engancharlo al
+    bucle que mira las comandas nuevas. Ojo con el ticket duplicado si corre en las dos PC.
+11. **Quién ve Comandas**: hoy sólo `sofia`. Los mozos necesitan entrar, y acotados a su
+    local (el panel ya acepta `localFijo` para eso).
 
 ### Más grande
 

@@ -11353,6 +11353,31 @@ function PanelIVA(p) {
     ventasPorLocal[c.local].base+=v.neto;
   });
 
+  // ── Reserva diaria: cuánto guardar de cada cierre ──────────────────────────
+  // El IVA de una venta ya está adentro del precio, así que no es el 21% de lo
+  // facturado sino lo que queda al sacarle el neto: $100.000 facturados tienen
+  // $17.355 de IVA, no $21.000. Cobrarlo y no separarlo es gastarse plata ajena.
+  var LOCALES_DIARIO=["l1","l2","l3"];
+  var diario={};
+  cierresMes.forEach(function(c){
+    if(LOCALES_DIARIO.indexOf(c.local)===-1||!c.fecha)return;
+    if(!diario[c.fecha]){
+      diario[c.fecha]={};
+      LOCALES_DIARIO.forEach(function(l){diario[c.fecha][l]={base:0,iva:0};});
+    }
+    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    if(montoElect<=0)return;
+    var v=calcIVAVenta(montoElect);
+    diario[c.fecha][c.local].base+=montoElect;
+    diario[c.fecha][c.local].iva+=v.iva;
+  });
+  var diasDiario=Object.keys(diario).sort().reverse();
+  var totalDiarioPorLocal={};
+  LOCALES_DIARIO.forEach(function(l){
+    totalDiarioPorLocal[l]=diasDiario.reduce(function(a,f){return a+diario[f][l].iva;},0);
+  });
+  var totalDiarioMes=LOCALES_DIARIO.reduce(function(a,l){return a+totalDiarioPorLocal[l];},0);
+
   // ── Posición neta por local ──
   var posicionPorLocal={};
   ["l1","l2","l3"].forEach(function(lid){
@@ -11446,10 +11471,108 @@ function PanelIVA(p) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["posicion","📊 Posición"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
+        {[["diario","📅 Reserva diaria"],["posicion","📊 Posición"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
           return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:9,border:"1px solid "+(tab===t[0]?"#D4A017":"#1A1A1A"),background:tab===t[0]?"#D4A01722":"none",color:tab===t[0]?"#D4A017":"#555",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:tab===t[0]?700:400}}>{t[1]}</button>;
         })}
       </div>
+
+      {/* TAB: RESERVA DIARIA */}
+      {tab==="diario"&&(function(){
+        var plata=function(n){return "$"+Math.round(n||0).toLocaleString("es-AR");};
+        var cel={padding:"7px 8px",fontSize:12,textAlign:"right",borderBottom:"1px solid #141414",whiteSpace:"nowrap"};
+        return(
+          <div>
+            <div style={{background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:12,padding:"13px",marginBottom:12}}>
+              <div style={{fontSize:11,color:"#999",lineHeight:1.6}}>
+                Lo que hay que <b style={{color:"#D4A017"}}>separar de cada caja</b> por el IVA que generó la venta.
+                Es el IVA que ya viene adentro del precio: de $100.000 facturados, $17.355 son IVA — no $21.000,
+                porque el 21% se calcula sobre el neto y no sobre el total.
+              </div>
+            </div>
+
+            {/* Lo que va del mes */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:12}}>
+              {LOCALES_DIARIO.map(function(lid){
+                var l=getLocal(lid)||{};
+                return(
+                  <div key={lid} style={{background:"#0F0F0F",border:"1px solid "+(l.color||"#1A1A1A")+"33",borderRadius:10,padding:"9px 10px"}}>
+                    <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.emoji} {l.nombre}</div>
+                    <div style={{fontSize:15,fontWeight:800,color:l.color}}>{plata(totalDiarioPorLocal[lid])}</div>
+                  </div>
+                );
+              })}
+              <div style={{background:"#0F0F0F",border:"1px solid #D4A01744",borderRadius:10,padding:"9px 10px"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total del mes</div>
+                <div style={{fontSize:15,fontWeight:800,color:"#D4A017"}}>{plata(totalDiarioMes)}</div>
+              </div>
+            </div>
+
+            {diasDiario.length===0?(
+              <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
+                <div style={{fontSize:30,marginBottom:8}}>📅</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>Sin cierres facturados en este mes</div>
+              </div>
+            ):(
+              <div style={{overflowX:"auto",border:"1px solid #1A1A1A",borderRadius:12}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontFamily:"'Inter',sans-serif"}}>
+                  <thead>
+                    <tr style={{background:"#0D0D0D"}}>
+                      <th style={{...cel,textAlign:"left",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Día</th>
+                      {LOCALES_DIARIO.map(function(lid){
+                        var l=getLocal(lid)||{};
+                        return <th key={lid} style={{...cel,fontSize:9,color:l.color,textTransform:"uppercase",letterSpacing:1}}>{l.emoji} {l.nombre}</th>;
+                      })}
+                      <th style={{...cel,fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diasDiario.map(function(f){
+                      var totalDia=LOCALES_DIARIO.reduce(function(a,l){return a+diario[f][l].iva;},0);
+                      return(
+                        <tr key={f}>
+                          <td style={{...cel,textAlign:"left",color:"#888"}}>{fmtDate(f)}</td>
+                          {LOCALES_DIARIO.map(function(lid){
+                            var d=diario[f][lid];
+                            return(
+                              <td key={lid} style={cel}>
+                                {d.iva>0?(
+                                  <>
+                                    <div style={{fontWeight:700,color:"#F0EDE8"}}>{plata(d.iva)}</div>
+                                    {/* De cuánto sale, para poder controlarlo contra el cierre */}
+                                    <div style={{fontSize:9,color:"#3A3A3A"}}>de {plata(d.base)}</div>
+                                  </>
+                                ):<span style={{color:"#2A2A2A"}}>—</span>}
+                              </td>
+                            );
+                          })}
+                          <td style={{...cel,fontWeight:800,color:"#D4A017"}}>{plata(totalDia)}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{background:"#0D0D0D"}}>
+                      <td style={{...cel,textAlign:"left",fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total</td>
+                      {LOCALES_DIARIO.map(function(lid){
+                        return <td key={lid} style={{...cel,fontWeight:800,color:(getLocal(lid)||{}).color}}>{plata(totalDiarioPorLocal[lid])}</td>;
+                      })}
+                      <td style={{...cel,fontWeight:800,color:"#D4A017"}}>{plata(totalDiarioMes)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{marginTop:12,padding:"11px 13px",background:"#0D0D0D",border:"1px dashed #1E1E1E",borderRadius:10,fontSize:11,color:"#555",lineHeight:1.7}}>
+              <b style={{color:"#777"}}>Dos cosas para leerlo bien.</b><br/>
+              Cuenta sólo lo cobrado por <b>medios electrónicos</b> —transferencias y tarjetas—, que es el mismo
+              criterio de facturado que usa el resto del módulo. Si además facturás ventas en efectivo, lo que hay
+              que reservar es más que esto.<br/>
+              Y es el IVA que <b>genera la venta</b>, no lo que se termina pagando: al cerrar el mes se le descuenta
+              el crédito fiscal de las compras. Eso está en 📊 Posición. Guardar el débito y ajustar al final es
+              quedarse corto nunca, que para una reserva es lo que conviene.
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TAB: POSICIÓN */}
       {tab==="posicion"&&(

@@ -132,13 +132,24 @@ function Carta(props) {
     var [trayendo, setTrayendo] = useState(false);
 
     var delLocal = carta.filter(function(x) { return x.local === localId; });
-    // Las categorías van en el orden de la carta —entradas, pizzas, principales—, que
-    // es el del menú de stock. Alfabético pondría las ensaladas antes que las entradas,
-    // y una carta no se lee así. Lo que no esté en el menú va al final.
+    // Las categorías van en el orden de la carta —entradas, pizzas, principales, y las
+    // bebidas al final—, no alfabético: alfabético pondría las ensaladas antes que las
+    // entradas y una carta no se lee así.
+    //
+    // El orden sale del `orden` más chico de cada categoría, que es lo que permite
+    // cargar una carta entera respetando la impresa: se numeran los platos de corrido
+    // y las categorías quedan ordenadas solas. Cuando los platos vienen del menú de
+    // stock el `orden` es el índice dentro de la categoría, así que todas empatan en
+    // cero y decide el orden del menú, como antes. Lo que no esté en ninguno va último.
     var ordenMenu = Object.keys((p.menuStock || {})[localId] || {});
-    var categorias = [];
-    delLocal.forEach(function(x) { if (categorias.indexOf(x.categoria) === -1) categorias.push(x.categoria); });
+    var minOrden = {};
+    delLocal.forEach(function(x) {
+      var o = x.orden === null || x.orden === undefined ? 9999 : x.orden;
+      if (minOrden[x.categoria] === undefined || o < minOrden[x.categoria]) minOrden[x.categoria] = o;
+    });
+    var categorias = Object.keys(minOrden);
     categorias.sort(function(a, b) {
+      if (minOrden[a] !== minOrden[b]) return minOrden[a] - minOrden[b];
       var ia = ordenMenu.indexOf(a), ib = ordenMenu.indexOf(b);
       if (ia === -1 && ib === -1) return a.localeCompare(b);
       if (ia === -1) return 1;

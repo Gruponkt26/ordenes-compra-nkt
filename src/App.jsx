@@ -2080,7 +2080,7 @@ function GestProveedoresPanel(p) {
   var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
   var [guardando,setGuardando]=useState(false);
   var [guardadoOk,setGuardadoOk]=useState(false);
-  var [formMov,setFormMov]=useState({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
+  var [formMov,setFormMov]=useState({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:"",facturado:false,facturacion:""});
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var saldos=p.saldos||[];
   var onSaveMov=p.onSaveMov, onDeleteMov=p.onDeleteMov;
@@ -2128,8 +2128,8 @@ function GestProveedoresPanel(p) {
         monto:parseFloat(formMov.monto),
         forma_pago:formMov.medio_pago,
         pagos:[{medio:formMov.medio_pago,monto:parseFloat(formMov.monto)}],
-        facturado:false,
-        facturacion:"",
+        facturado:!!formMov.facturado,
+        facturacion:formMov.facturado?formMov.facturacion:"",
         categoria:"Proveedores",
         area:"Proveedores",
         notas:formMov.notas||"Pago automático desde cuenta corriente",
@@ -2140,7 +2140,7 @@ function GestProveedoresPanel(p) {
       p.onSaveEgreso(egreso);
     }
     setShowFormMov(false);
-    setFormMov({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:""});
+    setFormMov({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:"",facturado:false,facturacion:""});
   }
 
   function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
@@ -2339,9 +2339,26 @@ function GestProveedoresPanel(p) {
                           </select>
                         </div>
                         )}
+                        {formMov.tipo==="pago"&&(
+                          <div style={{marginBottom:10,background:"#14100A",border:"1px solid #D4A01733",borderRadius:8,padding:"10px 12px"}}>
+                            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12}}>
+                              <input type="checkbox" checked={!!formMov.facturado} onChange={function(e){var v=e.target.checked;setFormMov(function(f){return{...f,facturado:v};});}}/>
+                              <span style={{color:formMov.facturado?"#D4A017":"#888",fontWeight:formMov.facturado?700:400}}>🧾 Este pago tiene factura</span>
+                            </label>
+                            {formMov.facturado?(
+                              <select value={formMov.facturacion} onChange={function(e){setFormMov(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:7}}>
+                                <option value="">-- Seleccioná CUIT --</option>
+                                {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
+                              </select>
+                            ):(
+                              <div style={{fontSize:9,color:"#555",marginTop:6,lineHeight:1.5}}>Si tiene factura, marcalo: si no, ese IVA no entra al crédito fiscal del mes.</div>
+                            )}
+                          </div>
+                        )}
                         {formMov.tipo==="compra"&&(
                           <div style={{marginBottom:10,background:"#0A1A0A",border:"1px solid #3A7D4422",borderRadius:8,padding:"8px 12px"}}>
                             <div style={{fontSize:10,color:"#3A7D44"}}>📋 Cuenta corriente — sin medio de pago</div>
+                            <div style={{fontSize:9,color:"#2A5A32",marginTop:4}}>La factura se marca al pagar, que es cuando el gasto entra a Egresos.</div>
                           </div>
                         )}
                         {/* Notas */}

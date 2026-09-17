@@ -654,13 +654,34 @@ $21.000: el 21% se calcula sobre el neto ($82.645) y no sobre el total. Reservar
 bruto sería guardar de más; calcularlo mal para el otro lado es gastarse plata ajena. Por
 eso cada celda muestra también de cuánto sale, para poder controlarla contra el cierre.
 
-**Cuenta sólo lo cobrado por medios electrónicos** —transferencias y tarjetas—, que es el
-mismo criterio de facturado que ya usaba el resto del módulo. Si además se facturan ventas
-en efectivo, lo que hay que reservar es más que lo que muestra el cuadro.
+**Cuenta lo cobrado por medios electrónicos**: transferencias, tarjetas y el **QR** de cada
+local. El QR vive en la columna `otros` del cierre y cada local lo etiqueta distinto —QR
+Provincia (l1), QR Galicia (l2), QR Mercado Pago (l3)—, pero no es un cajón de sobras: entra
+a la cuenta bancaria igual que una transferencia y está igual de declarado. El módulo IVA lo
+dejaba afuera y **achicaba el débito fiscal de los tres locales**; se suma en
+`ventaFacturada(c)`, que es el único lugar donde se define qué es facturado.
+
+Las ventas en **efectivo no se facturan**, así que quedan afuera a propósito. Si algún día se
+factura efectivo, hay que reservar más que lo que muestra el cuadro.
 
 Y es el **débito fiscal**, no lo que se termina pagando: al cerrar el mes se le descuenta el
-crédito de las compras, que está en 📊 Posición. Guardar el débito y ajustar al final nunca
-deja corto, que para una reserva es lo que conviene.
+crédito de las compras. Guardar el débito y ajustar al final nunca deja corto, que para una
+reserva es lo que conviene.
+
+Al pie del cuadro están el techo y el piso juntos, que es lo que hace falta cuando buena
+parte de la mercadería se compra sin factura:
+
+| | | |
+|---|---:|---|
+| Reservado (débito) | $886.321 | lo que hay que guardar |
+| Crédito aprovechado | −$658.015 | facturas de compra que tapan débito **del mismo CUIT** |
+| **A pagar estimado** | **$228.307** | lo que sobra vuelve a caja |
+
+El crédito que se cuenta es `min(crédito, débito)` **por CUIT**, no el crédito total: el que
+sobra en un CUIT no le tapa nada al otro. Ese sobrante va a una nota aparte —$165.764 en
+septiembre— porque no descuenta nada y se arrastra hasta que ese CUIT tenga ventas que lo
+absorban. Cuanto más se compra sin factura, menos crédito hay y más se pega el *a pagar* al
+*reservado*; comprando todo en negro serían el mismo número.
 
 ---
 

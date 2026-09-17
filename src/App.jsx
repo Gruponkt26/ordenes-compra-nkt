@@ -11343,11 +11343,19 @@ function PanelIVA(p) {
     return MEDIOS_ELECTRONICOS.some(function(m){return f.includes(m);});
   }
 
+  // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
+  // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
+  // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
+  function ventaFacturada(c){
+    return parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)
+          +parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+  }
+
   var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
   var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
   cierresMes.forEach(function(c){
     if(!ventasPorLocal[c.local])return;
-    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    var montoElect=ventaFacturada(c);
     var v=calcIVAVenta(montoElect);
     ventasPorLocal[c.local].ivaDF+=v.iva;
     ventasPorLocal[c.local].base+=v.neto;
@@ -11365,7 +11373,7 @@ function PanelIVA(p) {
       diario[c.fecha]={};
       LOCALES_DIARIO.forEach(function(l){diario[c.fecha][l]={base:0,iva:0};});
     }
-    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    var montoElect=ventaFacturada(c);
     if(montoElect<=0)return;
     var v=calcIVAVenta(montoElect);
     diario[c.fecha][c.local].base+=montoElect;
@@ -11400,6 +11408,16 @@ function PanelIVA(p) {
     var x=calcIVACompra(g);
     porCuit[cu].cf+=x.iva;
     porCuit[cu].netoC+=x.neto;
+  });
+
+  // Cuánto del débito reservado se termina pagando. El crédito sólo tapa débito del
+  // mismo CUIT: el que sobra en uno no le sirve al otro y queda inmovilizado a favor.
+  var creditoUsado=0,aPagarEstim=0,aFavorEstim=0;
+  FACTURACION.forEach(function(f){
+    var p=porCuit[f.id];if(!p)return;
+    creditoUsado+=Math.min(p.cf,p.df);
+    aPagarEstim+=Math.max(0,p.df-p.cf);
+    aFavorEstim+=Math.max(0,p.cf-p.df);
   });
 
   // ── Posición neta por local ──
@@ -11585,13 +11603,44 @@ function PanelIVA(p) {
               </div>
             )}
 
+            {/* El techo y el piso juntos: lo que hay que guardar, y lo que de eso se termina
+                pagando una vez que el crédito de las compras tapa lo que puede tapar. */}
+            {totalDiarioMes>0&&(
+              <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,alignItems:"stretch"}}>
+                <div style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Reservado (débito)</div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{plata(totalDiarioMes)}</div>
+                  <div style={{fontSize:9,color:"#3A3A3A",marginTop:2}}>lo que hay que guardar</div>
+                </div>
+                <div style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Crédito aprovechado</div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#4A9D5F"}}>−{plata(creditoUsado)}</div>
+                  <div style={{fontSize:9,color:"#3A3A3A",marginTop:2}}>facturas de compra que tapan débito del mismo CUIT</div>
+                </div>
+                <div style={{background:"#0F0F0F",border:"1px solid #D4A01744",borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>A pagar estimado</div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>{plata(aPagarEstim)}</div>
+                  <div style={{fontSize:9,color:"#3A3A3A",marginTop:2}}>lo que sobra vuelve a caja</div>
+                </div>
+              </div>
+            )}
+
+            {aFavorEstim>0&&(
+              <div style={{marginTop:8,padding:"9px 12px",background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,fontSize:11,color:"#555",lineHeight:1.6}}>
+                Además quedan <b style={{color:"#B8860B"}}>{plata(aFavorEstim)}</b> de crédito a favor que
+                <b> no descuentan nada</b>: son de un CUIT que compró más de lo que vendió, y los CUIT no se
+                compensan entre sí. Esa plata se arrastra hasta que ese CUIT tenga ventas que la absorban.
+              </div>
+            )}
+
             <div style={{marginTop:12,padding:"11px 13px",background:"#0D0D0D",border:"1px dashed #1E1E1E",borderRadius:10,fontSize:11,color:"#555",lineHeight:1.7}}>
               <b style={{color:"#777"}}>Dos cosas para leerlo bien.</b><br/>
-              Cuenta sólo lo cobrado por <b>medios electrónicos</b> —transferencias y tarjetas—, que es el mismo
-              criterio de facturado que usa el resto del módulo. Si además facturás ventas en efectivo, lo que hay
-              que reservar es más que esto.<br/>
+              Cuenta lo cobrado por <b>medios electrónicos</b>: transferencias, tarjetas y el <b>QR</b> de cada
+              local —QR Provincia, QR Galicia, QR Mercado Pago—, que entra a la cuenta igual que una transferencia.
+              Las ventas en efectivo no se facturan, así que quedan afuera a propósito: el día que se facture
+              alguna, hay que reservar más que esto.<br/>
               Y es el IVA que <b>genera la venta</b>, no lo que se termina pagando: al cerrar el mes se le descuenta
-              el crédito fiscal de las compras. Eso está en 📊 Posición. Guardar el débito y ajustar al final es
+              el crédito fiscal de las compras —el resumen de acá arriba—. Guardar el débito y ajustar al final es
               quedarse corto nunca, que para una reserva es lo que conviene.
             </div>
           </div>

@@ -8011,10 +8011,13 @@ var ALICUOTA_IIBB=0.02;
 // retenciones de IIBB, que se calculan aparte y se descuentan por su lado.
 // Por local y por medio, porque cada local puede cobrar por un procesador distinto.
 // En 0 = sin comisión configurada: no se descuenta nada y no aparece en pantalla.
+// PENDIENTE: débito y crédito llevan hoy la tasa de Mercado Pago en los tres locales, como
+// valor provisorio. Cuando lleguen las de Provincia, Galicia y Patagonia va la de cada uno
+// en su local — es cambiar el número, nada más. El QR sí es de Mercado Pago.
 var COMISIONES={
-  l1:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0},
-  l2:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0},
-  l3:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0},
+  l1:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
+  l2:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
+  l3:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
 };
 function comisionTasa(lid, campo){
   var c=COMISIONES[lid];

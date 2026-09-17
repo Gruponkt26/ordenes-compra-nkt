@@ -169,7 +169,10 @@ var COMISIONES={
 Van los porcentajes **con IVA adentro** —el costo real de la liquidación, no la comisión
 nominal— y **sin** las retenciones de IIBB, que se calculan aparte. Un medio en 0 no
 descuenta nada y no aparece en pantalla. Hoy están cargadas las tasas de Mercado Pago
-(débito 3,14%, crédito 6,29%) en los tres locales, y el QR en 0 a la espera de su tasa.
+(débito 3,14%, crédito 6,29%, QR 1,41%) en los tres locales. **Débito y crédito son
+provisorios**: van con la tasa de MP hasta que lleguen las de Provincia, Galicia y
+Patagonia, que es la que corresponde si las tarjetas de cada local pasan por el POS de su
+banco. El QR sí es de Mercado Pago.
 
 Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro de Ventas
 y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.
@@ -183,7 +186,7 @@ Ejemplo, un cierre con $100.000 de débito, $100.000 de crédito y $50.000 de QR
 |---|---|---|---|---|
 | Débito | $100.000 | $2.000 | $3.140 | $94.860 |
 | Crédito | $100.000 | $2.000 | $6.290 | $91.710 |
-| QR | $50.000 | $1.000 | — | $49.000 |
+| QR | $50.000 | $1.000 | $705 | $48.295 |
 
 ### Ingresos Brutos: el IVA se separa, IIBB ya viene descontado
 

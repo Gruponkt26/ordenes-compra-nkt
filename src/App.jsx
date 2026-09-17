@@ -8418,7 +8418,7 @@ function PanelCierresSofia(p) {
 }
 
 function PanelCierre(p) {
-  var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
+  var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
   var hoy=new Date().toISOString().split("T")[0];
   var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
@@ -8453,6 +8453,16 @@ function PanelCierre(p) {
     setForm(formVacio);
     setEditId(null);
     setShowForm(true);
+  }
+
+  // Borrar un cierre no se deshace: el aviso dice de qué día es y por cuánto, para que no
+  // se borre el que no era.
+  function doBorrar(c){
+    if(!onDelete)return;
+    var monto=parseFloat(c.total_ventas||0).toLocaleString("es-AR");
+    if(!window.confirm("¿Borrar el cierre del "+fmtDate(c.fecha)+" por $"+monto+"?\n\nNo se puede deshacer."))return;
+    onDelete(c.id);
+    if(editId===c.id){setShowForm(false);setEditId(null);}
   }
 
   function abrirEditar(c){
@@ -8527,7 +8537,10 @@ function PanelCierre(p) {
             {hoyData?"✅ Cierre de hoy cargado":"📋 Hoy aún no hay cierre"}
           </div>
           {hoyData&&(
-            <button onClick={function(){abrirEditar(hoyData);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#888",fontSize:11,cursor:"pointer",padding:"4px 10px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={function(){abrirEditar(hoyData);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#888",fontSize:11,cursor:"pointer",padding:"4px 10px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+              {onDelete&&<button onClick={function(){doBorrar(hoyData);}} style={{background:"none",border:"1px solid #C1440E44",borderRadius:6,color:"#C1440E",fontSize:11,cursor:"pointer",padding:"4px 10px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar</button>}
+            </div>
           )}
         </div>
         {hoyData?(
@@ -8698,7 +8711,10 @@ function PanelCierre(p) {
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                       <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
-                      <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+                      <div style={{display:"flex",gap:5}}>
+                        <button onClick={function(){abrirEditar(c);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+                        {onDelete&&<button onClick={function(){doBorrar(c);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 8px",fontFamily:"'Inter',sans-serif"}}>🗑️</button>}
+                      </div>
                     </div>
                   </div>
                 );
@@ -14868,6 +14884,7 @@ export default function App() {
           {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
+              onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
             />
           )}
 

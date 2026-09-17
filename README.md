@@ -138,6 +138,27 @@ Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la a
 pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
 se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
 
+### ⚠️ Columnas de Mercado Pago en `cierres_caja`
+
+Los tres locales cobran también por Mercado Pago, que es otra cuenta y tiene sus propias
+comisiones. Por eso los medios de MP van en campos propios y no mezclados en "otros":
+
+```sql
+alter table cierres_caja add column if not exists mp_transferencia numeric default 0;
+alter table cierres_caja add column if not exists mp_qr           numeric default 0;
+alter table cierres_caja add column if not exists mp_debito       numeric default 0;
+alter table cierres_caja add column if not exists mp_credito      numeric default 0;
+```
+
+Hasta que existan, el cierre **igual se guarda**: el guardado detecta la columna que falta
+por el error de Postgrest, la saca y reintenta, y después avisa en pantalla qué datos
+quedaron afuera con el `alter table` listo para copiar.
+
+En la disponibilidad, Mercado Pago es **una caja aparte**: entra lo cobrado por MP, se le
+descuentan su comisión y su IIBB, y de ahí salen los gastos pagados desde cuentas de MP
+(que se reconocen por el nombre del medio de pago). El "otros" de Colantonio's era el QR de
+MP antes de esto, así que conserva la tasa del QR para que los cierres viejos sigan bien.
+
 ### ⚠️ Columnas `retiro_caja` y `retiro_caja_nota` en `cierres_caja`
 
 El cierre de caja de cada local deja anotado el **retiro diario de caja**. Es sólo un
@@ -168,11 +189,10 @@ var COMISIONES={
 
 Van los porcentajes **con IVA adentro** —el costo real de la liquidación, no la comisión
 nominal— y **sin** las retenciones de IIBB, que se calculan aparte. Un medio en 0 no
-descuenta nada y no aparece en pantalla. Hoy están cargadas las tasas de Mercado Pago
-(débito 3,14%, crédito 6,29%, QR 1,41%) en los tres locales. **Débito y crédito son
-provisorios**: van con la tasa de MP hasta que lleguen las de Provincia, Galicia y
-Patagonia, que es la que corresponde si las tarjetas de cada local pasan por el POS de su
-banco. El QR sí es de Mercado Pago.
+descuenta nada y no aparece en pantalla. Las de **Mercado Pago** están cargadas y son iguales en los tres locales, porque es la
+misma cuenta: QR 1,41%, débito 3,14%, crédito 6,29%, transferencia 0. Las de los **medios
+del banco** —transferencia, débito, crédito y el QR propio— están en **cero a la espera de
+los aranceles de Provincia, Galicia y Patagonia**; un medio en cero no descuenta nada.
 
 Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro de Ventas
 y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.

@@ -11384,9 +11384,6 @@ function PanelIVA(p) {
     return MEDIOS_ELECTRONICOS.some(function(m){return f.includes(m);});
   }
 
-  // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
-  // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
-  // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
   var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
   var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
   cierresMes.forEach(function(c){

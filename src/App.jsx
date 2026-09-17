@@ -7999,6 +7999,15 @@ function ivaAReservar(c){
   var m=ventaFacturada(c);
   return m-m/1.21;
 }
+// Ingresos Brutos se parece al IVA en la cuenta y en nada más. El IVA hay que
+// separarlo —la plata entra entera y después se paga—; IIBB ya viene descontado: el
+// banco y las tarjetas lo retienen apenas se acredita la venta. Así que esto no es una
+// reserva, es un costo ya pagado: sirve para saber cuánto de la venta electrónica no
+// llega nunca a la cuenta. Sobre el efectivo no hay retención, por eso queda afuera.
+var ALICUOTA_IIBB=0.02;
+function iibbRetenido(c){
+  return ventaFacturada(c)*ALICUOTA_IIBB;
+}
 function plataAR(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
 
 function PanelCierresSofia(p) {
@@ -8135,11 +8144,22 @@ function PanelCierresSofia(p) {
                       })}
                       {(function(){
                         var res=cl.reduce(function(a,c){return a+ivaAReservar(c);},0);
-                        if(res<=0)return null;
+                        var iibb=cl.reduce(function(a,c){return a+iibbRetenido(c);},0);
+                        if(res<=0&&iibb<=0)return null;
                         return(
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0 0 0",marginTop:4,borderTop:"1px solid "+l.color+"22"}}>
-                            <span style={{fontSize:10,color:"#D4A017"}}>🏛️ Separar de IVA</span>
-                            <span style={{fontSize:11,fontWeight:800,color:"#D4A017"}}>{plataAR(res)}</span>
+                          <div style={{padding:"5px 0 0 0",marginTop:4,borderTop:"1px solid "+l.color+"22"}}>
+                            {res>0&&(
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <span style={{fontSize:10,color:"#D4A017"}}>🏛️ Separar de IVA</span>
+                                <span style={{fontSize:11,fontWeight:800,color:"#D4A017"}}>{plataAR(res)}</span>
+                              </div>
+                            )}
+                            {iibb>0&&(
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+                                <span style={{fontSize:10,color:"#8A6A2A"}}>📉 IIBB ya retenido</span>
+                                <span style={{fontSize:11,fontWeight:700,color:"#8A6A2A"}}>{plataAR(iibb)}</span>
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -8228,6 +8248,7 @@ function PanelCierresSofia(p) {
         var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
         var totalMes=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
         var reservaMes=cl.reduce(function(a,c){return a+ivaAReservar(c);},0);
+        var iibbMes=cl.reduce(function(a,c){return a+iibbRetenido(c);},0);
         var cierreHoy=cl.find(function(c){return c.fecha===hoy;});
         if(cl.length===0&&!cierreHoy&&mesFiltro===mesCurrent){
           // igual mostrar cabecera con alerta
@@ -8241,6 +8262,7 @@ function PanelCierresSofia(p) {
                 <div style={{fontSize:10,color:"#555"}}>{mesFiltro}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>${totalMes.toLocaleString("es-AR")}</div>
                 {reservaMes>0&&<div style={{fontSize:10,color:"#D4A017",marginTop:2}}>separar {plataAR(reservaMes)} de IVA</div>}
+                {iibbMes>0&&<div style={{fontSize:10,color:"#8A6A2A",marginTop:1}}>📉 {plataAR(iibbMes)} de IIBB ya retenido</div>}
               </div>
             </div>
 
@@ -8255,6 +8277,12 @@ function PanelCierresSofia(p) {
                   <div style={{fontSize:10,color:"#D4A017",marginTop:3}}>
                     🏛️ De esto hay que separar <b>{plataAR(ivaAReservar(cierreHoy))}</b> de IVA
                     <span style={{color:"#3A3A3A"}}> · facturado {plataAR(ventaFacturada(cierreHoy))}</span>
+                  </div>
+                )}
+                {cierreHoy&&iibbRetenido(cierreHoy)>0&&(
+                  <div style={{fontSize:10,color:"#8A6A2A",marginTop:2}}>
+                    📉 IIBB ya retenido <b>{plataAR(iibbRetenido(cierreHoy))}</b>
+                    <span style={{color:"#3A3A3A"}}> · no hay que separarlo, no entra a la cuenta</span>
                   </div>
                 )}
               </div>
@@ -8310,6 +8338,12 @@ function PanelCierresSofia(p) {
                             <div style={{gridColumn:"1/-1",fontSize:11,color:"#D4A017",borderTop:"1px solid #1A1A1A",marginTop:5,paddingTop:5}}>
                               🏛️ Separar de IVA: <b>{plataAR(ivaAReservar(c))}</b>
                               <span style={{color:"#3A3A3A"}}> · de {plataAR(ventaFacturada(c))} facturados</span>
+                            </div>
+                          )}
+                          {iibbRetenido(c)>0&&(
+                            <div style={{gridColumn:"1/-1",fontSize:11,color:"#8A6A2A"}}>
+                              📉 IIBB retenido: <b>{plataAR(iibbRetenido(c))}</b>
+                              <span style={{color:"#3A3A3A"}}> · {Math.round(ALICUOTA_IIBB*1000)/10}% de lo electrónico, ya descontado al acreditarse</span>
                             </div>
                           )}
                           {c.notas&&<div style={{gridColumn:"1/-1",fontSize:10,color:"#444",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}

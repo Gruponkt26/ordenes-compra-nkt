@@ -10170,12 +10170,14 @@ function PanelResultados(p){
     var dispMp=ingrMp-iibbMp-comMp-gastoMp;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
-    // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
-    // Si hay corrección manual de débito, se toma como ya confirmada (no se filtra por fecha).
-    // Excepción: Kusama (l2, Banco Galicia) y Colantonio's (l3, Banco Patagonia Empresas)
-    // acreditan débito y crédito en el momento, no a los 2 días hábiles.
+    // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,
+    // tanto en Provincia (Bodegón) como en Patagonia Empresas (Colantonio's). La excepción es
+    // Kusama (Galicia), que acredita en el momento. Si hay corrección manual de débito se toma
+    // como ya confirmada, sin filtrar por fecha.
+    // El débito cobrado por Mercado Pago no pasa por acá: va en la caja de MP, que se cuenta
+    // disponible al momento —que es justamente lo que se paga con esa comisión—.
     var hoyStr=new Date().toISOString().slice(0,10);
-    var acreditaAlInstante=lid==="l2"||lid==="l3";
+    var acreditaAlInstante=lid==="l2";
     var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
       var fa=fechaAcreditacionDebito(c.fecha);
       if(fa&&fa<=hoyStr)return a+parseFloat(c.tarjeta_debito||0);

@@ -153,6 +153,41 @@ Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro
 reintenta sin ese campo, avisa en pantalla y deja el `alter table` a la vista para
 copiarlo. Los cierres viejos, sin el dato, se ven como siempre.
 
+### Comisiones del procesador
+
+Cobrar con tarjeta cuesta, y ese costo no estaba en ningún lado. La tabla `COMISIONES`
+—arriba del panel de cierres, al lado de `ALICUOTA_IIBB`— tiene el porcentaje **por local y
+por medio de pago**, porque cada local puede cobrar por un procesador distinto:
+
+```js
+var COMISIONES={
+  l1:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0},
+  ...
+};
+```
+
+Van los porcentajes **con IVA adentro** —el costo real de la liquidación, no la comisión
+nominal— y **sin** las retenciones de IIBB, que se calculan aparte. Un medio en 0 no
+descuenta nada y no aparece en pantalla. Hoy están cargadas las tasas de Mercado Pago
+(débito 3,14%, crédito 6,29%, QR 1,41%) en los tres locales. **Débito y crédito son
+provisorios**: van con la tasa de MP hasta que lleguen las de Provincia, Galicia y
+Patagonia, que es la que corresponde si las tarjetas de cada local pasan por el POS de su
+banco. El QR sí es de Mercado Pago.
+
+Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro de Ventas
+y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.
+Las ventas no se tocan. Y la misma regla contra el doble conteo: si el mes tiene un egreso
+cargado cuyo concepto, subramo o categoría dice "comisión" o "arancel", ése manda y el
+automático se apaga para ese local y ese mes.
+
+Ejemplo, un cierre con $100.000 de débito, $100.000 de crédito y $50.000 de QR:
+
+| | Venta | IIBB 2% | Comisión | Llega a la cuenta |
+|---|---|---|---|---|
+| Débito | $100.000 | $2.000 | $3.140 | $94.860 |
+| Crédito | $100.000 | $2.000 | $6.290 | $91.710 |
+| QR | $50.000 | $1.000 | $705 | $48.295 |
+
 ### Ingresos Brutos: el IVA se separa, IIBB ya viene descontado
 
 Los dos se calculan sobre lo facturado —transferencia, débito, crédito y QR; el efectivo

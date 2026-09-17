@@ -11384,9 +11384,6 @@ function PanelIVA(p) {
     return MEDIOS_ELECTRONICOS.some(function(m){return f.includes(m);});
   }
 
-  // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
-  // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
-  // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
   var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
   var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
   cierresMes.forEach(function(c){
@@ -11700,6 +11697,81 @@ function PanelIVA(p) {
                 <div style={{fontSize:19,fontWeight:800,color:aFavor>0?"#D4A017":"#333"}}>{plata(aFavor)}</div>
               </div>
             </div>
+
+            {/* ── A qué CUIT conviene facturar la próxima compra ──────────────────
+                Mientras los dos CUIT estén a pagar, mover crédito de uno al otro no cambia
+                el total: se le saca a uno lo que se le pone al otro. Lo único que se evita
+                es pasarse de crédito en un CUIT, porque el excedente no se compensa contra
+                el otro y queda dormido hasta que ese CUIT tenga ventas que lo absorban. */}
+            {(function(){
+              var margenes=FACTURACION.map(function(f){
+                var d=porCuit[f.id], m=d.df-d.cf;
+                return {f:f, m:m, compras:m*121/21, sinVentas:d.df<=0};
+              });
+              var conMargen=margenes.filter(function(x){return x.m>0;});
+              var pasados=margenes.filter(function(x){return x.m<0;});
+              var mejor=conMargen.slice().sort(function(a,b){return b.m-a.m;})[0];
+              return(
+                <div style={{background:"#0D0D0D",border:"1px solid "+(mejor?"#1A6B8A44":"#D4A01744"),borderRadius:12,padding:"13px 14px",marginBottom:12}}>
+                  <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:9}}>
+                    💡 A qué CUIT facturar las próximas compras
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:8,marginBottom:mejor||pasados.length?10:0}}>
+                    {margenes.map(function(x){
+                      var ok=x.m>0;
+                      return(
+                        <div key={x.f.id} style={{background:"#0B0B0B",border:"1px solid "+(ok?"#1A6B8A33":"#D4A01733"),borderRadius:9,padding:"9px 11px"}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#F0EDE8"}}>{x.f.razonSocial}</div>
+                          {ok?(
+                            <>
+                              <div style={{fontSize:15,fontWeight:800,color:"#1A6B8A",marginTop:3}}>{plata(x.m)}</div>
+                              <div style={{fontSize:9,color:"#555",marginTop:2}}>de IVA le entran todavía</div>
+                              <div style={{fontSize:10,color:"#3A3A3A",marginTop:3}}>≈ {plata(x.compras)} de compras al 21%</div>
+                            </>
+                          ):(
+                            <>
+                              <div style={{fontSize:15,fontWeight:800,color:"#D4A017",marginTop:3}}>{plata(-x.m)}</div>
+                              <div style={{fontSize:9,color:"#8A7040",marginTop:2}}>ya tiene inmovilizado</div>
+                              <div style={{fontSize:10,color:"#3A3A3A",marginTop:3}}>{x.sinVentas?"no registra ventas este mes":"no le entra más crédito"}</div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {mejor&&pasados.length>0&&(
+                    <div style={{fontSize:11,color:"#F0EDE8",lineHeight:1.6}}>
+                      → Mandá las facturas de compra a <b style={{color:"#1A6B8A"}}>{mejor.f.razonSocial}</b>.
+                      {" "}{pasados.map(function(x){return x.f.razonSocial;}).join(" y ")} ya {pasados.length>1?"están":"está"} con
+                      crédito de sobra: cada factura nueva ahí queda dormida hasta que ese CUIT venda lo suficiente.
+                      <b> Acá sí cambia lo que pagás.</b>
+                    </div>
+                  )}
+                  {mejor&&pasados.length===0&&(
+                    <div style={{fontSize:11,color:"#777",lineHeight:1.6}}>
+                      Los dos están a pagar, así que <b style={{color:"#999"}}>mientras sigan así da igual a cuál facturar</b>:
+                      lo que le sacás a uno se lo ponés al otro y el total no se mueve.
+                      {conMargen.length>1&&<> Si tuvieras que elegir, <b style={{color:"#1A6B8A"}}>{mejor.f.razonSocial}</b> es el que más margen tiene
+                      antes de pasarse ({plata(mejor.m)} de IVA).</>}
+                    </div>
+                  )}
+                  {!mejor&&(
+                    <div style={{fontSize:11,color:"#8A7040",lineHeight:1.6}}>
+                      Los dos CUIT ya están con saldo a favor este mes: cualquier factura de compra que sumes
+                      queda inmovilizada. No se pierde —se arrastra—, pero no baja nada de lo que pagás ahora.
+                    </div>
+                  )}
+
+                  <div style={{marginTop:9,paddingTop:8,borderTop:"1px solid #161616",fontSize:10,color:"#3A3A3A",lineHeight:1.6}}>
+                    El margen es el crédito que a cada CUIT todavía le entra sin pasarse de su propio débito.
+                    Se recalcula con el mes elegido arriba, y el saldo a favor no se pierde: se arrastra al mes
+                    siguiente. Ojo que a qué CUIT facturar no siempre se elige: depende de quién compra.
+                  </div>
+                </div>
+              );
+            })()}
 
             {FACTURACION.map(function(f){
               var d=porCuit[f.id], pos=d.df-d.cf, favor=pos<0;

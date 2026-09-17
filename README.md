@@ -150,9 +150,9 @@ alter table cierres_caja add column if not exists retiro_caja      numeric defau
 alter table cierres_caja add column if not exists retiro_caja_nota text;
 ```
 
-Hasta que las columnas existan, **los cierres no se van a guardar**: la app avisa en
-pantalla nombrando justamente estas columnas. Los cierres viejos, sin el dato, se ven como
-siempre.
+Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro: la app
+reintenta sin ese campo y avisa en pantalla nombrando la columna que falta. Los cierres
+viejos, sin el dato, se ven como siempre.
 
 ### Cómo se leen los aportes y los retiros
 

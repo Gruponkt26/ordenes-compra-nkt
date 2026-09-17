@@ -12914,7 +12914,20 @@ async function sbSaveCierre(cierre) {
     var r = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
     if (!r.ok) {
       var err = await r.text();
-      if (/retiro_caja/.test(err)) err = "Faltan las columnas \"retiro_caja\" y \"retiro_caja_nota\" en la tabla cierres_caja. Corré el ALTER TABLE del README.";
+      // El retiro diario de caja es un dato al margen: si todavía no se corrió el ALTER TABLE
+      // del README, el cierre igual tiene que poder guardarse. Se reintenta sin ese campo y se
+      // avisa que el retiro quedó afuera, en vez de perder el cierre entero.
+      if (/retiro_caja/.test(err)) {
+        var sinRetiro = {...cierre};
+        delete sinRetiro.retiro_caja;
+        delete sinRetiro.retiro_caja_nota;
+        var r2 = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(sinRetiro) });
+        if (r2.ok) {
+          if (parseFloat(cierre.retiro_caja||0) > 0) alert("El cierre se guardó, pero el retiro diario de caja no: falta la columna \"retiro_caja\" en la tabla cierres_caja. Corré el ALTER TABLE del README.");
+          return true;
+        }
+        err = "Faltan las columnas \"retiro_caja\" y \"retiro_caja_nota\" en la tabla cierres_caja. Corré el ALTER TABLE del README.";
+      }
       alert("Error al guardar: " + err);
     }
     return r.ok;

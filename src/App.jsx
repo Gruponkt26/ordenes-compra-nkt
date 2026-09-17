@@ -8103,7 +8103,7 @@ function PanelCierresSofia(p) {
                                   </div>
                                 );
                               })}
-                              {parseFloat(c.egresos_diarios||0)>0&&(
+                              {parseFloat(c.egresos_diarios||0)>0&&egresoNeteado(c)===0&&(
                                 <div style={{fontSize:9,color:"#C1440E",marginTop:4}}>
                                   📤 Egreso de caja: ${parseFloat(c.egresos_diarios).toLocaleString("es-AR")}{c.egresos_nota?" ("+c.egresos_nota+")":""} · cargar en Egresos
                                 </div>
@@ -8177,7 +8177,7 @@ function PanelCierresSofia(p) {
         cierres.forEach(function(c){
           if(!c.fecha||c.fecha.substring(0,7)!==mesFiltro)return;
           if(localActivo!=="all"&&c.local!==localActivo)return;
-          if(parseFloat(c.egresos_diarios||0)>0)salidas.push({id:c.id+"_eg",fecha:c.fecha,local:c.local,tipo:"egreso",monto:parseFloat(c.egresos_diarios),nota:c.egresos_nota||""});
+          if(parseFloat(c.egresos_diarios||0)>0&&egresoNeteado(c)===0)salidas.push({id:c.id+"_eg",fecha:c.fecha,local:c.local,tipo:"egreso",monto:parseFloat(c.egresos_diarios),nota:c.egresos_nota||""});
           if(parseFloat(c.retiro_caja||0)>0)salidas.push({id:c.id+"_rc",fecha:c.fecha,local:c.local,tipo:"retiro",monto:parseFloat(c.retiro_caja),nota:c.retiro_caja_nota||""});
         });
         if(salidas.length===0)return null;
@@ -9348,14 +9348,29 @@ function PanelAportes(p) {
 
 
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
+// Hasta ahora el egreso del día se restaba del efectivo del cierre. Dejó de restarse, pero
+// los meses ya cerrados tienen que seguir viéndose igual que siempre: por eso se distingue
+// de qué época es cada cierre por su propio total guardado. Si ese total coincide con la
+// suma bruta de los medios, se guardó con el criterio nuevo y el egreso no se resta; si no
+// coincide, es de los de antes —el egreso ya estaba descontado ahí— y se sigue neteando.
+// Devuelve cuánto hay que restarle al efectivo de ese cierre: el egreso, o nada.
+function egresoNeteado(c){
+  var eg=parseFloat(c.egresos_diarios||0);
+  if(eg<=0)return 0;
+  var tv=parseFloat(c.total_ventas||0);
+  if(tv===0)return eg; // cierre viejo sin total guardado: criterio viejo
+  var bruto=parseFloat(c.efectivo||0)+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+  return Math.abs(tv-bruto)<0.5?0:eg;
+}
+
 // Ventas de un cierre de caja. Si el cierre trae total_ventas cargado se usa ese;
-// si no, se arma sumando los medios, con el efectivo BRUTO. Lo que salió de la caja
-// —egresos del día, retiro— no se resta acá: sale una sola vez, cuando Administración
-// lo carga en Egresos. Restarlo también de la venta lo contaba dos veces.
+// si no, se arma sumando los medios. Lo que salió de la caja —egresos del día, retiro— no
+// se resta acá en los cierres nuevos: sale una sola vez, cuando Administración lo carga en
+// Egresos. Restarlo también de la venta lo contaba dos veces.
 function ventasDeCierre(c){
   var tv=parseFloat(c.total_ventas||0);
   if(tv!==0)return tv;
-  var ef=parseFloat(c.efectivo||0);
+  var ef=parseFloat(c.efectivo||0)-egresoNeteado(c);
   return ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
 }
 
@@ -9395,7 +9410,7 @@ function correccionVentas(cierres, lid, mes, corrResultados){
   var cl=(cierres||[]).filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mes;});
   var suma=function(f){return cl.reduce(function(a,c){return a+parseFloat(c[f]||0);},0);};
   var delCierre={
-    efectivo:suma("efectivo"),
+    efectivo:suma("efectivo")-cl.reduce(function(a,c){return a+egresoNeteado(c);},0),
     transferencia:suma("transferencia"),
     debito:suma("tarjeta_debito"),
     credito:suma("tarjeta_credito"),
@@ -9612,15 +9627,18 @@ function PanelResultados(p){
     // efectivo sí lo estaba — y como además se sumaba a totalGastos, en esos cierres el retiro
     // terminaba descontándose dos veces. Al dejar las dos ramas brutas, el retiro no toca el
     // resultado por ningún camino y se ve una sola vez, en "Movimientos de socios".
-    // Los egresos diarios tampoco se restan: se cargan en Egresos y salen por ahí.
+    // Los egresos diarios de los cierres nuevos tampoco se restan: se cargan en Egresos y
+    // salen por ahí. Los de los cierres viejos siguen netos, como se guardaron.
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
     var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
-    var egresos=cl.reduce(function(a,c){return a+parseFloat(c.egresos_diarios||0);},0);
+    var egresos=cl.reduce(function(a,c){return egresoNeteado(c)===0?a+parseFloat(c.egresos_diarios||0):a;},0);
     var ventasPorMedio={};
     cl.forEach(function(c){
       [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
-        // bruto de egresos y de retiro, para que la suma de los medios cierre contra "ventas"
+        // bruto de retiro, y de egresos salvo en los cierres viejos, para que la suma de los
+        // medios cierre contra "ventas"
+        if(f[0]==="efectivo")v=v-egresoNeteado(c);
         if(v>0)ventasPorMedio[f[1]]=(ventasPorMedio[f[1]]||0)+v;
       });
     });
@@ -9782,7 +9800,7 @@ function PanelResultados(p){
     //  · ventaEfectivoBruto = venta en efectivo, sin descontar el retiro. Es la que se compara
     //    contra la corrección manual y la que cierra contra "ventas".
     //  · ventaEfectivo = lo que realmente quedó en la caja, ya neto del retiro. Es la de caja.
-    var ventaEfectivoBruto=cl.reduce(function(a,c){return a+parseFloat(c.efectivo||0);},0);
+    var ventaEfectivoBruto=cl.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-egresoNeteado(c);},0);
     var ventaEfectivo=ventaEfectivoBruto-retiros;
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
 
@@ -9795,7 +9813,7 @@ function PanelResultados(p){
     // Detalle línea por línea de ingresos (para el desglose clickeable)
     var detIngresos=[];
     cl.forEach(function(c){
-      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0);
+      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-egresoNeteado(c);
       if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
       [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);

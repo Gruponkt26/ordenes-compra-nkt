@@ -168,10 +168,19 @@ El **retiro de socio salió del cierre**: ya no se carga desde ahí. Los retiros
 van por el módulo 🤝 Socios, que es donde se leen. Los cierres viejos conservan el dato que
 tenían y la disponibilidad de caja lo sigue respetando.
 
-Antes el egreso se restaba del efectivo del cierre. Ahora no, así que **un mes viejo con
-egresos cargados en los cierres muestra ventas más altas que antes**, por ese monto exacto.
-Cuadra en cuanto esos egresos se cargan en 💰 Egresos, que es justamente lo que lista el
-bloque del panel de Administración.
+Antes el egreso se restaba del efectivo del cierre. **Los meses ya cerrados se siguen
+viendo exactamente como se vieron siempre**: cada cierre sabe de qué época es por su propio
+total guardado —si coincide con la suma bruta de los medios se guardó con el criterio nuevo,
+y si no, con el viejo— así que en los cierres de antes el egreso se sigue neteando. El
+criterio nuevo corre sólo para los cierres que se carguen de acá en adelante.
+
+Por eso el bloque *"Salió de la caja este mes"* lista **sólo los egresos que todavía no
+están descontados**. Los de los cierres viejos no aparecen: ya salieron por la venta, y
+cargarlos en Egresos los contaría dos veces.
+
+Ojo con una consecuencia: **editar y volver a guardar un cierre viejo lo pasa al criterio
+nuevo**, porque se regraba su total. Ahí el egreso deja de estar descontado y pasa a figurar
+en el bloque para cargar.
 
 ### Cómo se leen los aportes y los retiros
 

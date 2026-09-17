@@ -185,6 +185,20 @@ Ojo con el mes: el IVA se imputa **por la fecha del pago**, que es cuando nace e
 por la de la factura. Si se paga en un mes una factura del anterior, el crédito cae en el
 mes del pago.
 
+### Cuándo se acredita cada cobro
+
+El débito del **POS del banco** tarda **48 hs hábiles** en entrar a la cuenta, tanto en
+Provincia (Bodegón) como en Patagonia Empresas (Colantonio's). La excepción es Kusama
+(Galicia), que acredita en el momento. La disponibilidad "de hoy" descuenta lo que todavía
+no se acreditó y avisa desde qué día entra.
+
+El débito y el crédito cobrados por **Mercado Pago** no pasan por esa espera: van a la caja
+de MP y se cuentan disponibles al momento, que es justamente lo que se paga con esa
+comisión.
+
+Pendiente: el plazo del **crédito** por POS del banco. Hoy se cuenta disponible al momento
+en los tres locales.
+
 ### Comisiones del procesador
 
 Cobrar con tarjeta cuesta, y ese costo no estaba en ningún lado. La tabla `COMISIONES`

@@ -683,6 +683,23 @@ septiembre— porque no descuenta nada y se arrastra hasta que ese CUIT tenga ve
 absorban. Cuanto más se compra sin factura, menos crédito hay y más se pega el *a pagar* al
 *reservado*; comprando todo en negro serían el mismo número.
 
+### El mismo número en el cierre de caja
+
+Reservar a fin de mes es tarde: la plata ya se movió. Por eso la pantalla de **Cierres** de
+Administración muestra, junto a cada total, **cuánto de eso no es de la casa**: en la
+cabecera del local (el mes), en la alerta del día de hoy y al abrir cualquier día, más el
+total al pie de cada columna en la 📊 Vista mensual.
+
+**Sólo lo ve Administración.** El cajero cierra su caja como siempre y no ve ninguna línea
+de IVA: la de él es otra pantalla (`PanelCierre`, rol `cajero`), y ahí no se tocó nada. La
+decisión fue deliberada —el personal no maneja información fiscal—, con el costo asumido de
+que la plata no se aparta físicamente en el momento del cierre.
+
+Las dos pantallas calculan con las mismas funciones, `ventaFacturada(c)` e `ivaAReservar(c)`,
+a nivel de módulo. Son el único lugar donde se define qué es facturado y cuánto se separa:
+si mañana cambia la alícuota o entra un medio de pago nuevo, se toca ahí y se actualizan el
+módulo IVA y los cierres a la vez.
+
 ---
 
 ### La posición por CUIT

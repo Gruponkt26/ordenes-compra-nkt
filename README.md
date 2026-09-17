@@ -664,6 +664,29 @@ deja corto, que para una reserva es lo que conviene.
 
 ---
 
+### La posición por CUIT
+
+El IVA **se liquida por CUIT**, y los CUIT no se compensan entre sí: un saldo a favor en uno
+no le sirve al otro, se arrastra hasta que haya ventas que lo absorban. Por eso lo que se
+paga es **la suma de las posiciones positivas**, no el neto de todas.
+
+La pestaña **🏛️ Por CUIT** es la que se presenta. Qué CUIT factura las ventas de cada local
+está en `CUIT_DE_LOCAL`:
+
+| CUIT | Locales |
+|---|---|
+| Calzon Gitano SRL (30-71844629-1) | Kusama y Colantonio's |
+| Colantonio Carlos Nicolás (20-26958479-4) | El Bodegón |
+
+Un gasto sin CUIT elegido se factura al del local que lo hizo.
+
+La pestaña **📊 Posición por local** sigue existiendo para ver qué genera cada local, pero
+**mezcla criterios** —el crédito se imputa por CUIT y el débito por local—, así que no es lo
+que se declara. Si algún local pasara a facturar con los dos CUIT, esto deja de alcanzar: el
+dato exacto tendría que guardarse en el cierre de caja y no deducirse del local.
+
+---
+
 ## 📋 Pendientes
 
 Cosas decididas a medias o dejadas para después, con el porqué. No están hechas ni

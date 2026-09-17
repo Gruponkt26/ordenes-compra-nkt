@@ -11378,6 +11378,30 @@ function PanelIVA(p) {
   });
   var totalDiarioMes=LOCALES_DIARIO.reduce(function(a,l){return a+totalDiarioPorLocal[l];},0);
 
+  // ── Posición por CUIT ─────────────────────────────────────────────────────
+  // Esto es lo que se declara. El IVA se liquida por CUIT y los CUIT no se compensan
+  // entre sí: un saldo a favor en uno no le sirve al otro, se arrastra. Por eso la
+  // posición por local —donde el crédito viene por CUIT y el débito por local— sirve
+  // para mirar la operación, pero no es lo que se presenta.
+  var CUIT_DE_LOCAL={l1:"f2",l2:"f1",l3:"f1"};
+  var porCuit={};
+  FACTURACION.forEach(function(f){ porCuit[f.id]={df:0,cf:0,netoV:0,netoC:0,locales:[]}; });
+  ["l1","l2","l3"].forEach(function(lid){
+    var cu=CUIT_DE_LOCAL[lid];
+    if(!porCuit[cu]||!ventasPorLocal[lid])return;
+    porCuit[cu].locales.push(lid);
+    porCuit[cu].df+=ventasPorLocal[lid].ivaDF;
+    porCuit[cu].netoV+=ventasPorLocal[lid].base;
+  });
+  gastosFacturados.forEach(function(g){
+    // Un gasto sin CUIT elegido se factura al del local que lo hizo.
+    var cu=g.facturacion||CUIT_DE_LOCAL[g.local];
+    if(!porCuit[cu])return;
+    var x=calcIVACompra(g);
+    porCuit[cu].cf+=x.iva;
+    porCuit[cu].netoC+=x.neto;
+  });
+
   // ── Posición neta por local ──
   var posicionPorLocal={};
   ["l1","l2","l3"].forEach(function(lid){
@@ -11471,7 +11495,7 @@ function PanelIVA(p) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["diario","📅 Reserva diaria"],["posicion","📊 Posición"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
+        {[["diario","📅 Reserva diaria"],["cuit","🏛️ Por CUIT"],["posicion","📊 Posición por local"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
           return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:9,border:"1px solid "+(tab===t[0]?"#D4A017":"#1A1A1A"),background:tab===t[0]?"#D4A01722":"none",color:tab===t[0]?"#D4A017":"#555",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:tab===t[0]?700:400}}>{t[1]}</button>;
         })}
       </div>
@@ -11569,6 +11593,78 @@ function PanelIVA(p) {
               Y es el IVA que <b>genera la venta</b>, no lo que se termina pagando: al cerrar el mes se le descuenta
               el crédito fiscal de las compras. Eso está en 📊 Posición. Guardar el débito y ajustar al final es
               quedarse corto nunca, que para una reserva es lo que conviene.
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* TAB: POR CUIT — lo que realmente se declara */}
+      {tab==="cuit"&&(function(){
+        var plata=function(n){return (n<0?"-$":"$")+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
+        var aPagar=FACTURACION.reduce(function(a,f){var pos=porCuit[f.id].df-porCuit[f.id].cf;return a+(pos>0?pos:0);},0);
+        var aFavor=FACTURACION.reduce(function(a,f){var pos=porCuit[f.id].df-porCuit[f.id].cf;return a+(pos<0?-pos:0);},0);
+        return(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:12}}>
+              <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"11px 12px"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>A pagar este mes</div>
+                <div style={{fontSize:19,fontWeight:800,color:"#C1440E"}}>{plata(aPagar)}</div>
+              </div>
+              <div style={{background:"#0F0F0F",border:"1px solid "+(aFavor>0?"#D4A01733":"#1A1A1A"),borderRadius:10,padding:"11px 12px"}}>
+                <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Saldo a favor inmovilizado</div>
+                <div style={{fontSize:19,fontWeight:800,color:aFavor>0?"#D4A017":"#333"}}>{plata(aFavor)}</div>
+              </div>
+            </div>
+
+            {FACTURACION.map(function(f){
+              var d=porCuit[f.id], pos=d.df-d.cf, favor=pos<0;
+              var col=favor?"#D4A017":"#C1440E";
+              return(
+                <div key={f.id} style={{background:"#0F0F0F",border:"1px solid "+col+"33",borderRadius:12,padding:"14px",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,flexWrap:"wrap",marginBottom:11}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{f.razonSocial}</div>
+                      <div style={{fontSize:10,color:"#555"}}>CUIT {f.cuit}</div>
+                      <div style={{fontSize:10,color:"#666",marginTop:4}}>
+                        Factura: {d.locales.length?d.locales.map(function(l){var L=getLocal(l)||{};return L.emoji+" "+L.nombre;}).join(" · "):"—"}
+                      </div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>{favor?"Saldo a favor":"A pagar"}</div>
+                      <div style={{fontSize:22,fontWeight:800,color:col}}>{plata(Math.abs(pos))}</div>
+                    </div>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                    <div style={{background:"#0B0B0B",border:"1px solid #161616",borderRadius:9,padding:"9px 11px"}}>
+                      <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Débito · ventas</div>
+                      <div style={{fontSize:15,fontWeight:700,color:"#3A7D44"}}>{plata(d.df)}</div>
+                      <div style={{fontSize:9,color:"#3A3A3A",marginTop:2}}>neto {plata(d.netoV)}</div>
+                    </div>
+                    <div style={{background:"#0B0B0B",border:"1px solid #161616",borderRadius:9,padding:"9px 11px"}}>
+                      <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Crédito · compras</div>
+                      <div style={{fontSize:15,fontWeight:700,color:"#1A6B8A"}}>{plata(d.cf)}</div>
+                      <div style={{fontSize:9,color:"#3A3A3A",marginTop:2}}>neto {plata(d.netoC)}</div>
+                    </div>
+                  </div>
+
+                  {favor&&d.cf>0&&(
+                    <div style={{marginTop:10,fontSize:11,color:"#8A7040",lineHeight:1.6}}>
+                      Este CUIT compra facturado por <b>{d.netoV>0?(d.netoC/d.netoV).toFixed(1):"—"} veces</b> lo que vende.
+                      El saldo a favor no se devuelve: se arrastra hasta que haya ventas que lo absorban.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div style={{marginTop:4,padding:"11px 13px",background:"#0D0D0D",border:"1px dashed #1E1E1E",borderRadius:10,fontSize:11,color:"#555",lineHeight:1.7}}>
+              <b style={{color:"#777"}}>Por qué esta pantalla y no la de por local.</b><br/>
+              El IVA se liquida por CUIT, y los CUIT <b>no se compensan entre sí</b>: un saldo a favor en uno no
+              le sirve al otro. Por eso lo que se paga es la suma de las posiciones positivas y no el neto de
+              todas: acá arriba, {plata(aPagar)} y no {plata(aPagar-aFavor)}.<br/>
+              La pestaña 📊 Posición por local sirve para ver qué genera cada local, pero mezcla criterios —el
+              crédito va por CUIT y el débito por local—, así que no es lo que se presenta.
             </div>
           </div>
         );

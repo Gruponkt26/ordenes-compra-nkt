@@ -174,6 +174,17 @@ Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro
 reintenta sin ese campo, avisa en pantalla y deja el `alter table` a la vista para
 copiarlo. Los cierres viejos, sin el dato, se ven como siempre.
 
+### El pago de cuenta corriente pregunta por la factura
+
+Pagar la cuenta corriente de un proveedor genera solo un egreso en Egresos → Proveedores.
+Ese egreso nacía siempre **sin factura**, así que su IVA nunca entraba al crédito fiscal del
+mes por más que la compra estuviera facturada. Ahora el formulario de pago pregunta si tiene
+factura y con qué CUIT, igual que cualquier otro egreso.
+
+Ojo con el mes: el IVA se imputa **por la fecha del pago**, que es cuando nace el egreso, no
+por la de la factura. Si se paga en un mes una factura del anterior, el crédito cae en el
+mes del pago.
+
 ### Comisiones del procesador
 
 Cobrar con tarjeta cuesta, y ese costo no estaba en ningún lado. La tabla `COMISIONES`

@@ -723,6 +723,26 @@ La pestaña **📊 Posición por local** sigue existiendo para ver qué genera c
 que se declara. Si algún local pasara a facturar con los dos CUIT, esto deja de alcanzar: el
 dato exacto tendría que guardarse en el cierre de caja y no deducirse del local.
 
+
+### A qué CUIT facturar la próxima compra
+
+Arriba de las fichas, la pestaña 🏛️ Por CUIT dice **cuánto crédito le entra todavía a cada
+CUIT** sin pasarse de su propio débito, y el equivalente en compras al 21%.
+
+La lógica es la que importa, no el número: **mientras los dos CUIT estén a pagar, mover
+crédito de uno al otro no cambia el total** —se le saca a uno lo que se le pone al otro—, así
+que la pantalla lo dice en vez de fingir que hay una optimización. Lo único que sí cambia lo
+que se paga es **pasarse de crédito en un CUIT**: el excedente no se compensa contra el otro y
+queda dormido hasta que ese CUIT tenga ventas que lo absorban. Cuando eso pasa, el cartel
+cambia de tono y nombra a cuál mandar las facturas.
+
+Tres estados: los dos con margen (da igual, se sugiere el más holgado), uno pasado (mandá al
+otro, acá sí cambia), los dos pasados (cualquier factura nueva queda inmovilizada).
+
+El margen se recalcula con el mes elegido. El saldo a favor **no se pierde**, se arrastra. Y
+a qué CUIT facturar no siempre se elige: depende de quién compra — el cartel lo aclara para
+que no se lea como una instrucción.
+
 ---
 
 ## 📋 Pendientes

@@ -7985,13 +7985,21 @@ function PanelCruzados(p){
   );
 }
 
+// Todos los medios por los que puede entrar plata en un cierre. Los tres locales cobran
+// además por Mercado Pago, que tiene su propia cuenta y sus propias comisiones: por eso los
+// mp_* van separados de los del banco y no mezclados en "otros".
+var MEDIOS_MP=["mp_transferencia","mp_qr","mp_debito","mp_credito"];
+var MEDIOS_ELECTRONICOS=["transferencia","tarjeta_debito","tarjeta_credito","otros"].concat(MEDIOS_MP);
+function sumaMedios(c, medios){
+  return medios.reduce(function(a,m){return a+parseFloat(c[m]||0);},0);
+}
+
 // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
 // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
 // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
 // El efectivo no entra: no se factura.
 function ventaFacturada(c){
-  return parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)
-        +parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+  return sumaMedios(c,MEDIOS_ELECTRONICOS);
 }
 // Lo que hay que separar de esa caja. El IVA ya viene adentro del precio, así que no es
 // el 21% de lo facturado sino lo que queda al sacarle el neto: de $100.000, $17.355.
@@ -8011,13 +8019,18 @@ var ALICUOTA_IIBB=0.02;
 // retenciones de IIBB, que se calculan aparte y se descuentan por su lado.
 // Por local y por medio, porque cada local puede cobrar por un procesador distinto.
 // En 0 = sin comisión configurada: no se descuenta nada y no aparece en pantalla.
-// PENDIENTE: débito y crédito llevan hoy la tasa de Mercado Pago en los tres locales, como
-// valor provisorio. Cuando lleguen las de Provincia, Galicia y Patagonia va la de cada uno
-// en su local — es cambiar el número, nada más. El QR sí es de Mercado Pago.
+// Los mp_* son los de Mercado Pago y son iguales en los tres locales: es la misma cuenta.
+// Los del banco (transferencia, débito, crédito y el QR propio) están en cero a la espera
+// de los aranceles de Provincia, Galicia y Patagonia — un medio en cero no descuenta nada.
 var COMISIONES={
-  l1:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
-  l2:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
-  l3:{transferencia:0, tarjeta_debito:0.0314, tarjeta_credito:0.0629, otros:0.0141},
+  l1:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0,
+      mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
+  l2:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0,
+      mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
+  // El "otros" de Colantonio's era el QR de Mercado Pago antes de que MP tuviera sus propios
+  // campos: los cierres viejos lo tienen ahí, y por eso conserva la tasa del QR.
+  l3:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0.0141,
+      mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
 };
 function comisionTasa(lid, campo){
   var c=COMISIONES[lid];
@@ -8025,7 +8038,7 @@ function comisionTasa(lid, campo){
 }
 // Lo que se lleva el procesador de un cierre. El efectivo no paga comisión.
 function comisionDeCierre(c){
-  return ["transferencia","tarjeta_debito","tarjeta_credito","otros"].reduce(function(a,campo){
+  return MEDIOS_ELECTRONICOS.reduce(function(a,campo){
     return a+parseFloat(c[campo]||0)*comisionTasa(c.local,campo);
   },0);
 }
@@ -8042,7 +8055,9 @@ function PanelCierresSofia(p) {
     "l2":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Galicia"],["tarjeta_debito","💳","Débito Galicia"],["tarjeta_credito","💳","Crédito Galicia"],["otros","📱","QR Galicia"]],
     "l3":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Patagonia"],["tarjeta_debito","💳","Débito Patagonia"],["tarjeta_credito","💳","Crédito Patagonia"],["otros","📱","QR MP"]],
   };
-  function getCampos(lid){return CAMPOS_CIERRE[lid]||[["efectivo","💵","Efectivo"],["transferencia","📲","Transf."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]];}
+  var CAMPOS_MP=[["mp_transferencia","📲","Transf. MP"],["mp_qr","📱","QR MP"],["mp_debito","💳","Débito MP"],["mp_credito","💳","Crédito MP"]];
+  function getCampos(lid){return (CAMPOS_CIERRE_BASE(lid)).concat(CAMPOS_MP);}
+  function CAMPOS_CIERRE_BASE(lid){return CAMPOS_CIERRE[lid]||[["efectivo","💵","Efectivo"],["transferencia","📲","Transf."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]];}
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [expandido,setExpandido]=useState(null);
   var [localActivo,setLocalActivo]=useState("all");
@@ -8388,7 +8403,7 @@ function PanelCierresSofia(p) {
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
   var hoy=new Date().toISOString().split("T")[0];
-  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
+  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
@@ -8414,7 +8429,7 @@ function PanelCierre(p) {
   // salió de la caja durante el día —egresos, retiro— se anota aparte y lo carga
   // Administración en Egresos, para que la salida figure una sola vez y en su lugar.
   function calcTotal(f){
-    return (parseFloat(f.efectivo)||0)+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
+    return (parseFloat(f.efectivo)||0)+sumaMedios(f,MEDIOS_ELECTRONICOS);
   }
 
   function abrirNuevo(){
@@ -8424,7 +8439,7 @@ function PanelCierre(p) {
   }
 
   function abrirEditar(c){
-    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
+    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",mp_transferencia:c.mp_transferencia||"",mp_qr:c.mp_qr||"",mp_debito:c.mp_debito||"",mp_credito:c.mp_credito||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
     setEditId(c.id);
     setShowForm(true);
   }
@@ -8442,6 +8457,10 @@ function PanelCierre(p) {
       tarjeta_debito:parseFloat(form.tarjeta_debito)||0,
       tarjeta_credito:parseFloat(form.tarjeta_credito)||0,
       otros:parseFloat(form.otros)||0,
+      mp_transferencia:parseFloat(form.mp_transferencia)||0,
+      mp_qr:parseFloat(form.mp_qr)||0,
+      mp_debito:parseFloat(form.mp_debito)||0,
+      mp_credito:parseFloat(form.mp_credito)||0,
       // El retiro de socio ya no se carga desde el cierre —va por el módulo 🤝 Socios—, pero
       // el dato de los cierres viejos no se pisa al editarlos: la caja de esos meses lo usa.
       retiro_socio:parseFloat(form.retiro_socio)||0,
@@ -8474,13 +8493,13 @@ function PanelCierre(p) {
         )}
       </div>
 
-      {faltaColRetiroCaja&&(
+      {columnasFaltantes.length>0&&(
         <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:12,padding:"14px",marginBottom:16}}>
-          <div style={{fontSize:11,color:"#C1440E",fontWeight:700,marginBottom:6}}>⚠️ El retiro diario de caja no se está guardando</div>
+          <div style={{fontSize:11,color:"#C1440E",fontWeight:700,marginBottom:6}}>⚠️ Hay datos del cierre que no se están guardando</div>
           <div style={{fontSize:11,color:"#888",marginBottom:8}}>
-            El cierre sí se guardó. Falta la columna en la base: pegá esto una vez en Supabase → SQL Editor y listo.
+            El cierre sí se guardó, pero faltan columnas en la base: <b>{columnasFaltantes.join(", ")}</b>. Pegá esto una vez en Supabase → SQL Editor y listo.
           </div>
-          <textarea readOnly value={SQL_RETIRO_CAJA} rows={2} onFocus={function(e){e.target.select();}} style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"monospace",fontSize:11,resize:"vertical"}}/>
+          <textarea readOnly value={sqlDeFaltantes()} rows={Math.min(6,columnasFaltantes.length+1)} onFocus={function(e){e.target.select();}} style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"monospace",fontSize:11,resize:"vertical"}}/>
         </div>
       )}
 
@@ -8503,6 +8522,10 @@ function PanelCierre(p) {
               {hoyData.tarjeta_debito>0&&<div>💳 Débito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_debito).toLocaleString("es-AR")}</span></div>}
               {hoyData.tarjeta_credito>0&&<div>💳 Crédito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_credito).toLocaleString("es-AR")}</span></div>}
               {hoyData.otros>0&&<div>📦 Otros: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.otros).toLocaleString("es-AR")}</span></div>}
+              {hoyData.mp_transferencia>0&&<div>📲 Transf. MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_transferencia).toLocaleString("es-AR")}</span></div>}
+              {hoyData.mp_qr>0&&<div>📱 QR MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_qr).toLocaleString("es-AR")}</span></div>}
+              {hoyData.mp_debito>0&&<div>💳 Débito MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_debito).toLocaleString("es-AR")}</span></div>}
+              {hoyData.mp_credito>0&&<div>💳 Crédito MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_credito).toLocaleString("es-AR")}</span></div>}
             </div>
             {hoyData.egresos_diarios>0&&(
               <div style={{marginTop:6,fontSize:11,color:"#C1440E"}}>
@@ -8553,6 +8576,22 @@ function PanelCierre(p) {
               });
             })()}
           </div>
+          {/* Mercado Pago aparte: es otra cuenta, con sus propias comisiones. */}
+          <div style={{background:"#0A1018",border:"1px solid #2D7FF933",borderRadius:10,padding:"12px",marginBottom:12}}>
+            <div style={{fontSize:10,color:"#2D7FF9",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>📱 Mercado Pago</div>
+            <div style={{fontSize:10,color:"#3A5A7A",marginBottom:10}}>Lo cobrado por Mercado Pago, que va a su propia cuenta. Suma al total igual que el resto.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+              {[["mp_transferencia","📲 Transferencia MP"],["mp_qr","📱 QR MP"],["mp_debito","💳 Débito MP"],["mp_credito","💳 Crédito MP"]].map(function(f){
+                return(
+                  <div key={f[0]}>
+                    <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{f[1]}</label>
+                    <input type="number" placeholder="0" value={form[f[0]]} onChange={function(e){var v=e.target.value;setForm(function(fm){var n={...fm};n[f[0]]=v;return n;});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Egresos del día: se anotan, no se descuentan. Administración los carga en Egresos. */}
           <div style={{background:"#1A0A0A",border:"1px solid #C1440E22",borderRadius:10,padding:"12px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>📤 Egresos del día</div>
@@ -8631,7 +8670,8 @@ function PanelCierre(p) {
                         {c.transferencia>0&&"📲 "+parseFloat(c.transferencia).toLocaleString("es-AR")+" "}
                         {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
                         {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
-                        {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
+                        {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")+" "}
+                        {sumaMedios(c,MEDIOS_MP)>0&&"📱MP "+sumaMedios(c,MEDIOS_MP).toLocaleString("es-AR")}
                       </div>
                       {c.retiro_caja>0&&(
                         <div style={{fontSize:10,color:"#555",marginTop:2}}>
@@ -9417,7 +9457,7 @@ function egresoNeteado(c){
   if(eg<=0)return 0;
   var tv=parseFloat(c.total_ventas||0);
   if(tv===0)return eg; // cierre viejo sin total guardado: criterio viejo
-  var bruto=parseFloat(c.efectivo||0)+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+  var bruto=parseFloat(c.efectivo||0)+sumaMedios(c,MEDIOS_ELECTRONICOS);
   return Math.abs(tv-bruto)<0.5?0:eg;
 }
 
@@ -9429,7 +9469,7 @@ function ventasDeCierre(c){
   var tv=parseFloat(c.total_ventas||0);
   if(tv!==0)return tv;
   var ef=parseFloat(c.efectivo||0)-egresoNeteado(c);
-  return ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
+  return ef+sumaMedios(c,MEDIOS_ELECTRONICOS);
 }
 
 // Mes anterior a un "YYYY-MM".
@@ -9939,7 +9979,8 @@ function PanelResultados(p){
     //  · ventaEfectivo = lo que realmente quedó en la caja, ya neto del retiro. Es la de caja.
     var ventaEfectivoBruto=cl.reduce(function(a,c){return a+parseFloat(c.efectivo||0)-egresoNeteado(c);},0);
     var ventaEfectivo=ventaEfectivoBruto-retiros;
-    var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
+    var ventaMp=cl.reduce(function(a,c){return a+sumaMedios(c,MEDIOS_MP);},0);
+    var ventaElectronico=cl.reduce(function(a,c){return a+sumaMedios(c,MEDIOS_ELECTRONICOS);},0);
 
     // Ingresos electrónicos desglosados
     var ventaTransferencia=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
@@ -9952,7 +9993,7 @@ function PanelResultados(p){
     cl.forEach(function(c){
       var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-egresoNeteado(c);
       if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
-      [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"]].forEach(function(f){
+      [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"],["mp_transferencia","Transferencia MP"],["mp_qr","QR MP"],["mp_debito","Débito MP"],["mp_credito","Crédito MP"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
         if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
       });
@@ -9976,10 +10017,11 @@ function PanelResultados(p){
 
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
-    var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0;
+    var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0,gastoMp=0;
     var procesarPagoDetalle=function(medioStr,pm,pagoLocal){
       if(pagoLocal!==lid)return;
-      if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
+      if(medioStr.includes("mercado pago")||/\bmp\b/.test(medioStr))gastoMp+=pm;
+      else if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
       else if(medioStr.includes("débito")||medioStr.includes("debito"))gastoDebito+=pm;
       else if(medioStr.includes("crédito")||medioStr.includes("credito"))gastoCredito+=pm;
       else if(!medioStr.includes("efectivo"))gastoOtros+=pm;
@@ -10065,16 +10107,24 @@ function PanelResultados(p){
     // La comisión se descuenta igual que el IIBB, pero con la tasa de cada medio. Si la
     // comisión del mes se cargó a mano, ese gasto ya descuenta por su propio medio de pago.
     var factorCom=eg.comisionManual>0?0:1;
+    // Mercado Pago es una cuenta aparte: entra lo cobrado por MP, menos su comisión y su
+    // IIBB, y de ahí salen los gastos pagados desde MP.
+    var ingrMp=ventaMp;
+    var comMp=cl.reduce(function(a,c){
+      return a+MEDIOS_MP.reduce(function(b,m){return b+parseFloat(c[m]||0)*comisionTasa(lid,m);},0);
+    },0)*factorCom;
+    var iibbMp=ingrMp*0;
     var comTransferencia=ingrTransferencia*comisionTasa(lid,"transferencia")*factorCom;
     var comDebito=ingrDebito*comisionTasa(lid,"tarjeta_debito")*factorCom;
     var comCredito=ingrCredito*comisionTasa(lid,"tarjeta_credito")*factorCom;
     var comOtros=ingrOtros*comisionTasa(lid,"otros")*factorCom;
-    var comisionElectronico=comTransferencia+comDebito+comCredito+comOtros;
+    var comisionElectronico=comTransferencia+comDebito+comCredito+comOtros+comMp;
     var iibbTransferencia=ingrTransferencia*tasaIIBB;
     var iibbDebito=ingrDebito*tasaIIBB;
     var iibbCredito=ingrCredito*tasaIIBB;
     var iibbOtros=ingrOtros*tasaIIBB;
-    var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros;
+    iibbMp=ingrMp*tasaIIBB;
+    var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros+iibbMp;
 
     // Disponibilidad = ingreso corregido − IIBB retenido − gastos + traspaso + aportes de socios.
     // Los aportes entran acá y NO en ingr*/venta*: la plata está en la caja, pero no es
@@ -10084,7 +10134,8 @@ function PanelResultados(p){
     var dispDebito=ingrDebito-iibbDebito-comDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispCredito=ingrCredito-iibbCredito-comCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
     var dispOtros=ingrOtros-iibbOtros-comOtros-gastoOtros+aporteOtros;
-    var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
+    var dispMp=ingrMp-iibbMp-comMp-gastoMp;
+    var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
     // Si hay corrección manual de débito, se toma como ya confirmada (no se filtra por fecha).
@@ -10107,7 +10158,7 @@ function PanelResultados(p){
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
     var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-(debitoAcreditadoHoy*comisionTasa(lid,"tarjeta_debito")*factorCom)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
-    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
+    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros+dispMp;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas de los cierres + diferencia de las correcciones manuales.
@@ -10116,7 +10167,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -10652,8 +10703,8 @@ function PanelResultados(p){
 
                 {/* Electrónico — suma de todos los medios electrónicos */}
                 {(function(){
-                  var ingElec=(d.ingrTransferencia||0)+(d.ingrDebito||0)+(d.ingrCredito||0)+(d.ventaOtros||0);
-                  var gasElec=(d.gastoTransferencia||0)+(d.gastoDebito||0)+(d.gastoCredito||0)+(d.gastoOtros||0);
+                  var ingElec=(d.ingrTransferencia||0)+(d.ingrDebito||0)+(d.ingrCredito||0)+(d.ventaOtros||0)+(d.ingrMp||0);
+                  var gasElec=(d.gastoTransferencia||0)+(d.gastoDebito||0)+(d.gastoCredito||0)+(d.gastoOtros||0)+(d.gastoMp||0);
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
                   var iibbElec=ingElec*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB);
                   var comElec=d.comisionElectronico||0;
@@ -10678,6 +10729,7 @@ function PanelResultados(p){
                         {label:"Débito",ing:d.ingrDebito||0,gas:d.gastoDebito||0,tr:d.traspaso?.debito||0,com:d.comDebito||0},
                         {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0,com:d.comCredito||0},
                         {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0,com:d.comOtros||0},
+                        {label:"📱 Mercado Pago",ing:d.ingrMp||0,gas:d.gastoMp||0,tr:0,com:d.comMp||0},
                       ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){
                         var neto=x.ing-(x.ing*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB))-(x.com||0)-x.gas+x.tr;
                         return(
@@ -13152,33 +13204,52 @@ async function sbLoadCierres() {
   } catch(e) { return []; }
 }
 
-var faltaColRetiroCaja=false;
-var SQL_RETIRO_CAJA="alter table cierres_caja add column if not exists retiro_caja numeric default 0;\nalter table cierres_caja add column if not exists retiro_caja_nota text;";
+// Columnas que la tabla todavía no tiene. Se llena cuando un guardado tuvo que dejar algún
+// dato afuera, para poder mostrar en pantalla el SQL que falta.
+var columnasFaltantes=[];
+var SQL_COLUMNAS={
+  retiro_caja:"alter table cierres_caja add column if not exists retiro_caja numeric default 0;",
+  retiro_caja_nota:"alter table cierres_caja add column if not exists retiro_caja_nota text;",
+  mp_transferencia:"alter table cierres_caja add column if not exists mp_transferencia numeric default 0;",
+  mp_qr:"alter table cierres_caja add column if not exists mp_qr numeric default 0;",
+  mp_debito:"alter table cierres_caja add column if not exists mp_debito numeric default 0;",
+  mp_credito:"alter table cierres_caja add column if not exists mp_credito numeric default 0;"
+};
+function sqlDeFaltantes(){
+  return columnasFaltantes.map(function(k){return SQL_COLUMNAS[k]||("-- falta la columna "+k);}).join("\n");
+}
 
 async function sbSaveCierre(cierre) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    var r = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
-    if (!r.ok) {
-      var err = await r.text();
-      // El retiro diario de caja es un dato al margen: si todavía no se corrió el ALTER TABLE
-      // del README, el cierre igual tiene que poder guardarse. Se reintenta sin ese campo y se
-      // avisa que el retiro quedó afuera, en vez de perder el cierre entero.
-      if (/retiro_caja/.test(err)) {
-        var sinRetiro = {...cierre};
-        delete sinRetiro.retiro_caja;
-        delete sinRetiro.retiro_caja_nota;
-        var r2 = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(sinRetiro) });
-        if (r2.ok) {
-          faltaColRetiroCaja = true;
-          if (parseFloat(cierre.retiro_caja||0) > 0) alert("El cierre se guardó, pero el retiro diario de caja no: falta la columna \"retiro_caja\" en la tabla cierres_caja. Corré el ALTER TABLE del README.");
-          return true;
+    var cuerpo = {...cierre};
+    var faltantes = [];
+    // Si a la tabla le falta alguna columna nueva, Postgrest la nombra en el error. Se saca
+    // ese campo y se reintenta: el cierre se guarda igual y después se avisa qué quedó
+    // afuera, en vez de perder la carga entera por un ALTER TABLE pendiente.
+    for (var intento = 0; intento < 8; intento++) {
+      var r = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cuerpo) });
+      if (r.ok) {
+        if (faltantes.length > 0) {
+          columnasFaltantes = faltantes.slice();
+          var conDato = faltantes.filter(function(k){ return parseFloat(cierre[k]||0) > 0 || (typeof cierre[k] === "string" && cierre[k] !== ""); });
+          if (conDato.length > 0) alert("El cierre se guardó, pero estos datos no: " + conDato.join(", ") + ". Faltan esas columnas en la tabla cierres_caja — corré el ALTER TABLE del README.");
         }
-        err = "Faltan las columnas \"retiro_caja\" y \"retiro_caja_nota\" en la tabla cierres_caja. Corré el ALTER TABLE del README.";
+        return true;
       }
-      alert("Error al guardar: " + err);
+      var err = await r.text();
+      var falta = null;
+      Object.keys(cuerpo).forEach(function(k){
+        if (falta) return;
+        if (k === "id" || k === "local" || k === "fecha") return;
+        if (new RegExp("'" + k + "'|\\b" + k + "\\b").test(err) && /column|schema cache|PGRST204/i.test(err)) falta = k;
+      });
+      if (!falta) { alert("Error al guardar: " + err); return false; }
+      faltantes.push(falta);
+      delete cuerpo[falta];
     }
-    return r.ok;
+    alert("No se pudo guardar el cierre: faltan demasiadas columnas en la tabla cierres_caja. Corré el ALTER TABLE del README.");
+    return false;
   } catch(e) { alert("Error de conexión: " + e.message); return false; }
 }
 

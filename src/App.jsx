@@ -8428,7 +8428,8 @@ function PanelCierre(p) {
           </div>
           {/* Retiro de socio y egresos diarios */}
           <div style={{background:"#1A0A0A",border:"1px solid #C1440E22",borderRadius:10,padding:"12px",marginBottom:12}}>
-            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Egresos del día</div>
+            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Egresos del día</div>
+            <div style={{fontSize:10,color:"#7A3A10",marginBottom:10}}>Ojo: estos dos SÍ se descuentan del efectivo y bajan el total del cierre.</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:8}}>
               <div>
                 <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>👤 Retiro de socio</label>

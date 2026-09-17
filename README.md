@@ -142,8 +142,7 @@ se siguen comportando como antes (la cuenta se asume del mismo local del movimie
 
 El cierre de caja de cada local deja anotado el **retiro diario de caja**. Es sólo un
 registro: **no se resta del total del cierre ni de las ventas**, no toca el IVA ni
-Resultados. Para el retiro que sí descuenta está el campo de **retiro de socio**, que ya
-existía y sigue funcionando igual. Corré esto en Supabase → SQL Editor:
+Resultados. Corré esto en Supabase → SQL Editor:
 
 ```sql
 alter table cierres_caja add column if not exists retiro_caja      numeric default 0;
@@ -151,8 +150,28 @@ alter table cierres_caja add column if not exists retiro_caja_nota text;
 ```
 
 Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro: la app
-reintenta sin ese campo y avisa en pantalla nombrando la columna que falta. Los cierres
-viejos, sin el dato, se ven como siempre.
+reintenta sin ese campo, avisa en pantalla y deja el `alter table` a la vista para
+copiarlo. Los cierres viejos, sin el dato, se ven como siempre.
+
+### El cierre anota lo que salió de la caja, no lo descuenta
+
+El **total del cierre es lo que se vendió**: el efectivo va bruto. Lo que salió de la caja
+durante el día se anota al pie del cierre y no toca el total:
+
+- **📤 Egresos del día** — lo que se pagó de la caja, con su concepto. Lo carga el cajero,
+  y **Administración lo tiene que cargar en 💰 Egresos** para que impacte en el resultado y
+  en la disponibilidad de caja. Aparece listado en 🏪 Cierres, en el bloque
+  *"Salió de la caja este mes"*, para que no se pierda ninguno.
+- **💼 Retiro diario de caja** — sólo informativo, no se carga en ningún lado.
+
+El **retiro de socio salió del cierre**: ya no se carga desde ahí. Los retiros de socios
+van por el módulo 🤝 Socios, que es donde se leen. Los cierres viejos conservan el dato que
+tenían y la disponibilidad de caja lo sigue respetando.
+
+Antes el egreso se restaba del efectivo del cierre. Ahora no, así que **un mes viejo con
+egresos cargados en los cierres muestra ventas más altas que antes**, por ese monto exacto.
+Cuadra en cuanto esos egresos se cargan en 💰 Egresos, que es justamente lo que lista el
+bloque del panel de Administración.
 
 ### Cómo se leen los aportes y los retiros
 

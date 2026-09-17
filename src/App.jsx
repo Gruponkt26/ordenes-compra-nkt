@@ -8103,6 +8103,11 @@ function PanelCierresSofia(p) {
                                   </div>
                                 );
                               })}
+                              {parseFloat(c.egresos_diarios||0)>0&&(
+                                <div style={{fontSize:9,color:"#C1440E",marginTop:4}}>
+                                  📤 Egreso de caja: ${parseFloat(c.egresos_diarios).toLocaleString("es-AR")}{c.egresos_nota?" ("+c.egresos_nota+")":""} · cargar en Egresos
+                                </div>
+                              )}
                               {parseFloat(c.retiro_caja||0)>0&&(
                                 <div style={{fontSize:9,color:"#555",marginTop:4}}>
                                   💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
@@ -8164,6 +8169,59 @@ function PanelCierresSofia(p) {
         );})}
         <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"6px 12px",borderRadius:8,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>📊 Vista mensual</button>
       </div>
+
+      {/* Lo que salió de las cajas este mes. Los cierres sólo lo anotan: el egreso hay
+          que cargarlo en Egresos para que pegue en el resultado y en la caja. */}
+      {(function(){
+        var salidas=[];
+        cierres.forEach(function(c){
+          if(!c.fecha||c.fecha.substring(0,7)!==mesFiltro)return;
+          if(localActivo!=="all"&&c.local!==localActivo)return;
+          if(parseFloat(c.egresos_diarios||0)>0)salidas.push({id:c.id+"_eg",fecha:c.fecha,local:c.local,tipo:"egreso",monto:parseFloat(c.egresos_diarios),nota:c.egresos_nota||""});
+          if(parseFloat(c.retiro_caja||0)>0)salidas.push({id:c.id+"_rc",fecha:c.fecha,local:c.local,tipo:"retiro",monto:parseFloat(c.retiro_caja),nota:c.retiro_caja_nota||""});
+        });
+        if(salidas.length===0)return null;
+        salidas.sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+        var totalEgresos=salidas.filter(function(x){return x.tipo==="egreso";}).reduce(function(a,x){return a+x.monto;},0);
+        var totalRetiros=salidas.filter(function(x){return x.tipo==="retiro";}).reduce(function(a,x){return a+x.monto;},0);
+        return(
+          <div style={{background:"#120A06",border:"1px solid #C1440E33",borderRadius:12,padding:"14px",marginBottom:16}}>
+            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:3}}>📤 Salió de la caja este mes</div>
+            <div style={{fontSize:10,color:"#7A3A10",marginBottom:10}}>
+              Los cierres sólo lo anotan: no se descuenta de la venta. El egreso hay que cargarlo en 💰 Egresos para que pegue en el resultado. El retiro de caja es sólo informativo.
+            </div>
+            {salidas.map(function(x){
+              var lx=getLocal(x.local);
+              var esEgreso=x.tipo==="egreso";
+              return(
+                <div key={x.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid #1A1008"}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>
+                      {esEgreso?"📤 Egreso de caja":"💼 Retiro diario de caja"}
+                      {x.nota?<span style={{color:"#666",fontWeight:400}}> · {x.nota}</span>:null}
+                    </div>
+                    <div style={{fontSize:10,color:"#555",marginTop:2}}>
+                      {fmtDate(x.fecha)} · <span style={{color:lx?lx.color:"#555"}}>{lx?lx.emoji+" "+lx.nombre:x.local}</span>
+                      {esEgreso?<span style={{color:"#C1440E"}}> · cargar en Egresos</span>:<span style={{color:"#3A3A3A"}}> · informativo</span>}
+                    </div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,fontFamily:"'Playfair Display',serif",color:esEgreso?"#C1440E":"#777"}}>{plataAR(x.monto)}</div>
+                </div>
+              );
+            })}
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9}}>
+              <span style={{color:"#C1440E",fontWeight:700}}>Egresos a cargar</span>
+              <span style={{color:"#C1440E",fontWeight:800}}>{plataAR(totalEgresos)}</span>
+            </div>
+            {totalRetiros>0&&(
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:3}}>
+                <span style={{color:"#666"}}>Retiros de caja (informativo)</span>
+                <span style={{color:"#666",fontWeight:700}}>{plataAR(totalRetiros)}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Por local */}
       {localesFiltro.filter(function(l){return localActivo==="all"||localActivo===l.id;}).map(function(l){
@@ -8294,12 +8352,11 @@ function PanelCierre(p) {
   var cierresMes=cierresLocal.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
   var totalMesFiltro=cierresMes.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
 
+  // El total del cierre es lo que se vendió, y nada más: el efectivo va BRUTO. Lo que
+  // salió de la caja durante el día —egresos, retiro— se anota aparte y lo carga
+  // Administración en Egresos, para que la salida figure una sola vez y en su lugar.
   function calcTotal(f){
-    var efectivoNeto=(parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
-    return efectivoNeto+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
-  }
-  function calcEfectivoNeto(f){
-    return (parseFloat(f.efectivo)||0)-(parseFloat(f.retiro_socio)||0)-(parseFloat(f.egresos_diarios)||0);
+    return (parseFloat(f.efectivo)||0)+(parseFloat(f.transferencia)||0)+(parseFloat(f.tarjeta_debito)||0)+(parseFloat(f.tarjeta_credito)||0)+(parseFloat(f.otros)||0);
   }
 
   function abrirNuevo(){
@@ -8316,7 +8373,7 @@ function PanelCierre(p) {
 
   function doSave(){
     var total=calcTotal(form);
-    if(total===0)return;
+    if(total===0){alert("Cargá al menos un medio de pago para guardar el cierre.");return;}
     var cierre={
       id: editId || (localId+"_"+form.fecha+"_"+String(Date.now())),
       local:localId,
@@ -8327,6 +8384,8 @@ function PanelCierre(p) {
       tarjeta_debito:parseFloat(form.tarjeta_debito)||0,
       tarjeta_credito:parseFloat(form.tarjeta_credito)||0,
       otros:parseFloat(form.otros)||0,
+      // El retiro de socio ya no se carga desde el cierre —va por el módulo 🤝 Socios—, pero
+      // el dato de los cierres viejos no se pisa al editarlos: la caja de esos meses lo usa.
       retiro_socio:parseFloat(form.retiro_socio)||0,
       egresos_diarios:parseFloat(form.egresos_diarios)||0,
       egresos_nota:form.egresos_nota||"",
@@ -8357,6 +8416,16 @@ function PanelCierre(p) {
         )}
       </div>
 
+      {faltaColRetiroCaja&&(
+        <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:12,padding:"14px",marginBottom:16}}>
+          <div style={{fontSize:11,color:"#C1440E",fontWeight:700,marginBottom:6}}>⚠️ El retiro diario de caja no se está guardando</div>
+          <div style={{fontSize:11,color:"#888",marginBottom:8}}>
+            El cierre sí se guardó. Falta la columna en la base: pegá esto una vez en Supabase → SQL Editor y listo.
+          </div>
+          <textarea readOnly value={SQL_RETIRO_CAJA} rows={2} onFocus={function(e){e.target.select();}} style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"monospace",fontSize:11,resize:"vertical"}}/>
+        </div>
+      )}
+
       {/* Cierre de hoy */}
       <div style={{background:hoyData?"#0A1A0A":"#111",border:"1px solid "+(hoyData?"#3A7D4444":"#1A1A1A"),borderRadius:14,padding:"16px",marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:hoyData?8:0}}>
@@ -8377,10 +8446,10 @@ function PanelCierre(p) {
               {hoyData.tarjeta_credito>0&&<div>💳 Crédito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_credito).toLocaleString("es-AR")}</span></div>}
               {hoyData.otros>0&&<div>📦 Otros: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.otros).toLocaleString("es-AR")}</span></div>}
             </div>
-            {(hoyData.retiro_socio>0||hoyData.egresos_diarios>0)&&(
+            {hoyData.egresos_diarios>0&&(
               <div style={{marginTop:6,fontSize:11,color:"#C1440E"}}>
-                {hoyData.retiro_socio>0&&<span>👤 Retiro: ${parseFloat(hoyData.retiro_socio).toLocaleString("es-AR")} · </span>}
-                {hoyData.egresos_diarios>0&&<span>📤 Egresos: ${parseFloat(hoyData.egresos_diarios).toLocaleString("es-AR")}{hoyData.egresos_nota?" ("+hoyData.egresos_nota+")":""}</span>}
+                📤 Egresos: ${parseFloat(hoyData.egresos_diarios).toLocaleString("es-AR")}{hoyData.egresos_nota?" ("+hoyData.egresos_nota+")":""}
+                <span style={{color:"#5A2A0A"}}> · no descuenta</span>
               </div>
             )}
             {hoyData.retiro_caja>0&&(
@@ -8426,31 +8495,20 @@ function PanelCierre(p) {
               });
             })()}
           </div>
-          {/* Retiro de socio y egresos diarios */}
+          {/* Egresos del día: se anotan, no se descuentan. Administración los carga en Egresos. */}
           <div style={{background:"#1A0A0A",border:"1px solid #C1440E22",borderRadius:10,padding:"12px",marginBottom:12}}>
-            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Egresos del día</div>
-            <div style={{fontSize:10,color:"#7A3A10",marginBottom:10}}>Ojo: estos dos SÍ se descuentan del efectivo y bajan el total del cierre.</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:8}}>
+            <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>📤 Egresos del día</div>
+            <div style={{fontSize:10,color:"#7A3A10",marginBottom:10}}>Lo que se pagó de la caja. Queda anotado y no baja el total: Administración lo carga en Egresos.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
               <div>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>👤 Retiro de socio</label>
-                <input type="number" placeholder="0" value={form.retiro_socio} onChange={function(e){setForm(function(f){return{...f,retiro_socio:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>📤 Egresos diarios</label>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto</label>
                 <input type="number" placeholder="0" value={form.egresos_diarios} onChange={function(e){setForm(function(f){return{...f,egresos_diarios:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
               </div>
-            </div>
-            {(parseFloat(form.egresos_diarios)||0)>0&&(
               <div>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto de egresos</label>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label>
                 <input value={form.egresos_nota} onChange={function(e){setForm(function(f){return{...f,egresos_nota:e.target.value};});}} placeholder="Ej: repuesto, limpieza..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
               </div>
-            )}
-            {((parseFloat(form.retiro_socio)||0)+(parseFloat(form.egresos_diarios)||0))>0&&(
-              <div style={{marginTop:8,fontSize:11,color:"#C1440E"}}>
-                Efectivo bruto: ${(parseFloat(form.efectivo)||0).toLocaleString("es-AR")} − Egresos: ${((parseFloat(form.retiro_socio)||0)+(parseFloat(form.egresos_diarios)||0)).toLocaleString("es-AR")} = <strong>${calcEfectivoNeto(form).toLocaleString("es-AR")}</strong>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Retiro diario de caja: sólo queda anotado, no se resta de nada. */}
@@ -9291,13 +9349,13 @@ function PanelAportes(p) {
 
 // ─── PANEL RESULTADOS (P&L por local) ────────────────────────────────────────
 // Ventas de un cierre de caja. Si el cierre trae total_ventas cargado se usa ese;
-// si no, se arma desde los medios, restando del efectivo los egresos diarios (eso
-// es gasto operativo pagado de la caja, no venta). En las dos ramas queda bruto de
-// retiro de socio, así el retiro no se descuenta dos veces.
+// si no, se arma sumando los medios, con el efectivo BRUTO. Lo que salió de la caja
+// —egresos del día, retiro— no se resta acá: sale una sola vez, cuando Administración
+// lo carga en Egresos. Restarlo también de la venta lo contaba dos veces.
 function ventasDeCierre(c){
   var tv=parseFloat(c.total_ventas||0);
   if(tv!==0)return tv;
-  var ef=(parseFloat(c.efectivo||0))-(parseFloat(c.egresos_diarios||0));
+  var ef=parseFloat(c.efectivo||0);
   return ef+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0));
 }
 
@@ -9337,7 +9395,7 @@ function correccionVentas(cierres, lid, mes, corrResultados){
   var cl=(cierres||[]).filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mes;});
   var suma=function(f){return cl.reduce(function(a,c){return a+parseFloat(c[f]||0);},0);};
   var delCierre={
-    efectivo:suma("efectivo")-suma("egresos_diarios"),
+    efectivo:suma("efectivo"),
     transferencia:suma("transferencia"),
     debito:suma("tarjeta_debito"),
     credito:suma("tarjeta_credito"),
@@ -9431,7 +9489,7 @@ function PanelVentasEgresos(p){
       </div>
 
       <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.7}}>
-        <b style={{color:"#666"}}>Ventas:</b> lo cargado en los cierres de caja del local, neto de los egresos diarios de caja y bruto de retiros de socios, más la corrección manual si se cargó en Resultados.<br/>
+        <b style={{color:"#666"}}>Ventas:</b> lo cargado en los cierres de caja del local, con el efectivo bruto —los egresos de caja y los retiros no se restan de la venta, salen por Egresos—, más la corrección manual si se cargó en Resultados.<br/>
         <b style={{color:"#666"}}>Egresos:</b> el módulo Egresos de ese local, más los adelantos de sueldo y los sueldos o aguinaldos marcados pagados que todavía no generaron su egreso.<br/>
         <b style={{color:"#666"}}>Solo el mes en curso:</b> no entra el traspaso del mes anterior ni los movimientos de socios — eso es saldo y capital, no venta. La plata disponible está en Resultados.<br/>
         Es el mismo cálculo que el resultado de Resultados, abierto por local.
@@ -9554,7 +9612,7 @@ function PanelResultados(p){
     // efectivo sí lo estaba — y como además se sumaba a totalGastos, en esos cierres el retiro
     // terminaba descontándose dos veces. Al dejar las dos ramas brutas, el retiro no toca el
     // resultado por ningún camino y se ve una sola vez, en "Movimientos de socios".
-    // Los egresos diarios sí siguen netos: eso es gasto operativo pagado de la caja.
+    // Los egresos diarios tampoco se restan: se cargan en Egresos y salen por ahí.
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
     var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
     var egresos=cl.reduce(function(a,c){return a+parseFloat(c.egresos_diarios||0);},0);
@@ -9562,8 +9620,7 @@ function PanelResultados(p){
     cl.forEach(function(c){
       [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
-        // bruto de retiro de socio, para que la suma de los medios cierre contra "ventas"
-        if(f[0]==="efectivo")v=v-(parseFloat(c.egresos_diarios||0));
+        // bruto de egresos y de retiro, para que la suma de los medios cierre contra "ventas"
         if(v>0)ventasPorMedio[f[1]]=(ventasPorMedio[f[1]]||0)+v;
       });
     });
@@ -9725,7 +9782,7 @@ function PanelResultados(p){
     //  · ventaEfectivoBruto = venta en efectivo, sin descontar el retiro. Es la que se compara
     //    contra la corrección manual y la que cierra contra "ventas".
     //  · ventaEfectivo = lo que realmente quedó en la caja, ya neto del retiro. Es la de caja.
-    var ventaEfectivoBruto=cl.reduce(function(a,c){return a+(parseFloat(c.efectivo||0)-parseFloat(c.egresos_diarios||0));},0);
+    var ventaEfectivoBruto=cl.reduce(function(a,c){return a+parseFloat(c.efectivo||0);},0);
     var ventaEfectivo=ventaEfectivoBruto-retiros;
     var ventaElectronico=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);},0);
 
@@ -9738,7 +9795,7 @@ function PanelResultados(p){
     // Detalle línea por línea de ingresos (para el desglose clickeable)
     var detIngresos=[];
     cl.forEach(function(c){
-      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0);
+      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0);
       if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
       [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
@@ -9981,7 +10038,7 @@ function PanelResultados(p){
             {cl.sort(function(a,b){return a.fecha.localeCompare(b.fecha);}).map(function(c){return(
               <div key={c.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #141414",fontSize:11}}>
                 <span style={{color:"#555"}}>{c.fecha}</span>
-                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(parseFloat(c.total_ventas||0)||((parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-parseFloat(c.egresos_diarios||0))+(parseFloat(c.transferencia||0))+(parseFloat(c.tarjeta_debito||0))+(parseFloat(c.tarjeta_credito||0))+(parseFloat(c.otros||0))))}</span>
+                <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(ventasDeCierre(c))}</span>
               </div>
             );})}
           </div>
@@ -10351,7 +10408,7 @@ function PanelResultados(p){
                         <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
                           {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (cierre)</span><span>−{fmt(d.retiros)}</span></div>}
                           {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
-                          {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos diarios</span><span>−{fmt(d.egresos)}</span></div>}
+                          {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos de caja anotados en los cierres</span><span>{fmt(d.egresos)}</span></div>}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
@@ -12908,6 +12965,9 @@ async function sbLoadCierres() {
   } catch(e) { return []; }
 }
 
+var faltaColRetiroCaja=false;
+var SQL_RETIRO_CAJA="alter table cierres_caja add column if not exists retiro_caja numeric default 0;\nalter table cierres_caja add column if not exists retiro_caja_nota text;";
+
 async function sbSaveCierre(cierre) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
@@ -12923,6 +12983,7 @@ async function sbSaveCierre(cierre) {
         delete sinRetiro.retiro_caja_nota;
         var r2 = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(sinRetiro) });
         if (r2.ok) {
+          faltaColRetiroCaja = true;
           if (parseFloat(cierre.retiro_caja||0) > 0) alert("El cierre se guardó, pero el retiro diario de caja no: falta la columna \"retiro_caja\" en la tabla cierres_caja. Corré el ALTER TABLE del README.");
           return true;
         }

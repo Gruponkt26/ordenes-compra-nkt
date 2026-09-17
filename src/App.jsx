@@ -9587,6 +9587,12 @@ function PanelResultados(p){
             <span style={{color:"#C1440E",fontWeight:600}}>−{fmt(x.monto)}</span>
           </div>
         );})}
+        {tipo==="electronico"&&(d.iibbElectronico||0)>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:6,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+            <span>IIBB retenido al acreditarse ({Math.round(ALICUOTA_IIBB*1000)/10}%)</span>
+            <span style={{fontWeight:600}}>−{fmt(d.iibbElectronico)}</span>
+          </div>
+        )}
         {traspasoVal!==0&&(
           <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",fontWeight:700}}>
@@ -9951,14 +9957,25 @@ function PanelResultados(p){
     var ingrCredito=hasCorrCredito?corrCredito:ventaCredito;
     var ingrOtros=hasCorrOtros?corrOtros:ventaOtros;
 
-    // Disponibilidad = ingreso corregido − gastos + traspaso + aportes de socios.
+    // Ingresos Brutos se retiene al acreditarse la venta electrónica. La venta sigue siendo
+    // la del cierre —eso fue lo que se vendió, y es lo que mide "ventas"—, pero a la cuenta
+    // entra el 2% menos. Por eso el recorte va acá, en disponibilidad, y no en las ventas:
+    // son dos preguntas distintas y cada una tiene que dar su propia respuesta. El efectivo
+    // no se toca: sobre la caja no hay retención.
+    var iibbTransferencia=ingrTransferencia*ALICUOTA_IIBB;
+    var iibbDebito=ingrDebito*ALICUOTA_IIBB;
+    var iibbCredito=ingrCredito*ALICUOTA_IIBB;
+    var iibbOtros=ingrOtros*ALICUOTA_IIBB;
+    var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros;
+
+    // Disponibilidad = ingreso corregido − IIBB retenido − gastos + traspaso + aportes de socios.
     // Los aportes entran acá y NO en ingr*/venta*: la plata está en la caja, pero no es
     // una venta, así que no debe ensuciar ni las ventas ni el cálculo de correcciones.
     var dispEfectivo=ingrEfectivo-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo;
-    var dispTransferencia=ingrTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
-    var dispDebito=ingrDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
-    var dispCredito=ingrCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
-    var dispOtros=ingrOtros-gastoOtros+aporteOtros;
+    var dispTransferencia=ingrTransferencia-iibbTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
+    var dispDebito=ingrDebito-iibbDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispCredito=ingrCredito-iibbCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
+    var dispOtros=ingrOtros-iibbOtros-gastoOtros+aporteOtros;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros;
 
     // Disponibilidad "de hoy": el débito tarda 2 días hábiles en acreditarse en el banco.
@@ -9981,7 +9998,7 @@ function PanelResultados(p){
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
-    var dispDebitoHoy=debitoAcreditadoHoy-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*ALICUOTA_IIBB)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
@@ -9991,7 +10008,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -10526,7 +10543,8 @@ function PanelResultados(p){
                   var ingElec=(d.ingrTransferencia||0)+(d.ingrDebito||0)+(d.ingrCredito||0)+(d.ventaOtros||0);
                   var gasElec=(d.gastoTransferencia||0)+(d.gastoDebito||0)+(d.gastoCredito||0)+(d.gastoOtros||0);
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
-                  var dispElec=ingElec-gasElec+traspElec;
+                  var iibbElec=ingElec*ALICUOTA_IIBB;
+                  var dispElec=ingElec-iibbElec-gasElec+traspElec;
                   if(ingElec===0&&gasElec===0&&traspElec===0)return null;
                   var kElec=l.id+"_electronico";
                   return(
@@ -10537,6 +10555,7 @@ function PanelResultados(p){
                         <span style={{fontSize:13,fontWeight:800,color:dispElec>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(dispElec)}</span>
                       </div>
                       {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
+                      {iibbElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>IIBB retenido ({Math.round(ALICUOTA_IIBB*1000)/10}%)</span><span style={{color:"#8A6A2A"}}>−{fmt(iibbElec)}</span></div>}
                       {gasElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(gasElec)}</span></div>}
                       {traspElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(traspElec)}</span></div>}
                       {/* Desglose */}
@@ -10545,10 +10564,12 @@ function PanelResultados(p){
                         {label:"Débito",ing:d.ingrDebito||0,gas:d.gastoDebito||0,tr:d.traspaso?.debito||0},
                         {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0},
                         {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0},
-                      ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){return(
+                      ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){
+                        var neto=x.ing-(x.ing*ALICUOTA_IIBB)-x.gas+x.tr;
+                        return(
                         <div key={x.label} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#555",marginBottom:1,paddingLeft:8}}>
                           <span>{x.label}</span>
-                          <span style={{color:(x.ing-x.gas+x.tr)>=0?"#3A7D4488":"#C1440E88"}}>{fmt(x.ing-x.gas+x.tr)}</span>
+                          <span style={{color:neto>=0?"#3A7D4488":"#C1440E88"}}>{fmt(neto)}</span>
                         </div>
                       );})}
                     </div>

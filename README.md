@@ -169,8 +169,21 @@ cambiarla se toca ese único valor. Si algún día los locales quedan en jurisdi
 distintas, esto pasa a ser una alícuota por local.
 
 Los dos números se ven en 🏪 Cierres: en el cierre del día, en el total del mes por local y
-en el detalle de cada cierre. Por ahora es informativo: **no descuenta del resultado ni de
-la disponibilidad de caja**.
+en el detalle de cada cierre.
+
+**Dónde pega el IIBB, y dónde no.** Son dos preguntas distintas y cada una tiene su
+respuesta:
+
+- **Ventas y resultado**: la cifra del cierre, entera. Eso fue lo que se vendió, y es lo
+  que hay que mirar para saber cómo anduvo el local.
+- **Disponibilidad de caja**: la venta electrónica entra a la cuenta con el 2% ya retenido,
+  así que ahí sí se descuenta, medio por medio. El efectivo no se toca: sobre la caja no
+  hay retención.
+
+En Resultados, el bloque 📲 Electrónico muestra el renglón *IIBB retenido (2%)* entre los
+ingresos y los gastos, y el desglose por medio ya viene neto. Dicho de otra forma: el
+resultado no cuenta el IIBB como costo. Si algún día se quiere que lo cuente, se carga como
+gasto o se resta del resultado — hoy, a propósito, no.
 
 ### El cierre anota lo que salió de la caja, no lo descuenta
 

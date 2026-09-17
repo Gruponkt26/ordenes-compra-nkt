@@ -654,10 +654,15 @@ $21.000: el 21% se calcula sobre el neto ($82.645) y no sobre el total. Reservar
 bruto sería guardar de más; calcularlo mal para el otro lado es gastarse plata ajena. Por
 eso cada celda muestra también de cuánto sale, para poder controlarla contra el cierre.
 
-**Cuenta sólo lo cobrado por medios electrónicos** —transferencias y tarjetas—, que es el
-mismo criterio de facturado que ya usaba el resto del módulo. Las ventas en efectivo **no se
-facturan**, así que quedan afuera a propósito. Si algún día se factura efectivo, hay que
-reservar más que lo que muestra el cuadro.
+**Cuenta lo cobrado por medios electrónicos**: transferencias, tarjetas y el **QR** de cada
+local. El QR vive en la columna `otros` del cierre y cada local lo etiqueta distinto —QR
+Provincia (l1), QR Galicia (l2), QR Mercado Pago (l3)—, pero no es un cajón de sobras: entra
+a la cuenta bancaria igual que una transferencia y está igual de declarado. El módulo IVA lo
+dejaba afuera y **achicaba el débito fiscal de los tres locales**; se suma en
+`ventaFacturada(c)`, que es el único lugar donde se define qué es facturado.
+
+Las ventas en **efectivo no se facturan**, así que quedan afuera a propósito. Si algún día se
+factura efectivo, hay que reservar más que lo que muestra el cuadro.
 
 Y es el **débito fiscal**, no lo que se termina pagando: al cerrar el mes se le descuenta el
 crédito de las compras. Guardar el débito y ajustar al final nunca deja corto, que para una

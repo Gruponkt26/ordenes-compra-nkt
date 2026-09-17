@@ -11343,11 +11343,19 @@ function PanelIVA(p) {
     return MEDIOS_ELECTRONICOS.some(function(m){return f.includes(m);});
   }
 
+  // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
+  // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
+  // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
+  function ventaFacturada(c){
+    return parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)
+          +parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+  }
+
   var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
   var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
   cierresMes.forEach(function(c){
     if(!ventasPorLocal[c.local])return;
-    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    var montoElect=ventaFacturada(c);
     var v=calcIVAVenta(montoElect);
     ventasPorLocal[c.local].ivaDF+=v.iva;
     ventasPorLocal[c.local].base+=v.neto;
@@ -11365,7 +11373,7 @@ function PanelIVA(p) {
       diario[c.fecha]={};
       LOCALES_DIARIO.forEach(function(l){diario[c.fecha][l]={base:0,iva:0};});
     }
-    var montoElect=(parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)+parseFloat(c.tarjeta_credito||0));
+    var montoElect=ventaFacturada(c);
     if(montoElect<=0)return;
     var v=calcIVAVenta(montoElect);
     diario[c.fecha][c.local].base+=montoElect;
@@ -11627,9 +11635,10 @@ function PanelIVA(p) {
 
             <div style={{marginTop:12,padding:"11px 13px",background:"#0D0D0D",border:"1px dashed #1E1E1E",borderRadius:10,fontSize:11,color:"#555",lineHeight:1.7}}>
               <b style={{color:"#777"}}>Dos cosas para leerlo bien.</b><br/>
-              Cuenta sólo lo cobrado por <b>medios electrónicos</b> —transferencias y tarjetas—, que es el mismo
-              criterio de facturado que usa el resto del módulo. Las ventas en efectivo no se facturan, así que
-              quedan afuera a propósito: el día que se facture alguna, hay que reservar más que esto.<br/>
+              Cuenta lo cobrado por <b>medios electrónicos</b>: transferencias, tarjetas y el <b>QR</b> de cada
+              local —QR Provincia, QR Galicia, QR Mercado Pago—, que entra a la cuenta igual que una transferencia.
+              Las ventas en efectivo no se facturan, así que quedan afuera a propósito: el día que se facture
+              alguna, hay que reservar más que esto.<br/>
               Y es el IVA que <b>genera la venta</b>, no lo que se termina pagando: al cerrar el mes se le descuenta
               el crédito fiscal de las compras —el resumen de acá arriba—. Guardar el débito y ajustar al final es
               quedarse corto nunca, que para una reserva es lo que conviene.

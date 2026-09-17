@@ -8103,6 +8103,11 @@ function PanelCierresSofia(p) {
                                   </div>
                                 );
                               })}
+                              {parseFloat(c.retiro_caja||0)>0&&(
+                                <div style={{fontSize:9,color:"#555",marginTop:4}}>
+                                  💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
+                                </div>
+                              )}
                               {c.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                               <div style={{fontSize:10,color:"#333",marginTop:4}}>{c.usuario}</div>
                             </div>
@@ -8267,7 +8272,7 @@ function PanelCierresSofia(p) {
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave;
   var hoy=new Date().toISOString().split("T")[0];
-  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",notas:""};
+  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
@@ -8304,7 +8309,7 @@ function PanelCierre(p) {
   }
 
   function abrirEditar(c){
-    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",notas:c.notas||""});
+    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
     setEditId(c.id);
     setShowForm(true);
   }
@@ -8325,6 +8330,10 @@ function PanelCierre(p) {
       retiro_socio:parseFloat(form.retiro_socio)||0,
       egresos_diarios:parseFloat(form.egresos_diarios)||0,
       egresos_nota:form.egresos_nota||"",
+      // Retiro diario de caja: queda anotado y nada más. No entra en el total del cierre,
+      // ni en las ventas, ni en el IVA, ni en Resultados —para eso está el retiro de socio.
+      retiro_caja:parseFloat(form.retiro_caja)||0,
+      retiro_caja_nota:form.retiro_caja_nota||"",
       notas:form.notas,
       usuario:usuario,
       created_at:new Date().toISOString()
@@ -8372,6 +8381,12 @@ function PanelCierre(p) {
               <div style={{marginTop:6,fontSize:11,color:"#C1440E"}}>
                 {hoyData.retiro_socio>0&&<span>👤 Retiro: ${parseFloat(hoyData.retiro_socio).toLocaleString("es-AR")} · </span>}
                 {hoyData.egresos_diarios>0&&<span>📤 Egresos: ${parseFloat(hoyData.egresos_diarios).toLocaleString("es-AR")}{hoyData.egresos_nota?" ("+hoyData.egresos_nota+")":""}</span>}
+              </div>
+            )}
+            {hoyData.retiro_caja>0&&(
+              <div style={{marginTop:6,fontSize:11,color:"#666"}}>
+                💼 Retiro diario de caja: ${parseFloat(hoyData.retiro_caja).toLocaleString("es-AR")}{hoyData.retiro_caja_nota?" ("+hoyData.retiro_caja_nota+")":""}
+                <span style={{color:"#444"}}> · informativo</span>
               </div>
             )}
             {hoyData.notas&&<div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
@@ -8437,6 +8452,22 @@ function PanelCierre(p) {
             )}
           </div>
 
+          {/* Retiro diario de caja: sólo queda anotado, no se resta de nada. */}
+          <div style={{background:"#0F0F0F",border:"1px solid #2A2A2A",borderRadius:10,padding:"12px",marginBottom:12}}>
+            <div style={{fontSize:10,color:"#666",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>💼 Retiro diario de caja</div>
+            <div style={{fontSize:10,color:"#444",marginBottom:10}}>Sólo para dejarlo anotado: no afecta el total ni ningún cálculo.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto</label>
+                <input type="number" placeholder="0" value={form.retiro_caja} onChange={function(e){setForm(function(f){return{...f,retiro_caja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Detalle</label>
+                <input value={form.retiro_caja_nota} onChange={function(e){setForm(function(f){return{...f,retiro_caja_nota:e.target.value};});}} placeholder="Quién lo retiró..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+          </div>
+
           <div style={{background:"#1A1A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:3}}>Total calculado</div>
             <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${calcTotal(form).toLocaleString("es-AR")}</div>
@@ -8485,6 +8516,11 @@ function PanelCierre(p) {
                         {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
                         {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")}
                       </div>
+                      {c.retiro_caja>0&&(
+                        <div style={{fontSize:10,color:"#555",marginTop:2}}>
+                          💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
+                        </div>
+                      )}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                       <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
@@ -12877,6 +12913,7 @@ async function sbSaveCierre(cierre) {
     var r = await fetch(SURL + "/rest/v1/cierres_caja", { method: "POST", headers: h, body: JSON.stringify(cierre) });
     if (!r.ok) {
       var err = await r.text();
+      if (/retiro_caja/.test(err)) err = "Faltan las columnas \"retiro_caja\" y \"retiro_caja_nota\" en la tabla cierres_caja. Corré el ALTER TABLE del README.";
       alert("Error al guardar: " + err);
     }
     return r.ok;

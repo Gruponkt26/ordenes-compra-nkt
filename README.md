@@ -138,6 +138,22 @@ Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la a
 pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
 se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
 
+### ⚠️ Columnas `retiro_caja` y `retiro_caja_nota` en `cierres_caja`
+
+El cierre de caja de cada local deja anotado el **retiro diario de caja**. Es sólo un
+registro: **no se resta del total del cierre ni de las ventas**, no toca el IVA ni
+Resultados. Para el retiro que sí descuenta está el campo de **retiro de socio**, que ya
+existía y sigue funcionando igual. Corré esto en Supabase → SQL Editor:
+
+```sql
+alter table cierres_caja add column if not exists retiro_caja      numeric default 0;
+alter table cierres_caja add column if not exists retiro_caja_nota text;
+```
+
+Hasta que las columnas existan, **los cierres no se van a guardar**: la app avisa en
+pantalla nombrando justamente estas columnas. Los cierres viejos, sin el dato, se ven como
+siempre.
+
 ### Cómo se leen los aportes y los retiros
 
 Los movimientos de socios **no son parte del resultado operativo**:

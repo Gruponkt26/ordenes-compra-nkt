@@ -7985,6 +7985,22 @@ function PanelCruzados(p){
   );
 }
 
+// Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
+// QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
+// transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
+// El efectivo no entra: no se factura.
+function ventaFacturada(c){
+  return parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)
+        +parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
+}
+// Lo que hay que separar de esa caja. El IVA ya viene adentro del precio, así que no es
+// el 21% de lo facturado sino lo que queda al sacarle el neto: de $100.000, $17.355.
+function ivaAReservar(c){
+  var m=ventaFacturada(c);
+  return m-m/1.21;
+}
+function plataAR(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
+
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
   var hoy=new Date().toISOString().split("T")[0];
@@ -8107,6 +8123,16 @@ function PanelCierresSofia(p) {
                           </div>
                         );
                       })}
+                      {(function(){
+                        var res=cl.reduce(function(a,c){return a+ivaAReservar(c);},0);
+                        if(res<=0)return null;
+                        return(
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0 0 0",marginTop:4,borderTop:"1px solid "+l.color+"22"}}>
+                            <span style={{fontSize:10,color:"#D4A017"}}>🏛️ Separar de IVA</span>
+                            <span style={{fontSize:11,fontWeight:800,color:"#D4A017"}}>{plataAR(res)}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -8138,6 +8164,7 @@ function PanelCierresSofia(p) {
       {localesFiltro.filter(function(l){return localActivo==="all"||localActivo===l.id;}).map(function(l){
         var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
         var totalMes=cl.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+        var reservaMes=cl.reduce(function(a,c){return a+ivaAReservar(c);},0);
         var cierreHoy=cl.find(function(c){return c.fecha===hoy;});
         if(cl.length===0&&!cierreHoy&&mesFiltro===mesCurrent){
           // igual mostrar cabecera con alerta
@@ -8150,6 +8177,7 @@ function PanelCierresSofia(p) {
               <div style={{textAlign:"right"}}>
                 <div style={{fontSize:10,color:"#555"}}>{mesFiltro}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>${totalMes.toLocaleString("es-AR")}</div>
+                {reservaMes>0&&<div style={{fontSize:10,color:"#D4A017",marginTop:2}}>separar {plataAR(reservaMes)} de IVA</div>}
               </div>
             </div>
 
@@ -8159,6 +8187,13 @@ function PanelCierresSofia(p) {
                 <div style={{fontSize:10,color:cierreHoy?"#3A7D44":"#C1440E",fontWeight:700}}>
                   {cierreHoy?"✅ Hoy: $"+parseFloat(cierreHoy.total_ventas).toLocaleString("es-AR"):"⚠️ Sin cierre de hoy"}
                 </div>
+                {/* De ese cierre, cuánto no es plata de la casa. Sólo lo ve Administración. */}
+                {cierreHoy&&ivaAReservar(cierreHoy)>0&&(
+                  <div style={{fontSize:10,color:"#D4A017",marginTop:3}}>
+                    🏛️ De esto hay que separar <b>{plataAR(ivaAReservar(cierreHoy))}</b> de IVA
+                    <span style={{color:"#3A3A3A"}}> · facturado {plataAR(ventaFacturada(cierreHoy))}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -8208,6 +8243,12 @@ function PanelCierresSofia(p) {
                               </div>
                             );
                           })}
+                          {ivaAReservar(c)>0&&(
+                            <div style={{gridColumn:"1/-1",fontSize:11,color:"#D4A017",borderTop:"1px solid #1A1A1A",marginTop:5,paddingTop:5}}>
+                              🏛️ Separar de IVA: <b>{plataAR(ivaAReservar(c))}</b>
+                              <span style={{color:"#3A3A3A"}}> · de {plataAR(ventaFacturada(c))} facturados</span>
+                            </div>
+                          )}
                           {c.notas&&<div style={{gridColumn:"1/-1",fontSize:10,color:"#444",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                         </div>
                       )}
@@ -11346,11 +11387,6 @@ function PanelIVA(p) {
   // Lo facturado de un cierre. `otros` es el QR de cada local —QR Provincia, QR Galicia,
   // QR Mercado Pago—, no un cajón de sobras: entra a la cuenta bancaria igual que una
   // transferencia y está igual de declarado. Dejarlo afuera achicaba el débito fiscal.
-  function ventaFacturada(c){
-    return parseFloat(c.transferencia||0)+parseFloat(c.tarjeta_debito||0)
-          +parseFloat(c.tarjeta_credito||0)+parseFloat(c.otros||0);
-  }
-
   var cierresMes=cierres.filter(function(c){return c.fecha&&c.fecha.substring(0,7)===mesFiltro&&c.local!=="l4";});
   var ventasPorLocal={l1:{ivaDF:0,base:0},l2:{ivaDF:0,base:0},l3:{ivaDF:0,base:0}};
   cierresMes.forEach(function(c){

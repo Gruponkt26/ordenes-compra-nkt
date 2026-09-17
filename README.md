@@ -153,6 +153,25 @@ Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro
 reintenta sin ese campo, avisa en pantalla y deja el `alter table` a la vista para
 copiarlo. Los cierres viejos, sin el dato, se ven como siempre.
 
+### Ingresos Brutos: el IVA se separa, IIBB ya viene descontado
+
+Los dos se calculan sobre lo facturado —transferencia, débito, crédito y QR; el efectivo
+queda afuera— pero se leen al revés:
+
+- **IVA**: la plata entra entera y hay que **separarla** para pagarlo después. Es una
+  reserva: si no se aparta, se gasta.
+- **IIBB**: el banco y las tarjetas lo **retienen apenas se acredita la venta**. No hay
+  nada que separar — es plata que nunca llega a la cuenta. El cierre lo muestra para saber
+  cuánto de la venta electrónica se va por ese camino.
+
+La alícuota está en `ALICUOTA_IIBB` (hoy **2%**), arriba del panel de cierres. Para
+cambiarla se toca ese único valor. Si algún día los locales quedan en jurisdicciones
+distintas, esto pasa a ser una alícuota por local.
+
+Los dos números se ven en 🏪 Cierres: en el cierre del día, en el total del mes por local y
+en el detalle de cada cierre. Por ahora es informativo: **no descuenta del resultado ni de
+la disponibilidad de caja**.
+
 ### El cierre anota lo que salió de la caja, no lo descuenta
 
 El **total del cierre es lo que se vendió**: el efectivo va bruto. Lo que salió de la caja

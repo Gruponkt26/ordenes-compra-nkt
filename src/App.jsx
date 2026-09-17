@@ -9415,12 +9415,31 @@ function mesAnteriorDe(mes){
   return y+"-"+(m<10?"0"+m:String(m));
 }
 
+// El IIBB de un mes puede venir por dos caminos y nunca por los dos: lo calcula la app
+// sobre lo facturado, o alguien lo cargó a mano en Egresos. Si hay algo cargado a mano,
+// eso manda y el automático se apaga entero —también el recorte de la disponibilidad—,
+// porque si no la misma plata se descuenta dos veces.
+function esGastoIIBB(g){
+  var txt=((g.subramo||"")+" "+(g.categoria||"")+" "+(g.concepto||"")).toLowerCase();
+  return /ingresos\s*brutos|iibb/.test(txt);
+}
+function iibbCargadoAMano(gastos, lid, mes){
+  return (gastos||[]).filter(function(g){
+    return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes&&esGastoIIBB(g);
+  }).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+}
+function iibbDeCierres(cierres, lid, mes){
+  return (cierres||[]).filter(function(c){
+    return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mes;
+  }).reduce(function(a,c){return a+iibbRetenido(c);},0);
+}
+
 // Egresos operativos de un local en un mes. Además de lo cargado en el módulo
 // Egresos entran los adelantos de sueldo (viven en su propia tabla y no generan
 // gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
 // todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
 // Devuelve también las piezas intermedias, que Resultados usa para el desglose.
-function egresosOperativos(gastos, sueldos, adelantos, lid, mes){
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
@@ -9433,7 +9452,13 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes){
   var total=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0)+adelantosMonto;
   if(!hasSueldosGastos)total+=sueldosTabla.filter(function(s){return !esAguinaldo(s);}).reduce(function(a,s){return a+pagado(s);},0);
   if(!hasAguinaldosGastos)total+=sueldosTabla.filter(esAguinaldo).reduce(function(a,s){return a+pagado(s);},0);
-  return{total:total,gl:gl,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  // Ingresos Brutos: es un costo de vender, así que suma a los egresos. El manual ya está
+  // dentro de gl, por eso el calculado sólo entra cuando no hay ninguno cargado.
+  var iibbManual=iibbCargadoAMano(gastos,lid,mes);
+  var iibbCalc=iibbDeCierres(cierres,lid,mes);
+  var iibbEgreso=iibbManual>0?0:iibbCalc;
+  total+=iibbEgreso;
+  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -9480,10 +9505,10 @@ function PanelVentasEgresos(p){
   // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
-    return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total};
+    return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual};
   });
   var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
   var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
@@ -9521,6 +9546,13 @@ function PanelVentasEgresos(p){
                 <td style={{padding:"10px 6px",borderBottom:"1px solid #0F0F0F"}}>
                   <div style={{fontSize:12,fontWeight:700,color:f.local.color}}>{f.local.emoji} {f.local.nombre}</div>
                   <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}{f.corr!==0?" · con corrección":""}</div>
+                  {(f.iibb>0||f.iibbManual>0)&&(
+                    <div style={{fontSize:9,color:"#8A6A2A",marginTop:1}}>
+                      {f.iibbManual>0
+                        ? "📉 IIBB cargado a mano: "+fmt(f.iibbManual)+" · el cálculo automático está apagado este mes"
+                        : "📉 incluye "+fmt(f.iibb)+" de IIBB retenido ("+(Math.round(ALICUOTA_IIBB*1000)/10)+"% de lo electrónico)"}
+                    </div>
+                  )}
                 </td>
                 <td style={{...TD,color:"#3A7D44"}}>{fmt(f.ventas)}</td>
                 <td style={{...TD,color:"#C1440E"}}>{fmt(f.egresos)}</td>
@@ -9684,7 +9716,7 @@ function PanelResultados(p){
     });
 
     // Egresos operativos del mes — mismo cálculo que usa el cuadro de Ventas y Egresos
-    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro);
+    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro,cierres);
     var gl=eg.gl, periodoAnterior=eg.periodoAnterior, sueldosTabla=eg.sueldosTabla;
     var hasSueldosGastos=eg.hasSueldosGastos, hasAguinaldosGastos=eg.hasAguinaldosGastos;
     var totalGastos=eg.total;
@@ -9727,6 +9759,9 @@ function PanelResultados(p){
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
     });
     // Los retiros ya no entran a porCat: no son una categoría de gasto, son movimiento de socios.
+    // El IIBB calculado va a Administrativo —ahí vive "Ingresos Brutos" en el árbol de áreas—
+    // para que el desglose siga sumando el total.
+    if(eg.iibbEgreso>0)porCat["Administrativo"]=(porCat["Administrativo"]||0)+eg.iibbEgreso;
     if(adelantosMonto>0)porCat["Sueldos"]=(porCat["Sueldos"]||0)+adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
@@ -9962,10 +9997,13 @@ function PanelResultados(p){
     // entra el 2% menos. Por eso el recorte va acá, en disponibilidad, y no en las ventas:
     // son dos preguntas distintas y cada una tiene que dar su propia respuesta. El efectivo
     // no se toca: sobre la caja no hay retención.
-    var iibbTransferencia=ingrTransferencia*ALICUOTA_IIBB;
-    var iibbDebito=ingrDebito*ALICUOTA_IIBB;
-    var iibbCredito=ingrCredito*ALICUOTA_IIBB;
-    var iibbOtros=ingrOtros*ALICUOTA_IIBB;
+    // Si el IIBB del mes se cargó a mano, ese gasto ya descuenta de la cuenta por su propio
+    // medio de pago: acá no se recorta nada, o saldría dos veces.
+    var tasaIIBB=eg.iibbManual>0?0:ALICUOTA_IIBB;
+    var iibbTransferencia=ingrTransferencia*tasaIIBB;
+    var iibbDebito=ingrDebito*tasaIIBB;
+    var iibbCredito=ingrCredito*tasaIIBB;
+    var iibbOtros=ingrOtros*tasaIIBB;
     var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros;
 
     // Disponibilidad = ingreso corregido − IIBB retenido − gastos + traspaso + aportes de socios.
@@ -9998,7 +10036,7 @@ function PanelResultados(p){
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
-    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*ALICUOTA_IIBB)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
@@ -10008,7 +10046,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -10473,11 +10511,13 @@ function PanelResultados(p){
                           <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(d.ventasPorMedio[mp])}</span>
                         </div>
                       );})}
-                      {(d.retiros>0||d.retirosModMonto>0||d.egresos>0)&&(
+                      {(d.retiros>0||d.retirosModMonto>0||d.egresos>0||d.iibbEgreso>0||d.iibbManual>0)&&(
                         <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
                           {d.retiros>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (cierre)</span><span>−{fmt(d.retiros)}</span></div>}
                           {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
                           {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos de caja anotados en los cierres</span><span>{fmt(d.egresos)}</span></div>}
+                          {d.iibbEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>📉 IIBB retenido, contado en Administrativo</span><span>−{fmt(d.iibbEgreso)}</span></div>}
+                          {d.iibbManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>📉 IIBB cargado a mano · automático apagado</span><span>−{fmt(d.iibbManual)}</span></div>}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
@@ -10543,7 +10583,7 @@ function PanelResultados(p){
                   var ingElec=(d.ingrTransferencia||0)+(d.ingrDebito||0)+(d.ingrCredito||0)+(d.ventaOtros||0);
                   var gasElec=(d.gastoTransferencia||0)+(d.gastoDebito||0)+(d.gastoCredito||0)+(d.gastoOtros||0);
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
-                  var iibbElec=ingElec*ALICUOTA_IIBB;
+                  var iibbElec=ingElec*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB);
                   var dispElec=ingElec-iibbElec-gasElec+traspElec;
                   if(ingElec===0&&gasElec===0&&traspElec===0)return null;
                   var kElec=l.id+"_electronico";
@@ -10555,7 +10595,7 @@ function PanelResultados(p){
                         <span style={{fontSize:13,fontWeight:800,color:dispElec>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(dispElec)}</span>
                       </div>
                       {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
-                      {iibbElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>IIBB retenido ({Math.round(ALICUOTA_IIBB*1000)/10}%)</span><span style={{color:"#8A6A2A"}}>−{fmt(iibbElec)}</span></div>}
+                      {iibbElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>IIBB retenido ({Math.round((d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB)*1000)/10}%)</span><span style={{color:"#8A6A2A"}}>−{fmt(iibbElec)}</span></div>}
                       {gasElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(gasElec)}</span></div>}
                       {traspElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(traspElec)}</span></div>}
                       {/* Desglose */}
@@ -10565,7 +10605,7 @@ function PanelResultados(p){
                         {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0},
                         {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0},
                       ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){
-                        var neto=x.ing-(x.ing*ALICUOTA_IIBB)-x.gas+x.tr;
+                        var neto=x.ing-(x.ing*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB))-x.gas+x.tr;
                         return(
                         <div key={x.label} style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"#555",marginBottom:1,paddingLeft:8}}>
                           <span>{x.label}</span>

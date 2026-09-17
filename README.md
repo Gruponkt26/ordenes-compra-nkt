@@ -180,10 +180,26 @@ respuesta:
   así que ahí sí se descuenta, medio por medio. El efectivo no se toca: sobre la caja no
   hay retención.
 
+- **Resultado y cuadro de Ventas y Egresos**: el IIBB **suma a los egresos**. Es un costo
+  de vender, como la comisión de la tarjeta: si no está, el margen sale inflado. Entra en
+  el área *Administrativo*, que es donde vive "Ingresos Brutos" en el árbol de áreas.
+
+Con eso las tres vistas dan lo mismo: si se vendieron $150.000 con $50.000 electrónicos,
+ventas $150.000, egresos $1.000 y disponibilidad $149.000.
+
 En Resultados, el bloque 📲 Electrónico muestra el renglón *IIBB retenido (2%)* entre los
-ingresos y los gastos, y el desglose por medio ya viene neto. Dicho de otra forma: el
-resultado no cuenta el IIBB como costo. Si algún día se quiere que lo cuente, se carga como
-gasto o se resta del resultado — hoy, a propósito, no.
+ingresos y los gastos, y el desglose por medio ya viene neto.
+
+**El automático y la mano nunca conviven.** Si en el mes hay algún egreso cargado con
+"Ingresos Brutos" o "IIBB" (en el subramo, la categoría o el concepto), ése manda y **el
+cálculo automático se apaga entero para ese local y ese mes** — también el recorte de la
+disponibilidad, porque ese gasto ya descuenta por su propio medio de pago. Las dos vistas
+dicen en pantalla cuál de los dos caminos está usando.
+
+El recorte se calcula sobre la venta ya corregida a mano si hay corrección, medio por
+medio, y la disponibilidad "de hoy" lo aplica sobre el débito efectivamente acreditado
+(respetando los 2 días hábiles, y que Kusama y Colantonio's acreditan al instante). Los
+aportes de socios y el traspaso del mes anterior no se tocan: no son venta.
 
 ### El cierre anota lo que salió de la caja, no lo descuenta
 

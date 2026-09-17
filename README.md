@@ -922,6 +922,30 @@ que no se lea como una instrucción.
 Cosas decididas a medias o dejadas para después, con el porqué. No están hechas ni
 empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
+### De los costos de cobrar y de la caja
+
+1. **Los aranceles por venta del POS del banco.** La tabla `COMISIONES` los tiene en cero
+   para Provincia, Galicia y Patagonia: falta el porcentaje que cada banco descuenta por
+   operación, de débito y de crédito. Mientras estén en cero, la disponibilidad de lo
+   cobrado por la maquinita del banco se muestra sin ese descuento, o sea más alta de lo
+   que realmente entra. Las de Mercado Pago sí están cargadas.
+   Ojo: el **abono mensual del POS** es otra cosa —monto fijo, no porcentaje— y va cargado
+   como un egreso más en Administrativo → Bancos. No entra en esta tabla.
+
+2. **El plazo de acreditación del crédito por POS del banco.** El débito ya espera sus 48 hs
+   hábiles en Provincia y Patagonia; del crédito no se sabe el plazo, así que hoy se cuenta
+   disponible al momento en los tres locales. Si tarda, la disponibilidad de hoy está
+   sobreestimada por esa diferencia. Mercado Pago, débito y crédito, sí es al instante.
+
+3. **El impuesto a los débitos y créditos bancarios.** El "impuesto al cheque" pega en cada
+   movimiento de la cuenta bancaria —tanto cuando entra plata como cuando sale—, y hoy no
+   está en ningún cálculo de la app: ni en el resultado, ni en la disponibilidad. A
+   confirmar con el contador antes de tocar nada: si aplica a Calzon Gitano SRL y al CUIT
+   personal, con qué alícuota en cada uno (hay alícuotas reducidas para empresas inscriptas
+   como PyME), qué parte se computa a cuenta de Ganancias, y si alcanza también a las
+   cuentas de Mercado Pago o sólo a las bancarias. Con esos datos se modela igual que el
+   IIBB y las comisiones: descontando de la disponibilidad y sumando a los egresos.
+
 ### Del predio (módulo Deportes)
 
 1. **Un artículo del galpón no genera el gasto.** Si se compra una red y se anota como

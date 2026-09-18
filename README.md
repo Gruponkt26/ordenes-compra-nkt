@@ -251,6 +251,16 @@ Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro
 y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.
 Las ventas no se tocan.
 
+### La tabla de impuestos del mes
+
+El cuadro 🧮 **Ventas y Egresos** abre, debajo del cuadro por local, una tabla con los cuatro
+costos calculados del mes —IIBB, impuesto al crédito, impuesto al débito y comisiones—
+abiertos por local y con su total. No son un renglón aparte: ya están adentro de los egresos
+de arriba, en el área Administrativo. La tabla existe para poder identificarlos, que es
+distinto de sumarlos otra vez.
+
+Aparece sólo cuando hay algo que mostrar, así que en los meses anteriores al corte no está.
+
 Ejemplo, un cierre con $100.000 de débito, $100.000 de crédito y $50.000 de QR:
 
 | | Venta | IIBB 2% | Comisión | Llega a la cuenta |
@@ -296,10 +306,11 @@ ventas $150.000, egresos $1.000 y disponibilidad $149.000.
 En Resultados, el bloque 📲 Electrónico muestra el renglón *IIBB retenido (2%)* entre los
 ingresos y los gastos, y el desglose por medio ya viene neto.
 
-**El cálculo automático corre desde octubre de 2026.** Hasta septiembre inclusive los
-impuestos y las comisiones se cargaban a mano en Egresos, así que ahí el automático no corre:
-si corriera, esos meses contarían el mismo costo dos veces y los cierres ya presentados
-cambiarían de número. De octubre en adelante los calcula la app y no se cargan más.
+**El cálculo automático corre desde septiembre de 2026**, el mes en que se puso. Hasta agosto
+inclusive los impuestos y las comisiones se cargaban a mano en Egresos, así que ahí el
+automático no corre: si corriera, esos meses contarían el mismo costo dos veces y los cierres
+ya presentados cambiarían de número. De septiembre en adelante los calcula la app y no se
+cargan más; si en septiembre quedó algo cargado a mano, el aviso de duplicado lo marca.
 
 El corte es un solo valor, `MES_AUTOMATICO`, y es **por mes entero, no por día**: partir un
 mes al medio dejaría la primera quincena cargada a mano y la segunda calculada, y ningún
@@ -311,7 +322,7 @@ cálculo de ese mes. Eso terminaba apagándolo por cosas que no eran el impuesto
 que nadie se enterara. Una fecha es más previsible: se sabe de antemano qué meses están de
 cada lado.
 
-De octubre en adelante, si igual se carga un impuesto a mano, las dos vistas avisan en rojo
+Del mes del corte en adelante, si igual se carga un impuesto a mano, las dos vistas avisan en rojo
 que ese mes lo está contando dos veces, con el monto, para que se borre ese egreso. El aviso
 señala el problema; no cambia los números por su cuenta. En los meses anteriores no aparece:
 ahí la carga a mano es la única fuente y está bien que esté.
@@ -325,7 +336,7 @@ La **comisión bancaria** también está excluida, pero por un motivo que se ven
 tasas del POS en cero, cargarla a mano es hoy la única forma de que ese costo figure. Ver el
 pendiente de los aranceles antes de tocar esas tasas.
 
-### Qué se carga a mano y qué no, de octubre 2026 en adelante
+### Qué se carga a mano y qué no, de septiembre 2026 en adelante
 
 | | |
 |---|---|

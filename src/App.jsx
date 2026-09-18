@@ -8181,7 +8181,7 @@ function PanelCierresSofia(p) {
   var CAMPOS_CIERRE={
     "l1":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Provincia"],["tarjeta_debito","💳","Débito Provincia"],["tarjeta_credito","💳","Crédito Provincia"],["otros","📱","QR Provincia"]],
     "l2":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Galicia"],["tarjeta_debito","💳","Débito Galicia"],["tarjeta_credito","💳","Crédito Galicia"],["otros","📱","QR Galicia"]],
-    "l3":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Patagonia"],["tarjeta_debito","💳","Débito Patagonia"],["tarjeta_credito","💳","Crédito Patagonia"],["otros","📱","QR MP"]],
+    "l3":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Patagonia"],["tarjeta_debito","💳","Débito Patagonia"],["tarjeta_credito","💳","Crédito Patagonia"],["otros","📦","Otros (ex QR MP)"]],
   };
   var CAMPOS_MP=[["mp_transferencia","📲","Transf. MP"],["mp_qr","📱","QR MP"],["mp_debito","💳","Débito MP"],["mp_credito","💳","Crédito MP"]];
   var CAMPOS_PAT=[["pat_transferencia","📲","Transf. Patagonia"],["pat_qr","📱","QR Patagonia"],["pat_debito","💳","Débito Patagonia"],["pat_credito","💳","Crédito Patagonia"]];
@@ -8713,7 +8713,7 @@ function PanelCierre(p) {
               var campos={
                 "l1":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Provincia"],["tarjeta_debito","💳 Débito Provincia"],["tarjeta_credito","💳 Crédito Provincia"],["otros","📱 QR Provincia"]],
                 "l2":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Galicia"],["tarjeta_debito","💳 Débito Galicia"],["tarjeta_credito","💳 Crédito Galicia"],["otros","📱 QR Galicia"]],
-                "l3":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Patagonia"],["tarjeta_debito","💳 Débito Patagonia"],["tarjeta_credito","💳 Crédito Patagonia"],["otros","📱 QR Mercado Pago"]],
+                "l3":[["efectivo","💵 Efectivo"],["transferencia","📲 Transf. Patagonia"],["tarjeta_debito","💳 Débito Patagonia"],["tarjeta_credito","💳 Crédito Patagonia"],["otros","📦 Otros (ex QR MP)"]],
               };
               var fields=campos[localId]||[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]];
               return fields.map(function(field){

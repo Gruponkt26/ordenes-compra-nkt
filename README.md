@@ -296,23 +296,34 @@ ventas $150.000, egresos $1.000 y disponibilidad $149.000.
 En Resultados, el bloque 📲 Electrónico muestra el renglón *IIBB retenido (2%)* entre los
 ingresos y los gastos, y el desglose por medio ya viene neto.
 
-**El cálculo automático corre siempre.** Los impuestos y las comisiones ya no se anotan a
-mano, así que la app los calcula sola en todos los meses y para todos los locales.
+**El cálculo automático corre desde octubre de 2026.** Hasta septiembre inclusive los
+impuestos y las comisiones se cargaban a mano en Egresos, así que ahí el automático no corre:
+si corriera, esos meses contarían el mismo costo dos veces y los cierres ya presentados
+cambiarían de número. De octubre en adelante los calcula la app y no se cargan más.
 
-Antes había una regla al revés: un impuesto cargado a mano apagaba el cálculo, para que no
-se contara dos veces. Eso terminaba apagándolo por cosas que no eran el impuesto —una
-"comisión bancaria" cargada como gasto, por ejemplo— y dejaba meses enteros sin calcular
-sin que nadie se enterara.
+El corte es un solo valor, `MES_AUTOMATICO`, y es **por mes entero, no por día**: partir un
+mes al medio dejaría la primera quincena cargada a mano y la segunda calculada, y ningún
+informe cerraría.
 
-Lo que quedó cargado a mano de antes **no se ignora**: se sigue detectando (en el subramo,
-la categoría o el concepto) y las dos vistas avisan en rojo que ese mes está contando el
-impuesto dos veces, con el monto, para que se borre ese egreso. El aviso señala el
-problema; no cambia los números por su cuenta.
+Antes el corte no era por fecha sino por contenido: un impuesto cargado a mano apagaba el
+cálculo de ese mes. Eso terminaba apagándolo por cosas que no eran el impuesto —una
+"comisión bancaria" cargada como gasto, por ejemplo— y dejaba meses enteros sin calcular sin
+que nadie se enterara. Una fecha es más previsible: se sabe de antemano qué meses están de
+cada lado.
+
+De octubre en adelante, si igual se carga un impuesto a mano, las dos vistas avisan en rojo
+que ese mes lo está contando dos veces, con el monto, para que se borre ese egreso. El aviso
+señala el problema; no cambia los números por su cuenta. En los meses anteriores no aparece:
+ahí la carga a mano es la única fuente y está bien que esté.
 
 El aviso mira sólo lo que de verdad duplicaría: la **comisión del procesador** por cobrar
-con tarjeta, el IIBB y el impuesto al cheque. La **comisión bancaria**, el mantenimiento y
-el abono del POS son otra cosa —monto fijo del banco, no un porcentaje de las ventas—, la
-app no los calcula y tienen que seguir cargados como el gasto que son: por eso no los marca.
+con tarjeta, el IIBB y el impuesto al cheque. El mantenimiento y el abono del POS son otra
+cosa —monto fijo del banco, no un porcentaje de las ventas—, la app no los calcula y tienen
+que seguir cargados como el gasto que son: por eso no los marca.
+
+La **comisión bancaria** también está excluida, pero por un motivo que se vence: con las
+tasas del POS en cero, cargarla a mano es hoy la única forma de que ese costo figure. Ver el
+pendiente de los aranceles antes de tocar esas tasas.
 
 ### Qué se carga a mano y qué no, de octubre 2026 en adelante
 
@@ -320,7 +331,8 @@ app no los calcula y tienen que seguir cargados como el gasto que son: por eso n
 |---|---|
 | IIBB, impuesto al crédito y al débito | los calcula la app — **no cargar** |
 | Comisión del procesador (MP, tarjetas) | la calcula la app — **no cargar** |
-| Comisión bancaria, mantenimiento o abono del POS | **cargar** en Administrativo → Bancos |
+| Mantenimiento o abono del POS | **cargar** en Administrativo → Bancos |
+| Comisión del POS del banco | **cargar** hasta que sus tasas estén en `COMISIONES`; ahí se deja |
 | Egresos del día del cierre | los anota el cajero, **los carga Administración** en Egresos |
 | Todo el resto de los gastos | como siempre |
 
@@ -977,6 +989,13 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
    operación, de débito y de crédito. Mientras estén en cero, la disponibilidad de lo
    cobrado por la maquinita del banco se muestra sin ese descuento, o sea más alta de lo
    que realmente entra. Las de Mercado Pago sí están cargadas.
+
+   Mientras tanto esas comisiones **se cargan a mano** en Egresos, con el nombre "comisión
+   bancaria", y está bien que así sea: el cálculo automático da cero, así que no duplican
+   nada. **Al cargar las tasas hay que hacer las tres cosas juntas**: poner los porcentajes,
+   dejar de cargar la comisión a mano, y sacar `bancaria` de las exclusiones de
+   `esGastoComision` para que el aviso vuelva a marcar si alguien la sigue cargando. Si se
+   hace sólo la primera, el mismo costo se cuenta dos veces.
    Ojo: el **abono mensual del POS** es otra cosa —monto fijo, no porcentaje— y va cargado
    como un egreso más en Administrativo → Bancos. No entra en esta tabla.
 

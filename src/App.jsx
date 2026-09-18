@@ -8029,6 +8029,14 @@ function ivaAReservar(c){
 // banco y las tarjetas lo retienen apenas se acredita la venta. Así que esto no es una
 // reserva, es un costo ya pagado: sirve para saber cuánto de la venta electrónica no
 // llega nunca a la cuenta. Sobre el efectivo no hay retención, por eso queda afuera.
+// Desde qué mes los impuestos y las comisiones los calcula la app. Antes de este mes se
+// cargaban a mano en Egresos, así que ahí el automático no corre: si corriera, esos meses
+// contarían el mismo costo dos veces y los cierres ya presentados cambiarían de número.
+// El corte es por mes entero y no por día a propósito: partir un mes al medio dejaría la
+// primera quincena cargada a mano y la segunda calculada, y ningún informe cerraría.
+var MES_AUTOMATICO="2026-10";
+function calculaAutomatico(mes){ return String(mes||"")>=MES_AUTOMATICO; }
+
 var ALICUOTA_IIBB=0.02;
 
 // Lo que cobra el procesador por cobrar con tarjeta. Van los porcentajes CON IVA adentro
@@ -9622,9 +9630,13 @@ function impCreditoDeCierres(cierres, lid, mes){
 }
 
 // Sólo marca lo que de verdad duplicaría el cálculo automático: la comisión que cobra el
-// procesador por cobrar con tarjeta. La comisión bancaria, el mantenimiento y el abono del
-// POS son otra cosa —monto fijo del banco, no un porcentaje de las ventas—, la app no los
-// calcula y tienen que seguir cargados como el gasto que son.
+// procesador por cobrar con tarjeta. El mantenimiento y el abono del POS son otra cosa
+// —monto fijo del banco, no un porcentaje de las ventas—, la app no los calcula y tienen
+// que seguir cargados como el gasto que son.
+// "bancaria" está en la lista de exclusiones por una razón que se vence: las comisiones del
+// POS se cargan a mano con ese nombre porque sus tasas en COMISIONES están en cero, así que
+// hoy no duplican nada. EN CUANTO SE CARGUEN ESAS TASAS hay que sacar "bancaria" de acá y
+// dejar de cargarlas a mano, o el mismo costo se va a contar dos veces.
 function esGastoComision(g){
   var txt=((g.subramo||"")+" "+(g.categoria||"")+" "+(g.concepto||"")).toLowerCase();
   if(!/comisi[oó]n|arancel/.test(txt))return false;
@@ -9682,17 +9694,18 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   // Antes, un impuesto cargado a mano apagaba el cálculo. Ya no se cargan a mano, así que el
   // automático corre siempre. Lo que quedó cargado de antes no se ignora: se sigue midiendo
   // para avisar en pantalla que ese mes puede estar contando el impuesto dos veces.
-  var iibbEgreso=iibbCalc;
+  var auto=calculaAutomatico(mes);
+  var iibbEgreso=auto?iibbCalc:0;
   total+=iibbEgreso;
   // La comisión del procesador es otro costo de vender, y se trata igual: si está cargada
   // a mano manda esa, si no la calcula la app.
   var comisionManual=comisionCargadaAMano(gastos,lid,mes);
   var comisionCalc=comisionDeCierres(cierres,lid,mes);
-  var comisionEgreso=comisionCalc;
+  var comisionEgreso=auto?comisionCalc:0;
   total+=comisionEgreso;
   var impCredManual=impCreditoCargadoAMano(gastos,lid,mes);
   var impCredCalc=impCreditoDeCierres(cierres,lid,mes);
-  var impCredEgreso=impCredCalc;
+  var impCredEgreso=auto?impCredCalc:0;
   total+=impCredEgreso;
   var esAguinaldoS=function(x){return x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="";};
   var sueldosADescontar=[];
@@ -9705,7 +9718,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   });
   var pagosMedio=salidasPorMedio(gastos,sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
   var impDebCalc=pagosMedio.impDebito;
-  var impDebEgreso=impDebCalc;
+  var impDebEgreso=auto?impDebCalc:0;
   total+=impDebEgreso;
   return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
@@ -9803,7 +9816,7 @@ function PanelVentasEgresos(p){
                       {"📉 incluye "+fmt(f.iibb)+" de IIBB retenido ("+(Math.round(ALICUOTA_IIBB*1000)/10)+"% de lo electrónico)"}
                     </div>
                   )}
-                  {(f.iibbManual>0||f.comisionManual>0||f.impCredManual>0)&&(
+                  {calculaAutomatico(mesFiltro)&&(f.iibbManual>0||f.comisionManual>0||f.impCredManual>0)&&(
                     <div style={{fontSize:9,color:"#C1440E",marginTop:3,lineHeight:1.5}}>
                       ⚠️ Hay {fmt((f.iibbManual||0)+(f.comisionManual||0)+(f.impCredManual||0))} cargado a mano como impuesto o comisión en este mes. El cálculo automático ya los cuenta, así que ese egreso está duplicando: conviene borrarlo.
                     </div>
@@ -10287,11 +10300,12 @@ function PanelResultados(p){
     // no se toca: sobre la caja no hay retención.
     // Si el IIBB del mes se cargó a mano, ese gasto ya descuenta de la cuenta por su propio
     // medio de pago: acá no se recorta nada, o saldría dos veces.
-    var tasaIIBB=ALICUOTA_IIBB;
+    var auto=calculaAutomatico(mesFiltro);
+    var tasaIIBB=auto?ALICUOTA_IIBB:0;
     // La comisión se descuenta igual que el IIBB, pero con la tasa de cada medio. Si la
     // comisión del mes se cargó a mano, ese gasto ya descuenta por su propio medio de pago.
-    var factorCom=1;
-    var factorImpCred=1;
+    var factorCom=auto?1:0;
+    var factorImpCred=auto?1:0;
     // Mercado Pago es una cuenta aparte: entra lo cobrado por MP, menos su comisión y su
     // IIBB, y de ahí salen los gastos pagados desde MP.
     var ingrMp=ventaMp;

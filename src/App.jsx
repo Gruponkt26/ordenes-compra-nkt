@@ -9673,17 +9673,20 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   // dentro de gl, por eso el calculado sólo entra cuando no hay ninguno cargado.
   var iibbManual=iibbCargadoAMano(gastos,lid,mes);
   var iibbCalc=iibbDeCierres(cierres,lid,mes);
-  var iibbEgreso=iibbManual>0?0:iibbCalc;
+  // Antes, un impuesto cargado a mano apagaba el cálculo. Ya no se cargan a mano, así que el
+  // automático corre siempre. Lo que quedó cargado de antes no se ignora: se sigue midiendo
+  // para avisar en pantalla que ese mes puede estar contando el impuesto dos veces.
+  var iibbEgreso=iibbCalc;
   total+=iibbEgreso;
   // La comisión del procesador es otro costo de vender, y se trata igual: si está cargada
   // a mano manda esa, si no la calcula la app.
   var comisionManual=comisionCargadaAMano(gastos,lid,mes);
   var comisionCalc=comisionDeCierres(cierres,lid,mes);
-  var comisionEgreso=comisionManual>0?0:comisionCalc;
+  var comisionEgreso=comisionCalc;
   total+=comisionEgreso;
   var impCredManual=impCreditoCargadoAMano(gastos,lid,mes);
   var impCredCalc=impCreditoDeCierres(cierres,lid,mes);
-  var impCredEgreso=impCredManual>0?0:impCredCalc;
+  var impCredEgreso=impCredCalc;
   total+=impCredEgreso;
   var esAguinaldoS=function(x){return x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="";};
   var sueldosADescontar=[];
@@ -9696,7 +9699,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   });
   var pagosMedio=salidasPorMedio(gastos,sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
   var impDebCalc=pagosMedio.impDebito;
-  var impDebEgreso=impCredManual>0?0:impDebCalc;
+  var impDebEgreso=impDebCalc;
   total+=impDebEgreso;
   return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
@@ -9791,23 +9794,22 @@ function PanelVentasEgresos(p){
                   <div style={{fontSize:9,color:"#444",marginTop:2}}>{f.cierres} cierre{f.cierres===1?"":"s"} · {f.gastos} egreso{f.gastos===1?"":"s"}{f.corr!==0?" · con corrección":""}</div>
                   {(f.iibb>0||f.iibbManual>0)&&(
                     <div style={{fontSize:9,color:"#8A6A2A",marginTop:1}}>
-                      {f.iibbManual>0
-                        ? "📉 IIBB cargado a mano: "+fmt(f.iibbManual)+" · el cálculo automático está apagado este mes"
-                        : "📉 incluye "+fmt(f.iibb)+" de IIBB retenido ("+(Math.round(ALICUOTA_IIBB*1000)/10)+"% de lo electrónico)"}
+                      {"📉 incluye "+fmt(f.iibb)+" de IIBB retenido ("+(Math.round(ALICUOTA_IIBB*1000)/10)+"% de lo electrónico)"}
+                    </div>
+                  )}
+                  {(f.iibbManual>0||f.comisionManual>0||f.impCredManual>0)&&(
+                    <div style={{fontSize:9,color:"#C1440E",marginTop:3,lineHeight:1.5}}>
+                      ⚠️ Hay {fmt((f.iibbManual||0)+(f.comisionManual||0)+(f.impCredManual||0))} cargado a mano como impuesto o comisión en este mes. El cálculo automático ya los cuenta, así que ese egreso está duplicando: conviene borrarlo.
                     </div>
                   )}
                   {(f.impCred>0||f.impCredManual>0)&&(
                     <div style={{fontSize:9,color:"#8A6A2A",marginTop:1}}>
-                      {f.impCredManual>0
-                        ? "🏦 Impuesto al cheque cargado a mano: "+fmt(f.impCredManual)+" · el cálculo automático está apagado este mes"
-                        : "🏦 incluye "+fmt(f.impCred)+" de impuesto al crédito"+(f.impDeb>0?" y "+fmt(f.impDeb)+" al débito":"")+" (0,6% de lo que entra y de lo que sale)"}
+                      {"🏦 incluye "+fmt(f.impCred)+" de impuesto al crédito"+(f.impDeb>0?" y "+fmt(f.impDeb)+" al débito":"")+" (0,6% de lo que entra y de lo que sale)"}
                     </div>
                   )}
                   {(f.comision>0||f.comisionManual>0)&&(
                     <div style={{fontSize:9,color:"#8A6A2A",marginTop:1}}>
-                      {f.comisionManual>0
-                        ? "💳 Comisiones cargadas a mano: "+fmt(f.comisionManual)+" · el cálculo automático está apagado este mes"
-                        : "💳 incluye "+fmt(f.comision)+" de comisiones del procesador"}
+                      {"💳 incluye "+fmt(f.comision)+" de comisiones del procesador"}
                     </div>
                   )}
                 </td>
@@ -10279,12 +10281,11 @@ function PanelResultados(p){
     // no se toca: sobre la caja no hay retención.
     // Si el IIBB del mes se cargó a mano, ese gasto ya descuenta de la cuenta por su propio
     // medio de pago: acá no se recorta nada, o saldría dos veces.
-    var tasaIIBB=eg.iibbManual>0?0:ALICUOTA_IIBB;
+    var tasaIIBB=ALICUOTA_IIBB;
     // La comisión se descuenta igual que el IIBB, pero con la tasa de cada medio. Si la
     // comisión del mes se cargó a mano, ese gasto ya descuenta por su propio medio de pago.
-    var factorCom=eg.comisionManual>0?0:1;
-    // Si el impuesto al cheque del mes se cargó a mano, ese gasto ya descuenta por su medio.
-    var factorImpCred=eg.impCredManual>0?0:1;
+    var factorCom=1;
+    var factorImpCred=1;
     // Mercado Pago es una cuenta aparte: entra lo cobrado por MP, menos su comisión y su
     // IIBB, y de ahí salen los gastos pagados desde MP.
     var ingrMp=ventaMp;
@@ -10833,12 +10834,12 @@ function PanelResultados(p){
                           {d.retirosModMonto>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginBottom:2}}><span>👤 Retiros socios (módulo)</span><span>−{fmt(d.retirosModMonto)}</span></div>}
                           {d.egresos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E"}}><span>📤 Egresos de caja anotados en los cierres</span><span>{fmt(d.egresos)}</span></div>}
                           {d.iibbEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>📉 IIBB retenido, contado en Administrativo</span><span>−{fmt(d.iibbEgreso)}</span></div>}
-                          {d.iibbManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>📉 IIBB cargado a mano · automático apagado</span><span>−{fmt(d.iibbManual)}</span></div>}
+                          {d.iibbManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginTop:2}}><span>⚠️ IIBB cargado a mano · duplicado, borralo</span><span>−{fmt(d.iibbManual)}</span></div>}
                           {d.comisionEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>💳 Comisiones del procesador, contadas en Administrativo</span><span>−{fmt(d.comisionEgreso)}</span></div>}
-                          {d.comisionManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>💳 Comisiones cargadas a mano · automático apagado</span><span>−{fmt(d.comisionManual)}</span></div>}
+                          {d.comisionManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginTop:2}}><span>⚠️ Comisiones cargadas a mano · duplicado, borralo</span><span>−{fmt(d.comisionManual)}</span></div>}
                           {d.impCredEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>🏦 Impuesto al crédito, contado en Administrativo</span><span>−{fmt(d.impCredEgreso)}</span></div>}
                           {d.impDebEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>🏦 Impuesto al débito, contado en Administrativo</span><span>−{fmt(d.impDebEgreso)}</span></div>}
-                          {d.impCredManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>🏦 Impuesto al cheque cargado a mano · automático apagado</span><span>−{fmt(d.impCredManual)}</span></div>}
+                          {d.impCredManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#C1440E",marginTop:2}}><span>⚠️ Impuesto al cheque cargado a mano · duplicado, borralo</span><span>−{fmt(d.impCredManual)}</span></div>}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>

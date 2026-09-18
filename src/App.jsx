@@ -8049,6 +8049,31 @@ var COMISIONES={
   l3:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0.0141,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
 };
+// Impuesto a los débitos y créditos bancarios, el "impuesto al cheque". Son dos alícuotas
+// y pegan en momentos distintos: la del crédito cuando ENTRA plata a la cuenta, la del
+// débito cuando SALE. Acá está sólo la del crédito, que es la que toca las ventas; la del
+// débito va sobre los pagos y todavía no está hecha.
+// Se define por local porque cada uno cobra por una cuenta distinta. Las tres cuentas de
+// banco pagan 0,6%: Galicia (Kusama) y Patagonia Empresas (Colantonio's) por Calzon Gitano
+// SRL, y Provincia (Bodegón) por el CUIT personal, que tiene la misma alícuota.
+// Las cuentas de Mercado Pago quedan en cero hasta confirmar si las alcanza el impuesto: un
+// medio en cero no descuenta nada.
+var IMP_CREDITO={
+  l1:{banco:0.006,  mp:0},
+  l2:{banco:0.006,  mp:0},
+  l3:{banco:0.006,  mp:0},
+};
+function impCreditoTasa(lid, campo){
+  var t=IMP_CREDITO[lid];
+  if(!t)return 0;
+  return MEDIOS_MP.indexOf(campo)>=0 ? t.mp : t.banco;
+}
+function impCreditoDeCierre(c){
+  return MEDIOS_ELECTRONICOS.reduce(function(a,campo){
+    return a+parseFloat(c[campo]||0)*impCreditoTasa(c.local,campo);
+  },0);
+}
+
 function comisionTasa(lid, campo){
   var c=COMISIONES[lid];
   return (c&&c[campo])||0;
@@ -9519,6 +9544,21 @@ function mesAnteriorDe(mes){
 // Mismo criterio que con el IIBB: si alguien carga la comisión a mano, esa manda y el
 // cálculo automático se apaga. Se busca "comisión" o "arancel" y nada más — "Mercado Pago"
 // solo aparece en mil gastos como forma de pago y apagaría el cálculo por error.
+function esGastoImpCredito(g){
+  var txt=((g.subramo||"")+" "+(g.categoria||"")+" "+(g.concepto||"")).toLowerCase();
+  return /impuesto al cheque|d[eé]bitos y cr[eé]ditos|25\.?413/.test(txt);
+}
+function impCreditoCargadoAMano(gastos, lid, mes){
+  return (gastos||[]).filter(function(g){
+    return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes&&esGastoImpCredito(g);
+  }).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
+}
+function impCreditoDeCierres(cierres, lid, mes){
+  return (cierres||[]).filter(function(c){
+    return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===mes;
+  }).reduce(function(a,c){return a+impCreditoDeCierre(c);},0);
+}
+
 function esGastoComision(g){
   var txt=((g.subramo||"")+" "+(g.categoria||"")+" "+(g.concepto||"")).toLowerCase();
   return /comisi[oó]n|arancel/.test(txt);
@@ -9579,7 +9619,11 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres){
   var comisionCalc=comisionDeCierres(cierres,lid,mes);
   var comisionEgreso=comisionManual>0?0:comisionCalc;
   total+=comisionEgreso;
-  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  var impCredManual=impCreditoCargadoAMano(gastos,lid,mes);
+  var impCredCalc=impCreditoDeCierres(cierres,lid,mes);
+  var impCredEgreso=impCredManual>0?0:impCredCalc;
+  total+=impCredEgreso;
+  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -9629,7 +9673,7 @@ function PanelVentasEgresos(p){
     var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
-    return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual};
+    return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual};
   });
   var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
   var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
@@ -9672,6 +9716,13 @@ function PanelVentasEgresos(p){
                       {f.iibbManual>0
                         ? "📉 IIBB cargado a mano: "+fmt(f.iibbManual)+" · el cálculo automático está apagado este mes"
                         : "📉 incluye "+fmt(f.iibb)+" de IIBB retenido ("+(Math.round(ALICUOTA_IIBB*1000)/10)+"% de lo electrónico)"}
+                    </div>
+                  )}
+                  {(f.impCred>0||f.impCredManual>0)&&(
+                    <div style={{fontSize:9,color:"#8A6A2A",marginTop:1}}>
+                      {f.impCredManual>0
+                        ? "🏦 Impuesto al cheque cargado a mano: "+fmt(f.impCredManual)+" · el cálculo automático está apagado este mes"
+                        : "🏦 incluye "+fmt(f.impCred)+" de impuesto al crédito (0,6% de lo que entra a la cuenta)"}
                     </div>
                   )}
                   {(f.comision>0||f.comisionManual>0)&&(
@@ -9747,6 +9798,12 @@ function PanelResultados(p){
             <span style={{color:"#C1440E",fontWeight:600}}>−{fmt(x.monto)}</span>
           </div>
         );})}
+        {tipo==="electronico"&&(d.impCreditoElectronico||0)>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:6,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+            <span>Impuesto al crédito al acreditarse (0,6%)</span>
+            <span style={{fontWeight:600}}>−{fmt(d.impCreditoElectronico)}</span>
+          </div>
+        )}
         {tipo==="electronico"&&(d.comisionElectronico||0)>0&&(
           <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:6,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
             <span>Comisiones del procesador al cobrar</span>
@@ -9897,6 +9954,7 @@ function PanelResultados(p){
     // para que el desglose siga sumando el total.
     if(eg.iibbEgreso>0)porCat["Administrativo"]=(porCat["Administrativo"]||0)+eg.iibbEgreso;
     if(eg.comisionEgreso>0)porCat["Administrativo"]=(porCat["Administrativo"]||0)+eg.comisionEgreso;
+    if(eg.impCredEgreso>0)porCat["Administrativo"]=(porCat["Administrativo"]||0)+eg.impCredEgreso;
     if(adelantosMonto>0)porCat["Sueldos"]=(porCat["Sueldos"]||0)+adelantosMonto;
     if(!hasSueldosGastos){
       sueldosTabla.filter(function(s){return !s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra===""}).forEach(function(s){
@@ -10140,18 +10198,26 @@ function PanelResultados(p){
     // La comisión se descuenta igual que el IIBB, pero con la tasa de cada medio. Si la
     // comisión del mes se cargó a mano, ese gasto ya descuenta por su propio medio de pago.
     var factorCom=eg.comisionManual>0?0:1;
+    // Si el impuesto al cheque del mes se cargó a mano, ese gasto ya descuenta por su medio.
+    var factorImpCred=eg.impCredManual>0?0:1;
     // Mercado Pago es una cuenta aparte: entra lo cobrado por MP, menos su comisión y su
     // IIBB, y de ahí salen los gastos pagados desde MP.
     var ingrMp=ventaMp;
     var comMp=cl.reduce(function(a,c){
       return a+MEDIOS_MP.reduce(function(b,m){return b+parseFloat(c[m]||0)*comisionTasa(lid,m);},0);
     },0)*factorCom;
+    var icMp=ingrMp*impCreditoTasa(lid,"mp_qr")*factorImpCred;
     var iibbMp=ingrMp*0;
+    var icTransferencia=ingrTransferencia*impCreditoTasa(lid,"transferencia")*factorImpCred;
+    var icDebito=ingrDebito*impCreditoTasa(lid,"tarjeta_debito")*factorImpCred;
+    var icCredito=ingrCredito*impCreditoTasa(lid,"tarjeta_credito")*factorImpCred;
+    var icOtros=ingrOtros*impCreditoTasa(lid,"otros")*factorImpCred;
     var comTransferencia=ingrTransferencia*comisionTasa(lid,"transferencia")*factorCom;
     var comDebito=ingrDebito*comisionTasa(lid,"tarjeta_debito")*factorCom;
     var comCredito=ingrCredito*comisionTasa(lid,"tarjeta_credito")*factorCom;
     var comOtros=ingrOtros*comisionTasa(lid,"otros")*factorCom;
     var comisionElectronico=comTransferencia+comDebito+comCredito+comOtros+comMp;
+    var impCreditoElectronico=icTransferencia+icDebito+icCredito+icOtros+icMp;
     var iibbTransferencia=ingrTransferencia*tasaIIBB;
     var iibbDebito=ingrDebito*tasaIIBB;
     var iibbCredito=ingrCredito*tasaIIBB;
@@ -10163,11 +10229,11 @@ function PanelResultados(p){
     // Los aportes entran acá y NO en ingr*/venta*: la plata está en la caja, pero no es
     // una venta, así que no debe ensuciar ni las ventas ni el cálculo de correcciones.
     var dispEfectivo=ingrEfectivo-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo;
-    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
-    var dispDebito=ingrDebito-iibbDebito-comDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
-    var dispCredito=ingrCredito-iibbCredito-comCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
-    var dispOtros=ingrOtros-iibbOtros-comOtros-gastoOtros+aporteOtros;
-    var dispMp=ingrMp-iibbMp-comMp-gastoMp;
+    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
+    var dispDebito=ingrDebito-iibbDebito-comDebito-icDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispCredito=ingrCredito-iibbCredito-comCredito-icCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
+    var dispOtros=ingrOtros-iibbOtros-comOtros-icOtros-gastoOtros+aporteOtros;
+    var dispMp=ingrMp-iibbMp-comMp-icMp-gastoMp;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,
@@ -10192,7 +10258,7 @@ function PanelResultados(p){
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
-    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-(debitoAcreditadoHoy*comisionTasa(lid,"tarjeta_debito")*factorCom)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-(debitoAcreditadoHoy*comisionTasa(lid,"tarjeta_debito")*factorCom)-(debitoAcreditadoHoy*impCreditoTasa(lid,"tarjeta_debito")*factorImpCred)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros+dispMp;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
@@ -10202,7 +10268,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -10676,6 +10742,8 @@ function PanelResultados(p){
                           {d.iibbManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>📉 IIBB cargado a mano · automático apagado</span><span>−{fmt(d.iibbManual)}</span></div>}
                           {d.comisionEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>💳 Comisiones del procesador, contadas en Administrativo</span><span>−{fmt(d.comisionEgreso)}</span></div>}
                           {d.comisionManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>💳 Comisiones cargadas a mano · automático apagado</span><span>−{fmt(d.comisionManual)}</span></div>}
+                          {d.impCredEgreso>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>🏦 Impuesto al crédito, contado en Administrativo</span><span>−{fmt(d.impCredEgreso)}</span></div>}
+                          {d.impCredManual>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>🏦 Impuesto al cheque cargado a mano · automático apagado</span><span>−{fmt(d.impCredManual)}</span></div>}
                         </div>
                       )}
                       <div style={{fontSize:9,color:"#333",marginTop:6}}>{d.diasCierre} cierre{d.diasCierre!==1?"s":""}</div>
@@ -10743,7 +10811,8 @@ function PanelResultados(p){
                   var traspElec=(d.traspaso?.transferencia||0)+(d.traspaso?.debito||0)+(d.traspaso?.credito||0);
                   var iibbElec=ingElec*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB);
                   var comElec=d.comisionElectronico||0;
-                  var dispElec=ingElec-iibbElec-comElec-gasElec+traspElec;
+                  var icElec=d.impCreditoElectronico||0;
+                  var dispElec=ingElec-iibbElec-comElec-icElec-gasElec+traspElec;
                   if(ingElec===0&&gasElec===0&&traspElec===0)return null;
                   var kElec=l.id+"_electronico";
                   return(
@@ -10756,15 +10825,16 @@ function PanelResultados(p){
                       {ingElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(ingElec)}</span></div>}
                       {iibbElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>IIBB retenido ({Math.round((d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB)*1000)/10}%)</span><span style={{color:"#8A6A2A"}}>−{fmt(iibbElec)}</span></div>}
                       {comElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Comisiones del procesador</span><span style={{color:"#8A6A2A"}}>−{fmt(comElec)}</span></div>}
+                      {icElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Impuesto al crédito (0,6%)</span><span style={{color:"#8A6A2A"}}>−{fmt(icElec)}</span></div>}
                       {gasElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#444",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(gasElec)}</span></div>}
                       {traspElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(traspElec)}</span></div>}
                       {/* Desglose */}
                       {[
-                        {label:"Transferencia",ing:d.ingrTransferencia||0,gas:d.gastoTransferencia||0,tr:d.traspaso?.transferencia||0,com:d.comTransferencia||0},
-                        {label:"Débito",ing:d.ingrDebito||0,gas:d.gastoDebito||0,tr:d.traspaso?.debito||0,com:d.comDebito||0},
-                        {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0,com:d.comCredito||0},
-                        {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0,com:d.comOtros||0},
-                        {label:"📱 Mercado Pago",ing:d.ingrMp||0,gas:d.gastoMp||0,tr:0,com:d.comMp||0},
+                        {label:"Transferencia",ing:d.ingrTransferencia||0,gas:d.gastoTransferencia||0,tr:d.traspaso?.transferencia||0,com:(d.comTransferencia||0)+(d.icTransferencia||0)},
+                        {label:"Débito",ing:d.ingrDebito||0,gas:d.gastoDebito||0,tr:d.traspaso?.debito||0,com:(d.comDebito||0)+(d.icDebito||0)},
+                        {label:"Crédito",ing:d.ingrCredito||0,gas:d.gastoCredito||0,tr:d.traspaso?.credito||0,com:(d.comCredito||0)+(d.icCredito||0)},
+                        {label:"QR / Otros",ing:d.ventaOtros||0,gas:d.gastoOtros||0,tr:0,com:(d.comOtros||0)+(d.icOtros||0)},
+                        {label:"📱 Mercado Pago",ing:d.ingrMp||0,gas:d.gastoMp||0,tr:0,com:(d.comMp||0)+(d.icMp||0)},
                       ].filter(function(x){return x.ing!==0||x.gas!==0||x.tr!==0;}).map(function(x){
                         var neto=x.ing-(x.ing*(d.tasaIIBB!==undefined?d.tasaIIBB:ALICUOTA_IIBB))-(x.com||0)-x.gas+x.tr;
                         return(

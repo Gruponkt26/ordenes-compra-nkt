@@ -8033,8 +8033,10 @@ function ivaAReservar(c){
 // cargaban a mano en Egresos, así que ahí el automático no corre: si corriera, esos meses
 // contarían el mismo costo dos veces y los cierres ya presentados cambiarían de número.
 // El corte es por mes entero y no por día a propósito: partir un mes al medio dejaría la
-// primera quincena cargada a mano y la segunda calculada, y ningún informe cerraría.
-var MES_AUTOMATICO="2026-10";
+// primera quincena cargada a mano y la segunda calculada, y ningún informe cerraría. Por eso
+// el mes del corte se calcula entero: si quedó algo cargado a mano en él, el aviso de
+// duplicado lo marca para que se borre.
+var MES_AUTOMATICO="2026-09";
 function calculaAutomatico(mes){ return String(mes||"")>=MES_AUTOMATICO; }
 
 var ALICUOTA_IIBB=0.02;
@@ -9775,6 +9777,12 @@ function PanelVentasEgresos(p){
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
     return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual,impDeb:eg.impDebEgreso};
   });
+  var totIibb=filas.reduce(function(a,f){return a+(f.iibb||0);},0);
+  var totImpCred=filas.reduce(function(a,f){return a+(f.impCred||0);},0);
+  var totImpDeb=filas.reduce(function(a,f){return a+(f.impDeb||0);},0);
+  var totComision=filas.reduce(function(a,f){return a+(f.comision||0);},0);
+  var totCostos=totIibb+totImpCred+totImpDeb+totComision;
+  var hayCostos=totCostos>0;
   var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
   var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
   var totDif=totVentas-totEgresos;
@@ -9846,6 +9854,55 @@ function PanelVentasEgresos(p){
           </tbody>
         </table>
       </div>
+
+      {hayCostos&&(
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:3}}>🏦 Impuestos y comisiones del mes</div>
+          <div style={{fontSize:10,color:"#444",marginBottom:10,maxWidth:560}}>
+            Ya están adentro de los egresos de arriba, en el área Administrativo. Los calcula la app: no se cargan a mano.
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:460,fontVariantNumeric:"tabular-nums"}}>
+              <thead>
+                <tr>
+                  <th style={{...TH,textAlign:"left"}}>Local</th>
+                  <th style={{...TH,textAlign:"right"}}>IIBB 2%</th>
+                  <th style={{...TH,textAlign:"right"}}>Imp. crédito</th>
+                  <th style={{...TH,textAlign:"right"}}>Imp. débito</th>
+                  <th style={{...TH,textAlign:"right"}}>Comisiones</th>
+                  <th style={{...TH,textAlign:"right"}}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.filter(function(f){return (f.iibb||0)+(f.impCred||0)+(f.impDeb||0)+(f.comision||0)>0;}).map(function(f){
+                  var tot=(f.iibb||0)+(f.impCred||0)+(f.impDeb||0)+(f.comision||0);
+                  return(
+                    <tr key={f.local.id}>
+                      <td style={{padding:"9px 6px",fontSize:12,fontWeight:700,color:f.local.color,borderBottom:"1px solid #0F0F0F"}}>{f.local.emoji} {f.local.nombre}</td>
+                      <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.iibb||0)}</td>
+                      <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.impCred||0)}</td>
+                      <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.impDeb||0)}</td>
+                      <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.comision||0)}</td>
+                      <td style={{...TD,fontSize:13,color:"#C1440E"}}>{fmt(tot)}</td>
+                    </tr>
+                  );
+                })}
+                <tr>
+                  <td style={{padding:"11px 6px 0",fontSize:11,color:"#666",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Total</td>
+                  <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totIibb)}</td>
+                  <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totImpCred)}</td>
+                  <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totImpDeb)}</td>
+                  <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totComision)}</td>
+                  <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:15,color:"#C1440E"}}>{fmt(totCostos)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{fontSize:9,color:"#444",marginTop:8,lineHeight:1.7}}>
+            <b style={{color:"#666"}}>IIBB e impuesto al crédito:</b> sobre lo que se cobró por medios electrónicos. <b style={{color:"#666"}}>Impuesto al débito:</b> sobre todo lo que salió de la cuenta —proveedores, sueldos, adelantos y retiros—, no sobre las ventas. <b style={{color:"#666"}}>Comisiones:</b> lo que cobra el procesador por cobrar con tarjeta. El efectivo no paga ninguno de los cuatro.
+          </div>
+        </div>
+      )}
 
       <div style={{fontSize:9,color:"#444",marginTop:10,lineHeight:1.7}}>
         <b style={{color:"#666"}}>Ventas:</b> lo cargado en los cierres de caja del local, con el efectivo bruto —los egresos de caja y los retiros no se restan de la venta, salen por Egresos—, más la corrección manual si se cargó en Resultados.<br/>

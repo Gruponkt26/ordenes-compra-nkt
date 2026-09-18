@@ -14231,9 +14231,32 @@ function PanelStockMP(p) {
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
+// La sesión vivía sólo en memoria: recargar la página, cambiar de pestaña o que el teléfono
+// descartara la pantalla mandaba de vuelta al login. Se guarda el usuario —el id solo, nunca
+// la contraseña— y se vuelve a resolver contra la lista al abrir. El acceso a los datos no
+// depende de esto: lo que se guarda es quién estaba usando la app, no un permiso.
+var CLAVE_SESION="nkt_sesion";
+function leerSesion(){
+  try{ return window.localStorage.getItem(CLAVE_SESION)||null; }catch(e){ return null; }
+}
+function guardarSesion(id){
+  try{ if(id)window.localStorage.setItem(CLAVE_SESION,id); else window.localStorage.removeItem(CLAVE_SESION); }catch(e){}
+}
+
 export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
   var [cu,setCu]=useState(null);
+  // Al abrir, si había alguien logueado se lo recupera de la lista de usuarios. Si ese
+  // usuario ya no existe —lo borraron, le cambiaron el id— simplemente pide login de nuevo.
+  useEffect(function(){
+    if(cu)return;
+    var id=leerSesion();
+    if(!id)return;
+    var u=(users||[]).find(function(x){return x.id===id;});
+    if(u)setCu(u);
+  },[users]);
+  function entrar(u){ guardarSesion(u&&u.id); setCu(u); }
+  function salir(){ guardarSesion(null); setCu(null); }
   var [proveedores,setProveedores]=useState(INIT_PROVEEDORES);
   var [productos,setProductos]=useState(INIT_PRODUCTOS);
   var [ordenes,setOrdenes]=useState([]);
@@ -14381,7 +14404,7 @@ export default function App() {
     setTimeout(function(){setRefrescando(false);},1500);
   }
 
-  if(!cu)return <Login users={users} onLogin={setCu}/>;
+  if(!cu)return <Login users={users} onLogin={entrar}/>;
 
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
@@ -14480,7 +14503,7 @@ export default function App() {
             {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
-            <button onClick={function(){setCu(null);}} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
+            <button onClick={salir} style={{...GH,padding:"6px 8px",fontSize:12,color:"#555"}} title="Cerrar sesión">🚪</button>
           </div>
         </div>
 

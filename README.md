@@ -856,6 +856,17 @@ comanda eso no sirve. Si dos mozos tocan la misma mesa —uno agrega el postre y
 bebida— el último en guardar borra lo que agregó el primero, y nadie se entera hasta que
 falta un plato. Con una fila por ítem, cada uno agrega lo suyo y nada se pisa.
 
+### La sesión no se cierra al recargar
+
+El usuario logueado vivía sólo en memoria, así que recargar la página, cambiar de pestaña o
+que el teléfono descartara la pantalla mandaba de vuelta al login — varias veces por turno.
+Ahora se guarda en `localStorage` **el id del usuario, nunca la contraseña**, y al abrir se
+lo vuelve a resolver contra la lista. Si ese usuario ya no existe, pide login de nuevo. El
+botón 🚪 borra el dato, así que cerrar sesión sigue cerrando de verdad.
+
+Esto no es un permiso: el acceso a los datos no depende de esta clave, lo único que se
+recuerda es quién estaba usando la app.
+
 ### La pantalla se refresca sola
 
 Durante el servicio la misma mesa la miran el mozo, el encargado y la caja. Si cada uno ve

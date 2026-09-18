@@ -138,6 +138,25 @@ Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la a
 pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
 se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
 
+### ⚠️ Columnas de Patagonia Personas en `cierres_caja`
+
+El Bodegón cobra por dos cuentas de banco: Provincia, que son los campos de siempre, y
+**Patagonia Personas**. Los cuatro medios de esa segunda cuenta van en campos propios:
+
+```sql
+alter table cierres_caja add column if not exists pat_transferencia numeric default 0;
+alter table cierres_caja add column if not exists pat_qr            numeric default 0;
+alter table cierres_caja add column if not exists pat_debito        numeric default 0;
+alter table cierres_caja add column if not exists pat_credito       numeric default 0;
+```
+
+Se guardan aparte **para saber por cuál cuenta entró cada peso**, pero en los cálculos cada
+uno se suma a su medio de siempre: la transferencia de Patagonia cuenta como transferencia,
+su débito como débito. Una transferencia es una transferencia venga del banco que venga, y
+así el débito respeta sus 48 hs hábiles y los impuestos salen los mismos, sin duplicar
+lógica. El bloque aparece **sólo en el cierre de El Bodegón**; los otros dos locales cobran
+por una sola cuenta y no ven esos campos.
+
 ### ⚠️ Columnas de Mercado Pago en `cierres_caja`
 
 Los tres locales cobran también por Mercado Pago, que es otra cuenta y tiene sus propias

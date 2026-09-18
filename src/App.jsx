@@ -8006,7 +8006,19 @@ function PanelCruzados(p){
 // además por Mercado Pago, que tiene su propia cuenta y sus propias comisiones: por eso los
 // mp_* van separados de los del banco y no mezclados en "otros".
 var MEDIOS_MP=["mp_transferencia","mp_qr","mp_debito","mp_credito"];
-var MEDIOS_ELECTRONICOS=["transferencia","tarjeta_debito","tarjeta_credito","otros"].concat(MEDIOS_MP);
+// El Bodegón cobra por dos cuentas de banco: Provincia, que son los campos de siempre, y
+// Patagonia Personas. Se guardan aparte para saber por cuál entró cada peso, pero para los
+// cálculos cada uno se suma a su medio de siempre —una transferencia es una transferencia,
+// venga del banco que venga—, así el débito respeta sus 48 hs y los impuestos son los mismos.
+var MEDIOS_PAT=["pat_transferencia","pat_qr","pat_debito","pat_credito"];
+var MEDIO_BASE={pat_transferencia:"transferencia",pat_qr:"otros",pat_debito:"tarjeta_debito",pat_credito:"tarjeta_credito"};
+var MEDIOS_ELECTRONICOS=["transferencia","tarjeta_debito","tarjeta_credito","otros"].concat(MEDIOS_PAT).concat(MEDIOS_MP);
+// Lo cobrado por un medio, sumando lo que entró por la otra cuenta del mismo local.
+function medioConHermanos(c, base){
+  var v=parseFloat(c[base]||0);
+  Object.keys(MEDIO_BASE).forEach(function(k){ if(MEDIO_BASE[k]===base)v+=parseFloat(c[k]||0); });
+  return v;
+}
 function sumaMedios(c, medios){
   return medios.reduce(function(a,m){return a+parseFloat(c[m]||0);},0);
 }
@@ -8050,13 +8062,13 @@ var ALICUOTA_IIBB=0.02;
 // Los del banco (transferencia, débito, crédito y el QR propio) están en cero a la espera
 // de los aranceles de Provincia, Galicia y Patagonia — un medio en cero no descuenta nada.
 var COMISIONES={
-  l1:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0,
+  l1:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
-  l2:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0,
+  l2:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
   // El "otros" de Colantonio's era el QR de Mercado Pago antes de que MP tuviera sus propios
   // campos: los cierres viejos lo tienen ahí, y por eso conserva la tasa del QR.
-  l3:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, otros:0.0141,
+  l3:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0.0141,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
 };
 // Impuesto a los débitos y créditos bancarios, el "impuesto al cheque". Son dos alícuotas
@@ -8170,7 +8182,8 @@ function PanelCierresSofia(p) {
     "l3":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Patagonia"],["tarjeta_debito","💳","Débito Patagonia"],["tarjeta_credito","💳","Crédito Patagonia"],["otros","📱","QR MP"]],
   };
   var CAMPOS_MP=[["mp_transferencia","📲","Transf. MP"],["mp_qr","📱","QR MP"],["mp_debito","💳","Débito MP"],["mp_credito","💳","Crédito MP"]];
-  function getCampos(lid){return (CAMPOS_CIERRE_BASE(lid)).concat(CAMPOS_MP);}
+  var CAMPOS_PAT=[["pat_transferencia","📲","Transf. Patagonia"],["pat_qr","📱","QR Patagonia"],["pat_debito","💳","Débito Patagonia"],["pat_credito","💳","Crédito Patagonia"]];
+  function getCampos(lid){return (CAMPOS_CIERRE_BASE(lid)).concat(lid==="l1"?CAMPOS_PAT:[]).concat(CAMPOS_MP);}
   function CAMPOS_CIERRE_BASE(lid){return CAMPOS_CIERRE[lid]||[["efectivo","💵","Efectivo"],["transferencia","📲","Transf."],["tarjeta_debito","💳","Débito"],["tarjeta_credito","💳","Crédito"],["otros","📦","Otros"]];}
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [expandido,setExpandido]=useState(null);
@@ -8517,7 +8530,7 @@ function PanelCierresSofia(p) {
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
   var hoy=new Date().toISOString().split("T")[0];
-  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
+  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
@@ -8563,7 +8576,7 @@ function PanelCierre(p) {
   }
 
   function abrirEditar(c){
-    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",mp_transferencia:c.mp_transferencia||"",mp_qr:c.mp_qr||"",mp_debito:c.mp_debito||"",mp_credito:c.mp_credito||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
+    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",mp_transferencia:c.mp_transferencia||"",mp_qr:c.mp_qr||"",mp_debito:c.mp_debito||"",mp_credito:c.mp_credito||"",pat_transferencia:c.pat_transferencia||"",pat_qr:c.pat_qr||"",pat_debito:c.pat_debito||"",pat_credito:c.pat_credito||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
     setEditId(c.id);
     setShowForm(true);
   }
@@ -8585,6 +8598,10 @@ function PanelCierre(p) {
       mp_qr:parseFloat(form.mp_qr)||0,
       mp_debito:parseFloat(form.mp_debito)||0,
       mp_credito:parseFloat(form.mp_credito)||0,
+      pat_transferencia:parseFloat(form.pat_transferencia)||0,
+      pat_qr:parseFloat(form.pat_qr)||0,
+      pat_debito:parseFloat(form.pat_debito)||0,
+      pat_credito:parseFloat(form.pat_credito)||0,
       // El retiro de socio ya no se carga desde el cierre —va por el módulo 🤝 Socios—, pero
       // el dato de los cierres viejos no se pisa al editarlos: la caja de esos meses lo usa.
       retiro_socio:parseFloat(form.retiro_socio)||0,
@@ -8649,6 +8666,10 @@ function PanelCierre(p) {
               {hoyData.tarjeta_debito>0&&<div>💳 Débito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_debito).toLocaleString("es-AR")}</span></div>}
               {hoyData.tarjeta_credito>0&&<div>💳 Crédito: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.tarjeta_credito).toLocaleString("es-AR")}</span></div>}
               {hoyData.otros>0&&<div>📦 Otros: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.otros).toLocaleString("es-AR")}</span></div>}
+              {hoyData.pat_transferencia>0&&<div>📲 Transf. Patagonia: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.pat_transferencia).toLocaleString("es-AR")}</span></div>}
+              {hoyData.pat_qr>0&&<div>📱 QR Patagonia: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.pat_qr).toLocaleString("es-AR")}</span></div>}
+              {hoyData.pat_debito>0&&<div>💳 Débito Patagonia: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.pat_debito).toLocaleString("es-AR")}</span></div>}
+              {hoyData.pat_credito>0&&<div>💳 Crédito Patagonia: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.pat_credito).toLocaleString("es-AR")}</span></div>}
               {hoyData.mp_transferencia>0&&<div>📲 Transf. MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_transferencia).toLocaleString("es-AR")}</span></div>}
               {hoyData.mp_qr>0&&<div>📱 QR MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_qr).toLocaleString("es-AR")}</span></div>}
               {hoyData.mp_debito>0&&<div>💳 Débito MP: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.mp_debito).toLocaleString("es-AR")}</span></div>}
@@ -8703,6 +8724,23 @@ function PanelCierre(p) {
               });
             })()}
           </div>
+          {localId==="l1"&&(
+            <div style={{background:"#0A1410",border:"1px solid #3A7D4433",borderRadius:10,padding:"12px",marginBottom:12}}>
+              <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>🏦 Patagonia Personas</div>
+              <div style={{fontSize:10,color:"#2A5A32",marginBottom:10}}>Lo cobrado por la otra cuenta del local. Suma al total igual que lo de Provincia.</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+                {[["pat_transferencia","📲 Transf. Patagonia"],["pat_qr","📱 QR Patagonia"],["pat_debito","💳 Débito Patagonia"],["pat_credito","💳 Crédito Patagonia"]].map(function(f){
+                  return(
+                    <div key={f[0]}>
+                      <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{f[1]}</label>
+                      <input type="number" placeholder="0" value={form[f[0]]} onChange={function(e){var v=e.target.value;setForm(function(fm){var n={...fm};n[f[0]]=v;return n;});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Mercado Pago aparte: es otra cuenta, con sus propias comisiones. */}
           <div style={{background:"#0A1018",border:"1px solid #2D7FF933",borderRadius:10,padding:"12px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#2D7FF9",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>📱 Mercado Pago</div>
@@ -8798,6 +8836,7 @@ function PanelCierre(p) {
                         {c.tarjeta_debito>0&&"💳db "+parseFloat(c.tarjeta_debito).toLocaleString("es-AR")+" "}
                         {c.tarjeta_credito>0&&"💳cr "+parseFloat(c.tarjeta_credito).toLocaleString("es-AR")+" "}
                         {c.otros>0&&"📦 "+parseFloat(c.otros).toLocaleString("es-AR")+" "}
+                        {sumaMedios(c,MEDIOS_PAT)>0&&"🏦Pat "+sumaMedios(c,MEDIOS_PAT).toLocaleString("es-AR")+" "}
                         {sumaMedios(c,MEDIOS_MP)>0&&"📱MP "+sumaMedios(c,MEDIOS_MP).toLocaleString("es-AR")}
                       </div>
                       {c.retiro_caja>0&&(
@@ -9734,10 +9773,10 @@ function correccionVentas(cierres, lid, mes, corrResultados){
   var suma=function(f){return cl.reduce(function(a,c){return a+parseFloat(c[f]||0);},0);};
   var delCierre={
     efectivo:suma("efectivo")-cl.reduce(function(a,c){return a+egresoNeteado(c);},0),
-    transferencia:suma("transferencia"),
-    debito:suma("tarjeta_debito"),
-    credito:suma("tarjeta_credito"),
-    otros:suma("otros")
+    transferencia:cl.reduce(function(a,c){return a+medioConHermanos(c,"transferencia");},0),
+    debito:cl.reduce(function(a,c){return a+medioConHermanos(c,"tarjeta_debito");},0),
+    credito:cl.reduce(function(a,c){return a+medioConHermanos(c,"tarjeta_credito");},0),
+    otros:cl.reduce(function(a,c){return a+medioConHermanos(c,"otros");},0)
   };
   return Object.keys(delCierre).reduce(function(a,k){
     var v=corr[k];
@@ -10060,7 +10099,7 @@ function PanelResultados(p){
     var ventasPorMedio={};
     cl.forEach(function(c){
       [["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"],["tarjeta_debito","💳 Débito"],["tarjeta_credito","💳 Crédito"],["otros","📦 Otros"]].forEach(function(f){
-        var v=parseFloat(c[f[0]]||0);
+        var v=f[0]==="efectivo"?parseFloat(c.efectivo||0):medioConHermanos(c,f[0]);
         // bruto de retiro, y de egresos salvo en los cierres viejos, para que la suma de los
         // medios cierre contra "ventas"
         if(f[0]==="efectivo")v=v-egresoNeteado(c);
@@ -10237,10 +10276,10 @@ function PanelResultados(p){
     var ventaElectronico=cl.reduce(function(a,c){return a+sumaMedios(c,MEDIOS_ELECTRONICOS);},0);
 
     // Ingresos electrónicos desglosados
-    var ventaTransferencia=cl.reduce(function(a,c){return a+parseFloat(c.transferencia||0);},0);
-    var ventaDebito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_debito||0);},0);
-    var ventaCredito=cl.reduce(function(a,c){return a+parseFloat(c.tarjeta_credito||0);},0);
-    var ventaOtros=cl.reduce(function(a,c){return a+parseFloat(c.otros||0);},0);
+    var ventaTransferencia=cl.reduce(function(a,c){return a+medioConHermanos(c,"transferencia");},0);
+    var ventaDebito=cl.reduce(function(a,c){return a+medioConHermanos(c,"tarjeta_debito");},0);
+    var ventaCredito=cl.reduce(function(a,c){return a+medioConHermanos(c,"tarjeta_credito");},0);
+    var ventaOtros=cl.reduce(function(a,c){return a+medioConHermanos(c,"otros");},0);
 
     // Detalle línea por línea de ingresos (para el desglose clickeable)
     var detIngresos=[];
@@ -10418,7 +10457,7 @@ function PanelResultados(p){
     var acreditaAlInstante=lid==="l2";
     var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
       var fa=fechaAcreditacionDebito(c.fecha);
-      if(fa&&fa<=hoyStr)return a+parseFloat(c.tarjeta_debito||0);
+      if(fa&&fa<=hoyStr)return a+medioConHermanos(c,"tarjeta_debito");
       return a;
     },0);
     var debitoPendiente=hasCorrDebito||acreditaAlInstante?0:Math.max(0,ventaDebito-debitoAcreditadoHoy);
@@ -10426,7 +10465,7 @@ function PanelResultados(p){
     if(debitoPendiente>0){
       var fechasPend=cl.filter(function(c){
         var fa=fechaAcreditacionDebito(c.fecha);
-        return fa&&fa>hoyStr&&parseFloat(c.tarjeta_debito||0)>0;
+        return fa&&fa>hoyStr&&medioConHermanos(c,"tarjeta_debito")>0;
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
@@ -13493,7 +13532,11 @@ var SQL_COLUMNAS={
   mp_transferencia:"alter table cierres_caja add column if not exists mp_transferencia numeric default 0;",
   mp_qr:"alter table cierres_caja add column if not exists mp_qr numeric default 0;",
   mp_debito:"alter table cierres_caja add column if not exists mp_debito numeric default 0;",
-  mp_credito:"alter table cierres_caja add column if not exists mp_credito numeric default 0;"
+  mp_credito:"alter table cierres_caja add column if not exists mp_credito numeric default 0;",
+  pat_transferencia:"alter table cierres_caja add column if not exists pat_transferencia numeric default 0;",
+  pat_qr:"alter table cierres_caja add column if not exists pat_qr numeric default 0;",
+  pat_debito:"alter table cierres_caja add column if not exists pat_debito numeric default 0;",
+  pat_credito:"alter table cierres_caja add column if not exists pat_credito numeric default 0;"
 };
 function sqlDeFaltantes(){
   return columnasFaltantes.map(function(k){return SQL_COLUMNAS[k]||("-- falta la columna "+k);}).join("\n");

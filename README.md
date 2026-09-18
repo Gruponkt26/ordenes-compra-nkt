@@ -195,9 +195,7 @@ Cada vez que **entra** plata a la cuenta bancaria, el fisco se lleva el **0,6%**
 - **Cuentas de Mercado Pago**: en cero hasta confirmar si el impuesto las alcanza.
 
 Se trata igual que el IIBB y las comisiones: **suma a los egresos** (área Administrativo) y
-**se descuenta de la disponibilidad**, medio por medio. Las ventas no se tocan. Misma regla
-contra el doble conteo: si el mes tiene un egreso cuyo concepto, subramo o categoría dice
-"impuesto al cheque", "débitos y créditos" o "25413", ése manda y el automático se apaga.
+**se descuenta de la disponibilidad**, medio por medio. Las ventas no se tocan.
 
 La otra mitad es el **impuesto al débito**: 0,6% cuando **sale** plata de la cuenta, o sea
 sobre los pagos, no sobre las ventas. Misma alícuota y mismas cuentas (`IMP_DEBITO`). Del
@@ -251,9 +249,7 @@ los aranceles de Provincia, Galicia y Patagonia**; un medio en cero no descuenta
 
 Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro de Ventas
 y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.
-Las ventas no se tocan. Y la misma regla contra el doble conteo: si el mes tiene un egreso
-cargado cuyo concepto, subramo o categoría dice "comisión" o "arancel", ése manda y el
-automático se apaga para ese local y ese mes.
+Las ventas no se tocan.
 
 Ejemplo, un cierre con $100.000 de débito, $100.000 de crédito y $50.000 de QR:
 
@@ -300,11 +296,18 @@ ventas $150.000, egresos $1.000 y disponibilidad $149.000.
 En Resultados, el bloque 📲 Electrónico muestra el renglón *IIBB retenido (2%)* entre los
 ingresos y los gastos, y el desglose por medio ya viene neto.
 
-**El automático y la mano nunca conviven.** Si en el mes hay algún egreso cargado con
-"Ingresos Brutos" o "IIBB" (en el subramo, la categoría o el concepto), ése manda y **el
-cálculo automático se apaga entero para ese local y ese mes** — también el recorte de la
-disponibilidad, porque ese gasto ya descuenta por su propio medio de pago. Las dos vistas
-dicen en pantalla cuál de los dos caminos está usando.
+**El cálculo automático corre siempre.** Los impuestos y las comisiones ya no se anotan a
+mano, así que la app los calcula sola en todos los meses y para todos los locales.
+
+Antes había una regla al revés: un impuesto cargado a mano apagaba el cálculo, para que no
+se contara dos veces. Eso terminaba apagándolo por cosas que no eran el impuesto —una
+"comisión bancaria" cargada como gasto, por ejemplo— y dejaba meses enteros sin calcular
+sin que nadie se enterara.
+
+Lo que quedó cargado a mano de antes **no se ignora**: se sigue detectando (en el subramo,
+la categoría o el concepto) y las dos vistas avisan en rojo que ese mes está contando el
+impuesto dos veces, con el monto, para que se borre ese egreso. El aviso señala el
+problema; no cambia los números por su cuenta.
 
 El recorte se calcula sobre la venta ya corregida a mano si hay corrección, medio por
 medio, y la disponibilidad "de hoy" lo aplica sobre el débito efectivamente acreditado

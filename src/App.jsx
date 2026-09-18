@@ -9621,9 +9621,15 @@ function impCreditoDeCierres(cierres, lid, mes){
   }).reduce(function(a,c){return a+impCreditoDeCierre(c);},0);
 }
 
+// Sólo marca lo que de verdad duplicaría el cálculo automático: la comisión que cobra el
+// procesador por cobrar con tarjeta. La comisión bancaria, el mantenimiento y el abono del
+// POS son otra cosa —monto fijo del banco, no un porcentaje de las ventas—, la app no los
+// calcula y tienen que seguir cargados como el gasto que son.
 function esGastoComision(g){
   var txt=((g.subramo||"")+" "+(g.categoria||"")+" "+(g.concepto||"")).toLowerCase();
-  return /comisi[oó]n|arancel/.test(txt);
+  if(!/comisi[oó]n|arancel/.test(txt))return false;
+  if(/bancaria|banco|mantenimiento|abono|cuenta|transferencia/.test(txt))return false;
+  return true;
 }
 function comisionCargadaAMano(gastos, lid, mes){
   return (gastos||[]).filter(function(g){

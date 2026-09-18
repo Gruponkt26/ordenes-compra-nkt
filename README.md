@@ -185,6 +185,24 @@ Ojo con el mes: el IVA se imputa **por la fecha del pago**, que es cuando nace e
 por la de la factura. Si se paga en un mes una factura del anterior, el crédito cae en el
 mes del pago.
 
+### Impuesto al crédito (el "impuesto al cheque")
+
+Cada vez que **entra** plata a la cuenta bancaria, el fisco se lleva el **0,6%**. La tabla
+`IMP_CREDITO` lo tiene por local, porque cada uno cobra por una cuenta distinta:
+
+- **Galicia** (Kusama) y **Patagonia Empresas** (Colantonio's), por Calzon Gitano SRL: 0,6%.
+- **Provincia** (Bodegón), por el CUIT personal: 0,6%, la misma alícuota.
+- **Cuentas de Mercado Pago**: en cero hasta confirmar si el impuesto las alcanza.
+
+Se trata igual que el IIBB y las comisiones: **suma a los egresos** (área Administrativo) y
+**se descuenta de la disponibilidad**, medio por medio. Las ventas no se tocan. Misma regla
+contra el doble conteo: si el mes tiene un egreso cuyo concepto, subramo o categoría dice
+"impuesto al cheque", "débitos y créditos" o "25413", ése manda y el automático se apaga.
+
+Falta la otra mitad: el **impuesto al débito**, que pega cuando **sale** plata de la cuenta
+—o sea sobre los pagos, no sobre las ventas—. Es la misma alícuota, 0,6%, pero se calcula
+sobre otra cosa y todavía no está hecho.
+
 ### Cuándo se acredita cada cobro
 
 El débito del **POS del banco** tarda **48 hs hábiles** en entrar a la cuenta, tanto en
@@ -937,21 +955,18 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
    disponible al momento en los tres locales. Si tarda, la disponibilidad de hoy está
    sobreestimada por esa diferencia. Mercado Pago, débito y crédito, sí es al instante.
 
-3. **El impuesto a los débitos y créditos bancarios.** El "impuesto al cheque" hoy no está
-   en ningún cálculo de la app: ni en el resultado, ni en la disponibilidad. **Son dos
-   alícuotas separadas y pegan en momentos distintos**, así que se cargan y se calculan por
-   separado:
+3. **El impuesto al débito, y el impuesto al crédito en Mercado Pago.** El impuesto al
+   crédito ya está: 0,6% sobre lo que entra a las tres cuentas de banco. Faltan dos piezas:
 
-   - **Impuesto al crédito** — cuando *entra* plata a la cuenta. En la app pega sobre la
-     acreditación de las ventas electrónicas, al lado del IIBB y de la comisión.
-   - **Impuesto al débito** — cuando *sale* plata de la cuenta. Pega sobre los pagos hechos
-     por medios electrónicos, no sobre las ventas. Es el único de los costos de este
-     capítulo que no se calcula sobre lo cobrado, y por eso necesita su propia pieza.
+   - **El impuesto al débito**, que pega cuando *sale* plata de la cuenta: sobre los pagos,
+     no sobre las ventas. Misma alícuota (0,6%), pero se calcula sobre otra base, así que
+     necesita su propia pieza. Mientras no esté, los pagos electrónicos figuran costando
+     0,6% menos de lo que cuestan.
+   - **Si el impuesto alcanza a las cuentas de Mercado Pago.** Hoy están en cero. Si las
+     alcanza, la disponibilidad de MP está sobreestimada, y cada vez pesa más.
 
-   A confirmar con el contador antes de tocar nada: si aplica a Calzon Gitano SRL y al CUIT
-   personal, la alícuota de cada uno de los dos en cada CUIT (hay alícuotas reducidas para
-   empresas inscriptas como PyME), qué parte se computa a cuenta de Ganancias, y si alcanza
-   también a las cuentas de Mercado Pago o sólo a las bancarias.
+   Queda pendiente también preguntarle al contador **qué parte se computa a cuenta de
+   Ganancias**: si se recupera una porción, el costo real es menor al 0,6% que se descuenta.
 
 ### Del predio (módulo Deportes)
 

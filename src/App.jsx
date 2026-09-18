@@ -2332,7 +2332,7 @@ function GestProveedoresPanel(p) {
                             </optgroup>
                             <optgroup label="Transferencia">
                               <option>Transferencia - Provincia Personas</option><option>Transferencia - Galicia Empresas</option>
-                              <option>Transferencia - Patagonia Empresas</option><option>Transferencia - Mercado Pago Nicolás</option>
+                              <option>Transferencia - Patagonia Personas</option><option>Transferencia - Patagonia Empresas</option><option>Transferencia - Mercado Pago Nicolás</option>
                               <option>Transferencia - Mercado Pago Calzon Gitano</option>
                             </optgroup>
                             <optgroup label="Otros"><option>Cheque</option><option>Otro</option></optgroup>
@@ -3191,6 +3191,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
     {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
+    {grupo:"Transferencia",label:"📲 Patagonia Personas",value:"Transferencia - Patagonia Personas"},
     {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
     {grupo:"Transferencia",label:"📲 MP Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
     {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
@@ -5857,7 +5858,7 @@ function PanelDeportes(p){
 // ─── MAPEO MEDIOS DE PAGO POR LOCAL ──────────────────────────────────────────
 var MEDIO_LOCAL_MAP={
   "efectivo - bodegón":"l1","efectivo - bodegon":"l1",
-  "provincia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
+  "provincia personas":"l1","patagonia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
   "efectivo - kusama":"l2","galicia empresas":"l2",
   "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
   "patagonia empresas":"l3","mp calzon gitano":"l3","mercado pago calzon gitano":"l3","calzon gitano":"l3",
@@ -5883,7 +5884,7 @@ function getLocalFromMedio(medio){
 // primer medio para que lo viejo (y los registros ya cargados) siga funcionando.
 var MEDIOS_SUELDOS=[
   {g:"Efectivo",v:"Efectivo - Bodegón"},{g:"Efectivo",v:"Efectivo - Kusama"},{g:"Efectivo",v:"Efectivo - Colantonio's"},{g:"Efectivo",v:"Efectivo - Oficina"},
-  {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
+  {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Patagonia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
   {g:"Otros",v:"Cheque"},{g:"Otros",v:"Otro"}
 ];
 var GRUPOS_MEDIOS_SUELDOS=["Efectivo","Transferencia","Otros"];
@@ -6491,6 +6492,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
     {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
+    {grupo:"Transferencia",label:"📲 Patagonia Personas",value:"Transferencia - Patagonia Personas"},
     {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
     {grupo:"Tarjeta",label:"💳 Débito Visa Provincia",value:"Débito - Visa Provincia"},
@@ -7743,7 +7745,7 @@ function PanelGastos(p) {
 var MEDIOS_POR_LOCAL={
   "l1":[
     "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón",
-    "Transferencia - Provincia Personas","Transferencia - Mercado Pago Nicolás",
+    "Transferencia - Provincia Personas","Transferencia - Patagonia Personas","Transferencia - Mercado Pago Nicolás",
     "Tarjeta de débito - Visa Provincia Personas",
     "Tarjeta de crédito - Mastercard Patagonia Personas","Tarjeta de crédito - Visa Patagonia Personas",
     "Tarjeta de débito - Visa Patagonia Personas"

@@ -8090,28 +8090,48 @@ function impDebitoTasaDeMedio(lid, medioStr){
   if(m.includes("mercado pago")||/\bmp\b/.test(m))return t.mp;
   return t.banco;
 }
-// Los pagos electrónicos de un local en un mes, repartidos por medio. Repite el criterio de
-// la disponibilidad —incluidos los pagos cruzados, que se imputan a la cuenta de la que
-// salió la plata— para que el impuesto que suma a los egresos y el que descuenta de la caja
-// sean el mismo número y no dos parecidos.
-function pagosElectronicosPorMedio(gastos, lid, mes){
+// TODO lo que sale de las cuentas de un local en un mes, repartido por medio: gastos y
+// proveedores, sueldos y aguinaldos, adelantos y retiros de socios. El impuesto al débito lo
+// paga cada salida, sea del concepto que sea, así que el reparto tiene que verlas todas.
+// Repite el criterio de la disponibilidad —incluidos los pagos cruzados, que se imputan a la
+// cuenta de la que salió la plata— para que el impuesto que suma a los egresos y el que
+// descuenta de la caja sean el mismo número y no dos parecidos.
+function salidasPorMedio(gastos, sueldosADescontar, adelantosLocal, retirosCuenta, lid, mes){
   var out={transferencia:0,debito:0,credito:0,otros:0,mp:0,total:0,impDebito:0};
+  function sumar(medio, monto, localPago){
+    if(localPago!==lid)return;
+    var m=(medio||"").toLowerCase();
+    if(m.includes("efectivo"))return; // el efectivo no toca el banco
+    var v=parseFloat(monto||0);
+    if(!v)return;
+    if(m.includes("mercado pago")||/\bmp\b/.test(m))out.mp+=v;
+    else if(m.includes("transferencia"))out.transferencia+=v;
+    else if(m.includes("débito")||m.includes("debito"))out.debito+=v;
+    else if(m.includes("crédito")||m.includes("credito"))out.credito+=v;
+    else out.otros+=v;
+    out.total+=v;
+    out.impDebito+=v*impDebitoTasaDeMedio(lid,medio);
+  }
+  // Gastos y proveedores, propios y cruzados.
   (gastos||[]).filter(function(g){return g.fecha&&g.fecha.substring(0,7)===mes;}).forEach(function(g){
     var lista=(g.pagos&&g.pagos.length>0)
       ? g.pagos.map(function(pago){return {medio:pago.medio||pago.tipo||"",monto:parseFloat(pago.monto||0),local:pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local};})
       : [{medio:g.forma_pago||"",monto:parseFloat(g.monto||0),local:getLocalFromMedio(g.forma_pago)||g.local}];
-    lista.forEach(function(pg){
-      if(pg.local!==lid)return;
-      var m=(pg.medio||"").toLowerCase();
-      if(m.includes("efectivo"))return;
-      if(m.includes("mercado pago")||/\bmp\b/.test(m))out.mp+=pg.monto;
-      else if(m.includes("transferencia"))out.transferencia+=pg.monto;
-      else if(m.includes("débito")||m.includes("debito"))out.debito+=pg.monto;
-      else if(m.includes("crédito")||m.includes("credito"))out.credito+=pg.monto;
-      else out.otros+=pg.monto;
-      out.total+=pg.monto;
-      out.impDebito+=pg.monto*impDebitoTasaDeMedio(lid,pg.medio);
-    });
+    lista.forEach(function(pg){ sumar(pg.medio,pg.monto,pg.local); });
+  });
+  // Sueldos y aguinaldos que se pagaron sin generar su gasto.
+  (sueldosADescontar||[]).forEach(function(su){
+    var sm=su.estado==="parcial"?parseFloat(su.monto_parcial||0):parseFloat(su.monto||0);
+    repartirMedios(su,sm).forEach(function(pg){ sumar(pg.medio,pg.monto,lid); });
+  });
+  // Adelantos de sueldo.
+  (adelantosLocal||[]).forEach(function(a){
+    repartirMedios(a,parseFloat(a.monto||0)).forEach(function(pg){ sumar(pg.medio,pg.monto,lid); });
+  });
+  // Retiros de socios: no son gasto operativo, pero la plata sale de la cuenta igual y el
+  // banco cobra el impuesto lo mismo.
+  (retirosCuenta||[]).forEach(function(r){
+    sumar(r.tipo_retiro||"",parseFloat(r.monto||0),lid);
   });
   return out;
 }
@@ -9636,7 +9656,7 @@ function iibbDeCierres(cierres, lid, mes){
 // gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
 // todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
 // Devuelve también las piezas intermedias, que Resultados usa para el desglose.
-function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres){
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
@@ -9665,10 +9685,20 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres){
   var impCredCalc=impCreditoDeCierres(cierres,lid,mes);
   var impCredEgreso=impCredManual>0?0:impCredCalc;
   total+=impCredEgreso;
-  var impDebCalc=pagosElectronicosPorMedio(gastos,lid,mes).impDebito;
+  var esAguinaldoS=function(x){return x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="";};
+  var sueldosADescontar=[];
+  if(!hasSueldosGastos)sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(function(x){return !esAguinaldoS(x);}));
+  if(!hasAguinaldosGastos)sueldosADescontar=sueldosADescontar.concat(sueldosTabla.filter(esAguinaldoS));
+  // Los retiros de socios se imputan a la cuenta de la que salió la plata, que puede no ser
+  // la del local del retiro (mismo criterio que la disponibilidad).
+  var retirosCuenta=(retiros||[]).filter(function(r){
+    return (r.local_cuenta||r.local)===lid&&r.fecha&&r.fecha.substring(0,7)===mes;
+  });
+  var pagosMedio=salidasPorMedio(gastos,sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
+  var impDebCalc=pagosMedio.impDebito;
   var impDebEgreso=impCredManual>0?0:impDebCalc;
   total+=impDebEgreso;
-  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -9699,6 +9729,9 @@ function correccionVentas(cierres, lid, mes, corrResultados){
 function PanelVentasEgresos(p){
   var gastos=p.gastos||[], cierres=p.cierres||[];
   var sueldos=p.sueldos||[], adelantos=p.adelantos||[], corrResultados=p.corrResultados||{};
+  // Los retiros de socios no son gasto, pero su impuesto al débito sí: hacen falta acá para
+  // que este cuadro y Resultados den el mismo número.
+  var retiros=(p.retiros||[]).filter(esMovDinero);
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -9715,7 +9748,7 @@ function PanelVentasEgresos(p){
   // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
     return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual,impDeb:eg.impDebEgreso};
@@ -9958,7 +9991,7 @@ function PanelResultados(p){
     });
 
     // Egresos operativos del mes — mismo cálculo que usa el cuadro de Ventas y Egresos
-    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro,cierres);
+    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro,cierres,retirosSocios);
     var gl=eg.gl, periodoAnterior=eg.periodoAnterior, sueldosTabla=eg.sueldosTabla;
     var hasSueldosGastos=eg.hasSueldosGastos, hasAguinaldosGastos=eg.hasAguinaldosGastos;
     var totalGastos=eg.total;
@@ -10262,7 +10295,7 @@ function PanelResultados(p){
     var iibbMp=ingrMp*0;
     // El impuesto al débito se calcula sobre los pagos, no sobre las ventas, y sale de la
     // misma caja por la que se pagó.
-    var pagosMedio=pagosElectronicosPorMedio(gastos,lid,mesFiltro);
+    var pagosMedio=eg.pagosMedio;
     var idTransferencia=pagosMedio.transferencia*impDebitoTasaDeMedio(lid,"transferencia")*factorImpCred;
     var idDebito=pagosMedio.debito*impDebitoTasaDeMedio(lid,"debito")*factorImpCred;
     var idCredito=pagosMedio.credito*impDebitoTasaDeMedio(lid,"credito")*factorImpCred;
@@ -14934,7 +14967,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="ventasegresos"&&(
-            <PanelVentasEgresos gastos={gastos} cierres={cierres} sueldos={sueldos} adelantos={adelantos} corrResultados={corrResultados}/>
+            <PanelVentasEgresos gastos={gastos} cierres={cierres} sueldos={sueldos} adelantos={adelantos} retiros={retiros} corrResultados={corrResultados}/>
           )}
 
           {enStockCompras&&vista==="stockmp"&&(function(){

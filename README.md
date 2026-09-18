@@ -204,15 +204,16 @@ sobre los pagos, no sobre las ventas. Misma alícuota y mismas cuentas (`IMP_DEB
 medio de pago se deduce de qué caja salió: **el efectivo no toca el banco y no paga**, y los
 pagos desde Mercado Pago van con la tasa de MP, hoy en cero.
 
-Los pagos se reparten por medio con `pagosElectronicosPorMedio`, que repite el criterio de
-la disponibilidad —incluidos los pagos cruzados, imputados a la cuenta de la que salió la
-plata— para que el impuesto que suma a los egresos y el que descuenta de la caja sean el
-mismo número y no dos parecidos. Un gasto cargado a mano como "impuesto al cheque" apaga los
-dos cálculos, el del crédito y el del débito, porque es el mismo impuesto.
+**Lo paga todo lo que sale**, no sólo los gastos: `salidasPorMedio` junta gastos y
+proveedores, sueldos y aguinaldos, adelantos y retiros de socios. El retiro de un socio no es
+gasto operativo y no toca el resultado, pero la plata sale de la cuenta igual y el banco
+cobra el impuesto lo mismo — así que su impuesto sí es un egreso, aunque el retiro no lo sea.
 
-Ojo con el alcance: se calcula sobre los pagos del módulo Egresos. Los sueldos y adelantos
-pagados por transferencia también son débitos de la cuenta, pero hoy no entran en el reparto
-por medio, así que tampoco en este impuesto.
+Es la misma función para las dos vistas, y repite el criterio de la disponibilidad —pagos
+cruzados incluidos, imputados a la cuenta de la que salió la plata— para que el impuesto que
+suma a los egresos y el que descuenta de la caja sean el mismo número y no dos parecidos. Un
+gasto cargado a mano como "impuesto al cheque" apaga los dos cálculos, el del crédito y el
+del débito, porque es el mismo impuesto.
 
 ### Cuándo se acredita cada cobro
 
@@ -973,9 +974,9 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
    - **Si el impuesto alcanza a las cuentas de Mercado Pago.** Hoy están en cero, en los dos
      sentidos. Si las alcanza, la disponibilidad de MP está sobreestimada, y cada vez pesa
      más.
-   - **Los sueldos y adelantos pagados por transferencia** no entran en el impuesto al
-     débito: el reparto por medio de pago no los incluye. Si el monto pesa, hay que
-     sumarlos a `pagosElectronicosPorMedio`.
+   - **Los aportes de socios que entran por transferencia** son acreditaciones en la cuenta,
+     así que pagarían impuesto al crédito, y hoy no lo pagan: sólo se calcula sobre las
+     ventas. Es la contracara del retiro, que sí quedó cubierto del lado del débito.
 
    Queda pendiente también preguntarle al contador **qué parte se computa a cuenta de
    Ganancias**: si se recupera una porción, el costo real es menor al 0,6% que se descuenta.

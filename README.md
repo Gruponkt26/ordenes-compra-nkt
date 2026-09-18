@@ -150,6 +150,11 @@ alter table cierres_caja add column if not exists pat_debito        numeric defa
 alter table cierres_caja add column if not exists pat_credito       numeric default 0;
 ```
 
+Por esa cuenta también **se paga**: `Transferencia - Patagonia Personas` está en los medios
+de pago de gastos y de sueldos, y se reconoce como cuenta de El Bodegón —no de Colantonio's,
+que usa Patagonia *Empresas*—. Así el impuesto al débito y la disponibilidad salen del local
+correcto.
+
 Se guardan aparte **para saber por cuál cuenta entró cada peso**, pero en los cálculos cada
 uno se suma a su medio de siempre: la transferencia de Patagonia cuenta como transferencia,
 su débito como débito. Una transferencia es una transferencia venga del banco que venga, y

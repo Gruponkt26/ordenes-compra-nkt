@@ -937,14 +937,21 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
    disponible al momento en los tres locales. Si tarda, la disponibilidad de hoy está
    sobreestimada por esa diferencia. Mercado Pago, débito y crédito, sí es al instante.
 
-3. **El impuesto a los débitos y créditos bancarios.** El "impuesto al cheque" pega en cada
-   movimiento de la cuenta bancaria —tanto cuando entra plata como cuando sale—, y hoy no
-   está en ningún cálculo de la app: ni en el resultado, ni en la disponibilidad. A
-   confirmar con el contador antes de tocar nada: si aplica a Calzon Gitano SRL y al CUIT
-   personal, con qué alícuota en cada uno (hay alícuotas reducidas para empresas inscriptas
-   como PyME), qué parte se computa a cuenta de Ganancias, y si alcanza también a las
-   cuentas de Mercado Pago o sólo a las bancarias. Con esos datos se modela igual que el
-   IIBB y las comisiones: descontando de la disponibilidad y sumando a los egresos.
+3. **El impuesto a los débitos y créditos bancarios.** El "impuesto al cheque" hoy no está
+   en ningún cálculo de la app: ni en el resultado, ni en la disponibilidad. **Son dos
+   alícuotas separadas y pegan en momentos distintos**, así que se cargan y se calculan por
+   separado:
+
+   - **Impuesto al crédito** — cuando *entra* plata a la cuenta. En la app pega sobre la
+     acreditación de las ventas electrónicas, al lado del IIBB y de la comisión.
+   - **Impuesto al débito** — cuando *sale* plata de la cuenta. Pega sobre los pagos hechos
+     por medios electrónicos, no sobre las ventas. Es el único de los costos de este
+     capítulo que no se calcula sobre lo cobrado, y por eso necesita su propia pieza.
+
+   A confirmar con el contador antes de tocar nada: si aplica a Calzon Gitano SRL y al CUIT
+   personal, la alícuota de cada uno de los dos en cada CUIT (hay alícuotas reducidas para
+   empresas inscriptas como PyME), qué parte se computa a cuenta de Ganancias, y si alcanza
+   también a las cuentas de Mercado Pago o sólo a las bancarias.
 
 ### Del predio (módulo Deportes)
 

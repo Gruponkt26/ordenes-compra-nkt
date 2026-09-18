@@ -199,9 +199,20 @@ Se trata igual que el IIBB y las comisiones: **suma a los egresos** (área Admin
 contra el doble conteo: si el mes tiene un egreso cuyo concepto, subramo o categoría dice
 "impuesto al cheque", "débitos y créditos" o "25413", ése manda y el automático se apaga.
 
-Falta la otra mitad: el **impuesto al débito**, que pega cuando **sale** plata de la cuenta
-—o sea sobre los pagos, no sobre las ventas—. Es la misma alícuota, 0,6%, pero se calcula
-sobre otra cosa y todavía no está hecho.
+La otra mitad es el **impuesto al débito**: 0,6% cuando **sale** plata de la cuenta, o sea
+sobre los pagos, no sobre las ventas. Misma alícuota y mismas cuentas (`IMP_DEBITO`). Del
+medio de pago se deduce de qué caja salió: **el efectivo no toca el banco y no paga**, y los
+pagos desde Mercado Pago van con la tasa de MP, hoy en cero.
+
+Los pagos se reparten por medio con `pagosElectronicosPorMedio`, que repite el criterio de
+la disponibilidad —incluidos los pagos cruzados, imputados a la cuenta de la que salió la
+plata— para que el impuesto que suma a los egresos y el que descuenta de la caja sean el
+mismo número y no dos parecidos. Un gasto cargado a mano como "impuesto al cheque" apaga los
+dos cálculos, el del crédito y el del débito, porque es el mismo impuesto.
+
+Ojo con el alcance: se calcula sobre los pagos del módulo Egresos. Los sueldos y adelantos
+pagados por transferencia también son débitos de la cuenta, pero hoy no entran en el reparto
+por medio, así que tampoco en este impuesto.
 
 ### Cuándo se acredita cada cobro
 
@@ -955,15 +966,16 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
    disponible al momento en los tres locales. Si tarda, la disponibilidad de hoy está
    sobreestimada por esa diferencia. Mercado Pago, débito y crédito, sí es al instante.
 
-3. **El impuesto al débito, y el impuesto al crédito en Mercado Pago.** El impuesto al
-   crédito ya está: 0,6% sobre lo que entra a las tres cuentas de banco. Faltan dos piezas:
+3. **El impuesto al cheque en Mercado Pago, y en los sueldos.** Las dos mitades ya están:
+   0,6% sobre lo que entra y sobre lo que sale de las tres cuentas de banco. Quedan dos
+   agujeros:
 
-   - **El impuesto al débito**, que pega cuando *sale* plata de la cuenta: sobre los pagos,
-     no sobre las ventas. Misma alícuota (0,6%), pero se calcula sobre otra base, así que
-     necesita su propia pieza. Mientras no esté, los pagos electrónicos figuran costando
-     0,6% menos de lo que cuestan.
-   - **Si el impuesto alcanza a las cuentas de Mercado Pago.** Hoy están en cero. Si las
-     alcanza, la disponibilidad de MP está sobreestimada, y cada vez pesa más.
+   - **Si el impuesto alcanza a las cuentas de Mercado Pago.** Hoy están en cero, en los dos
+     sentidos. Si las alcanza, la disponibilidad de MP está sobreestimada, y cada vez pesa
+     más.
+   - **Los sueldos y adelantos pagados por transferencia** no entran en el impuesto al
+     débito: el reparto por medio de pago no los incluye. Si el monto pesa, hay que
+     sumarlos a `pagosElectronicosPorMedio`.
 
    Queda pendiente también preguntarle al contador **qué parte se computa a cuenta de
    Ganancias**: si se recupera una porción, el costo real es menor al 0,6% que se descuenta.

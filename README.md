@@ -309,6 +309,21 @@ la categoría o el concepto) y las dos vistas avisan en rojo que ese mes está c
 impuesto dos veces, con el monto, para que se borre ese egreso. El aviso señala el
 problema; no cambia los números por su cuenta.
 
+El aviso mira sólo lo que de verdad duplicaría: la **comisión del procesador** por cobrar
+con tarjeta, el IIBB y el impuesto al cheque. La **comisión bancaria**, el mantenimiento y
+el abono del POS son otra cosa —monto fijo del banco, no un porcentaje de las ventas—, la
+app no los calcula y tienen que seguir cargados como el gasto que son: por eso no los marca.
+
+### Qué se carga a mano y qué no, de octubre 2026 en adelante
+
+| | |
+|---|---|
+| IIBB, impuesto al crédito y al débito | los calcula la app — **no cargar** |
+| Comisión del procesador (MP, tarjetas) | la calcula la app — **no cargar** |
+| Comisión bancaria, mantenimiento o abono del POS | **cargar** en Administrativo → Bancos |
+| Egresos del día del cierre | los anota el cajero, **los carga Administración** en Egresos |
+| Todo el resto de los gastos | como siempre |
+
 El recorte se calcula sobre la venta ya corregida a mano si hay corrección, medio por
 medio, y la disponibilidad "de hoy" lo aplica sobre el débito efectivamente acreditado
 (respetando los 2 días hábiles, y que Kusama y Colantonio's acreditan al instante). Los

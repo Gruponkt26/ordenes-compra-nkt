@@ -7747,6 +7747,17 @@ function PanelGastos(p) {
 // el egreso en Egresos, con su medio de pago y su factura, igual que el pago de una cuenta
 // corriente. Así no hay que cargar la misma plata dos veces ni acordarse de hacerlo.
 var AREAS_VENC=["Administrativo","Servicios","Mantenimiento","Sueldos","Marketing","Proveedores","Obras"];
+// Los vencimientos se miran por rubro: los de AFIP juntos, los municipales juntos, los
+// servicios juntos. Cada rubro trae el área de egreso que le suele corresponder, para no
+// tener que elegirla cada vez —igual se puede cambiar—.
+var GRUPOS_VENC=[
+  {id:"afip",      label:"🏛️ AFIP",       corto:"AFIP",      color:"#1A6B8A", area:"Administrativo"},
+  {id:"iibb",      label:"🏙️ IIBB y S. e H.", corto:"IIBB / S. e H.", color:"#8B2FC9", area:"Administrativo"},
+  {id:"servicios", label:"💡 Servicios",  corto:"Servicios", color:"#D4A017", area:"Servicios"},
+  {id:"gremio",    label:"👥 Gremio",     corto:"Gremio",    color:"#3A7D44", area:"Sueldos"},
+  {id:"otros",     label:"📦 Otros",      corto:"Otros",     color:"#C1440E", area:"Administrativo"},
+];
+function grupoDe(id){ return GRUPOS_VENC.find(function(g){return g.id===id;})||GRUPOS_VENC[GRUPOS_VENC.length-1]; }
 
 function periodoDe(fecha){ return (fecha||"").substring(0,7); }
 function diasHabilesNo(){ return null; }
@@ -7781,12 +7792,13 @@ function PanelVencimientos(p){
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [grupoFiltro,setGrupoFiltro]=useState("all");
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
-  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:""};
+  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [formPago,setFormPago]=useState(FORM_PAGO);
@@ -7814,13 +7826,15 @@ function PanelVencimientos(p){
     return {v:v,fecha:fv,pago:pago,dias:dias};
   }).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
 
-  var totalMes=delMes.reduce(function(a,x){return a+parseFloat((x.pago&&x.pago.monto)||x.v.monto||0);},0);
-  var pagado=delMes.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
-  var pendiente=delMes.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
-  var vencidos=delMes.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
+  var delMesTodos=delMes;
+  var delMes2=grupoFiltro==="all"?delMesTodos:delMesTodos.filter(function(x){return (x.v.grupo||"otros")===grupoFiltro;});
+  var totalMes=delMes2.reduce(function(a,x){return a+parseFloat((x.pago&&x.pago.monto)||x.v.monto||0);},0);
+  var pagado=delMes2.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
+  var pendiente=delMes2.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+  var vencidos=delMes2.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
   // La deuda que queda por delante en los planes de cuotas: no es de este mes, pero saber
   // que hay 8 cuotas de $200.000 por pagar cambia cómo se mira el resto.
-  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false;}).reduce(function(a,v){
+  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(grupoFiltro==="all"||(v.grupo||"otros")===grupoFiltro);}).reduce(function(a,v){
     var cu=cuotasDe(v);
     if(!cu||cu.completo)return a;
     return a+cu.faltan*(parseFloat(v.monto)||0);
@@ -7828,7 +7842,7 @@ function PanelVencimientos(p){
 
   function abrirNuevo(){ setForm(FORM_VACIO); setEditId(null); setShowForm(true); }
   function abrirEditar(v){
-    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||""});
+    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
     setEditId(v.id); setShowForm(true);
   }
   function doSave(){
@@ -7841,7 +7855,7 @@ function PanelVencimientos(p){
       recurrente:!!form.recurrente,
       dia:form.recurrente?(parseInt(form.dia,10)||1):null,
       fecha:form.recurrente?null:form.fecha,
-      activo:true, notas:form.notas||"", referencia:form.referencia.trim(),
+      activo:true, notas:form.notas||"", referencia:form.referencia.trim(), grupo:form.grupo||"otros",
       cuotas:form.recurrente?(parseInt(form.cuotas,10)||0):0,
       cuotas_previas:form.recurrente?(parseInt(form.cuotas_previas,10)||0):0,
       pagos:(anterior&&anterior.pagos)||[],
@@ -7911,6 +7925,31 @@ function PanelVencimientos(p){
         </div>
       </div>
 
+      {/* Un rubro por solapa: AFIP, municipales, servicios, gremio. Cada una muestra lo que
+          le falta pagar este mes, así se ve de un vistazo dónde está la plata. */}
+      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+        {[{id:"all",label:"Todos",color:"#F0EDE8"}].concat(GRUPOS_VENC).map(function(g){
+          var delGrupo=g.id==="all"?delMesTodos:delMesTodos.filter(function(x){return (x.v.grupo||"otros")===g.id;});
+          var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+          var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
+          var activo=grupoFiltro===g.id;
+          if(g.id!=="all"&&delGrupo.length===0&&!activo)return null;
+          return(
+            <button key={g.id} onClick={function(){setGrupoFiltro(g.id);}} style={{
+              padding:"7px 12px",borderRadius:9,cursor:"pointer",fontFamily:"'Inter',sans-serif",textAlign:"left",
+              border:"1px solid "+(activo?g.color+"66":"#1A1A1A"),background:activo?g.color+"18":"#0D0D0D"}}>
+              <div style={{fontSize:11,fontWeight:700,color:activo?g.color:"#666"}}>
+                {g.id==="all"?"Todos":g.label}
+                {venc>0&&<span style={{color:"#C1440E",marginLeft:5}}>●</span>}
+              </div>
+              <div style={{fontSize:10,color:activo?"#888":"#3A3A3A",marginTop:1,fontVariantNumeric:"tabular-nums"}}>
+                {falta>0?fmt(falta)+" a pagar":"al día"}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Resumen del mes */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
         <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 13px"}}>
@@ -7956,6 +7995,12 @@ function PanelVencimientos(p){
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
               <select value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
                 {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Rubro</label>
+              <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>
+                {GRUPOS_VENC.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
               </select>
             </div>
             <div>
@@ -8069,14 +8114,14 @@ function PanelVencimientos(p){
       )}
 
       {/* Lista */}
-      {delMes.length===0?(
+      {delMes2.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
           <div style={{fontSize:13,color:"#555"}}>No hay vencimientos cargados para este mes.</div>
-          <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.</div>
+          <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>{grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes."}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
-          {delMes.map(function(x){
+          {delMes2.map(function(x){
             var l=getLocal(x.v.local);
             var e=estado(x);
             return(
@@ -8101,7 +8146,7 @@ function PanelVencimientos(p){
                       );
                     })()}
                     <div style={{fontSize:10,color:"#555",marginTop:3}}>
-                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:x.v.local}</span> · {x.v.area}
+                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:x.v.local}</span> · <span style={{color:grupoDe(x.v.grupo).color}}>{grupoDe(x.v.grupo).corto}</span> · {x.v.area}
                       {x.v.recurrente?" · todos los meses":" · una vez"}
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>

@@ -266,10 +266,21 @@ var COMISIONES={
 
 Van los porcentajes **con IVA adentro** —el costo real de la liquidación, no la comisión
 nominal— y **sin** las retenciones de IIBB, que se calculan aparte. Un medio en 0 no
-descuenta nada y no aparece en pantalla. Las de **Mercado Pago** están cargadas y son iguales en los tres locales, porque es la
-misma cuenta: QR 1,41%, débito 3,14%, crédito 6,29%, transferencia 0. Las de los **medios
-del banco** —transferencia, débito, crédito y el QR propio— están en **cero a la espera de
-los aranceles de Provincia, Galicia y Patagonia**; un medio en cero no descuenta nada.
+descuenta nada y no aparece en pantalla. Las de **Mercado Pago** son iguales en los tres locales, porque es la misma cuenta: QR 1,41%,
+débito 3,14%, crédito 6,29%, transferencia 0. Esas ya vienen **con IVA adentro**, que es como
+las informa MP.
+
+Los bancos publican el arancel **sin IVA**, así que los suyos se escriben con `conIVA()` —el
+número del contrato queda a la vista y la cuenta también. **Galicia** (Kusama) ya está:
+
+| Medio | Arancel | Con IVA |
+|---|---|---|
+| Transferencia y QR | 0,8% | 0,968% |
+| Débito | 1,6% | 1,936% |
+| Crédito | 5,8% | 7,018% |
+
+**Provincia** (Bodegón) y **Patagonia** (Colantonio's y la cuenta Personas de Bodegón) siguen
+en cero; un medio en cero no descuenta nada.
 
 Se comporta igual que el IIBB: **suma a los egresos** del resultado y del cuadro de Ventas
 y Egresos (área Administrativo) y **se descuenta de la disponibilidad**, medio por medio.
@@ -1030,11 +1041,11 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
 ### De los costos de cobrar y de la caja
 
-1. **Los aranceles por venta del POS del banco.** La tabla `COMISIONES` los tiene en cero
-   para Provincia, Galicia y Patagonia: falta el porcentaje que cada banco descuenta por
-   operación, de débito y de crédito. Mientras estén en cero, la disponibilidad de lo
-   cobrado por la maquinita del banco se muestra sin ese descuento, o sea más alta de lo
-   que realmente entra. Las de Mercado Pago sí están cargadas.
+1. **Los aranceles por venta del POS de Provincia y de Patagonia.** Galicia ya está cargado;
+   los otros dos siguen en cero en `COMISIONES`. Mientras estén así, lo cobrado con la
+   maquinita en El Bodegón y en Colantonio's se muestra sin ese descuento, o sea con más
+   plata de la que realmente entra. Ojo al cargarlos: los bancos informan el arancel **sin
+   IVA**, y la tabla espera el costo real — para eso está `conIVA()`.
 
    Mientras tanto esas comisiones **se cargan a mano** en Egresos, con el nombre "comisión
    bancaria", y está bien que así sea: el cálculo automático da cero, así que no duplican

@@ -7765,6 +7765,16 @@ function fechaVencimiento(v, mes){
 function pagoDelPeriodo(v, mes){
   return (v.pagos||[]).find(function(p){return p.periodo===mes;})||null;
 }
+// Cuántas cuotas lleva pagadas y cuántas faltan. Las pagadas no se cargan a mano: son las
+// que se fueron marcando pagadas acá, más las que ya venían pagas cuando se cargó el
+// vencimiento. Un contador a mano se desincroniza al primer olvido; esto no puede.
+function cuotasDe(v){
+  var total=parseInt(v.cuotas||0,10)||0;
+  if(total<=0)return null;
+  var previas=parseInt(v.cuotas_previas||0,10)||0;
+  var pagadas=previas+((v.pagos||[]).length);
+  return {total:total,previas:previas,pagadas:Math.min(pagadas,total),faltan:Math.max(0,total-pagadas),completo:pagadas>=total};
+}
 
 function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, usuario=p.usuario;
@@ -7776,7 +7786,7 @@ function PanelVencimientos(p){
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
-  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:""};
+  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:""};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [formPago,setFormPago]=useState(FORM_PAGO);
@@ -7792,6 +7802,11 @@ function PanelVencimientos(p){
     if(v.activo===false)return false;
     if(v.recurrente)return true;
     return periodoDe(v.fecha)===mesFiltro;
+  }).filter(function(v){
+    var cu=cuotasDe(v);
+    // Un plan de cuotas terminado no sigue vencienda todos los meses: se deja de listar,
+    // salvo en los meses donde quedó un pago registrado, para no borrar el historial.
+    return !cu||!cu.completo||pagoDelPeriodo(v,mesFiltro);
   }).map(function(v){
     var fv=fechaVencimiento(v,mesFiltro);
     var pago=pagoDelPeriodo(v,mesFiltro);
@@ -7803,10 +7818,17 @@ function PanelVencimientos(p){
   var pagado=delMes.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
   var pendiente=delMes.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
   var vencidos=delMes.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
+  // La deuda que queda por delante en los planes de cuotas: no es de este mes, pero saber
+  // que hay 8 cuotas de $200.000 por pagar cambia cómo se mira el resto.
+  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false;}).reduce(function(a,v){
+    var cu=cuotasDe(v);
+    if(!cu||cu.completo)return a;
+    return a+cu.faltan*(parseFloat(v.monto)||0);
+  },0);
 
   function abrirNuevo(){ setForm(FORM_VACIO); setEditId(null); setShowForm(true); }
   function abrirEditar(v){
-    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||""});
+    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||""});
     setEditId(v.id); setShowForm(true);
   }
   function doSave(){
@@ -7819,7 +7841,9 @@ function PanelVencimientos(p){
       recurrente:!!form.recurrente,
       dia:form.recurrente?(parseInt(form.dia,10)||1):null,
       fecha:form.recurrente?null:form.fecha,
-      activo:true, notas:form.notas||"",
+      activo:true, notas:form.notas||"", referencia:form.referencia.trim(),
+      cuotas:form.recurrente?(parseInt(form.cuotas,10)||0):0,
+      cuotas_previas:form.recurrente?(parseInt(form.cuotas_previas,10)||0):0,
       pagos:(anterior&&anterior.pagos)||[],
       usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
     };
@@ -7907,6 +7931,12 @@ function PanelVencimientos(p){
             <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#C1440E"}}>{vencidos.length}</div>
           </div>
         )}
+        {deudaCuotas>0&&(
+          <div style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,padding:"11px 13px"}}>
+            <div style={{fontSize:9,color:"#8B2FC9",textTransform:"uppercase",letterSpacing:1}}>Cuotas por delante</div>
+            <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#8B2FC9"}}>{fmt(deudaCuotas)}</div>
+          </div>
+        )}
       </div>
 
       {/* Alta / edición */}
@@ -7929,6 +7959,10 @@ function PanelVencimientos(p){
               </select>
             </div>
             <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Identificador</label>
+              <input value={form.referencia} onChange={function(e){setForm(function(f){return{...f,referencia:e.target.value};});}} placeholder="N° de cliente, contrato, CUIT..." style={INP}/>
+            </div>
+            <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Área del egreso</label>
               <select value={form.area} onChange={function(e){setForm(function(f){return{...f,area:e.target.value};});}} style={INP}>
                 {AREAS_VENC.map(function(a){return <option key={a} value={a}>{a}</option>;})}
@@ -7945,10 +7979,24 @@ function PanelVencimientos(p){
               </label>
             </div>
             {form.recurrente?(
-              <div style={{maxWidth:200}}>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Día del mes</label>
-                <input type="number" min="1" max="31" value={form.dia} onChange={function(e){setForm(function(f){return{...f,dia:e.target.value};});}} style={INP}/>
-                <div style={{fontSize:9,color:"#444",marginTop:5}}>Si el mes es más corto, cae el último día.</div>
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:9}}>
+                  <div>
+                    <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Día del mes</label>
+                    <input type="number" min="1" max="31" value={form.dia} onChange={function(e){setForm(function(f){return{...f,dia:e.target.value};});}} style={INP}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Cuotas</label>
+                    <input type="number" min="0" placeholder="sin fin" value={form.cuotas} onChange={function(e){setForm(function(f){return{...f,cuotas:e.target.value};});}} style={INP}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Ya pagadas antes</label>
+                    <input type="number" min="0" placeholder="0" value={form.cuotas_previas} onChange={function(e){setForm(function(f){return{...f,cuotas_previas:e.target.value};});}} style={INP}/>
+                  </div>
+                </div>
+                <div style={{fontSize:9,color:"#444",marginTop:6,lineHeight:1.6}}>
+                  Si el mes es más corto, cae el último día. <b style={{color:"#666"}}>Cuotas</b> en blanco = todos los meses sin fin, como el alquiler; con número, desaparece al pagar la última. <b style={{color:"#666"}}>Ya pagadas antes</b> es para arrancar en la mitad: las que pagaste fuera de la app.
+                </div>
               </div>
             ):(
               <div style={{maxWidth:220}}>
@@ -8035,7 +8083,23 @@ function PanelVencimientos(p){
               <div key={x.v.id} style={{background:"#111",border:"1px solid "+(x.pago?"#3A7D4422":(x.dias!==null&&x.dias<0?"#C1440E44":"#1A1A1A")),borderRadius:10,padding:"12px 14px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
                   <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{x.v.concepto}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>
+                      {x.v.concepto}
+                      {x.v.referencia?<span style={{fontSize:10,color:"#666",fontWeight:400,marginLeft:7}}>#{x.v.referencia}</span>:null}
+                    </div>
+                    {(function(){
+                      var cu=cuotasDe(x.v);
+                      if(!cu)return null;
+                      var nro=x.pago?Math.min(cu.pagadas,cu.total):Math.min(cu.pagadas+1,cu.total);
+                      return(
+                        <div style={{fontSize:10,color:"#8B2FC9",marginTop:3,fontWeight:700}}>
+                          Cuota {nro} de {cu.total}
+                          <span style={{color:"#5A2A7A",fontWeight:400}}>
+                            {cu.completo?" · terminado":" · faltan "+cu.faltan+" ("+fmt(cu.faltan*(parseFloat(x.v.monto)||0))+")"}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     <div style={{fontSize:10,color:"#555",marginTop:3}}>
                       {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:x.v.local}</span> · {x.v.area}
                       {x.v.recurrente?" · todos los meses":" · una vez"}
@@ -8065,7 +8129,8 @@ function PanelVencimientos(p){
 
       <div style={{fontSize:9,color:"#444",marginTop:14,lineHeight:1.7}}>
         <b style={{color:"#666"}}>Un vencimiento no es un gasto:</b> es lo que hay que pagar. El gasto nace al marcarlo pagado, y ahí se genera solo el egreso en 💰 Egresos con su medio de pago y su factura — por eso no hay que cargarlo de nuevo.<br/>
-        <b style={{color:"#666"}}>Los recurrentes</b> aparecen todos los meses en el día que les pusiste, y cada mes se marca pagado por separado. El monto es estimado: al pagar se carga el real.
+        <b style={{color:"#666"}}>Los recurrentes</b> aparecen todos los meses en el día que les pusiste, y cada mes se marca pagado por separado. El monto es estimado: al pagar se carga el real.<br/>
+        <b style={{color:"#666"}}>Las cuotas pagadas</b> se cuentan solas: son las que se fueron marcando pagadas acá, más las que ya venían pagas al cargarlo. Cuando se paga la última, el vencimiento deja de aparecer.
       </div>
     </div>
   );
@@ -13929,13 +13994,34 @@ async function sbLoadVencimientos() {
 async function sbSaveVencimiento(v) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    var r = await fetch(SURL + "/rest/v1/vencimientos", { method: "POST", headers: h, body: JSON.stringify(v) });
-    if (!r.ok) {
+    var cuerpo = {...v};
+    var faltantes = [];
+    // Mismo criterio que los cierres: si a la tabla le falta una columna nueva, se saca ese
+    // campo y se reintenta. El vencimiento se guarda igual y después se avisa qué quedó
+    // afuera, en vez de perder la carga por un alter table pendiente.
+    for (var intento = 0; intento < 6; intento++) {
+      var r = await fetch(SURL + "/rest/v1/vencimientos", { method: "POST", headers: h, body: JSON.stringify(cuerpo) });
+      if (r.ok) {
+        if (faltantes.length > 0) alert("El vencimiento se guardó, pero estos datos no: " + faltantes.join(", ") + ". Faltan esas columnas en la tabla vencimientos — corré el ALTER TABLE del README.");
+        return true;
+      }
       var err = await r.text();
-      if (/vencimientos/.test(err) && /does not exist|relation/i.test(err)) err = "Falta la tabla \"vencimientos\" en Supabase. Corré el SQL del README.";
-      alert("Error al guardar el vencimiento: " + err);
+      if (/vencimientos/.test(err) && /does not exist|relation/i.test(err)) {
+        alert("Falta la tabla \"vencimientos\" en Supabase. Corré el SQL del README.");
+        return false;
+      }
+      var falta = null;
+      Object.keys(cuerpo).forEach(function(k){
+        if (falta) return;
+        if (k === "id" || k === "concepto" || k === "local") return;
+        if (new RegExp("'" + k + "'|\\b" + k + "\\b").test(err) && /column|schema cache|PGRST204/i.test(err)) falta = k;
+      });
+      if (!falta) { alert("Error al guardar el vencimiento: " + err); return false; }
+      faltantes.push(falta);
+      delete cuerpo[falta];
     }
-    return r.ok;
+    alert("No se pudo guardar el vencimiento: faltan demasiadas columnas en la tabla. Corré el SQL del README.");
+    return false;
   } catch(e) { alert("Error de conexión: " + e.message); return false; }
 }
 async function sbDeleteVencimiento(id) {

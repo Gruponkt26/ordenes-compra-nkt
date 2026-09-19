@@ -151,6 +151,9 @@ create table if not exists vencimientos (
   area        text,
   subramo     text,
   monto       numeric default 0,
+  referencia  text,
+  cuotas      int default 0,
+  cuotas_previas int default 0,
   recurrente  boolean default true,
   dia         int,
   fecha       date,
@@ -163,8 +166,17 @@ create table if not exists vencimientos (
 alter table vencimientos disable row level security;
 ```
 
-Hasta que exista, el módulo abre y se puede usar, pero no guarda nada entre sesiones y avisa
-en pantalla.
+Si la tabla ya existía de antes, las tres columnas nuevas se agregan con:
+
+```sql
+alter table vencimientos add column if not exists referencia     text;
+alter table vencimientos add column if not exists cuotas         int default 0;
+alter table vencimientos add column if not exists cuotas_previas int default 0;
+```
+
+Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
+sesiones y avisa en pantalla. Si lo que falta es una columna, el vencimiento **se guarda
+igual** sin ese dato y el aviso dice cuál falta.
 
 ### Un vencimiento no es un gasto
 
@@ -181,6 +193,20 @@ nada: sólo queda marcado como pagado.
   separado, así que el historial queda por período.
 - **De una vez**: aparecen sólo en el mes de su fecha.
 - El **monto es estimado**; al pagar se carga el real, y ése es el que va al egreso.
+- El **identificador** es texto libre: el número de cliente del servicio, el contrato del
+  alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.
+
+**Cuotas.** Un recurrente puede tener un total de cuotas —un préstamo, una compra
+financiada— o no tenerlo, como el alquiler, que no termina nunca. Las **pagadas no se
+cargan a mano**: son las que se fueron marcando pagadas en el módulo, más las que ya venían
+pagas al darlo de alta (*ya pagadas antes*, para arrancar en la mitad). Un contador manual
+se desincroniza al primer olvido; éste no puede.
+
+La fila muestra en qué cuota va, cuántas faltan y cuánta plata es eso. Arriba, la tarjeta
+**Cuotas por delante** suma la deuda de todos los planes abiertos: no es de este mes, pero
+saber que hay ocho cuotas de $200.000 esperando cambia cómo se lee el resto. Al pagar la
+última, el vencimiento deja de aparecer —salvo en los meses donde quedó un pago, para no
+borrar el historial—.
 
 Arriba del listado hay cuatro números del mes: total, pagado, falta pagar y cuántos están
 vencidos. Cada fila dice si venció, cuántos días faltan o si ya está pago.

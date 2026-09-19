@@ -138,6 +138,57 @@ Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la a
 pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
 se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
 
+### ⚠️ Tabla `vencimientos`
+
+El módulo 📅 **Vencimientos a pagar**, dentro de Administración, necesita su propia tabla.
+Corré esto en Supabase → SQL Editor:
+
+```sql
+create table if not exists vencimientos (
+  id          text primary key,
+  local       text,
+  concepto    text,
+  area        text,
+  subramo     text,
+  monto       numeric default 0,
+  recurrente  boolean default true,
+  dia         int,
+  fecha       date,
+  activo      boolean default true,
+  notas       text,
+  pagos       jsonb default '[]'::jsonb,
+  usuario     text,
+  created_at  timestamptz default now()
+);
+alter table vencimientos disable row level security;
+```
+
+Hasta que exista, el módulo abre y se puede usar, pero no guarda nada entre sesiones y avisa
+en pantalla.
+
+### Un vencimiento no es un gasto
+
+Es lo que **hay que pagar**: el alquiler, el IVA, la luz. El gasto nace recién cuando se
+paga, y por eso **marcarlo pagado genera el egreso** en 💰 Egresos —con su medio de pago, su
+área y su factura—, igual que el pago de una cuenta corriente. Así la misma plata no se
+carga dos veces ni depende de que alguien se acuerde.
+
+Si el pago ya se había cargado a mano, hay un casillero para decirlo y entonces no se genera
+nada: sólo queda marcado como pagado.
+
+- **Recurrentes**: aparecen todos los meses en el día que se les puso. Si el mes es más
+  corto —un vencimiento el 31 en febrero— cae el último día. Cada mes se marca pagado por
+  separado, así que el historial queda por período.
+- **De una vez**: aparecen sólo en el mes de su fecha.
+- El **monto es estimado**; al pagar se carga el real, y ése es el que va al egreso.
+
+Arriba del listado hay cuatro números del mes: total, pagado, falta pagar y cuántos están
+vencidos. Cada fila dice si venció, cuántos días faltan o si ya está pago.
+
+Deshacer un pago lo vuelve a poner como impago, pero **no borra el egreso**: eso se hace
+desde Egresos. Está dicho en el aviso, porque borrar plata cargada no puede ser un efecto
+lateral.
+
 ### ⚠️ Columnas de Patagonia Personas en `cierres_caja`
 
 El Bodegón cobra por dos cuentas de banco: Provincia, que son los campos de siempre, y

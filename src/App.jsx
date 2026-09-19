@@ -7741,6 +7741,336 @@ function PanelGastos(p) {
 }
 
 
+// ─── PANEL VENCIMIENTOS ───────────────────────────────────────────────────────
+// Lo que hay que pagar y cuándo. Un vencimiento es la obligación —el alquiler, el IVA,
+// la luz—, no el gasto: el gasto nace recién cuando se paga. Por eso marcar pagado genera
+// el egreso en Egresos, con su medio de pago y su factura, igual que el pago de una cuenta
+// corriente. Así no hay que cargar la misma plata dos veces ni acordarse de hacerlo.
+var AREAS_VENC=["Administrativo","Servicios","Mantenimiento","Sueldos","Marketing","Proveedores","Obras"];
+
+function periodoDe(fecha){ return (fecha||"").substring(0,7); }
+function diasHabilesNo(){ return null; }
+// Cuándo vence en un mes dado. El recurrente cae el mismo día todos los meses; si el mes
+// es más corto —un vencimiento el 31 en febrero— cae el último día, que es lo que hace
+// cualquier calendario.
+function fechaVencimiento(v, mes){
+  if(!v.recurrente) return v.fecha||null;
+  if(!mes) return null;
+  var pr=mes.split("-");
+  var anio=parseInt(pr[0],10), m=parseInt(pr[1],10);
+  var ultimo=new Date(anio,m,0).getDate();
+  var dia=Math.min(parseInt(v.dia||1,10)||1,ultimo);
+  return mes+"-"+(dia<10?"0"+dia:String(dia));
+}
+function pagoDelPeriodo(v, mes){
+  return (v.pagos||[]).find(function(p){return p.periodo===mes;})||null;
+}
+
+function PanelVencimientos(p){
+  var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, usuario=p.usuario;
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent=hoy.slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [showForm,setShowForm]=useState(false);
+  var [editId,setEditId]=useState(null);
+  var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+
+  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:""};
+  var [form,setForm]=useState(FORM_VACIO);
+  var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
+  var [formPago,setFormPago]=useState(FORM_PAGO);
+
+  var meses=[];
+  for(var i=-6;i<=6;i++){
+    var d=new Date(parseInt(mesCurrent.slice(0,4),10),parseInt(mesCurrent.slice(5,7),10)-1+i,1);
+    meses.push(d.toISOString().slice(0,7));
+  }
+
+  // Los del mes elegido: los recurrentes siempre, los únicos sólo si caen ahí.
+  var delMes=vencimientos.filter(function(v){
+    if(v.activo===false)return false;
+    if(v.recurrente)return true;
+    return periodoDe(v.fecha)===mesFiltro;
+  }).map(function(v){
+    var fv=fechaVencimiento(v,mesFiltro);
+    var pago=pagoDelPeriodo(v,mesFiltro);
+    var dias=fv?Math.round((new Date(fv+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000):null;
+    return {v:v,fecha:fv,pago:pago,dias:dias};
+  }).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
+
+  var totalMes=delMes.reduce(function(a,x){return a+parseFloat((x.pago&&x.pago.monto)||x.v.monto||0);},0);
+  var pagado=delMes.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
+  var pendiente=delMes.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+  var vencidos=delMes.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
+
+  function abrirNuevo(){ setForm(FORM_VACIO); setEditId(null); setShowForm(true); }
+  function abrirEditar(v){
+    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||""});
+    setEditId(v.id); setShowForm(true);
+  }
+  function doSave(){
+    if(!form.concepto.trim()){alert("Ponele un concepto al vencimiento.");return;}
+    var anterior=vencimientos.find(function(x){return x.id===editId;});
+    var v={
+      id:editId||("venc_"+String(Date.now())),
+      local:form.local, concepto:form.concepto.trim(), area:form.area, subramo:form.subramo||"",
+      monto:parseFloat(form.monto)||0,
+      recurrente:!!form.recurrente,
+      dia:form.recurrente?(parseInt(form.dia,10)||1):null,
+      fecha:form.recurrente?null:form.fecha,
+      activo:true, notas:form.notas||"",
+      pagos:(anterior&&anterior.pagos)||[],
+      usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
+    };
+    onSave(v); setShowForm(false); setEditId(null);
+  }
+  function borrar(v){
+    if(!window.confirm("¿Borrar el vencimiento \""+v.concepto+"\"?\n\nLos egresos que ya generó quedan como están."))return;
+    onDelete(v.id);
+  }
+
+  function abrirPago(x){
+    setPagando(x);
+    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:x.v.monto||""});
+  }
+  function confirmarPago(){
+    var x=pagando; if(!x)return;
+    var monto=parseFloat(formPago.monto)||0;
+    if(monto<=0){alert("Poné el monto que se pagó.");return;}
+    if(!formPago.yaCargado&&!formPago.medio){alert("Elegí con qué medio se pagó, o marcá que ya lo cargaste en Egresos.");return;}
+    var egresoId=null;
+    // El egreso se genera acá, salvo que ya lo hayan cargado a mano: si no, la misma plata
+    // saldría dos veces.
+    if(!formPago.yaCargado&&onSaveEgreso){
+      egresoId="egr_venc_"+String(Date.now());
+      onSaveEgreso({
+        id:egresoId, local:x.v.local, concepto:x.v.concepto, subramo:x.v.subramo||"Vencimiento",
+        monto:monto, forma_pago:formPago.medio, pagos:[{medio:formPago.medio,monto:monto}],
+        facturado:!!formPago.facturado, facturacion:formPago.facturado?formPago.facturacion:"",
+        categoria:x.v.area, area:x.v.area,
+        notas:"Pago de vencimiento — "+mesFiltro, fecha:formPago.fecha,
+        usuario:usuario, created_at:new Date().toISOString()
+      });
+    }
+    var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;});
+    pagos.push({periodo:mesFiltro,fecha:formPago.fecha,monto:monto,medio:formPago.medio||"",facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId});
+    onSave({...x.v,pagos:pagos});
+    setPagando(null);
+  }
+  function deshacerPago(x){
+    if(!window.confirm("¿Marcar como impago "+x.v.concepto+" de "+mesFiltro+"?\n\nOjo: el egreso que se generó NO se borra, hay que borrarlo desde Egresos."))return;
+    onSave({...x.v,pagos:(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;})});
+  }
+
+  function estado(x){
+    if(x.pago)return {txt:"✅ Pagado",color:"#3A7D44"};
+    if(x.dias===null)return {txt:"—",color:"#555"};
+    if(x.dias<0)return {txt:"⚠️ Vencido hace "+Math.abs(x.dias)+" día"+(Math.abs(x.dias)===1?"":"s"),color:"#C1440E"};
+    if(x.dias===0)return {txt:"🔸 Vence hoy",color:"#D4A017"};
+    if(x.dias<=7)return {txt:"🔸 En "+x.dias+" día"+(x.dias===1?"":"s"),color:"#D4A017"};
+    return {txt:"En "+x.dias+" días",color:"#666"};
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14,flexWrap:"wrap",gap:10}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📅 Vencimientos a pagar</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+            {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+          </select>
+          <button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>
+        </div>
+      </div>
+
+      {/* Resumen del mes */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
+        <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 13px"}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total del mes</div>
+          <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{fmt(totalMes)}</div>
+        </div>
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4433",borderRadius:10,padding:"11px 13px"}}>
+          <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Pagado</div>
+          <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#3A7D44"}}>{fmt(pagado)}</div>
+        </div>
+        <div style={{background:"#14100A",border:"1px solid #D4A01733",borderRadius:10,padding:"11px 13px"}}>
+          <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Falta pagar</div>
+          <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#D4A017"}}>{fmt(pendiente)}</div>
+        </div>
+        {vencidos.length>0&&(
+          <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:10,padding:"11px 13px"}}>
+            <div style={{fontSize:9,color:"#C1440E",textTransform:"uppercase",letterSpacing:1}}>Vencidos</div>
+            <div style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#C1440E"}}>{vencidos.length}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Alta / edición */}
+      {showForm&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #D4A01744",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#D4A017",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>{editId?"✏️ Editando vencimiento":"+ Nuevo vencimiento"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Concepto</label>
+              <input value={form.concepto} onChange={function(e){setForm(function(f){return{...f,concepto:e.target.value};});}} placeholder="Alquiler, IVA, Edenor..." style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto estimado</label>
+              <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+              <select value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Área del egreso</label>
+              <select value={form.area} onChange={function(e){setForm(function(f){return{...f,area:e.target.value};});}} style={INP}>
+                {AREAS_VENC.map(function(a){return <option key={a} value={a}>{a}</option>;})}
+              </select>
+            </div>
+          </div>
+          <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
+            <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:form.recurrente?9:9}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:form.recurrente?"#D4A017":"#666"}}>
+                <input type="radio" checked={!!form.recurrente} onChange={function(){setForm(function(f){return{...f,recurrente:true};});}}/> Todos los meses
+              </label>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:!form.recurrente?"#D4A017":"#666"}}>
+                <input type="radio" checked={!form.recurrente} onChange={function(){setForm(function(f){return{...f,recurrente:false};});}}/> Una sola vez
+              </label>
+            </div>
+            {form.recurrente?(
+              <div style={{maxWidth:200}}>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Día del mes</label>
+                <input type="number" min="1" max="31" value={form.dia} onChange={function(e){setForm(function(f){return{...f,dia:e.target.value};});}} style={INP}/>
+                <div style={{fontSize:9,color:"#444",marginTop:5}}>Si el mes es más corto, cae el último día.</div>
+              </div>
+            ):(
+              <div style={{maxWidth:220}}>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
+                <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+              </div>
+            )}
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+            <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doSave} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>💾 Guardar</button>
+            <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Marcar pagado */}
+      {pagando&&(
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#3A7D44",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>✅ Marcar pagado</div>
+          <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:12}}>{pagando.v.concepto} · {mesFiltro}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha de pago</label>
+              <input type="date" value={formPago.fecha} onChange={function(e){setFormPago(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto pagado</label>
+              <input type="number" value={formPago.monto} onChange={function(e){setFormPago(function(f){return{...f,monto:e.target.value};});}} style={INP}/>
+            </div>
+          </div>
+          {!formPago.yaCargado&&(
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Medio de pago</label>
+              <select value={formPago.medio} onChange={function(e){setFormPago(function(f){return{...f,medio:e.target.value};});}} style={INP}>
+                <option value="">-- Seleccioná --</option>
+                {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
+                  <optgroup key={g} label={g}>
+                    {MEDIOS_SUELDOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}
+                  </optgroup>
+                );})}
+              </select>
+            </div>
+          )}
+          <div style={{background:"#14100A",border:"1px solid #D4A01722",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12}}>
+              <input type="checkbox" checked={!!formPago.facturado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,facturado:v};});}}/>
+              <span style={{color:formPago.facturado?"#D4A017":"#888",fontWeight:formPago.facturado?700:400}}>🧾 Este pago tiene factura</span>
+            </label>
+            {formPago.facturado&&(
+              <select value={formPago.facturacion} onChange={function(e){setFormPago(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:7}}>
+                <option value="">-- Seleccioná CUIT --</option>
+                {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
+              </select>
+            )}
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,marginBottom:12}}>
+            <input type="checkbox" checked={!!formPago.yaCargado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,yaCargado:v};});}}/>
+            <span style={{color:"#888"}}>Ya lo cargué en Egresos — no generar el egreso</span>
+          </label>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={confirmarPago} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Confirmar pago</button>
+            <button onClick={function(){setPagando(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+          {!formPago.yaCargado&&<div style={{fontSize:9,color:"#444",marginTop:8,lineHeight:1.6}}>Al confirmar se genera el egreso en 💰 Egresos, área {pagando.v.area}, con este medio de pago. No hay que cargarlo de nuevo.</div>}
+        </div>
+      )}
+
+      {/* Lista */}
+      {delMes.length===0?(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
+          <div style={{fontSize:13,color:"#555"}}>No hay vencimientos cargados para este mes.</div>
+          <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {delMes.map(function(x){
+            var l=getLocal(x.v.local);
+            var e=estado(x);
+            return(
+              <div key={x.v.id} style={{background:"#111",border:"1px solid "+(x.pago?"#3A7D4422":(x.dias!==null&&x.dias<0?"#C1440E44":"#1A1A1A")),borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{x.v.concepto}</div>
+                    <div style={{fontSize:10,color:"#555",marginTop:3}}>
+                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:x.v.local}</span> · {x.v.area}
+                      {x.v.recurrente?" · todos los meses":" · una vez"}
+                    </div>
+                    <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>
+                    {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{x.pago.medio?" · "+x.pago.medio:""}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
+                    {x.v.notas&&<div style={{fontSize:10,color:"#444",marginTop:3,fontStyle:"italic"}}>📝 {x.v.notas}</div>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.pago?"#3A7D44":"#F0EDE8"}}>{fmt((x.pago&&x.pago.monto)||x.v.monto)}</div>
+                    <div style={{display:"flex",gap:5,marginTop:7,justifyContent:"flex-end",flexWrap:"wrap"}}>
+                      {x.pago?(
+                        <button onClick={function(){deshacerPago(x);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>Deshacer</button>
+                      ):(
+                        <button onClick={function(){abrirPago(x);}} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
+                      )}
+                      <button onClick={function(){abrirEditar(x.v);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>✏️</button>
+                      <button onClick={function(){borrar(x.v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{fontSize:9,color:"#444",marginTop:14,lineHeight:1.7}}>
+        <b style={{color:"#666"}}>Un vencimiento no es un gasto:</b> es lo que hay que pagar. El gasto nace al marcarlo pagado, y ahí se genera solo el egreso en 💰 Egresos con su medio de pago y su factura — por eso no hay que cargarlo de nuevo.<br/>
+        <b style={{color:"#666"}}>Los recurrentes</b> aparecen todos los meses en el día que les pusiste, y cada mes se marca pagado por separado. El monto es estimado: al pagar se carga el real.
+      </div>
+    </div>
+  );
+}
+
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
 var MEDIOS_POR_LOCAL={
   "l1":[
@@ -13588,6 +13918,30 @@ async function sbDeleteCierre(id) {
   } catch(e) {}
 }
 
+// ─── VENCIMIENTOS SUPABASE ────────────────────────────────────────────────────
+async function sbLoadVencimientos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/vencimientos?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveVencimiento(v) {
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var r = await fetch(SURL + "/rest/v1/vencimientos", { method: "POST", headers: h, body: JSON.stringify(v) });
+    if (!r.ok) {
+      var err = await r.text();
+      if (/vencimientos/.test(err) && /does not exist|relation/i.test(err)) err = "Falta la tabla \"vencimientos\" en Supabase. Corré el SQL del README.";
+      alert("Error al guardar el vencimiento: " + err);
+    }
+    return r.ok;
+  } catch(e) { alert("Error de conexión: " + e.message); return false; }
+}
+async function sbDeleteVencimiento(id) {
+  try { await fetch(SURL + "/rest/v1/vencimientos?id=eq." + id, { method: "DELETE", headers: SH }); } catch(e) {}
+}
+
 // ─── RETIROS SUPABASE ─────────────────────────────────────────────────────────
 async function sbLoadRetiros() {
   try {
@@ -14309,6 +14663,7 @@ export default function App() {
   var [deportes,setDeportes]=useState([]);
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
+  var [vencimientos,setVencimientos]=useState([]);
 
   var [refrescando,setRefrescando]=useState(false);
 
@@ -14334,6 +14689,7 @@ export default function App() {
     sbLoadAportes().then(function(d){setAportes(d);}).catch(function(){});
     sbLoadAdelantos().then(function(d){setAdelantos(d);}).catch(function(){});
     sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
+    sbLoadVencimientos().then(function(d){setVencimientos(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
@@ -14708,7 +15064,7 @@ export default function App() {
               {id:"config",label:"⚙️ Config",color:"#555"},
             ];
             var vistaFinanzas=["iva","cruzados","resultados","analytics","ventasegresos"].includes(vista);
-            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vistaFinanzas?"finanzas":"egresos";
+            var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vista==="vencimientos"?"vencimientos":vistaFinanzas?"finanzas":"egresos";
             return(
               <div>
                 {/* Barra de sub-módulos admin */}
@@ -14717,6 +15073,7 @@ export default function App() {
                     {id:"dashboard",label:"📊 Dashboard",color:"#D4A017"},
                     {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
                     {id:"cierres",label:"🏪 Cierres",color:"#C1440E"},
+                    {id:"vencimientos",label:"📅 Vencimientos",color:"#D4A017"},
                     {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
                   ].map(function(sm){
                     var activo=modActivo===sm.id;
@@ -14725,6 +15082,7 @@ export default function App() {
                         if(sm.id==="dashboard")setVista("dashboard");
                         else if(sm.id==="egresos")setVista("egresos");
                         else if(sm.id==="cierres")setVista("cierres");
+                        else if(sm.id==="vencimientos")setVista("vencimientos");
                         else if(sm.id==="finanzas")setVista("resultados");
                         else if(sm.id==="configadmin")setVista("configadmin");
                       }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
@@ -15072,6 +15430,22 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
             <PanelCierresSofia cierres={cierres}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
+            <PanelVencimientos
+              vencimientos={vencimientos}
+              usuario={cu.nombre}
+              onSave={async function(v){
+                setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
+                await sbSaveVencimiento(v);
+              }}
+              onDelete={async function(id){
+                setVencimientos(function(prev){return prev.filter(function(x){return x.id!==id;});});
+                await sbDeleteVencimiento(id);
+              }}
+              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+            />
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cruzados"&&(

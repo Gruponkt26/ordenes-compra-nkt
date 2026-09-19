@@ -152,6 +152,7 @@ create table if not exists vencimientos (
   subramo     text,
   monto       numeric default 0,
   referencia  text,
+  grupo       text default 'otros',
   cuotas      int default 0,
   cuotas_previas int default 0,
   recurrente  boolean default true,
@@ -169,6 +170,7 @@ alter table vencimientos disable row level security;
 Si la tabla ya existía de antes, las tres columnas nuevas se agregan con:
 
 ```sql
+alter table vencimientos add column if not exists grupo          text default 'otros';
 alter table vencimientos add column if not exists referencia     text;
 alter table vencimientos add column if not exists cuotas         int default 0;
 alter table vencimientos add column if not exists cuotas_previas int default 0;
@@ -195,6 +197,19 @@ nada: sólo queda marcado como pagado.
 - El **monto es estimado**; al pagar se carga el real, y ése es el que va al egreso.
 - El **identificador** es texto libre: el número de cliente del servicio, el contrato del
   alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.
+
+**Por rubro.** Arriba hay una solapa por rubro —🏛️ AFIP, 🏙️ IIBB y Seguridad e Higiene,
+💡 Servicios, 👥 Gremio y 📦 Otros—, cada una con lo que le falta pagar este mes y un punto
+rojo si tiene algo vencido. Entrar a una deja el módulo mostrando sólo eso: el listado, los
+totales de arriba y la deuda en cuotas se recalculan para ese rubro.
+
+Una solapa sin nada cargado en el mes no aparece, salvo que esté seleccionada — así la barra
+no se llena de rubros vacíos.
+
+Cada rubro trae además **el área de egreso que le suele corresponder** (AFIP e IIBB a
+Administrativo, Servicios a Servicios, Gremio a Sueldos): al elegir el rubro se completa
+sola, y se puede cambiar. El rubro ordena los vencimientos; el área es la que manda al
+egreso que se genera al pagar.
 
 **Cuotas.** Un recurrente puede tener un total de cuotas —un préstamo, una compra
 financiada— o no tenerlo, como el alquiler, que no termina nunca. Las **pagadas no se

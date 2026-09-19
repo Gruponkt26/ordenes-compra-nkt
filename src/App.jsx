@@ -8061,12 +8061,16 @@ var ALICUOTA_IIBB=0.02;
 // Por local y por medio, porque cada local puede cobrar por un procesador distinto.
 // En 0 = sin comisión configurada: no se descuenta nada y no aparece en pantalla.
 // Los mp_* son los de Mercado Pago y son iguales en los tres locales: es la misma cuenta.
-// Los del banco (transferencia, débito, crédito y el QR propio) están en cero a la espera
-// de los aranceles de Provincia, Galicia y Patagonia — un medio en cero no descuenta nada.
+// Esos ya vienen con IVA adentro, que es como los informa Mercado Pago.
+// Los bancos publican el arancel SIN IVA, así que los suyos se escriben con conIVA() para que
+// se lea el número del contrato y la cuenta quede a la vista. Galicia (Kusama) ya está; los de
+// Provincia y Patagonia siguen en cero, y un medio en cero no descuenta nada.
+function conIVA(arancel){ return arancel*1.21; }
 var COMISIONES={
   l1:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
-  l2:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
+  // Galicia: transferencia y QR 0,8% + IVA, débito 1,6% + IVA, crédito 5,8% + IVA.
+  l2:{transferencia:conIVA(0.008), tarjeta_debito:conIVA(0.016), tarjeta_credito:conIVA(0.058), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:conIVA(0.008),
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
   // El "otros" de Colantonio's era el QR de Mercado Pago antes de que MP tuviera sus propios
   // campos: los cierres viejos lo tienen ahí, y por eso conserva la tasa del QR.

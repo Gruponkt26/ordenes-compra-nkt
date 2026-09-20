@@ -7751,13 +7751,20 @@ var AREAS_VENC=["Administrativo","Servicios","Mantenimiento","Sueldos","Marketin
 // servicios juntos. Cada rubro trae el área de egreso que le suele corresponder, para no
 // tener que elegirla cada vez —igual se puede cambiar—.
 var GRUPOS_VENC=[
-  {id:"afip",      label:"🏛️ AFIP",       corto:"AFIP",      color:"#1A6B8A", area:"Administrativo"},
-  {id:"iibb",      label:"🏙️ IIBB y S. e H.", corto:"IIBB / S. e H.", color:"#8B2FC9", area:"Administrativo"},
-  {id:"servicios", label:"💡 Servicios",  corto:"Servicios", color:"#D4A017", area:"Servicios"},
-  {id:"gremio",    label:"👥 Gremio",     corto:"Gremio",    color:"#3A7D44", area:"Sueldos"},
-  {id:"otros",     label:"📦 Otros",      corto:"Otros",     color:"#C1440E", area:"Administrativo"},
+  {id:"afip",      label:"🏛️ AFIP",          corto:"AFIP",          color:"#1A6B8A", area:"Administrativo", detalle:"IVA, F.931, autónomos"},
+  {id:"arba",      label:"🏙️ ARBA",          corto:"ARBA",          color:"#8B2FC9", area:"Administrativo", detalle:"Ingresos Brutos provincial"},
+  {id:"municipal", label:"🏘️ Municipalidad", corto:"Municipalidad", color:"#E07B00", area:"Administrativo", detalle:"Seguridad e Higiene, tasas"},
+  {id:"servicios", label:"💡 Servicios",     corto:"Servicios",     color:"#D4A017", area:"Servicios",      detalle:"Luz, gas, internet"},
+  {id:"gremio",    label:"👥 Gremio",        corto:"Gremio",        color:"#3A7D44", area:"Sueldos",        detalle:"Cuota sindical, obra social"},
+  {id:"otros",     label:"📦 Otros",         corto:"Otros",         color:"#C1440E", area:"Administrativo", detalle:"Alquiler, cuotas, el resto"},
 ];
-function grupoDe(id){ return GRUPOS_VENC.find(function(g){return g.id===id;})||GRUPOS_VENC[GRUPOS_VENC.length-1]; }
+// "iibb" era el rubro viejo, de cuando ARBA y Municipalidad iban juntos: lo ya cargado con
+// ese id sigue entrando por ARBA, que es donde se declara Ingresos Brutos.
+function grupoDe(id){
+  if(id==="iibb")id="arba";
+  return GRUPOS_VENC.find(function(g){return g.id===id;})||GRUPOS_VENC[GRUPOS_VENC.length-1];
+}
+function grupoIdDe(v){ return grupoDe(v.grupo||"otros").id; }
 
 function periodoDe(fecha){ return (fecha||"").substring(0,7); }
 function diasHabilesNo(){ return null; }
@@ -7792,7 +7799,7 @@ function PanelVencimientos(p){
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [grupoFiltro,setGrupoFiltro]=useState("all");
+  var [grupoFiltro,setGrupoFiltro]=useState(null); // null = portada con los submódulos
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
@@ -7827,20 +7834,24 @@ function PanelVencimientos(p){
   }).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
 
   var delMesTodos=delMes;
-  var delMes2=grupoFiltro==="all"?delMesTodos:delMesTodos.filter(function(x){return (x.v.grupo||"otros")===grupoFiltro;});
+  var delMes2=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
   var totalMes=delMes2.reduce(function(a,x){return a+parseFloat((x.pago&&x.pago.monto)||x.v.monto||0);},0);
   var pagado=delMes2.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
   var pendiente=delMes2.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
   var vencidos=delMes2.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
   // La deuda que queda por delante en los planes de cuotas: no es de este mes, pero saber
   // que hay 8 cuotas de $200.000 por pagar cambia cómo se mira el resto.
-  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(grupoFiltro==="all"||(v.grupo||"otros")===grupoFiltro);}).reduce(function(a,v){
+  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(!grupoFiltro||grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);}).reduce(function(a,v){
     var cu=cuotasDe(v);
     if(!cu||cu.completo)return a;
     return a+cu.faltan*(parseFloat(v.monto)||0);
   },0);
 
-  function abrirNuevo(){ setForm(FORM_VACIO); setEditId(null); setShowForm(true); }
+  function abrirNuevo(){
+    var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"otros";
+    setForm({...FORM_VACIO,grupo:g,area:grupoDe(g).area});
+    setEditId(null); setShowForm(true);
+  }
   function abrirEditar(v){
     setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
     setEditId(v.id); setShowForm(true);
@@ -7914,26 +7925,70 @@ function PanelVencimientos(p){
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📅 Vencimientos a pagar</div>
+          {grupoFiltro?(
+            <div>
+              <button onClick={function(){setGrupoFiltro(null);setShowForm(false);setPagando(null);}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:grupoFiltro==="all"?"#F0EDE8":grupoDe(grupoFiltro).color}}>
+                {grupoFiltro==="all"?"📅 Todos los vencimientos":grupoDe(grupoFiltro).label}
+              </div>
+            </div>
+          ):(
+            <div>
+              <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📅 Vencimientos a pagar</div>
+            </div>
+          )}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
             {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>
-          <button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>
+          {grupoFiltro&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
       </div>
 
-      {/* Un rubro por solapa: AFIP, municipales, servicios, gremio. Cada una muestra lo que
-          le falta pagar este mes, así se ve de un vistazo dónde está la plata. */}
+      {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
+          —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
+      {!grupoFiltro&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
+            {GRUPOS_VENC.map(function(g){
+              var delGrupo=delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
+              var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+              var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
+              var prox=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias>=0;}).sort(function(a,b){return a.dias-b.dias;})[0];
+              return(
+                <button key={g.id} onClick={function(){setGrupoFiltro(g.id);}} style={{
+                  textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif",
+                  background:"#111",border:"1px solid "+(venc>0?"#C1440E55":g.color+"33"),borderRadius:12,padding:"14px 16px"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:g.color}}>{g.label}</div>
+                  <div style={{fontSize:10,color:"#444",marginTop:2}}>{g.detalle}</div>
+                  <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:falta>0?"#F0EDE8":"#3A7D44",marginTop:9,fontVariantNumeric:"tabular-nums"}}>
+                    {falta>0?fmt(falta):"Al día"}
+                  </div>
+                  <div style={{fontSize:10,marginTop:3,color:venc>0?"#C1440E":"#555"}}>
+                    {venc>0
+                      ? "⚠️ "+venc+" vencido"+(venc===1?"":"s")
+                      : (prox?"Próximo en "+prox.dias+" día"+(prox.dias===1?"":"s"):(delGrupo.length?"Todo pagado":"Sin vencimientos"))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={function(){setGrupoFiltro("all");}} style={{width:"100%",background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0))} a pagar en {mesFiltro}
+          </button>
+        </div>
+      )}
+
+      {/* Adentro de un submódulo, la barra para saltar a otro sin volver atrás. */}
+      {grupoFiltro&&(
       <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
         {[{id:"all",label:"Todos",color:"#F0EDE8"}].concat(GRUPOS_VENC).map(function(g){
-          var delGrupo=g.id==="all"?delMesTodos:delMesTodos.filter(function(x){return (x.v.grupo||"otros")===g.id;});
+          var delGrupo=g.id==="all"?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
           var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
           var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
           var activo=grupoFiltro===g.id;
-          if(g.id!=="all"&&delGrupo.length===0&&!activo)return null;
           return(
             <button key={g.id} onClick={function(){setGrupoFiltro(g.id);}} style={{
               padding:"7px 12px",borderRadius:9,cursor:"pointer",fontFamily:"'Inter',sans-serif",textAlign:"left",
@@ -7949,8 +8004,10 @@ function PanelVencimientos(p){
           );
         })}
       </div>
+      )}
 
       {/* Resumen del mes */}
+      {grupoFiltro&&(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
         <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 13px"}}>
           <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total del mes</div>
@@ -7977,6 +8034,7 @@ function PanelVencimientos(p){
           </div>
         )}
       </div>
+      )}
 
       {/* Alta / edición */}
       {showForm&&(
@@ -8114,7 +8172,7 @@ function PanelVencimientos(p){
       )}
 
       {/* Lista */}
-      {delMes2.length===0?(
+      {grupoFiltro&&(delMes2.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
           <div style={{fontSize:13,color:"#555"}}>No hay vencimientos cargados para este mes.</div>
           <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>{grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes."}</div>
@@ -8170,13 +8228,15 @@ function PanelVencimientos(p){
             );
           })}
         </div>
-      )}
+      ))}
 
+      {grupoFiltro&&(
       <div style={{fontSize:9,color:"#444",marginTop:14,lineHeight:1.7}}>
         <b style={{color:"#666"}}>Un vencimiento no es un gasto:</b> es lo que hay que pagar. El gasto nace al marcarlo pagado, y ahí se genera solo el egreso en 💰 Egresos con su medio de pago y su factura — por eso no hay que cargarlo de nuevo.<br/>
         <b style={{color:"#666"}}>Los recurrentes</b> aparecen todos los meses en el día que les pusiste, y cada mes se marca pagado por separado. El monto es estimado: al pagar se carga el real.<br/>
         <b style={{color:"#666"}}>Las cuotas pagadas</b> se cuentan solas: son las que se fueron marcando pagadas acá, más las que ya venían pagas al cargarlo. Cuando se paga la última, el vencimiento deja de aparecer.
       </div>
+      )}
     </div>
   );
 }

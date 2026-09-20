@@ -198,13 +198,20 @@ nada: sólo queda marcado como pagado.
 - El **identificador** es texto libre: el número de cliente del servicio, el contrato del
   alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.
 
-**Por rubro.** Arriba hay una solapa por rubro —🏛️ AFIP, 🏙️ IIBB y Seguridad e Higiene,
-💡 Servicios, 👥 Gremio y 📦 Otros—, cada una con lo que le falta pagar este mes y un punto
-rojo si tiene algo vencido. Entrar a una deja el módulo mostrando sólo eso: el listado, los
-totales de arriba y la deuda en cuotas se recalculan para ese rubro.
+**Un submódulo por organismo.** El módulo abre en una portada con seis tarjetas —🏛️ AFIP,
+🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio y 📦 Otros—, cada una con lo que le falta
+pagar este mes, cuántos vencieron o en cuántos días cae el próximo. Se entra a uno y adentro
+pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro. Arriba queda el
+← para volver y una barra para saltar a otro submódulo sin pasar por la portada.
 
-Una solapa sin nada cargado en el mes no aparece, salvo que esté seleccionada — así la barra
-no se llena de rubros vacíos.
+Abajo de las tarjetas hay un **Ver todos juntos**, para las veces en que interesa el mes
+completo y no un organismo en particular.
+
+ARBA y Municipalidad van separados a propósito: son dos organismos distintos, con sus
+propios vencimientos y su propia boleta. Lo que se haya cargado con el rubro viejo `iibb`,
+de cuando iban juntos, entra por **ARBA**, que es donde se declara Ingresos Brutos.
+
+Al dar de alta desde adentro de un submódulo, el rubro ya viene puesto.
 
 Cada rubro trae además **el área de egreso que le suele corresponder** (AFIP e IIBB a
 Administrativo, Servicios a Servicios, Gremio a Sueldos): al elegir el rubro se completa

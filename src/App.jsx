@@ -7780,6 +7780,44 @@ function fechaVencimiento(v, mes){
   var dia=Math.min(parseInt(v.dia||1,10)||1,ultimo);
   return mes+"-"+(dia<10?"0"+dia:String(dia));
 }
+// AFIP, ARBA y la municipalidad no mandan un vencimiento por mes: mandan un plan, con su
+// número, su anticipo —la cuota cero— y cuotas que casi nunca valen lo mismo entre sí. Por eso
+// un plan guarda sus cuotas una por una, con su monto y su fecha, en vez de un día del mes y
+// un importe estimado.
+function esPlan(v){ return v.tipo==="plan"; }
+function cuotasPlan(v){ return Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]; }
+// Un plan puede tener más de una cuota en el mismo mes —el anticipo y la primera suelen caer
+// juntos—, así que devuelve todas: si devolviera sólo una, la otra quedaría invisible y el
+// mes figuraría al día con una cuota vencida.
+function cuotasDelMes(v, mes){
+  return cuotasPlan(v).filter(function(c){return (c.vence||"").substring(0,7)===mes;});
+}
+function resumenPlan(v){
+  var cs=cuotasPlan(v);
+  var pagadas=cs.filter(function(c){return c.pago;});
+  var total=cs.reduce(function(a,c){return a+(parseFloat(c.monto)||0);},0);
+  var pago=pagadas.reduce(function(a,c){return a+(parseFloat(c.pago.monto)||0);},0);
+  return {cuotas:cs.length,pagadas:pagadas.length,faltan:cs.length-pagadas.length,total:total,pagado:pago,resta:total-pago,completo:cs.length>0&&pagadas.length===cs.length};
+}
+// Arma las cuotas de un plan nuevo: el anticipo primero, si lo hay, y después una por mes.
+function armarCuotas(opts){
+  var out=[];
+  var dia=Math.max(1,Math.min(31,parseInt(opts.dia,10)||10));
+  function fechaDe(mesIso, sumar){
+    var pr=mesIso.split("-");
+    var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1+sumar,1);
+    var ultimo=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    var dd=Math.min(dia,ultimo);
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
+  }
+  var anticipo=parseFloat(opts.anticipo)||0;
+  if(anticipo>0)out.push({nro:0,monto:anticipo,vence:opts.fechaAnticipo||fechaDe(opts.mesInicio,0),pago:null});
+  var n=parseInt(opts.cantidad,10)||0;
+  var monto=parseFloat(opts.montoCuota)||0;
+  for(var i=1;i<=n;i++) out.push({nro:i,monto:monto,vence:fechaDe(opts.mesInicio,i-1),pago:null});
+  return out;
+}
+
 function pagoDelPeriodo(v, mes){
   return (v.pagos||[]).find(function(p){return p.periodo===mes;})||null;
 }
@@ -7803,12 +7841,17 @@ function PanelVencimientos(p){
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
+  var [showPlan,setShowPlan]=useState(false);  // alta de plan de pago
+  var [planAbierto,setPlanAbierto]=useState(null); // plan cuya planilla se está mirando
+  var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
   var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [formPago,setFormPago]=useState(FORM_PAGO);
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
   for(var i=-6;i<=6;i++){
@@ -7817,8 +7860,18 @@ function PanelVencimientos(p){
   }
 
   // Los del mes elegido: los recurrentes siempre, los únicos sólo si caen ahí.
+  var planesDelMes=vencimientos.filter(function(v){
+    return v.activo!==false&&esPlan(v);
+  }).reduce(function(acc,v){
+    cuotasDelMes(v,mesFiltro).forEach(function(c){
+      var dias=c.vence?Math.round((new Date(c.vence+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000):null;
+      acc.push({v:v,cuota:c,fecha:c.vence,pago:c.pago||null,dias:dias});
+    });
+    return acc;
+  },[]);
   var delMes=vencimientos.filter(function(v){
     if(v.activo===false)return false;
+    if(esPlan(v))return false; // los planes entran por su cuota del mes
     if(v.recurrente)return true;
     return periodoDe(v.fecha)===mesFiltro;
   }).filter(function(v){
@@ -7830,18 +7883,20 @@ function PanelVencimientos(p){
     var fv=fechaVencimiento(v,mesFiltro);
     var pago=pagoDelPeriodo(v,mesFiltro);
     var dias=fv?Math.round((new Date(fv+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000):null;
-    return {v:v,fecha:fv,pago:pago,dias:dias};
-  }).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
+    return {v:v,cuota:null,fecha:fv,pago:pago,dias:dias};
+  }).concat(planesDelMes).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
 
   var delMesTodos=delMes;
   var delMes2=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
-  var totalMes=delMes2.reduce(function(a,x){return a+parseFloat((x.pago&&x.pago.monto)||x.v.monto||0);},0);
+  function montoDe(x){ return parseFloat((x.pago&&x.pago.monto)||(x.cuota?x.cuota.monto:x.v.monto)||0); }
+  var totalMes=delMes2.reduce(function(a,x){return a+montoDe(x);},0);
   var pagado=delMes2.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
-  var pendiente=delMes2.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+  var pendiente=delMes2.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0);
   var vencidos=delMes2.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
   // La deuda que queda por delante en los planes de cuotas: no es de este mes, pero saber
   // que hay 8 cuotas de $200.000 por pagar cambia cómo se mira el resto.
   var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(!grupoFiltro||grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);}).reduce(function(a,v){
+    if(esPlan(v)){ var rp=resumenPlan(v); return a+(rp.completo?0:rp.resta); }
     var cu=cuotasDe(v);
     if(!cu||cu.completo)return a;
     return a+cu.faltan*(parseFloat(v.monto)||0);
@@ -7874,6 +7929,39 @@ function PanelVencimientos(p){
     };
     onSave(v); setShowForm(false); setEditId(null);
   }
+  function abrirPlan(){
+    // El anticipo se paga ahora y las cuotas arrancan el mes que viene: si arrancaran este
+    // mes, la cuota 1 podría vencer antes que el anticipo.
+    var pr=mesFiltro.split("-");
+    var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10),1);
+    var sig=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    setFormPlan({...FORM_PLAN,mesInicio:sig});
+    setShowPlan(true); setShowForm(false);
+  }
+  function doSavePlan(){
+    if(!formPlan.concepto.trim()){alert("Ponele un nombre al plan.");return;}
+    var cuotas=armarCuotas(formPlan);
+    if(cuotas.length===0){alert("El plan no tiene ni anticipo ni cuotas.");return;}
+    var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"otros";
+    onSave({
+      id:"plan_"+String(Date.now()),
+      tipo:"plan", grupo:g, local:formPlan.local, area:grupoDe(g).area,
+      concepto:formPlan.concepto.trim(), referencia:formPlan.nro_plan.trim(),
+      nro_plan:formPlan.nro_plan.trim(),
+      monto:parseFloat(formPlan.montoCuota)||0,
+      recurrente:false, dia:null, fecha:null, activo:true,
+      notas:formPlan.notas||"", cuotas:cuotas.length, cuotas_previas:0,
+      cuotas_plan:cuotas, pagos:[],
+      usuario:usuario, created_at:new Date().toISOString()
+    });
+    setShowPlan(false);
+  }
+  // Una cuota de un plan se paga igual que cualquier vencimiento: genera su egreso.
+  function guardarCuota(v, nro, cambios){
+    var cs=cuotasPlan(v).map(function(c){return c.nro===nro?{...c,...cambios}:c;});
+    onSave({...v,cuotas_plan:cs});
+  }
+
   function borrar(v){
     if(!window.confirm("¿Borrar el vencimiento \""+v.concepto+"\"?\n\nLos egresos que ya generó quedan como están."))return;
     onDelete(v.id);
@@ -7881,7 +7969,7 @@ function PanelVencimientos(p){
 
   function abrirPago(x){
     setPagando(x);
-    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:x.v.monto||""});
+    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:(x.cuota?x.cuota.monto:x.v.monto)||""});
   }
   function confirmarPago(){
     var x=pagando; if(!x)return;
@@ -7902,13 +7990,19 @@ function PanelVencimientos(p){
         usuario:usuario, created_at:new Date().toISOString()
       });
     }
-    var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;});
-    pagos.push({periodo:mesFiltro,fecha:formPago.fecha,monto:monto,medio:formPago.medio||"",facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId});
-    onSave({...x.v,pagos:pagos});
+    var datosPago={fecha:formPago.fecha,monto:monto,medio:formPago.medio||"",facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId};
+    if(x.cuota){
+      guardarCuota(x.v,x.cuota.nro,{pago:datosPago});
+    }else{
+      var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;});
+      pagos.push({periodo:mesFiltro,...datosPago});
+      onSave({...x.v,pagos:pagos});
+    }
     setPagando(null);
   }
   function deshacerPago(x){
-    if(!window.confirm("¿Marcar como impago "+x.v.concepto+" de "+mesFiltro+"?\n\nOjo: el egreso que se generó NO se borra, hay que borrarlo desde Egresos."))return;
+    if(!window.confirm("¿Marcar como impago "+x.v.concepto+(x.cuota?" — cuota "+x.cuota.nro:"")+"?\n\nOjo: el egreso que se generó NO se borra, hay que borrarlo desde Egresos."))return;
+    if(x.cuota){ guardarCuota(x.v,x.cuota.nro,{pago:null}); return; }
     onSave({...x.v,pagos:(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;})});
   }
 
@@ -7943,6 +8037,7 @@ function PanelVencimientos(p){
           <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
             {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>
+          {grupoFiltro&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
           {grupoFiltro&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
       </div>
@@ -7954,7 +8049,7 @@ function PanelVencimientos(p){
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
             {GRUPOS_VENC.map(function(g){
               var delGrupo=delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
-              var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+              var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0);
               var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
               var prox=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias>=0;}).sort(function(a,b){return a.dias-b.dias;})[0];
               return(
@@ -7976,7 +8071,7 @@ function PanelVencimientos(p){
             })}
           </div>
           <button onClick={function(){setGrupoFiltro("all");}} style={{width:"100%",background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
-            📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0))} a pagar en {mesFiltro}
+            📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))} a pagar en {mesFiltro}
           </button>
         </div>
       )}
@@ -7986,7 +8081,7 @@ function PanelVencimientos(p){
       <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
         {[{id:"all",label:"Todos",color:"#F0EDE8"}].concat(GRUPOS_VENC).map(function(g){
           var delGrupo=g.id==="all"?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
-          var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+parseFloat(x.v.monto||0);},0);
+          var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0);
           var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
           var activo=grupoFiltro===g.id;
           return(
@@ -8119,6 +8214,165 @@ function PanelVencimientos(p){
         </div>
       )}
 
+      {/* Alta de un plan de pago */}
+      {showPlan&&(
+        <div style={{background:"#0F0A14",border:"1px solid #8B2FC955",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#A855F7",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>📋 Nuevo plan de pago</div>
+          <div style={{fontSize:11,color:"#5A2A7A",marginBottom:12}}>Se arman todas las cuotas de una vez. Después cada una se edita por separado: los montos casi nunca son iguales.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Nombre del plan</label>
+              <input value={formPlan.concepto} onChange={function(e){setFormPlan(function(f){return{...f,concepto:e.target.value};});}} placeholder="Moratoria IVA 2026" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>N° de plan</label>
+              <input value={formPlan.nro_plan} onChange={function(e){setFormPlan(function(f){return{...f,nro_plan:e.target.value};});}} placeholder="J-123456" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+              <select value={formPlan.local} onChange={function(e){setFormPlan(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+            </div>
+          </div>
+          <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
+            <div style={{fontSize:10,color:"#A855F7",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Cuota 0 — anticipo</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto</label>
+                <input type="number" value={formPlan.anticipo} onChange={function(e){setFormPlan(function(f){return{...f,anticipo:e.target.value};});}} placeholder="0 si no hay" style={INP}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vence</label>
+                <input type="date" value={formPlan.fechaAnticipo} onChange={function(e){setFormPlan(function(f){return{...f,fechaAnticipo:e.target.value};});}} style={INP}/>
+              </div>
+            </div>
+          </div>
+          <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
+            <div style={{fontSize:10,color:"#A855F7",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Cuotas</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:9}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Cantidad</label>
+                <input type="number" min="0" value={formPlan.cantidad} onChange={function(e){setFormPlan(function(f){return{...f,cantidad:e.target.value};});}} style={INP}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto de cuota</label>
+                <input type="number" value={formPlan.montoCuota} onChange={function(e){setFormPlan(function(f){return{...f,montoCuota:e.target.value};});}} placeholder="0" style={INP}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Día de vencimiento</label>
+                <input type="number" min="1" max="31" value={formPlan.dia} onChange={function(e){setFormPlan(function(f){return{...f,dia:e.target.value};});}} style={INP}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Primera cuota</label>
+                <input type="month" value={formPlan.mesInicio} onChange={function(e){setFormPlan(function(f){return{...f,mesInicio:e.target.value};});}} style={INP}/>
+              </div>
+            </div>
+            {(parseInt(formPlan.cantidad,10)||0)>0&&(parseFloat(formPlan.montoCuota)||0)>0&&(
+              <div style={{fontSize:11,color:"#A855F7",marginTop:9}}>
+                {formPlan.cantidad} cuotas de {fmt(parseFloat(formPlan.montoCuota))}{(parseFloat(formPlan.anticipo)||0)>0?" + anticipo de "+fmt(parseFloat(formPlan.anticipo)):""} = <b>{fmt((parseFloat(formPlan.anticipo)||0)+(parseInt(formPlan.cantidad,10)||0)*(parseFloat(formPlan.montoCuota)||0))}</b>
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={doSavePlan} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>📋 Crear plan</button>
+            <button onClick={function(){setShowPlan(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* La planilla del plan: una fila por cuota, con su monto y su fecha editables */}
+      {grupoFiltro&&(function(){
+        var planes=vencimientos.filter(function(v){
+          return v.activo!==false&&esPlan(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);
+        });
+        if(planes.length===0)return null;
+        return(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:"#A855F7",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>📋 Planes de pago</div>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {planes.map(function(v){
+                var rp=resumenPlan(v);
+                var abierto=planAbierto===v.id;
+                var l=getLocal(v.local);
+                return(
+                  <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
+                    <div onClick={function(){setPlanAbierto(abierto?null:v.id);}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>
+                          <span style={{fontSize:10,color:"#666",marginRight:6}}>{abierto?"▾":"▸"}</span>
+                          {v.concepto} {v.nro_plan?<span style={{fontSize:11,color:"#A855F7",fontWeight:400}}>· plan {v.nro_plan}</span>:null}
+                        </div>
+                        <div style={{fontSize:10,color:"#555",marginTop:3}}>
+                          <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:v.local}</span> · {rp.pagadas} de {rp.cuotas} pagadas
+                          {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:rp.resta>0?"#A855F7":"#3A7D44"}}>{fmt(rp.resta)}</div>
+                        <div style={{fontSize:9,color:"#5A2A7A"}}>de {fmt(rp.total)}</div>
+                      </div>
+                    </div>
+                    {abierto&&(
+                      <div style={{borderTop:"1px solid #8B2FC922",padding:"10px 12px",background:"#0A0710"}}>
+                        <div style={{overflowX:"auto"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",minWidth:420,fontVariantNumeric:"tabular-nums"}}>
+                            <thead>
+                              <tr>
+                                {["Cuota","Vence","Monto","Estado",""].map(function(h,i){return(
+                                  <th key={i} style={{fontSize:9,color:"#5A2A7A",textTransform:"uppercase",letterSpacing:1,fontWeight:700,textAlign:i>=2?"right":"left",padding:"5px 6px",borderBottom:"1px solid #8B2FC922"}}>{h}</th>
+                                );})}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cuotasPlan(v).map(function(c){
+                                var editando=editCuota&&editCuota.planId===v.id&&editCuota.nro===c.nro;
+                                var vencida=!c.pago&&c.vence&&c.vence<hoy;
+                                return(
+                                  <tr key={c.nro}>
+                                    <td style={{padding:"6px",fontSize:11,color:c.nro===0?"#A855F7":"#888",fontWeight:c.nro===0?700:400,borderBottom:"1px solid #150C1C"}}>
+                                      {c.nro===0?"Anticipo":c.nro}
+                                    </td>
+                                    <td style={{padding:"6px",fontSize:11,color:vencida?"#C1440E":"#888",borderBottom:"1px solid #150C1C"}}>
+                                      {editando?(
+                                        <input type="date" defaultValue={c.vence} onChange={function(e){guardarCuota(v,c.nro,{vence:e.target.value});}} style={{...INP,padding:"4px 6px",fontSize:11}}/>
+                                      ):(c.vence?fmtDate(c.vence):"—")}
+                                    </td>
+                                    <td style={{padding:"6px",fontSize:11,textAlign:"right",color:"#F0EDE8",borderBottom:"1px solid #150C1C"}}>
+                                      {editando?(
+                                        <input type="number" defaultValue={c.monto} onBlur={function(e){guardarCuota(v,c.nro,{monto:parseFloat(e.target.value)||0});}} style={{...INP,padding:"4px 6px",fontSize:11,textAlign:"right"}}/>
+                                      ):fmt(c.monto)}
+                                    </td>
+                                    <td style={{padding:"6px",fontSize:10,textAlign:"right",borderBottom:"1px solid #150C1C",color:c.pago?"#3A7D44":(vencida?"#C1440E":"#555")}}>
+                                      {c.pago?"✅ "+fmtDate(c.pago.fecha):(vencida?"⚠️ vencida":"pendiente")}
+                                    </td>
+                                    <td style={{padding:"6px",textAlign:"right",borderBottom:"1px solid #150C1C"}}>
+                                      <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                                        {!c.pago&&<button onClick={function(){abrirPago({v:v,cuota:c,fecha:c.vence,pago:null,dias:null});}} style={{background:"#3A7D44",border:"none",borderRadius:5,color:"#fff",fontSize:9,fontWeight:700,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>Pagar</button>}
+                                        {c.pago&&<button onClick={function(){deshacerPago({v:v,cuota:c});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:5,color:"#666",fontSize:9,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>Deshacer</button>}
+                                        <button onClick={function(){setEditCuota(editando?null:{planId:v.id,nro:c.nro});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:5,color:editando?"#A855F7":"#666",fontSize:9,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>{editando?"listo":"✏️"}</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9,paddingTop:8,borderTop:"1px solid #8B2FC922"}}>
+                          <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}</span>
+                          <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar plan</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Marcar pagado */}
       {pagando&&(
         <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
@@ -8190,7 +8444,16 @@ function PanelVencimientos(p){
                       {x.v.concepto}
                       {x.v.referencia?<span style={{fontSize:10,color:"#666",fontWeight:400,marginLeft:7}}>#{x.v.referencia}</span>:null}
                     </div>
-                    {(function(){
+                    {x.cuota&&(function(){
+                      var rp=resumenPlan(x.v);
+                      return(
+                        <div style={{fontSize:10,color:"#8B2FC9",marginTop:3,fontWeight:700}}>
+                          {x.cuota.nro===0?"Anticipo (cuota 0)":"Cuota "+x.cuota.nro+" de "+(rp.cuotas-(cuotasPlan(x.v).some(function(c){return c.nro===0;})?1:0))}
+                          <span style={{color:"#5A2A7A",fontWeight:400}}> · plan {x.v.nro_plan||"s/n"} · restan {fmt(rp.resta)}</span>
+                        </div>
+                      );
+                    })()}
+                    {!x.cuota&&(function(){
                       var cu=cuotasDe(x.v);
                       if(!cu)return null;
                       var nro=x.pago?Math.min(cu.pagadas,cu.total):Math.min(cu.pagadas+1,cu.total);
@@ -8212,14 +8475,14 @@ function PanelVencimientos(p){
                     {x.v.notas&&<div style={{fontSize:10,color:"#444",marginTop:3,fontStyle:"italic"}}>📝 {x.v.notas}</div>}
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.pago?"#3A7D44":"#F0EDE8"}}>{fmt((x.pago&&x.pago.monto)||x.v.monto)}</div>
+                    <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.pago?"#3A7D44":"#F0EDE8"}}>{fmt(montoDe(x))}</div>
                     <div style={{display:"flex",gap:5,marginTop:7,justifyContent:"flex-end",flexWrap:"wrap"}}>
                       {x.pago?(
                         <button onClick={function(){deshacerPago(x);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>Deshacer</button>
                       ):(
                         <button onClick={function(){abrirPago(x);}} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
                       )}
-                      <button onClick={function(){abrirEditar(x.v);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>✏️</button>
+                      <button onClick={function(){ if(esPlan(x.v))setPlanAbierto(x.v.id); else abrirEditar(x.v); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>{esPlan(x.v)?"📋":"✏️"}</button>
                       <button onClick={function(){borrar(x.v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️</button>
                     </div>
                   </div>

@@ -218,6 +218,27 @@ Administrativo, Servicios a Servicios, Gremio a Sueldos): al elegir el rubro se 
 sola, y se puede cambiar. El rubro ordena los vencimientos; el área es la que manda al
 egreso que se genera al pagar.
 
+### Planes de pago
+
+AFIP, ARBA y la municipalidad no mandan un vencimiento por mes: mandan **un plan**, con su
+número, su **anticipo —la cuota cero—** y cuotas que casi nunca valen lo mismo entre sí. Por
+eso un plan es otra cosa que un vencimiento suelto y guarda **sus cuotas una por una**, con
+su monto y su fecha, en vez de un día del mes y un importe estimado.
+
+Se carga desde **+ Plan de pago**, adentro del submódulo del organismo: nombre, N° de plan,
+anticipo con su fecha, cantidad de cuotas, monto y día de vencimiento. Con eso se arma la
+grilla entera de una vez. Las cuotas arrancan el mes siguiente al anticipo, para que la
+primera no venza antes que él.
+
+Después cada cuota **se edita por separado** —monto y fecha— desde la planilla del plan, que
+es una fila por cuota con su estado: pagada, vencida o pendiente. Ahí mismo se paga cada una,
+y eso genera su egreso como cualquier otro pago. Abajo queda lo pagado y lo que resta.
+
+Las cuotas que vencen en el mes **también aparecen en el listado del mes**, mezcladas con el
+resto, diciendo de qué plan son y cuánto resta. Un plan puede tener **más de una cuota en el
+mismo mes** —el anticipo y la primera suelen caer juntos— y se listan las dos: si se mostrara
+sólo una, el mes podría figurar al día teniendo una cuota vencida.
+
 **Cuotas.** Un recurrente puede tener un total de cuotas —un préstamo, una compra
 financiada— o no tenerlo, como el alquiler, que no termina nunca. Las **pagadas no se
 cargan a mano**: son las que se fueron marcando pagadas en el módulo, más las que ya venían

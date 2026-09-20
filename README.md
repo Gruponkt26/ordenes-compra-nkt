@@ -155,6 +155,9 @@ create table if not exists vencimientos (
   grupo       text default 'otros',
   cuotas      int default 0,
   cuotas_previas int default 0,
+  tipo        text default 'simple',
+  nro_plan    text,
+  cuotas_plan jsonb default '[]'::jsonb,
   recurrente  boolean default true,
   dia         int,
   fecha       date,
@@ -174,6 +177,9 @@ alter table vencimientos add column if not exists grupo          text default 'o
 alter table vencimientos add column if not exists referencia     text;
 alter table vencimientos add column if not exists cuotas         int default 0;
 alter table vencimientos add column if not exists cuotas_previas int default 0;
+alter table vencimientos add column if not exists tipo           text default 'simple';
+alter table vencimientos add column if not exists nro_plan       text;
+alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;
 ```
 
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
@@ -224,6 +230,10 @@ AFIP, ARBA y la municipalidad no mandan un vencimiento por mes: mandan **un plan
 número, su **anticipo —la cuota cero—** y cuotas que casi nunca valen lo mismo entre sí. Por
 eso un plan es otra cosa que un vencimiento suelto y guarda **sus cuotas una por una**, con
 su monto y su fecha, en vez de un día del mes y un importe estimado.
+
+Necesita tres columnas más en la tabla —`tipo`, `nro_plan` y `cuotas_plan`—, incluidas en el
+SQL de arriba. Sin ellas el plan se guarda sin sus cuotas, que es lo mismo que no guardarlo:
+el aviso lo dice al intentarlo.
 
 Se carga desde **+ Plan de pago**, adentro del submódulo del organismo: nombre, N° de plan,
 anticipo con su fecha, cantidad de cuotas, monto y día de vencimiento. Con eso se arma la

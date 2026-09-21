@@ -183,6 +183,7 @@ alter table vencimientos add column if not exists cuotas_plan    jsonb default '
 alter table vencimientos add column if not exists cuit           text;
 alter table vencimientos add column if not exists debito_cuenta  text;
 alter table vencimientos add column if not exists debito_cbu     text;
+alter table vencimientos add column if not exists caduca_en      int default 3;
 ```
 
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
@@ -331,6 +332,16 @@ de inicio equivocado; una cuota pagada acá conserva la fecha real de su pago—
 mes más— para cuando el plan se estira; y **🗑️ Borrar plan** lo saca entero. Dentro de la
 planilla, cada cuota tiene su ✏️ para el monto y la fecha, y las impagas un ✕ para borrarlas
 —una pagada primero hay que deshacerla—.
+
+**Un plan se cae si se dejan de pagar cuotas**, y perderlo significa volver a la deuda
+original con sus intereses, así que se avisa antes: con **una cuota menos que el límite**
+sale un cartel amarillo —«2 cuotas vencidas sin pagar: con una más se cae el plan»— y al
+llegar al límite uno rojo —«3 cuotas vencidas sin pagar: el plan se cayó»—. El aviso está en
+la tarjeta del plan, en la portada del módulo y en el Dashboard de Administración, porque un
+plan por caerse es más urgente que un vencimiento suelto.
+
+El límite es **3 cuotas impagas**, que es lo habitual en AFIP y ARBA, y se puede cambiar por
+plan —algunos caducan con 2— en el campo «Se cae con» del alta y de ✏️ Editar plan.
 
 La tarjeta de cada plan lleva sus **cuatro cuentas**, sacadas de las cuotas y no de un
 contador a mano: **totales**, **pagadas**, **por pagar** —las que faltan y todavía no

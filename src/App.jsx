@@ -7820,6 +7820,22 @@ function cuotasDelMes(v, mes){
 // El estado de un plan, contado de las cuotas y no a mano. Lo que falta se parte en dos,
 // porque no es lo mismo deber una cuota que todavía no tener que pagarla: adeudadas son las
 // impagas cuya fecha ya pasó, por pagar las impagas que todavía no vencieron.
+// Un plan de facilidades se cae si se dejan de pagar cuotas: AFIP y ARBA lo caducan a las
+// tres impagas, y algunos planes a las dos. Se guarda por plan —caduca_en— con 3 de default,
+// que es lo habitual.
+var CADUCA_DEFAULT=3;
+function caducaEn(v){ var n=parseInt(v&&v.caduca_en,10); return n>0?n:CADUCA_DEFAULT; }
+// El estado frente a esa regla, mirando las cuotas vencidas sin pagar.
+function riesgoPlan(v){
+  var rp=resumenPlan(v);
+  var limite=caducaEn(v);
+  return {
+    adeudadas:rp.adeudadas, limite:limite,
+    caido:rp.adeudadas>=limite,
+    enRiesgo:rp.adeudadas>0&&rp.adeudadas>=limite-1&&rp.adeudadas<limite,
+    faltan:Math.max(0,limite-rp.adeudadas)
+  };
+}
 function resumenPlan(v){
   var cs=cuotasPlan(v);
   var hoy=new Date().toISOString().split("T")[0];
@@ -7894,6 +7910,15 @@ function cuotasDe(v){
 // lado: en el Dashboard y en la solapa de Vencimientos. Mira el mes de hoy y el que viene,
 // que es todo lo que hace falta para avisar con una semana de anticipación, y las cuotas de
 // los planes, que tienen su propia fecha.
+// Los planes que están por caerse o ya se cayeron, para avisarlo afuera del módulo.
+function planesEnRiesgo(vencimientos){
+  return (vencimientos||[]).filter(function(v){
+    if(v.activo===false||!esPlan(v))return false;
+    var rg=riesgoPlan(v);
+    return rg.caido||rg.enRiesgo;
+  }).map(function(v){ return {v:v,rg:riesgoPlan(v)}; })
+    .sort(function(a,b){ return b.rg.adeudadas-a.rg.adeudadas; });
+}
 function avisosVencimientos(vencimientos, diasAviso){
   var dias=diasAviso===undefined?7:diasAviso;
   var hoy=new Date().toISOString().split("T")[0];
@@ -7952,7 +7977,7 @@ function PanelVencimientos(p){
   var FORM_PAGO={fecha:hoy,monto:"",total:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,caduca_en:"3",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
@@ -8070,6 +8095,7 @@ function PanelVencimientos(p){
       local:porCuit(g)?cuitVenc(formPlan.cuit).local:formPlan.local,
       cuit:porCuit(g)?formPlan.cuit:"",
       debito_cuenta:formPlan.debito_cuenta||"", debito_cbu:(formPlan.debito_cbu||"").trim(),
+      caduca_en:parseInt(formPlan.caduca_en,10)||CADUCA_DEFAULT,
       concepto:formPlan.concepto.trim(), referencia:formPlan.nro_plan.trim(),
       nro_plan:formPlan.nro_plan.trim(),
       monto:parseFloat(formPlan.montoCuota)||0,
@@ -8093,6 +8119,7 @@ function PanelVencimientos(p){
       id:v.id, concepto:v.concepto||"", nro_plan:v.nro_plan||v.referencia||"",
       cuit:cuitIdDe(v), local:v.local||"l4",
       debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||"",
+      caduca_en:String(caducaEn(v)),
       tieneAnticipo:!!ant, fechaAnticipo:(ant&&ant.vence)||"", primera:(pri&&pri.vence)||""
     });
   }
@@ -8136,6 +8163,7 @@ function PanelVencimientos(p){
       cuit:porCuit(v.grupo)?f.cuit:"",
       local:porCuit(v.grupo)?cuitVenc(f.cuit).local:f.local,
       debito_cuenta:f.debito_cuenta||"", debito_cbu:(f.debito_cbu||"").trim(),
+      caduca_en:parseInt(f.caduca_en,10)||CADUCA_DEFAULT,
       notas:f.notas||""
     });
     setEditPlan(null);
@@ -8348,6 +8376,30 @@ function PanelVencimientos(p){
 
       {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
           —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
+      {!grupoFiltro&&!verTodos&&(function(){
+        var enRiesgo=planesEnRiesgo(vencimientos);
+        if(enRiesgo.length===0)return null;
+        var hayCaidos=enRiesgo.some(function(x){return x.rg.caido;});
+        var color=hayCaidos?"#C1440E":"#D4A017";
+        return(
+          <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,color:color,fontWeight:800,marginBottom:6}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
+            {enRiesgo.map(function(x,i){
+              var g=grupoDe(x.v.grupo);
+              return(
+                <div key={i} onClick={function(){setGrupoFiltro(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
+                  <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
+                    {x.rg.caido
+                      ? x.rg.adeudadas+" cuotas vencidas: se cayó"
+                      : x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {!grupoFiltro&&!verTodos&&(function(){
         var av=avisosVencimientos(vencimientos,7);
         if(av.length===0)return null;
@@ -8632,6 +8684,11 @@ function PanelVencimientos(p){
                 <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Primera cuota</label>
                 <input type="month" value={formPlan.mesInicio} onChange={function(e){setFormPlan(function(f){return{...f,mesInicio:e.target.value};});}} style={INP}/>
               </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se cae con</label>
+                <input type="number" min="1" max="12" value={formPlan.caduca_en} onChange={function(e){setFormPlan(function(f){return{...f,caduca_en:e.target.value};});}} style={INP}/>
+                <div style={{fontSize:9,color:"#444",marginTop:4}}>cuotas impagas</div>
+              </div>
             </div>
             {/* Un plan que ya se venía pagando: se carga entero y las cuotas viejas nacen
                 pagadas, sin generar egresos —esa plata salió antes—. */}
@@ -8738,6 +8795,25 @@ function PanelVencimientos(p){
                         <div style={{fontSize:9,color:"#5A2A7A"}}>de {fmt(rp.total)}</div>
                       </div>
                     </div>
+                    {(function(){
+                      var rg=riesgoPlan(v);
+                      if(!rg.caido&&!rg.enRiesgo)return null;
+                      var color=rg.caido?"#C1440E":"#D4A017";
+                      return(
+                        <div style={{margin:"0 14px 10px",background:rg.caido?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:9,padding:"9px 11px"}}>
+                          <div style={{fontSize:11,fontWeight:800,color:color}}>
+                            {rg.caido
+                              ? "🚨 "+rg.adeudadas+" cuotas vencidas sin pagar: el plan se cayó"
+                              : "⚠️ "+rg.adeudadas+" cuota"+(rg.adeudadas===1?"":"s")+" vencida"+(rg.adeudadas===1?"":"s")+" sin pagar: con "+(rg.faltan===1?"una más":rg.faltan+" más")+" se cae el plan"}
+                          </div>
+                          <div style={{fontSize:9,color:"#666",marginTop:3}}>
+                            {rg.caido
+                              ? "Este plan caduca con "+rg.limite+" cuotas impagas. Pagá lo adeudado o fijate si hay que rehacerlo."
+                              : "Este plan caduca con "+rg.limite+" cuotas impagas."}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {/* Las cuatro cuentas del plan, contadas de las cuotas: cuántas son,
                         cuántas están pagas, cuántas faltan sin haber vencido y cuántas se
                         deben porque la fecha ya pasó. */}
@@ -8809,6 +8885,10 @@ function PanelVencimientos(p){
                               <input type="date" value={editPlan.fechaAnticipo} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,fechaAnticipo:x};});}} style={INP}/>
                             </div>
                           )}
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se cae con (cuotas impagas)</label>
+                            <input type="number" min="1" max="12" value={editPlan.caduca_en} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,caduca_en:x};});}} style={INP}/>
+                          </div>
                           <div>
                             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha de la 1ª cuota</label>
                             <input type="date" value={editPlan.primera} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,primera:x};});}} style={INP}/>
@@ -15059,7 +15139,7 @@ async function sbLoadVencimientos() {
 // cualquiera —hasta una de las de siempre, como subramo— se avisa antes de que alguien
 // intente guardar y se quede sin entender por qué no anda.
 var COLUMNAS_NUEVAS_VENC=["local","concepto","area","subramo","monto","recurrente","dia","fecha","activo","notas","pagos","usuario",
-  "grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu"];
+  "grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu","caduca_en"];
 async function sbColumnasFaltantesVencimientos() {
   var pide = COLUMNAS_NUEVAS_VENC.slice();
   var faltan = [];
@@ -15089,6 +15169,7 @@ var SQL_VENCIMIENTOS={
   cuit:"alter table vencimientos add column if not exists cuit           text;",
   debito_cuenta:"alter table vencimientos add column if not exists debito_cuenta  text;",
   debito_cbu:"alter table vencimientos add column if not exists debito_cbu     text;",
+  caduca_en:"alter table vencimientos add column if not exists caduca_en      int default 3;",
   local:"alter table vencimientos add column if not exists local          text;",
   concepto:"alter table vencimientos add column if not exists concepto       text;",
   area:"alter table vencimientos add column if not exists area           text;",
@@ -16652,6 +16733,37 @@ export default function App() {
                     <div style={{fontSize:10,color:"#888",marginTop:4}}>{localesSinCierre.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}</div>
                   </div>
                 )}
+
+                {/* Un plan a punto de caerse es más urgente que un vencimiento suelto:
+                    perderlo significa volver a la deuda original, con sus intereses. */}
+                {(function(){
+                  var enRiesgo=planesEnRiesgo(vencimientos);
+                  if(enRiesgo.length===0)return null;
+                  var hayCaidos=enRiesgo.some(function(x){return x.rg.caido;});
+                  var color=hayCaidos?"#C1440E":"#D4A017";
+                  return(
+                    <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
+                        <div style={{fontSize:11,color:color,fontWeight:800}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
+                        <button onClick={function(){irVista("vencimientos");}} style={{background:"none",border:"1px solid "+color+"55",borderRadius:7,color:color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>Ver planes →</button>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                        {enRiesgo.map(function(x,i){
+                          var g=grupoDe(x.v.grupo);
+                          return(
+                            <div key={i} style={{fontSize:10,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
+                              <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
+                                {x.rg.caido
+                                  ? x.rg.adeudadas+" cuotas vencidas: se cayó"
+                                  : x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Lo que vence esta semana, o ya venció: es lo primero que hay que ver al entrar */}
                 {(function(){

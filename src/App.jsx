@@ -8076,31 +8076,6 @@ function PanelVencimientos(p){
         </div>
       )}
 
-      {/* Adentro de un submódulo, la barra para saltar a otro sin volver atrás. */}
-      {grupoFiltro&&(
-      <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-        {[{id:"all",label:"Todos",color:"#F0EDE8"}].concat(GRUPOS_VENC).map(function(g){
-          var delGrupo=g.id==="all"?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
-          var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0);
-          var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
-          var activo=grupoFiltro===g.id;
-          return(
-            <button key={g.id} onClick={function(){setGrupoFiltro(g.id);}} style={{
-              padding:"7px 12px",borderRadius:9,cursor:"pointer",fontFamily:"'Inter',sans-serif",textAlign:"left",
-              border:"1px solid "+(activo?g.color+"66":"#1A1A1A"),background:activo?g.color+"18":"#0D0D0D"}}>
-              <div style={{fontSize:11,fontWeight:700,color:activo?g.color:"#666"}}>
-                {g.id==="all"?"Todos":g.label}
-                {venc>0&&<span style={{color:"#C1440E",marginLeft:5}}>●</span>}
-              </div>
-              <div style={{fontSize:10,color:activo?"#888":"#3A3A3A",marginTop:1,fontVariantNumeric:"tabular-nums"}}>
-                {falta>0?fmt(falta)+" a pagar":"al día"}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      )}
-
       {/* Resumen del mes */}
       {grupoFiltro&&(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>

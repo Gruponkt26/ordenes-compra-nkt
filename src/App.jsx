@@ -6496,6 +6496,13 @@ var MEDIOS_EGRESO=[
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
 var GRUPOS_MEDIOS_EGRESO=["Efectivo","Transferencia","Tarjeta","Otros"];
+// Las cuentas de las que puede salir un débito automático: las mismas de la lista de medios,
+// así lo que se anota acá es exactamente lo que después se elige al pagar.
+function cuentasDebito(){ return MEDIOS_EGRESO.filter(function(m){return m.grupo==="Transferencia"||m.grupo==="Tarjeta";}); }
+function etiquetaCuenta(valor){
+  var m=MEDIOS_EGRESO.find(function(x){return x.value===valor;});
+  return m?m.label.replace(/^[^ ]+ /,""):valor;
+}
 
 function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent, proveedores}){
   var hoy=new Date().toISOString().split("T")[0];
@@ -7760,6 +7767,7 @@ var GRUPOS_VENC=[
   {id:"municipal", label:"🏘️ Municipalidad", corto:"Municipalidad", color:"#E07B00", area:"Administrativo", detalle:"Seguridad e Higiene, tasas"},
   {id:"servicios", label:"💡 Servicios",     corto:"Servicios",     color:"#D4A017", area:"Servicios",      detalle:"Luz, gas, internet"},
   {id:"gremio",    label:"👥 Gremio",        corto:"Gremio",        color:"#3A7D44", area:"Sueldos",        detalle:"Cuota sindical, obra social"},
+  {id:"creditos",  label:"🏦 Créditos",      corto:"Créditos",      color:"#1A8A7B", area:"Administrativo", detalle:"Préstamos y créditos bancarios"},
   {id:"otros",     label:"📦 Otros",         corto:"Otros",         color:"#C1440E", area:"Administrativo", detalle:"Alquiler, cuotas, el resto"},
 ];
 // "iibb" era el rubro viejo, de cuando ARBA y Municipalidad iban juntos: lo ya cargado con
@@ -7777,7 +7785,7 @@ var CUITS_VENC=[
   {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"CUIT personal",corto:"CUIT personal",color:"#C1440E",local:"l1",cubre:"El Bodegón"},
   {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"Calzón Gitano SRL",corto:"SRL",color:"#1A6B8A",local:"l4",cubre:"Kusama + Colantonio's"},
 ];
-var GRUPOS_POR_CUIT=["afip","arba","gremio"];
+var GRUPOS_POR_CUIT=["afip","arba","gremio","creditos"];
 function porCuit(grupo){ return GRUPOS_POR_CUIT.indexOf(grupoDe(grupo||"otros").id)>=0; }
 function cuitVenc(id){ return CUITS_VENC.find(function(c){return c.id===id;})||CUITS_VENC[1]; }
 // Lo cargado antes de que existiera el campo: el Bodegón es el CUIT personal, el resto la SRL.
@@ -7849,6 +7857,41 @@ function cuotasDe(v){
   return {total:total,previas:previas,pagadas:Math.min(pagadas,total),faltan:Math.max(0,total-pagadas),completo:pagadas>=total};
 }
 
+// Lo que vence pronto o ya venció, calculado afuera del módulo para poder avisarlo en otro
+// lado: en el Dashboard y en la solapa de Vencimientos. Mira el mes de hoy y el que viene,
+// que es todo lo que hace falta para avisar con una semana de anticipación, y las cuotas de
+// los planes, que tienen su propia fecha.
+function avisosVencimientos(vencimientos, diasAviso){
+  var dias=diasAviso===undefined?7:diasAviso;
+  var hoy=new Date().toISOString().split("T")[0];
+  var limite=new Date(Date.now()+dias*86400000).toISOString().split("T")[0];
+  var out=[];
+  function agregar(v,cuota,fecha,pago){
+    if(!fecha||pago)return;
+    if(fecha>limite)return; // todavía falta: no es un aviso
+    out.push({v:v,cuota:cuota,fecha:fecha,
+      dias:Math.round((new Date(fecha+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),
+      monto:parseFloat((cuota?cuota.monto:v.monto)||0)});
+  }
+  function mesSiguiente(mes){
+    var pr=String(mes).split("-");
+    var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10),1);
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+  }
+  (vencimientos||[]).forEach(function(v){
+    if(v.activo===false)return;
+    if(esPlan(v)){ cuotasPlan(v).forEach(function(c){ agregar(v,c,c.vence,c.pago); }); return; }
+    var cu=cuotasDe(v);
+    if(cu&&cu.completo)return; // ya se terminó de pagar
+    if(v.recurrente){
+      var m=hoy.substring(0,7);
+      [m,mesSiguiente(m)].forEach(function(mm){ agregar(v,null,fechaVencimiento(v,mm),pagoDelPeriodo(v,mm)); });
+      return;
+    }
+    agregar(v,null,v.fecha,pagoDelPeriodo(v,periodoDe(v.fecha)));
+  });
+  return out.sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
+}
 function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
@@ -7867,12 +7910,12 @@ function PanelVencimientos(p){
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
-  var FORM_VACIO={local:"l1",cuit:"c2",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
+  var FORM_VACIO={local:"l1",cuit:"c2",debito_cuenta:"",debito_cbu:"",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
@@ -7934,7 +7977,7 @@ function PanelVencimientos(p){
     setEditId(null); setShowForm(true);
   }
   function abrirEditar(v){
-    setForm({local:v.local||"l1",cuit:cuitIdDe(v),concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
+    setForm({local:v.local||"l1",cuit:cuitIdDe(v),debito_cuenta:v.debito_cuenta||"",debito_cbu:v.debito_cbu||"",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
     setEditId(v.id); setShowForm(true);
   }
   function doSave(){
@@ -7944,6 +7987,7 @@ function PanelVencimientos(p){
       id:editId||("venc_"+String(Date.now())),
       local:porCuit(form.grupo)?cuitVenc(form.cuit).local:form.local,
       cuit:porCuit(form.grupo)?form.cuit:"",
+      debito_cuenta:form.debito_cuenta||"", debito_cbu:(form.debito_cbu||"").trim(),
       concepto:form.concepto.trim(), area:form.area, subramo:form.subramo||"",
       monto:parseFloat(form.monto)||0,
       recurrente:!!form.recurrente,
@@ -7976,6 +8020,7 @@ function PanelVencimientos(p){
       tipo:"plan", grupo:g, area:grupoDe(g).area,
       local:porCuit(g)?cuitVenc(formPlan.cuit).local:formPlan.local,
       cuit:porCuit(g)?formPlan.cuit:"",
+      debito_cuenta:formPlan.debito_cuenta||"", debito_cbu:(formPlan.debito_cbu||"").trim(),
       concepto:formPlan.concepto.trim(), referencia:formPlan.nro_plan.trim(),
       nro_plan:formPlan.nro_plan.trim(),
       monto:parseFloat(formPlan.montoCuota)||0,
@@ -8001,7 +8046,8 @@ function PanelVencimientos(p){
     var monto=(x.cuota?x.cuota.monto:x.v.monto)||"";
     setPagando(x);
     setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:monto});
-    setPagosPago([{medio:"",monto:monto===""?"":String(monto)}]);
+    // Si se debita solo, el medio ya se sabe: es la cuenta de la que sale.
+    setPagosPago([{medio:x.v.debito_cuenta||"",monto:monto===""?"":String(monto)}]);
   }
   // Un vencimiento se puede pagar con más de un medio —medio en efectivo y medio por
   // transferencia, o desde dos cuentas—: cada línea es un medio con su monto, y entre todas
@@ -8143,6 +8189,37 @@ function PanelVencimientos(p){
 
       {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
           —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
+      {!grupoFiltro&&(function(){
+        var av=avisosVencimientos(vencimientos,7);
+        if(av.length===0)return null;
+        var vencidos=av.filter(function(a){return a.dias<0;});
+        var color=vencidos.length>0?"#C1440E":"#D4A017";
+        return(
+          <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,color:color,fontWeight:700,marginBottom:7}}>
+              🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):""}{vencidos.length>0&&av.length>vencidos.length?" · ":""}{av.length>vencidos.length?(av.length-vencidos.length)+" vence"+(av.length-vencidos.length===1?"":"n")+" en los próximos 7 días":""}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {av.slice(0,6).map(function(a,i){
+                var g=grupoDe(a.v.grupo);
+                return(
+                  <div key={i} onClick={function(){setGrupoFiltro(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
+                    <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
+                      {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita de {etiquetaCuenta(a.v.debito_cuenta)}</span>:null}
+                    </span>
+                    <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
+                      {a.dias<0?"venció hace "+Math.abs(a.dias)+" día"+(Math.abs(a.dias)===1?"":"s"):(a.dias===0?"vence hoy":"en "+a.dias+" día"+(a.dias===1?"":"s"))} · {fmt(a.monto)}
+                    </span>
+                  </div>
+                );
+              })}
+              {av.length>6&&<div style={{fontSize:10,color:"#555",marginTop:2}}>y {av.length-6} más…</div>}
+            </div>
+          </div>
+        );
+      })()}
+
       {!grupoFiltro&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
@@ -8254,6 +8331,25 @@ function PanelVencimientos(p){
                 {AREAS_VENC.map(function(a){return <option key={a} value={a}>{a}</option>;})}
               </select>
             </div>
+          </div>
+          {/* De dónde se debita. Si tiene cuenta, es débito automático: se paga solo y el medio
+              ya viene puesto al marcarlo pagado. */}
+          <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
+            <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:7}}>🔁 Débito automático</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:9}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se debita de</label>
+                <select value={form.debito_cuenta} onChange={function(e){setForm(function(f){return{...f,debito_cuenta:e.target.value};});}} style={INP}>
+                  <option value="">— No se debita solo —</option>
+                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CBU o alias</label>
+                <input value={form.debito_cbu} onChange={function(e){setForm(function(f){return{...f,debito_cbu:e.target.value};});}} placeholder="CBU, alias o nº de cuenta" style={INP} disabled={!form.debito_cuenta}/>
+              </div>
+            </div>
+            <div style={{fontSize:9,color:"#444",marginTop:6}}>Dejalo en blanco si lo pagás vos. Con una cuenta puesta, al marcarlo pagado el medio ya viene elegido.</div>
           </div>
           <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
             <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:form.recurrente?9:9}}>
@@ -8372,6 +8468,23 @@ function PanelVencimientos(p){
               </div>
             )}
           </div>
+          <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
+            <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:7}}>🔁 Débito automático</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:9}}>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se debita de</label>
+                <select value={formPlan.debito_cuenta} onChange={function(e){setFormPlan(function(f){return{...f,debito_cuenta:e.target.value};});}} style={INP}>
+                  <option value="">— No se debita solo —</option>
+                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CBU o alias</label>
+                <input value={formPlan.debito_cbu} onChange={function(e){setFormPlan(function(f){return{...f,debito_cbu:e.target.value};});}} placeholder="CBU, alias o nº de cuenta" style={INP} disabled={!formPlan.debito_cuenta}/>
+              </div>
+            </div>
+            <div style={{fontSize:9,color:"#444",marginTop:6}}>Las cuotas de un plan casi siempre se debitan solas: poné de qué cuenta sale y al marcarlas pagadas el medio ya viene elegido.</div>
+          </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={doSavePlan} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>📋 Crear plan</button>
             <button onClick={function(){setShowPlan(false);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
@@ -8410,6 +8523,7 @@ function PanelVencimientos(p){
                           <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {rp.pagadas} de {rp.cuotas} pagadas
                           {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
                         </div>
+                        {v.debito_cuenta&&<div style={{fontSize:10,color:"#1A6B8A",marginTop:3}}>🔁 Se debita de {etiquetaCuenta(v.debito_cuenta)}{v.debito_cbu?" · "+v.debito_cbu:""}</div>}
                         <div style={{fontSize:10,marginTop:3,color:vencMes>0?"#C1440E":(pendMes.length>0?"#D4A017":"#3A7D44")}}>
                           {delMesPlan.length===0
                             ? "Sin cuotas en "+mesFiltro
@@ -8596,6 +8710,7 @@ function PanelVencimientos(p){
                       {x.v.recurrente?" · todos los meses":" · una vez"}
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>
+                    {x.v.debito_cuenta&&!x.pago&&<div style={{fontSize:10,color:"#1A6B8A",marginTop:2}}>🔁 Se debita de {etiquetaCuenta(x.v.debito_cuenta)}{x.v.debito_cbu?" · "+x.v.debito_cbu:""}</div>}
                     {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{(x.pago.medios&&x.pago.medios.length>1)?" · "+x.pago.medios.map(function(pg){return pg.medio+" "+fmt(pg.monto);}).join(" + "):(x.pago.medio?" · "+x.pago.medio:"")}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
                     {x.v.notas&&<div style={{fontSize:10,color:"#444",marginTop:3,fontStyle:"italic"}}>📝 {x.v.notas}</div>}
                   </div>
@@ -14496,7 +14611,7 @@ async function sbLoadVencimientos() {
 // Qué columnas nuevas le faltan a la tabla, preguntando antes de que alguien intente
 // guardar: Postgrest contesta 400 nombrando la primera que no existe, así que se la saca y
 // se vuelve a preguntar. Si está todo, es una sola consulta que no trae ninguna fila.
-var COLUMNAS_NUEVAS_VENC=["grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit"];
+var COLUMNAS_NUEVAS_VENC=["grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu"];
 async function sbColumnasFaltantesVencimientos() {
   var pide = COLUMNAS_NUEVAS_VENC.slice();
   var faltan = [];
@@ -14523,7 +14638,9 @@ var SQL_VENCIMIENTOS={
   tipo:"alter table vencimientos add column if not exists tipo           text default 'simple';",
   nro_plan:"alter table vencimientos add column if not exists nro_plan       text;",
   cuotas_plan:"alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;",
-  cuit:"alter table vencimientos add column if not exists cuit           text;"
+  cuit:"alter table vencimientos add column if not exists cuit           text;",
+  debito_cuenta:"alter table vencimientos add column if not exists debito_cuenta  text;",
+  debito_cbu:"alter table vencimientos add column if not exists debito_cbu     text;"
 };
 // Un plan sin estas dos columnas no es un plan: guardarlo igual dejaría un registro que no
 // se puede ni leer ni pagar. Se corta y se dice qué correr.
@@ -15829,7 +15946,7 @@ export default function App() {
                     {id:"dashboard",label:"📊 Dashboard",color:"#D4A017"},
                     {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
                     {id:"cierres",label:"🏪 Cierres",color:"#C1440E"},
-                    {id:"vencimientos",label:"📅 Vencimientos",color:"#D4A017"},
+                    {id:"vencimientos",label:"📅 Vencimientos",color:"#D4A017",avisos:avisosVencimientos(vencimientos,7).length},
                     {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
                   ].map(function(sm){
                     var activo=modActivo===sm.id;
@@ -15841,8 +15958,9 @@ export default function App() {
                         else if(sm.id==="vencimientos")irVista("vencimientos");
                         else if(sm.id==="finanzas")irVista("resultados");
                         else if(sm.id==="configadmin")irVista("configadmin");
-                      }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                      }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center",position:"relative"}}>
                         {sm.label}
+                        {sm.avisos>0&&<span style={{marginLeft:5,background:"#C1440E",color:"#fff",borderRadius:9,padding:"1px 6px",fontSize:9,fontWeight:800}}>{sm.avisos}</span>}
                       </button>
                     );
                   })}
@@ -16047,6 +16165,46 @@ export default function App() {
                     <div style={{fontSize:10,color:"#888",marginTop:4}}>{localesSinCierre.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}</div>
                   </div>
                 )}
+
+                {/* Lo que vence esta semana, o ya venció: es lo primero que hay que ver al entrar */}
+                {(function(){
+                  var av=avisosVencimientos(vencimientos,7);
+                  if(av.length===0)return null;
+                  var vencidos=av.filter(function(a){return a.dias<0;});
+                  var total=av.reduce(function(a,x){return a+x.monto;},0);
+                  var color=vencidos.length>0?"#C1440E":"#D4A017";
+                  return(
+                    <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:7}}>
+                        <div style={{fontSize:11,color:color,fontWeight:700}}>
+                          🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"Vence esta semana"}
+                          {vencidos.length>0&&av.length>vencidos.length?" · "+(av.length-vencidos.length)+" por vencer":""}
+                        </div>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <span style={{fontSize:12,fontWeight:800,color:color,fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</span>
+                          <button onClick={function(){irVista("vencimientos");}} style={{background:"none",border:"1px solid "+color+"55",borderRadius:7,color:color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>Ver vencimientos →</button>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                        {av.slice(0,5).map(function(a,i){
+                          var g=grupoDe(a.v.grupo);
+                          return(
+                            <div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:10,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
+                              <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
+                                {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita</span>:null}
+                              </span>
+                              <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
+                                {a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"vence hoy":"en "+a.dias+"d")} · {fmt(a.monto)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {av.length>5&&<div style={{fontSize:10,color:"#555",marginTop:2}}>y {av.length-5} más…</div>}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Cards resumen */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>

@@ -14591,6 +14591,12 @@ async function sbSaveVencimiento(v) {
         alert("Falta la tabla \"vencimientos\" en Supabase. Corré el SQL del README.");
         return false;
       }
+      // El RLS prendido rechaza toda escritura con la clave anónima: no es un problema de
+      // columnas y el mensaje crudo no se entiende, así que se dice qué correr.
+      if (/row-level security|42501/i.test(err)) {
+        alert("La tabla vencimientos tiene la seguridad por filas (RLS) activada, así que Supabase rechaza todo lo que se quiera guardar.\n\nCorré esto en Supabase → SQL Editor:\n\nalter table vencimientos disable row level security;");
+        return false;
+      }
       var falta = columnaFaltante(err);
       if (!falta || falta === "id" || falta === "concepto") { alert("Error al guardar el vencimiento: " + err); return false; }
       if (COLUMNAS_PLAN.indexOf(falta) >= 0 && esPlan(v)) {

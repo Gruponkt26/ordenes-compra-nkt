@@ -8077,17 +8077,54 @@ function PanelVencimientos(p){
   // Una cuota de un plan se paga igual que cualquier vencimiento: genera su egreso.
   // Editar un plan ya cargado: los datos de la cabecera —nombre, número, CUIT, débito— se
   // cambian sin tocar las cuotas, que tienen su propia edición fila por fila.
+  function cuotaAnticipo(v){ return cuotasPlan(v).find(function(c){return c.nro===0;})||null; }
+  function primeraCuota(v){
+    return cuotasPlan(v).filter(function(c){return c.nro>0;}).sort(function(a,b){return a.nro-b.nro;})[0]||null;
+  }
   function abrirEditarPlan(v){
+    var ant=cuotaAnticipo(v), pri=primeraCuota(v);
     setEditPlan({
       id:v.id, concepto:v.concepto||"", nro_plan:v.nro_plan||v.referencia||"",
       cuit:cuitIdDe(v), local:v.local||"l4",
-      debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||""
+      debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||"",
+      tieneAnticipo:!!ant, fechaAnticipo:(ant&&ant.vence)||"", primera:(pri&&pri.vence)||""
+    });
+  }
+  // Mover la fecha de la primera cuota corre todas las demás, mes a mes, manteniendo el día:
+  // es el arreglo de haber cargado el plan con el mes de inicio equivocado. Una cuota que se
+  // pagó acá conserva la fecha real de su pago; una que nació pagada —"ya venía"— la mueve
+  // con su vencimiento, porque esa fecha se había sacado de ahí.
+  function reprogramar(cs, primeraNueva){
+    var base=primeraNueva.split("-");
+    var anio=parseInt(base[0],10), mes=parseInt(base[1],10), dia=parseInt(base[2],10);
+    var pri=cs.filter(function(c){return c.nro>0;}).sort(function(a,b){return a.nro-b.nro;})[0];
+    if(!pri)return cs;
+    return cs.map(function(c){
+      if(c.nro<=0)return c;
+      var d=new Date(anio,mes-1+(c.nro-pri.nro),1);
+      var ultimo=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      var vence=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(Math.min(dia,ultimo)).padStart(2,"0");
+      var nueva={...c,vence:vence};
+      if(c.pago&&c.pago.previo)nueva.pago={...c.pago,fecha:vence};
+      return nueva;
     });
   }
   function guardarEditarPlan(v){
     var f=editPlan;
     if(!f.concepto.trim()){alert("El plan necesita un nombre.");return;}
-    onSave({...v,
+    var cs=cuotasPlan(v);
+    var pri=primeraCuota(v);
+    if(f.primera&&pri&&f.primera!==pri.vence)cs=reprogramar(cs,f.primera);
+    var ant=cuotaAnticipo(v);
+    if(f.tieneAnticipo&&f.fechaAnticipo&&ant&&f.fechaAnticipo!==ant.vence){
+      cs=cs.map(function(c){
+        if(c.nro!==0)return c;
+        var n={...c,vence:f.fechaAnticipo};
+        if(c.pago&&c.pago.previo)n.pago={...c.pago,fecha:f.fechaAnticipo};
+        return n;
+      });
+    }
+    onSave({...v, cuotas_plan:cs,
       concepto:f.concepto.trim(),
       nro_plan:f.nro_plan.trim(), referencia:f.nro_plan.trim(),
       cuit:porCuit(v.grupo)?f.cuit:"",
@@ -8741,12 +8778,28 @@ function PanelVencimientos(p){
                             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
                             <input value={editPlan.notas} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,notas:x};});}} style={INP}/>
                           </div>
+                          {editPlan.tieneAnticipo&&(
+                            <div>
+                              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha del anticipo</label>
+                              <input type="date" value={editPlan.fechaAnticipo} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,fechaAnticipo:x};});}} style={INP}/>
+                            </div>
+                          )}
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha de la 1ª cuota</label>
+                            <input type="date" value={editPlan.primera} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,primera:x};});}} style={INP}/>
+                          </div>
                         </div>
+                        {(function(){
+                          var pri=primeraCuota(v);
+                          if(!pri||!editPlan.primera||editPlan.primera===pri.vence)return null;
+                          var n=cuotasPlan(v).filter(function(c){return c.nro>0;}).length;
+                          return <div style={{fontSize:10,color:"#D4A017",marginBottom:9}}>Al guardar se corren las {n} cuota{n===1?"":"s"}, mes a mes, desde el {fmtDate(editPlan.primera)}. Los pagos ya hechos acá conservan su fecha real.</div>;
+                        })()}
                         <div style={{display:"flex",gap:8}}>
                           <button onClick={function(){guardarEditarPlan(v);}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"9px 16px"}}>💾 Guardar</button>
                           <button onClick={function(){setEditPlan(null);}} style={{padding:"9px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
                         </div>
-                        <div style={{fontSize:9,color:"#444",marginTop:8}}>Los montos y las fechas de cada cuota se editan una por una, abajo, con su ✏️.</div>
+                        <div style={{fontSize:9,color:"#444",marginTop:8}}>Mover la <b style={{color:"#666"}}>1ª cuota</b> corre todas las demás, mes a mes, manteniendo el día: es el arreglo de haber cargado el plan con el mes de inicio equivocado. Para tocar una sola cuota —monto o fecha— está su ✏️ abajo.</div>
                       </div>
                     )}
                     {abierto&&(

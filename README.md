@@ -313,8 +313,10 @@ veces—. En la planilla se distinguen: dicen «✅ ya venía» en vez de «✅�
 el monto o la fecha de cualquier cuota, una por una.
 
 **Un plan cargado se edita entero.** Abajo de la planilla hay tres botones: **✏️ Editar
-plan** cambia el nombre, el N° de plan, el CUIT (o el local), el débito automático y las
-notas, sin tocar las cuotas; **+ Cuota** agrega una al final —con el monto de la última y un
+plan** cambia el nombre, el N° de plan, el CUIT (o el local), el débito automático, las
+notas y **las fechas del anticipo y de la 1ª cuota** —mover la primera corre todas las
+demás, mes a mes, manteniendo el día, que es el arreglo de haber cargado el plan con el mes
+de inicio equivocado; una cuota pagada acá conserva la fecha real de su pago—; **+ Cuota** agrega una al final —con el monto de la última y un
 mes más— para cuando el plan se estira; y **🗑️ Borrar plan** lo saca entero. Dentro de la
 planilla, cada cuota tiene su ✏️ para el monto y la fecha, y las impagas un ✕ para borrarlas
 —una pagada primero hay que deshacerla—.

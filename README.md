@@ -244,7 +244,9 @@ genera queda con esos mismos medios, que es lo que después mira el impuesto al 
 - **Recurrentes**: aparecen todos los meses en el día que se les puso. Si el mes es más
   corto —un vencimiento el 31 en febrero— cae el último día. Cada mes se marca pagado por
   separado, así que el historial queda por período.
-- **De una vez**: aparecen sólo en el mes de su fecha.
+- **De una vez**: aparecen sólo en el mes de su fecha. Por eso, al cargar uno con fecha de
+  otro mes, **el filtro de mes se mueve solo** al guardarlo: si no, quedaba guardado pero
+  fuera de la vista y parecía que no se había guardado. El formulario lo avisa antes.
 - El **monto es estimado**; al pagar se carga el real, y ése es el que va al egreso.
 - El **identificador** es texto libre: el número de cliente del servicio, el contrato del
   alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.

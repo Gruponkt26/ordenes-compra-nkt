@@ -7852,6 +7852,7 @@ function cuotasDe(v){
 function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
+  var [diag,setDiag]=useState(null); // informe del guardado de prueba
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -8072,6 +8073,18 @@ function PanelVencimientos(p){
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {diag&&(
+        <div style={{background:"#0A0A14",border:"1px solid #1A6B8A66",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A"}}>🩺 Prueba de guardado</div>
+            <button onClick={function(){setDiag(null);}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer"}}>✕</button>
+          </div>
+          <pre style={{background:"#0A0A0A",border:"1px solid #2A2A2A",borderRadius:8,padding:"10px 12px",fontSize:10,color:"#9AB",overflowX:"auto",margin:0,whiteSpace:"pre-wrap",fontFamily:"monospace"}}>{diag}</pre>
+          <button onClick={function(){
+            try{ navigator.clipboard.writeText(diag); alert("Informe copiado."); }catch(e){}
+          }} style={{marginTop:9,background:"none",border:"1px solid #1A6B8A66",borderRadius:8,color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"7px 13px"}}>📋 Copiar el informe</button>
+        </div>
+      )}
       {faltanColumnas.length>0&&(
         <div style={{background:"#1A0808",border:"1px solid #C1440E66",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
           <div style={{fontSize:12,fontWeight:800,color:"#C1440E",marginBottom:5}}>
@@ -8110,6 +8123,7 @@ function PanelVencimientos(p){
           <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
             {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>
+          <button onClick={async function(){ setDiag("Probando..."); setDiag(await sbDiagnosticoVencimientos()); }} title="Guarda un plan de prueba y muestra qué contesta la base" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>🩺</button>
           {grupoFiltro&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
           {grupoFiltro&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
@@ -14509,6 +14523,51 @@ function faltaLaTabla(err){
   if(columnaFaltante(err))return false;
   var t=String(err||"").replace(/\\/g,"");
   return /PGRST205/.test(t)||/relation "?(public\.)?vencimientos"? does not exist/i.test(t)||/Could not find the table/i.test(t);
+}
+// Un guardado de prueba de punta a punta, para ver qué contesta la tabla de verdad cuando
+// algo no anda: escribe un plan, lo lee de vuelta, comprueba que los campos del plan hayan
+// llegado enteros y lo borra. Devuelve el informe en texto, para leerlo o copiarlo.
+async function sbDiagnosticoVencimientos() {
+  var lineas = [];
+  var id = "plan_test_" + String(Date.now());
+  var prueba = {
+    id:id, tipo:"plan", grupo:"afip", local:"l4", cuit:"c2",
+    concepto:"PRUEBA de guardado — se borra sola", area:"Administrativo", subramo:"",
+    monto:1, recurrente:false, dia:null, fecha:null, activo:false, notas:"",
+    referencia:"TEST", nro_plan:"TEST", cuotas:2, cuotas_previas:0,
+    cuotas_plan:[{nro:0,vence:"2026-01-05",monto:1},{nro:1,vence:"2026-02-05",monto:1}],
+    pagos:[], usuario:"diagnostico", created_at:new Date().toISOString()
+  };
+  try {
+    var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
+    var r = await fetch(SURL + "/rest/v1/vencimientos", { method:"POST", headers:h, body:JSON.stringify(prueba) });
+    var txt = await r.text();
+    lineas.push("1) Guardar un plan de prueba → HTTP " + r.status + (r.ok ? "  OK" : "  FALLÓ"));
+    if (!r.ok) {
+      lineas.push("   " + txt.slice(0,500));
+      var c = columnaFaltante(txt);
+      if (c) lineas.push("   → falta la columna \"" + c + "\": " + (SQL_VENCIMIENTOS[c]||""));
+      if (/row-level security|RLS/i.test(txt)) lineas.push("   → la tabla tiene RLS activado: alter table vencimientos disable row level security;");
+      return lineas.join("\n");
+    }
+    var r2 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + id, { headers:{...SH,"Cache-Control":"no-cache"} });
+    var d2 = await r2.json();
+    var v = Array.isArray(d2) ? d2[0] : null;
+    lineas.push("2) Leerlo de vuelta → HTTP " + r2.status + (v ? "  OK" : "  no volvió ninguna fila"));
+    if (v) {
+      var cs = comoLista(v.cuotas_plan);
+      lineas.push("   tipo        = " + JSON.stringify(v.tipo===undefined?null:v.tipo) + (v.tipo==="plan" ? "  OK" : "  MAL (tendría que ser \"plan\" — la columna no está guardando)"));
+      lineas.push("   cuotas_plan = " + cs.length + " cuota(s)" + (cs.length===2 ? "  OK" : "  MAL (tendrían que ser 2)"));
+      lineas.push("   nro_plan    = " + JSON.stringify(v.nro_plan===undefined?null:v.nro_plan));
+      lineas.push("   cuit        = " + JSON.stringify(v.cuit===undefined?null:v.cuit));
+      lineas.push("   grupo       = " + JSON.stringify(v.grupo===undefined?null:v.grupo));
+    }
+    var r3 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + id, { method:"DELETE", headers:SH });
+    lineas.push("3) Borrar la prueba → HTTP " + r3.status + (r3.ok ? "  OK" : "  quedó cargada, borrala a mano"));
+  } catch(e) {
+    lineas.push("Error de conexión: " + e.message);
+  }
+  return lineas.join("\n");
 }
 async function sbSaveVencimiento(v) {
   try {

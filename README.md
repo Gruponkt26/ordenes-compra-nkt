@@ -186,6 +186,13 @@ alter table vencimientos add column if not exists cuit           text;
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
 sesiones y avisa en pantalla.
 
+**El botón 🩺, arriba a la derecha del módulo, prueba el guardado de punta a punta**: escribe
+un plan de prueba en la tabla, lo lee de vuelta, comprueba que `tipo`, `cuotas_plan`,
+`nro_plan` y `cuit` hayan llegado enteros, y lo borra. El informe queda en pantalla con el
+código HTTP y la respuesta textual de Supabase, con un botón para copiarlo. Es lo primero a
+mirar cuando algo "no guarda": dice si el problema es una columna que falta, el RLS
+prendido, o que la columna existe pero no conserva el dato.
+
 **Si falta una columna, el módulo lo dice solo.** Al entrar a Vencimientos se le pregunta a
 la tabla por las columnas nuevas y, si falta alguna, aparece arriba un cartel rojo con
 cuáles son y el `alter table` listo para copiar. Un vencimiento suelto **se guarda igual**

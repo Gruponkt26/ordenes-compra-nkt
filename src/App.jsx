@@ -14377,32 +14377,70 @@ async function sbLoadVencimientos() {
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
 }
+// El ALTER TABLE de cada columna nueva, para poder mostrarlo en pantalla en vez de mandar
+// a buscarlo al README.
+var SQL_VENCIMIENTOS={
+  grupo:"alter table vencimientos add column if not exists grupo          text default 'otros';",
+  referencia:"alter table vencimientos add column if not exists referencia     text;",
+  cuotas:"alter table vencimientos add column if not exists cuotas         int default 0;",
+  cuotas_previas:"alter table vencimientos add column if not exists cuotas_previas int default 0;",
+  tipo:"alter table vencimientos add column if not exists tipo           text default 'simple';",
+  nro_plan:"alter table vencimientos add column if not exists nro_plan       text;",
+  cuotas_plan:"alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;",
+  cuit:"alter table vencimientos add column if not exists cuit           text;"
+};
+// Un plan sin estas dos columnas no es un plan: guardarlo igual dejaría un registro que no
+// se puede ni leer ni pagar. Se corta y se dice qué correr.
+var COLUMNAS_PLAN=["tipo","cuotas_plan"];
+// Postgrest nombra la columna que falta de dos maneras según de dónde venga el error: por
+// el schema cache ("Could not find the 'cuit' column") o por Postgres mismo
+// ("column \"cuit\" of relation \"vencimientos\" does not exist"). Las dos dicen lo mismo.
+function columnaFaltante(err){
+  // Postgres manda el error adentro de un JSON, así que las comillas del nombre vienen
+  // escapadas: column \"cuit\" of relation \"vencimientos\". Se sacan las barras primero.
+  var t=String(err||"").replace(/\\/g,"");
+  var m=/Could not find the '([^']+)' column/i.exec(t)
+     ||/column "?([a-z0-9_]+)"? of relation/i.exec(t)
+     ||/column "?(?:vencimientos\.)?([a-z0-9_]+)"? does not exist/i.exec(t);
+  return m?m[1]:null;
+}
+// Que falte la tabla entera es otra cosa que una columna, y se confunden fácil: el error de
+// columna también nombra la tabla y también dice "does not exist". Por eso se mira primero
+// si hay una columna adentro del mensaje.
+function faltaLaTabla(err){
+  if(columnaFaltante(err))return false;
+  var t=String(err||"").replace(/\\/g,"");
+  return /PGRST205/.test(t)||/relation "?(public\.)?vencimientos"? does not exist/i.test(t)||/Could not find the table/i.test(t);
+}
 async function sbSaveVencimiento(v) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var cuerpo = {...v};
     var faltantes = [];
-    // Mismo criterio que los cierres: si a la tabla le falta una columna nueva, se saca ese
-    // campo y se reintenta. El vencimiento se guarda igual y después se avisa qué quedó
-    // afuera, en vez de perder la carga por un alter table pendiente.
-    for (var intento = 0; intento < 6; intento++) {
+    // Si a la tabla le falta una columna nueva, se saca ese campo y se reintenta: el
+    // vencimiento se guarda igual y después se avisa qué quedó afuera, en vez de perder la
+    // carga por un alter table pendiente.
+    for (var intento = 0; intento < 10; intento++) {
       var r = await fetch(SURL + "/rest/v1/vencimientos", { method: "POST", headers: h, body: JSON.stringify(cuerpo) });
       if (r.ok) {
-        if (faltantes.length > 0) alert("El vencimiento se guardó, pero estos datos no: " + faltantes.join(", ") + ". Faltan esas columnas en la tabla vencimientos — corré el ALTER TABLE del README.");
+        if (faltantes.length > 0) {
+          alert("Se guardó, pero estos datos no: "+faltantes.join(", ")+".\n\nFaltan esas columnas en la tabla vencimientos. Corré esto en Supabase → SQL Editor:\n\n"
+            +faltantes.map(function(k){return SQL_VENCIMIENTOS[k]||("-- falta la columna "+k);}).join("\n"));
+        }
         return true;
       }
       var err = await r.text();
-      if (/vencimientos/.test(err) && /does not exist|relation/i.test(err)) {
+      if (faltaLaTabla(err)) {
         alert("Falta la tabla \"vencimientos\" en Supabase. Corré el SQL del README.");
         return false;
       }
-      var falta = null;
-      Object.keys(cuerpo).forEach(function(k){
-        if (falta) return;
-        if (k === "id" || k === "concepto" || k === "local") return;
-        if (new RegExp("'" + k + "'|\\b" + k + "\\b").test(err) && /column|schema cache|PGRST204/i.test(err)) falta = k;
-      });
-      if (!falta) { alert("Error al guardar el vencimiento: " + err); return false; }
+      var falta = columnaFaltante(err);
+      if (!falta || falta === "id" || falta === "concepto") { alert("Error al guardar el vencimiento: " + err); return false; }
+      if (COLUMNAS_PLAN.indexOf(falta) >= 0 && esPlan(v)) {
+        alert("No se puede guardar el plan: a la tabla vencimientos le falta la columna \""+falta+"\".\n\nUn plan sin ella no se podría ni leer ni pagar, así que no se guarda a medias. Corré esto en Supabase → SQL Editor y volvé a cargarlo:\n\n"
+          +COLUMNAS_PLAN.concat(["nro_plan","cuit"]).map(function(k){return SQL_VENCIMIENTOS[k];}).join("\n"));
+        return false;
+      }
       faltantes.push(falta);
       delete cuerpo[falta];
     }

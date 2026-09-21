@@ -181,6 +181,8 @@ alter table vencimientos add column if not exists tipo           text default 's
 alter table vencimientos add column if not exists nro_plan       text;
 alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;
 alter table vencimientos add column if not exists cuit           text;
+alter table vencimientos add column if not exists debito_cuenta  text;
+alter table vencimientos add column if not exists debito_cbu     text;
 ```
 
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
@@ -209,6 +211,19 @@ carga dos veces ni depende de que alguien se acuerde.
 Si el pago ya se había cargado a mano, hay un casillero para decirlo y entonces no se genera
 nada: sólo queda marcado como pagado.
 
+**🔁 Débito automático.** Cada vencimiento y cada plan puede decir **de qué cuenta se
+debita** y con qué **CBU o alias** —«el plan 3 de AFIP se debita de Provincia»—. Las cuentas
+son las mismas de la lista de medios de pago, así que al marcarlo pagado **el medio ya viene
+elegido**: no hay que acordarse de cuál era. Aparece en la fila y en la tarjeta del plan, y
+en los avisos. En blanco significa que lo pagás vos.
+
+**🔔 Avisos de lo que vence.** Lo que venció o vence dentro de 7 días aparece en tres
+lugares, sin entrar a buscarlo: un cartel arriba del **Dashboard** de Administración con los
+cinco más urgentes y el total, un **número rojo** en la solapa 📅 Vencimientos, y el mismo
+cartel en la portada del módulo, donde cada línea lleva a su organismo. Cuenta los
+recurrentes de este mes y del que viene, los de una sola vez y las cuotas de los planes; lo
+que ya se pagó no aparece.
+
 **El pago y su egreso van juntos, en los dos sentidos.** El pago guarda el `egreso_id` del
 egreso que generó, así que si el egreso se borra desde 💰 Egresos el vencimiento vuelve a
 quedar impago —y avisa en pantalla, porque el cambio pasa en otra pantalla—, y si el pago se
@@ -232,8 +247,8 @@ genera queda con esos mismos medios, que es lo que después mira el impuesto al 
 - El **identificador** es texto libre: el número de cliente del servicio, el contrato del
   alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.
 
-**Un submódulo por organismo.** El módulo abre en una portada con seis tarjetas —🏛️ AFIP,
-🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio y 📦 Otros—, cada una con lo que le falta
+**Un submódulo por organismo.** El módulo abre en una portada con siete tarjetas —🏛️ AFIP,
+🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio, 🏦 Créditos y 📦 Otros—, cada una con lo que le falta
 pagar este mes, cuántos vencieron o en cuántos días cae el próximo. Se entra a uno y adentro
 pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro —adentro de AFIP
 no aparece nada de ARBA ni de los otros—. Arriba queda sólo el ← para volver a la portada.
@@ -248,7 +263,11 @@ de cuando iban juntos, entra por **ARBA**, que es donde se declara Ingresos Brut
 Al dar de alta desde adentro de un submódulo, el rubro **queda fijo**: es el del submódulo
 donde estás, no se elige.
 
-**AFIP, ARBA y Gremio van por CUIT, no por local.** El IVA, el F.931 o la cuota sindical son
+**🏦 Créditos** es para los préstamos y créditos bancarios. Funciona igual que los demás y
+usa la misma planilla que los planes de pago, que es lo que es un crédito: un número, un
+monto por cuota y una fecha por cuota.
+
+**AFIP, ARBA, Gremio y Créditos van por CUIT, no por local.** El IVA, el F.931 o la cuota sindical son
 de la persona jurídica, no del salón donde se vendió, así que en esos tres rubros —y en sus
 planes de pago— se elige el CUIT:
 
@@ -256,6 +275,8 @@ planes de pago— se elige el CUIT:
 |------|-------|-------|----------------------|
 | 20-26958479-4 | Colantonio Carlos Nicolas | El Bodegón | 🍷 El Bodegón |
 | 30-71844629-1 | Calzon Gitano SRL | Kusama + Colantonio's | 🏢 Oficina |
+
+Un crédito lo toma un CUIT, no un salón, por eso va con los otros tres.
 
 Municipalidad, Servicios y Otros siguen **por local**: la tasa de Seguridad e Higiene y la
 luz vienen a nombre de una dirección. Como el egreso que se genera al pagar siempre necesita

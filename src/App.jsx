@@ -7817,12 +7817,27 @@ function cuotasPlan(v){ return Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]; }
 function cuotasDelMes(v, mes){
   return cuotasPlan(v).filter(function(c){return (c.vence||"").substring(0,7)===mes;});
 }
+// El estado de un plan, contado de las cuotas y no a mano. Lo que falta se parte en dos,
+// porque no es lo mismo deber una cuota que todavía no tener que pagarla: adeudadas son las
+// impagas cuya fecha ya pasó, por pagar las impagas que todavía no vencieron.
 function resumenPlan(v){
   var cs=cuotasPlan(v);
+  var hoy=new Date().toISOString().split("T")[0];
+  var monto=function(c){return parseFloat(c.monto)||0;};
+  var suma=function(l,f){return l.reduce(function(a,c){return a+f(c);},0);};
   var pagadas=cs.filter(function(c){return c.pago;});
-  var total=cs.reduce(function(a,c){return a+(parseFloat(c.monto)||0);},0);
-  var pago=pagadas.reduce(function(a,c){return a+(parseFloat(c.pago.monto)||0);},0);
-  return {cuotas:cs.length,pagadas:pagadas.length,faltan:cs.length-pagadas.length,total:total,pagado:pago,resta:total-pago,completo:cs.length>0&&pagadas.length===cs.length};
+  var impagas=cs.filter(function(c){return !c.pago;});
+  var adeudadas=impagas.filter(function(c){return c.vence&&c.vence<hoy;});
+  var porPagar=impagas.filter(function(c){return !(c.vence&&c.vence<hoy);});
+  var total=suma(cs,monto);
+  var pago=suma(pagadas,function(c){return parseFloat(c.pago.monto)||0;});
+  return {
+    cuotas:cs.length, pagadas:pagadas.length, faltan:impagas.length,
+    adeudadas:adeudadas.length, porPagar:porPagar.length,
+    total:total, pagado:pago, resta:total-pago,
+    montoAdeudado:suma(adeudadas,monto), montoPorPagar:suma(porPagar,monto),
+    completo:cs.length>0&&pagadas.length===cs.length
+  };
 }
 // Arma las cuotas de un plan nuevo: el anticipo primero, si lo hay, y después una por mes.
 function armarCuotas(opts){
@@ -8571,6 +8586,29 @@ function PanelVencimientos(p){
                         <div style={{fontSize:9,color:"#5A2A7A"}}>de {fmt(rp.total)}</div>
                       </div>
                     </div>
+                    {/* Las cuatro cuentas del plan, contadas de las cuotas: cuántas son,
+                        cuántas están pagas, cuántas faltan sin haber vencido y cuántas se
+                        deben porque la fecha ya pasó. */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:6,padding:"0 14px 12px"}}>
+                      {[
+                        {t:"Totales",  n:rp.cuotas,    m:rp.total,           c:"#888"},
+                        {t:"Pagadas",  n:rp.pagadas,   m:rp.pagado,          c:"#3A7D44"},
+                        {t:"Por pagar",n:rp.porPagar,  m:rp.montoPorPagar,   c:"#A855F7", sub:"aún no vencen"},
+                        {t:"Adeudadas",n:rp.adeudadas, m:rp.montoAdeudado,   c:"#C1440E", sub:"ya vencieron"}
+                      ].map(function(x){
+                        var apagado=x.n===0&&x.t!=="Totales";
+                        return(
+                          <div key={x.t} style={{background:"#0A0710",border:"1px solid "+(apagado?"#1A1A1A":x.c+"44"),borderRadius:8,padding:"7px 9px"}}>
+                            <div style={{fontSize:8,color:apagado?"#333":x.c,textTransform:"uppercase",letterSpacing:1,fontWeight:700}}>{x.t}</div>
+                            <div style={{fontSize:14,fontWeight:800,fontFamily:"'Playfair Display',serif",color:apagado?"#333":"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>
+                              {x.n}<span style={{fontSize:9,color:apagado?"#2A2A2A":"#555",fontFamily:"'Inter',sans-serif",fontWeight:400}}> de {rp.cuotas}</span>
+                            </div>
+                            <div style={{fontSize:9,color:apagado?"#2A2A2A":"#666",fontVariantNumeric:"tabular-nums"}}>{fmt(x.m)}</div>
+                            {x.sub&&<div style={{fontSize:8,color:apagado?"#242424":"#444",marginTop:1}}>{x.sub}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
                     {abierto&&(
                       <div style={{borderTop:"1px solid #8B2FC922",padding:"10px 12px",background:"#0A0710"}}>
                         <div style={{overflowX:"auto"}}>
@@ -8618,7 +8656,7 @@ function PanelVencimientos(p){
                           </table>
                         </div>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9,paddingTop:8,borderTop:"1px solid #8B2FC922"}}>
-                          <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}</span>
+                          <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}{rp.adeudadas>0?" · adeudado "+fmt(rp.montoAdeudado):""}</span>
                           <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar plan</button>
                         </div>
                       </div>
@@ -8670,7 +8708,8 @@ function PanelVencimientos(p){
         function cuando(v){
           if(esPlan(v)){
             var rp=resumenPlan(v);
-            return "plan de "+rp.cuotas+" cuota"+(rp.cuotas===1?"":"s")+" · "+rp.pagadas+" pagada"+(rp.pagadas===1?"":"s");
+            return "plan de "+rp.cuotas+" cuota"+(rp.cuotas===1?"":"s")+" · "+rp.pagadas+" pagada"+(rp.pagadas===1?"":"s")
+              +" · "+rp.porPagar+" por pagar"+(rp.adeudadas>0?" · "+rp.adeudadas+" adeudada"+(rp.adeudadas===1?"":"s"):"");
           }
           if(v.recurrente)return "todos los meses, el "+(v.dia||1);
           return "una sola vez · "+(v.fecha?fmtDate(v.fecha):"sin fecha");

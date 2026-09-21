@@ -305,6 +305,12 @@ egreso que se genera al pagar.
 
 ### Planes de pago
 
+La tarjeta de cada plan lleva sus **cuatro cuentas**, sacadas de las cuotas y no de un
+contador a mano: **totales**, **pagadas**, **por pagar** —las que faltan y todavía no
+vencieron— y **adeudadas** —las que faltan y ya vencieron—, cada una con su cantidad y su
+importe. La diferencia entre las dos últimas es la que importa: no es lo mismo deber una
+cuota que todavía no tener que pagarla.
+
 Un plan aparece **una sola vez**: su tarjeta, en 📋 Planes de pago, con la planilla adentro.
 Las cuotas del mes no se repiten abajo como filas sueltas —se pagan desde la planilla, que
 es donde están el monto, la fecha y el estado de cada una—. La tarjeta dice de entrada

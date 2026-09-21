@@ -209,6 +209,14 @@ carga dos veces ni depende de que alguien se acuerde.
 Si el pago ya se había cargado a mano, hay un casillero para decirlo y entonces no se genera
 nada: sólo queda marcado como pagado.
 
+**El pago y su egreso van juntos, en los dos sentidos.** El pago guarda el `egreso_id` del
+egreso que generó, así que si el egreso se borra desde 💰 Egresos el vencimiento vuelve a
+quedar impago —y avisa en pantalla, porque el cambio pasa en otra pantalla—, y si el pago se
+deshace desde Vencimientos se borra el egreso. Nunca queda uno sin el otro: un egreso
+huérfano sería plata gastada que nada explica, y un vencimiento pagado sin egreso sería un
+pago que no figura en ningún lado. Vale igual para las cuotas de un plan. Un pago marcado
+como «ya lo cargué en Egresos» no generó nada, así que al deshacerlo no se borra nada.
+
 **Se puede pagar con más de un medio.** Cada línea es un medio con su monto —parte en
 efectivo y parte por transferencia, o desde dos cuentas distintas— y entre todas tienen que
 dar el total pagado; si no dan, el aviso dice cuánto falta. La lista de medios es la misma

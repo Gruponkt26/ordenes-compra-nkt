@@ -7896,6 +7896,8 @@ function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
   var [diag,setDiag]=useState(null); // informe del guardado de prueba
+  var [verTodos,setVerTodos]=useState(false); // la lista general, sin filtro de mes
+  var [buscar,setBuscar]=useState("");
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -8175,7 +8177,12 @@ function PanelVencimientos(p){
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div>
-          {grupoFiltro?(
+          {verTodos?(
+            <div>
+              <button onClick={function(){setVerTodos(false);setBuscar("");}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:"#F0EDE8"}}>🗂️ Todo lo cargado</div>
+            </div>
+          ):grupoFiltro?(
             <div>
               <button onClick={function(){setGrupoFiltro(null);setShowForm(false);setPagando(null);}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:grupoFiltro==="all"?"#F0EDE8":grupoDe(grupoFiltro).color}}>
@@ -8190,18 +8197,20 @@ function PanelVencimientos(p){
           )}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
-            {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
-          </select>
+          {!verTodos&&(
+            <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+              {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+            </select>
+          )}
           <button onClick={async function(){ setDiag("Probando..."); setDiag(await sbDiagnosticoVencimientos()); }} title="Guarda un plan de prueba y muestra qué contesta la base" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>🩺</button>
-          {grupoFiltro&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
-          {grupoFiltro&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
+          {grupoFiltro&&!verTodos&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
+          {grupoFiltro&&!verTodos&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
       </div>
 
       {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
           —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
-      {!grupoFiltro&&(function(){
+      {!grupoFiltro&&!verTodos&&(function(){
         var av=avisosVencimientos(vencimientos,7);
         if(av.length===0)return null;
         var vencidos=av.filter(function(a){return a.dias<0;});
@@ -8232,7 +8241,7 @@ function PanelVencimientos(p){
         );
       })()}
 
-      {!grupoFiltro&&(
+      {!grupoFiltro&&!verTodos&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
             {GRUPOS_VENC.map(function(g){
@@ -8258,14 +8267,19 @@ function PanelVencimientos(p){
               );
             })}
           </div>
-          <button onClick={function(){setGrupoFiltro("all");}} style={{width:"100%",background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
-            📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))} a pagar en {mesFiltro}
-          </button>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:8}}>
+            <button onClick={function(){setGrupoFiltro("all");}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+              📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))} a pagar en {mesFiltro}
+            </button>
+            <button onClick={function(){setVerTodos(true);}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+              🗂️ Todo lo cargado · {vencimientos.filter(function(v){return v.activo!==false;}).length} vencimiento{vencimientos.filter(function(v){return v.activo!==false;}).length===1?"":"s"}, sin filtro de mes
+            </button>
+          </div>
         </div>
       )}
 
       {/* Resumen del mes */}
-      {grupoFiltro&&(
+      {grupoFiltro&&!verTodos&&(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
         <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 13px"}}>
           <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Total del mes</div>
@@ -8512,7 +8526,7 @@ function PanelVencimientos(p){
       )}
 
       {/* La planilla del plan: una fila por cuota, con su monto y su fecha editables */}
-      {grupoFiltro&&(function(){
+      {grupoFiltro&&!verTodos&&(function(){
         var planes=vencimientos.filter(function(v){
           return v.activo!==false&&esPlan(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);
         });
@@ -8616,6 +8630,97 @@ function PanelVencimientos(p){
         );
       })()}
 
+      {/* Todo lo cargado, sin filtro de mes: el catálogo. Sirve para encontrar lo que vence
+          en otro mes, que en la vista mensual no aparece por definición. */}
+      {verTodos&&(function(){
+        var texto=buscar.trim().toLowerCase();
+        var todos=vencimientos.filter(function(v){
+          if(v.activo===false)return false;
+          if(!texto)return true;
+          return [v.concepto,v.referencia,v.nro_plan,v.notas,grupoDe(v.grupo).corto,v.debito_cbu].join(" ").toLowerCase().indexOf(texto)>=0;
+        });
+        // Se ordena por lo que viene primero: el próximo vencimiento impago de cada uno.
+        function proximo(v){
+          if(esPlan(v)){
+            var pend=cuotasPlan(v).filter(function(c){return !c.pago&&c.vence;}).sort(function(a,b){return a.vence.localeCompare(b.vence);});
+            return pend.length?pend[0].vence:"9999-99-99";
+          }
+          if(v.recurrente)return fechaVencimiento(v,mesCurrent)||"9999-99-99";
+          return v.fecha||"9999-99-99";
+        }
+        function cuando(v){
+          if(esPlan(v)){
+            var rp=resumenPlan(v);
+            return "plan de "+rp.cuotas+" cuota"+(rp.cuotas===1?"":"s")+" · "+rp.pagadas+" pagada"+(rp.pagadas===1?"":"s");
+          }
+          if(v.recurrente)return "todos los meses, el "+(v.dia||1);
+          return "una sola vez · "+(v.fecha?fmtDate(v.fecha):"sin fecha");
+        }
+        function importe(v){
+          if(esPlan(v)){ var rp=resumenPlan(v); return rp.resta; }
+          return parseFloat(v.monto)||0;
+        }
+        var porGrupo={};
+        todos.forEach(function(v){ var g=grupoIdDe(v); (porGrupo[g]=porGrupo[g]||[]).push(v); });
+        var ordenados=GRUPOS_VENC.filter(function(g){return (porGrupo[g.id]||[]).length>0;});
+        return(
+          <div>
+            <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar por concepto, identificador, N° de plan o alias..." style={{...INP,marginBottom:12}}/>
+            {todos.length===0?(
+              <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
+                <div style={{fontSize:13,color:"#555"}}>{buscar?"No hay nada que coincida con \""+buscar+"\".":"No hay vencimientos cargados."}</div>
+              </div>
+            ):ordenados.map(function(g){
+              var lista=porGrupo[g.id].slice().sort(function(a,b){return proximo(a).localeCompare(proximo(b));});
+              var suma=lista.reduce(function(a,v){return a+importe(v);},0);
+              return(
+                <div key={g.id} style={{marginBottom:14}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:7}}>
+                    <div style={{fontSize:11,color:g.color,textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>{g.label} · {lista.length}</div>
+                    <div style={{fontSize:11,color:"#555"}}>{fmt(suma)} por delante</div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {lista.map(function(v){
+                      var l=getLocal(v.local);
+                      var cq=porCuit(v.grupo)?cuitVenc(cuitIdDe(v)):null;
+                      var px=proximo(v);
+                      var vencido=px!=="9999-99-99"&&px<hoy;
+                      return(
+                        <div key={v.id} style={{background:"#111",border:"1px solid "+(vencido?"#C1440E44":"#1A1A1A"),borderRadius:10,padding:"11px 13px",display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+                          <div style={{minWidth:0,flex:1}}>
+                            <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>
+                              {v.concepto}
+                              {v.referencia?<span style={{fontSize:10,color:"#444",marginLeft:7}}>#{v.referencia}</span>:null}
+                            </div>
+                            <div style={{fontSize:10,color:"#555",marginTop:3}}>
+                              <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {cuando(v)}
+                            </div>
+                            {v.debito_cuenta&&<div style={{fontSize:10,color:"#1A6B8A",marginTop:2}}>🔁 Se debita de {etiquetaCuenta(v.debito_cuenta)}{v.debito_cbu?" · "+v.debito_cbu:""}</div>}
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(importe(v))}</div>
+                            <div style={{fontSize:9,color:vencido?"#C1440E":"#555",marginTop:2}}>
+                              {px==="9999-99-99"?"todo pagado":(vencido?"vencía "+fmtDate(px):"próximo "+fmtDate(px))}
+                            </div>
+                            <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:6}}>
+                              {px!=="9999-99-99"&&(
+                                <button onClick={function(){ setVerTodos(false); setGrupoFiltro(g.id); setMesFiltro(px.substring(0,7)); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>Ir a su mes →</button>
+                              )}
+                              {!esPlan(v)&&<button onClick={function(){ setVerTodos(false); setGrupoFiltro(g.id); if(!v.recurrente&&v.fecha)setMesFiltro(periodoDe(v.fecha)); abrirEditar(v); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px"}}>✏️</button>}
+                              <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"4px 9px"}}>🗑️</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Marcar pagado */}
       {pagando&&(
         <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
@@ -8683,7 +8788,7 @@ function PanelVencimientos(p){
       )}
 
       {/* Lista */}
-      {grupoFiltro&&(sueltosDelMes.length===0?(
+      {grupoFiltro&&!verTodos&&(sueltosDelMes.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
           <div style={{fontSize:13,color:"#555"}}>{delMes2.length>0?"Este mes sólo hay cuotas de planes.":"No hay vencimientos cargados para este mes."}</div>
           <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>{delMes2.length>0?"Están arriba, adentro de su plan, con su cuota y su botón de pagar.":(grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes.")}</div>

@@ -197,6 +197,13 @@ carga dos veces ni depende de que alguien se acuerde.
 Si el pago ya se había cargado a mano, hay un casillero para decirlo y entonces no se genera
 nada: sólo queda marcado como pagado.
 
+**Se puede pagar con más de un medio.** Cada línea es un medio con su monto —parte en
+efectivo y parte por transferencia, o desde dos cuentas distintas— y entre todas tienen que
+dar el total pagado; si no dan, el aviso dice cuánto falta. La lista de medios es la misma
+que la de Egresos (efectivo por local, las transferencias de cada cuenta, las tarjetas,
+cheque), así que lo que se puede elegir en un lado existe en el otro. El egreso que se
+genera queda con esos mismos medios, que es lo que después mira el impuesto al débito.
+
 - **Recurrentes**: aparecen todos los meses en el día que se les puso. Si el mes es más
   corto —un vencimiento el 31 en febrero— cae el último día. Cada mes se marca pagado por
   separado, así que el historial queda por período.

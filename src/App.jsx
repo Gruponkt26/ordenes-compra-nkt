@@ -6475,6 +6475,28 @@ var CONCEPTOS_POR_AREA={
   },
 };
 
+// Con qué se paga algo. La lista es una sola para toda la app: la usan el alta de un
+// egreso y el pago de un vencimiento, así el medio que se elige en un lado existe en el otro.
+var MEDIOS_EGRESO=[
+  {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
+  {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
+  {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
+  {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
+  {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
+  {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
+  {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
+  {grupo:"Transferencia",label:"📲 Patagonia Personas",value:"Transferencia - Patagonia Personas"},
+  {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
+  {grupo:"Transferencia",label:"📲 Mercado Pago Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
+  {grupo:"Tarjeta",label:"💳 Débito Visa Provincia",value:"Débito - Visa Provincia"},
+  {grupo:"Tarjeta",label:"💳 Débito Visa Patagonia",value:"Débito - Visa Patagonia"},
+  {grupo:"Tarjeta",label:"💳 Débito Mastercard Patagonia",value:"Débito - Mastercard Patagonia"},
+  {grupo:"Tarjeta",label:"💳 Crédito",value:"Crédito"},
+  {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
+  {grupo:"Otros",label:"Otro",value:"Otro"},
+  ];
+var GRUPOS_MEDIOS_EGRESO=["Efectivo","Transferencia","Tarjeta","Otros"];
+
 function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario, conceptosCustom, onSave, onDelete, onSaveConcepto, onDeleteConcepto, colorAccent, proveedores}){
   var hoy=new Date().toISOString().split("T")[0];
   var localesFiltro=LOCALES; // incluye Oficina (l4)
@@ -6484,25 +6506,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
 
-  var MEDIOS_EGRESO=[
-    {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
-    {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
-    {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
-    {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
-    {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
-    {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
-    {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
-    {grupo:"Transferencia",label:"📲 Patagonia Personas",value:"Transferencia - Patagonia Personas"},
-    {grupo:"Transferencia",label:"📲 Patagonia Empresas",value:"Transferencia - Patagonia Empresas"},
-    {grupo:"Transferencia",label:"📲 Mercado Pago Calzon Gitano",value:"Transferencia - Mercado Pago Calzon Gitano"},
-    {grupo:"Tarjeta",label:"💳 Débito Visa Provincia",value:"Débito - Visa Provincia"},
-    {grupo:"Tarjeta",label:"💳 Débito Visa Patagonia",value:"Débito - Visa Patagonia"},
-    {grupo:"Tarjeta",label:"💳 Débito Mastercard Patagonia",value:"Débito - Mastercard Patagonia"},
-    {grupo:"Tarjeta",label:"💳 Crédito",value:"Crédito"},
-    {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
-    {grupo:"Otros",label:"Otro",value:"Otro"},
-  ];
-  var grupos_medios=["Efectivo","Transferencia","Tarjeta","Otros"];
+  var grupos_medios=GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
   function pagosCuadranEgreso(){return !form.monto||Math.abs(totalPagosEgreso()-parseFloat(form.monto||0))<0.01;}
   var [filtroLocal,setFiltroLocal]=useState("all");
@@ -7862,6 +7866,7 @@ function PanelVencimientos(p){
   var FORM_VACIO={local:"l1",cuit:"c2",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
+  var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
   var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
@@ -7985,14 +7990,40 @@ function PanelVencimientos(p){
   }
 
   function abrirPago(x){
+    var monto=(x.cuota?x.cuota.monto:x.v.monto)||"";
     setPagando(x);
-    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:(x.cuota?x.cuota.monto:x.v.monto)||""});
+    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:monto});
+    setPagosPago([{medio:"",monto:monto===""?"":String(monto)}]);
+  }
+  // Un vencimiento se puede pagar con más de un medio —medio en efectivo y medio por
+  // transferencia, o desde dos cuentas—: cada línea es un medio con su monto, y entre todas
+  // tienen que dar el total pagado.
+  function totalPagosPago(){ return pagosPago.reduce(function(a,pg){return a+(parseFloat(pg.monto)||0);},0); }
+  function pagosCuadran(){
+    var total=parseFloat(formPago.monto)||0;
+    if(!total)return false;
+    return Math.abs(totalPagosPago()-total)<0.01;
+  }
+  // Al cambiar el monto total, si hay una sola línea la sigue: es el caso de siempre y no
+  // tiene sentido hacer que lo escriban dos veces.
+  function cambiarMontoPago(valor){
+    setFormPago(function(f){return{...f,monto:valor};});
+    setPagosPago(function(prev){ return prev.length===1?[{...prev[0],monto:valor}]:prev; });
   }
   function confirmarPago(){
     var x=pagando; if(!x)return;
     var monto=parseFloat(formPago.monto)||0;
     if(monto<=0){alert("Poné el monto que se pagó.");return;}
-    if(!formPago.yaCargado&&!formPago.medio){alert("Elegí con qué medio se pagó, o marcá que ya lo cargaste en Egresos.");return;}
+    var medios=pagosPago.filter(function(pg){return pg.medio&&(parseFloat(pg.monto)||0)>0;})
+                        .map(function(pg){return {medio:pg.medio,monto:parseFloat(pg.monto)||0};});
+    if(!formPago.yaCargado){
+      if(medios.length===0){alert("Elegí con qué medio se pagó —y con cuánto de cada uno si fue más de uno—, o marcá que ya lo cargaste en Egresos.");return;}
+      var suma=medios.reduce(function(a,pg){return a+pg.monto;},0);
+      if(Math.abs(suma-monto)>0.01){
+        alert("Los medios suman $"+Math.round(suma).toLocaleString("es-AR")+" y el pago es de $"+Math.round(monto).toLocaleString("es-AR")+".\n\nTienen que dar lo mismo: corregí los montos o el total pagado.");
+        return;
+      }
+    }
     var egresoId=null;
     // El egreso se genera acá, salvo que ya lo hayan cargado a mano: si no, la misma plata
     // saldría dos veces.
@@ -8000,14 +8031,17 @@ function PanelVencimientos(p){
       egresoId="egr_venc_"+String(Date.now());
       onSaveEgreso({
         id:egresoId, local:x.v.local, concepto:x.v.concepto, subramo:x.v.subramo||"Vencimiento",
-        monto:monto, forma_pago:formPago.medio, pagos:[{medio:formPago.medio,monto:monto}],
+        monto:monto, forma_pago:medios.length===1?medios[0].medio:"Varios medios", pagos:medios,
         facturado:!!formPago.facturado, facturacion:formPago.facturado?formPago.facturacion:"",
         categoria:x.v.area, area:x.v.area,
         notas:"Pago de vencimiento — "+mesFiltro, fecha:formPago.fecha,
         usuario:usuario, created_at:new Date().toISOString()
       });
     }
-    var datosPago={fecha:formPago.fecha,monto:monto,medio:formPago.medio||"",facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId};
+    var datosPago={fecha:formPago.fecha,monto:monto,
+      medio:medios.length===0?"":(medios.length===1?medios[0].medio:"Varios medios"),
+      medios:medios,
+      facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId};
     if(x.cuota){
       guardarCuota(x.v,x.cuota.nro,{pago:datosPago});
     }else{
@@ -8402,20 +8436,34 @@ function PanelVencimientos(p){
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto pagado</label>
-              <input type="number" value={formPago.monto} onChange={function(e){setFormPago(function(f){return{...f,monto:e.target.value};});}} style={INP}/>
+              <input type="number" value={formPago.monto} onChange={function(e){cambiarMontoPago(e.target.value);}} style={INP}/>
             </div>
           </div>
           {!formPago.yaCargado&&(
-            <div style={{marginBottom:10}}>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Medio de pago</label>
-              <select value={formPago.medio} onChange={function(e){setFormPago(function(f){return{...f,medio:e.target.value};});}} style={INP}>
-                <option value="">-- Seleccioná --</option>
-                {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
-                  <optgroup key={g} label={g}>
-                    {MEDIOS_SUELDOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}
-                  </optgroup>
-                );})}
-              </select>
+            <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
+                <button onClick={function(){setPagosPago(function(prev){return[...prev,{medio:"",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar medio</button>
+              </div>
+              {pagosPago.map(function(pago,idx){return(
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <select value={pago.medio} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                    <option value="">-- Seleccioná medio --</option>
+                    {GRUPOS_MEDIOS_EGRESO.map(function(grp){
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                    })}
+                  </select>
+                  <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],monto:v};return n;});}} style={{...INP,width:100}}/>
+                  {pagosPago.length>1&&<button onClick={function(){setPagosPago(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#555",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                </div>
+              );})}
+              {pagosPago.length>1&&(
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                  <span style={{color:"#555"}}>Total asignado</span>
+                  <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosPago())} / {fmt(parseFloat(formPago.monto||0))}{pagosCuadran()?" ✓":" ← diferencia"}</span>
+                </div>
+              )}
+              <div style={{fontSize:9,color:"#444",marginTop:6}}>Si se pagó con más de un medio —parte en efectivo, parte por transferencia, o desde dos cuentas— agregá una línea por cada uno.</div>
             </div>
           )}
           <div style={{background:"#14100A",border:"1px solid #D4A01722",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
@@ -8489,7 +8537,7 @@ function PanelVencimientos(p){
                       {x.v.recurrente?" · todos los meses":" · una vez"}
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>
-                    {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{x.pago.medio?" · "+x.pago.medio:""}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
+                    {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{(x.pago.medios&&x.pago.medios.length>1)?" · "+x.pago.medios.map(function(pg){return pg.medio+" "+fmt(pg.monto);}).join(" + "):(x.pago.medio?" · "+x.pago.medio:"")}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
                     {x.v.notas&&<div style={{fontSize:10,color:"#444",marginTop:3,fontStyle:"italic"}}>📝 {x.v.notas}</div>}
                   </div>
                   <div style={{textAlign:"right"}}>

@@ -189,14 +189,16 @@ Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada 
 sesiones y avisa en pantalla.
 
 **El botón 🩺, arriba a la derecha del módulo, prueba el guardado de punta a punta**: escribe
-un plan de prueba en la tabla, lo lee de vuelta, comprueba que `tipo`, `cuotas_plan`,
-`nro_plan` y `cuit` hayan llegado enteros, y lo borra. El informe queda en pantalla con el
+en la tabla **un vencimiento suelto y un plan** —cada uno con exactamente los campos que
+manda su formulario, que no son los mismos: el suelto lleva `subramo` y día, el plan lleva
+`tipo` y `cuotas_plan`—, los lee de vuelta, comprueba que los campos hayan llegado enteros y
+los borra. Si falla sólo uno de los dos, el informe lo muestra por separado. El informe queda en pantalla con el
 código HTTP y la respuesta textual de Supabase, con un botón para copiarlo. Es lo primero a
 mirar cuando algo "no guarda": dice si el problema es una columna que falta, el RLS
 prendido, o que la columna existe pero no conserva el dato.
 
 **Si falta una columna, el módulo lo dice solo.** Al entrar a Vencimientos se le pregunta a
-la tabla por las columnas nuevas y, si falta alguna, aparece arriba un cartel rojo con
+la tabla por **todas** las columnas que la app escribe —las nuevas y las de siempre— y, si falta alguna, aparece arriba un cartel rojo con
 cuáles son y el `alter table` listo para copiar. Un vencimiento suelto **se guarda igual**
 sin ese dato; un **plan** no, porque sin `tipo` y `cuotas_plan` no se podría ni leer ni
 pagar: ahí el guardado se corta y dice qué correr.

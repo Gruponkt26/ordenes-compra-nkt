@@ -14611,7 +14611,11 @@ async function sbLoadVencimientos() {
 // Qué columnas nuevas le faltan a la tabla, preguntando antes de que alguien intente
 // guardar: Postgrest contesta 400 nombrando la primera que no existe, así que se la saca y
 // se vuelve a preguntar. Si está todo, es una sola consulta que no trae ninguna fila.
-var COLUMNAS_NUEVAS_VENC=["grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu"];
+// Todas las columnas que la app escribe, no sólo las nuevas: si a la tabla le falta
+// cualquiera —hasta una de las de siempre, como subramo— se avisa antes de que alguien
+// intente guardar y se quede sin entender por qué no anda.
+var COLUMNAS_NUEVAS_VENC=["local","concepto","area","subramo","monto","recurrente","dia","fecha","activo","notas","pagos","usuario",
+  "grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu"];
 async function sbColumnasFaltantesVencimientos() {
   var pide = COLUMNAS_NUEVAS_VENC.slice();
   var faltan = [];
@@ -14640,7 +14644,19 @@ var SQL_VENCIMIENTOS={
   cuotas_plan:"alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;",
   cuit:"alter table vencimientos add column if not exists cuit           text;",
   debito_cuenta:"alter table vencimientos add column if not exists debito_cuenta  text;",
-  debito_cbu:"alter table vencimientos add column if not exists debito_cbu     text;"
+  debito_cbu:"alter table vencimientos add column if not exists debito_cbu     text;",
+  local:"alter table vencimientos add column if not exists local          text;",
+  concepto:"alter table vencimientos add column if not exists concepto       text;",
+  area:"alter table vencimientos add column if not exists area           text;",
+  subramo:"alter table vencimientos add column if not exists subramo        text;",
+  monto:"alter table vencimientos add column if not exists monto          numeric default 0;",
+  recurrente:"alter table vencimientos add column if not exists recurrente     boolean default true;",
+  dia:"alter table vencimientos add column if not exists dia            int;",
+  fecha:"alter table vencimientos add column if not exists fecha          date;",
+  activo:"alter table vencimientos add column if not exists activo         boolean default true;",
+  notas:"alter table vencimientos add column if not exists notas          text;",
+  pagos:"alter table vencimientos add column if not exists pagos          jsonb default '[]'::jsonb;",
+  usuario:"alter table vencimientos add column if not exists usuario        text;"
 };
 // Un plan sin estas dos columnas no es un plan: guardarlo igual dejaría un registro que no
 // se puede ni leer ni pagar. Se corta y se dice qué correr.
@@ -14666,49 +14682,76 @@ function faltaLaTabla(err){
   return /PGRST205/.test(t)||/relation "?(public\.)?vencimientos"? does not exist/i.test(t)||/Could not find the table/i.test(t);
 }
 // Un guardado de prueba de punta a punta, para ver qué contesta la tabla de verdad cuando
-// algo no anda: escribe un plan, lo lee de vuelta, comprueba que los campos del plan hayan
-// llegado enteros y lo borra. Devuelve el informe en texto, para leerlo o copiarlo.
-async function sbDiagnosticoVencimientos() {
+// algo no anda. Prueba las dos formas que tiene un vencimiento —el suelto recurrente y el
+// plan con sus cuotas—, porque no mandan los mismos campos y puede fallar sólo una: escribe,
+// lee de vuelta, comprueba que los campos hayan llegado enteros y borra.
+async function sbProbarVencimiento(prueba, campos, titulo) {
   var lineas = [];
-  var id = "plan_test_" + String(Date.now());
-  var prueba = {
-    id:id, tipo:"plan", grupo:"afip", local:"l4", cuit:"c2",
-    concepto:"PRUEBA de guardado — se borra sola", area:"Administrativo", subramo:"",
-    monto:1, recurrente:false, dia:null, fecha:null, activo:false, notas:"",
-    referencia:"TEST", nro_plan:"TEST", cuotas:2, cuotas_previas:0,
-    cuotas_plan:[{nro:0,vence:"2026-01-05",monto:1},{nro:1,vence:"2026-02-05",monto:1}],
-    pagos:[], usuario:"diagnostico", created_at:new Date().toISOString()
-  };
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var r = await fetch(SURL + "/rest/v1/vencimientos", { method:"POST", headers:h, body:JSON.stringify(prueba) });
     var txt = await r.text();
-    lineas.push("1) Guardar un plan de prueba → HTTP " + r.status + (r.ok ? "  OK" : "  FALLÓ"));
+    lineas.push(titulo + " → HTTP " + r.status + (r.ok ? "  OK" : "  FALLÓ"));
     if (!r.ok) {
-      lineas.push("   " + txt.slice(0,500));
+      lineas.push("   " + txt.slice(0,400));
       var c = columnaFaltante(txt);
-      if (c) lineas.push("   → falta la columna \"" + c + "\": " + (SQL_VENCIMIENTOS[c]||""));
-      if (/row-level security|RLS/i.test(txt)) lineas.push("   → la tabla tiene RLS activado: alter table vencimientos disable row level security;");
-      return lineas.join("\n");
+      if (c) lineas.push("   → falta la columna \"" + c + "\": " + (SQL_VENCIMIENTOS[c]||"alter table vencimientos add column if not exists "+c+" text;"));
+      if (/row-level security|42501/i.test(txt)) lineas.push("   → la tabla tiene RLS activado: alter table vencimientos disable row level security;");
+      return lineas;
     }
-    var r2 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + id, { headers:{...SH,"Cache-Control":"no-cache"} });
+    var r2 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + prueba.id, { headers:{...SH,"Cache-Control":"no-cache"} });
     var d2 = await r2.json();
     var v = Array.isArray(d2) ? d2[0] : null;
-    lineas.push("2) Leerlo de vuelta → HTTP " + r2.status + (v ? "  OK" : "  no volvió ninguna fila"));
-    if (v) {
-      var cs = comoLista(v.cuotas_plan);
-      lineas.push("   tipo        = " + JSON.stringify(v.tipo===undefined?null:v.tipo) + (v.tipo==="plan" ? "  OK" : "  MAL (tendría que ser \"plan\" — la columna no está guardando)"));
-      lineas.push("   cuotas_plan = " + cs.length + " cuota(s)" + (cs.length===2 ? "  OK" : "  MAL (tendrían que ser 2)"));
-      lineas.push("   nro_plan    = " + JSON.stringify(v.nro_plan===undefined?null:v.nro_plan));
-      lineas.push("   cuit        = " + JSON.stringify(v.cuit===undefined?null:v.cuit));
-      lineas.push("   grupo       = " + JSON.stringify(v.grupo===undefined?null:v.grupo));
+    if (!v) { lineas.push("   se guardó pero no volvió al leerlo (HTTP " + r2.status + ")"); }
+    else {
+      campos.forEach(function(c){
+        var val = v[c.k];
+        var ok = c.ok(val, v);
+        lineas.push("   " + (c.k + "            ").slice(0,13) + "= " + JSON.stringify(val===undefined?null:val) + (ok ? "  OK" : "  MAL (" + c.esp + ")"));
+      });
     }
-    var r3 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + id, { method:"DELETE", headers:SH });
-    lineas.push("3) Borrar la prueba → HTTP " + r3.status + (r3.ok ? "  OK" : "  quedó cargada, borrala a mano"));
+    var r3 = await fetch(SURL + "/rest/v1/vencimientos?id=eq." + prueba.id, { method:"DELETE", headers:SH });
+    if (!r3.ok) lineas.push("   la prueba no se pudo borrar (HTTP " + r3.status + "), borrala a mano");
   } catch(e) {
-    lineas.push("Error de conexión: " + e.message);
+    lineas.push(titulo + " → error de conexión: " + e.message);
   }
-  return lineas.join("\n");
+  return lineas;
+}
+async function sbDiagnosticoVencimientos() {
+  // Cada prueba manda exactamente los mismos campos que su formulario: el suelto lleva
+  // subramo y el plan no, y justamente esa diferencia puede ser la que falle.
+  var base = {
+    grupo:"servicios", local:"l1", cuit:"", area:"Servicios",
+    concepto:"PRUEBA de guardado — se borra sola", notas:"", referencia:"TEST",
+    debito_cuenta:"Transferencia - Provincia Personas", debito_cbu:"prueba.alias",
+    activo:false, pagos:[], usuario:"diagnostico", created_at:new Date().toISOString()
+  };
+  var suelto = {...base,
+    id:"venc_test_"+String(Date.now()), subramo:"",
+    monto:1, recurrente:true, dia:10, fecha:null, cuotas:0, cuotas_previas:0
+  };
+  var plan = {...base,
+    id:"plan_test_"+String(Date.now()+1),
+    tipo:"plan", grupo:"afip", local:"l4", cuit:"c2", area:"Administrativo",
+    nro_plan:"TEST", monto:1, recurrente:false, dia:null, fecha:null,
+    cuotas:2, cuotas_previas:0,
+    cuotas_plan:[{nro:0,vence:"2026-01-05",monto:1},{nro:1,vence:"2026-02-05",monto:1}]
+  };
+  var l1 = await sbProbarVencimiento(suelto, [
+    {k:"grupo",        esp:'tendría que ser "servicios"', ok:function(x){return x==="servicios";}},
+    {k:"recurrente",   esp:"tendría que ser true",        ok:function(x){return x===true;}},
+    {k:"dia",          esp:"tendría que ser 10",          ok:function(x){return Number(x)===10;}},
+    {k:"subramo",      esp:"la columna no guarda",        ok:function(x){return x!==undefined&&x!==null;}},
+    {k:"debito_cuenta",esp:"la columna no guarda",        ok:function(x){return !!x;}},
+    {k:"debito_cbu",   esp:"la columna no guarda",        ok:function(x){return !!x;}}
+  ], "1) Vencimiento suelto (+ Nuevo)");
+  var l2 = await sbProbarVencimiento(plan, [
+    {k:"tipo",         esp:'tendría que ser "plan"',      ok:function(x){return x==="plan";}},
+    {k:"cuotas_plan",  esp:"tendrían que ser 2 cuotas",   ok:function(x){return comoLista(x).length===2;}},
+    {k:"nro_plan",     esp:"la columna no guarda",        ok:function(x){return !!x;}},
+    {k:"cuit",         esp:"la columna no guarda",        ok:function(x){return !!x;}}
+  ], "2) Plan de pago (+ Plan de pago)");
+  return l1.concat([""]).concat(l2).join("\n");
 }
 async function sbSaveVencimiento(v) {
   try {

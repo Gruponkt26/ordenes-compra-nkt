@@ -7830,11 +7830,17 @@ function resumenPlan(v){
   var adeudadas=impagas.filter(function(c){return c.vence&&c.vence<hoy;});
   var porPagar=impagas.filter(function(c){return !(c.vence&&c.vence<hoy);});
   var total=suma(cs,monto);
-  var pago=suma(pagadas,function(c){return parseFloat(c.pago.monto)||0;});
+  // Lo pagado que descuenta del plan es la cuota, no el interés: pagar una cuota con mora
+  // saca más plata de la cuenta pero no adelanta el plan. El interés se cuenta aparte.
+  var pago=suma(pagadas,function(c){
+    var b=c.pago.base;
+    return (b===undefined||b===null||b==="")?(parseFloat(c.pago.monto)||0):(parseFloat(b)||0);
+  });
+  var intereses=suma(pagadas,function(c){return parseFloat(c.pago.interes)||0;});
   return {
     cuotas:cs.length, pagadas:pagadas.length, faltan:impagas.length,
     adeudadas:adeudadas.length, porPagar:porPagar.length,
-    total:total, pagado:pago, resta:total-pago,
+    total:total, pagado:pago, resta:total-pago, intereses:intereses, salido:pago+intereses,
     montoAdeudado:suma(adeudadas,monto), montoPorPagar:suma(porPagar,monto),
     completo:cs.length>0&&pagadas.length===cs.length
   };
@@ -7943,7 +7949,7 @@ function PanelVencimientos(p){
 
   var FORM_VACIO={local:"l1",cuit:"c2",debito_cuenta:"",debito_cbu:"",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
-  var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
+  var FORM_PAGO={fecha:hoy,monto:"",total:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
   var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
@@ -8172,7 +8178,7 @@ function PanelVencimientos(p){
   function abrirPago(x){
     var monto=(x.cuota?x.cuota.monto:x.v.monto)||"";
     setPagando(x);
-    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:monto});
+    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:monto,total:monto});
     // Si se debita solo, el medio ya se sabe: es la cuenta de la que sale.
     setPagosPago([{medio:x.v.debito_cuenta||"",monto:monto===""?"":String(monto)}]);
   }
@@ -8180,20 +8186,38 @@ function PanelVencimientos(p){
   // transferencia, o desde dos cuentas—: cada línea es un medio con su monto, y entre todas
   // tienen que dar el total pagado.
   function totalPagosPago(){ return pagosPago.reduce(function(a,pg){return a+(parseFloat(pg.monto)||0);},0); }
+  // Una cuota vencida se paga con intereses, y del organismo viene un número solo: lo que
+  // hay que pagar hoy. Se carga ése y el interés sale de la resta contra la cuota, en vez de
+  // hacer la cuenta a mano. Ese total es el que tienen que sumar los medios y el que va al
+  // egreso.
+  function totalAPagar(){
+    var t=parseFloat(formPago.total);
+    return isNaN(t)?(parseFloat(formPago.monto)||0):t;
+  }
+  function interesDelPago(){ return Math.max(0,totalAPagar()-(parseFloat(formPago.monto)||0)); }
   function pagosCuadran(){
-    var total=parseFloat(formPago.monto)||0;
+    var total=totalAPagar();
     if(!total)return false;
     return Math.abs(totalPagosPago()-total)<0.01;
   }
   // Al cambiar el monto total, si hay una sola línea la sigue: es el caso de siempre y no
   // tiene sentido hacer que lo escriban dos veces.
+  // Cambiar el monto de la cuota arrastra el total mientras no le hayan puesto uno distinto
+  // —el caso normal, sin intereses—; si ya escribieron un total, se respeta.
   function cambiarMontoPago(valor){
-    setFormPago(function(f){return{...f,monto:valor};});
+    var sinTocar=String(formPago.total||"")===String(formPago.monto||"")||!formPago.total;
+    setFormPago(function(f){return{...f,monto:valor,total:sinTocar?valor:f.total};});
+    if(sinTocar)setPagosPago(function(prev){ return prev.length===1?[{...prev[0],monto:valor}]:prev; });
+  }
+  function cambiarTotalPago(valor){
+    setFormPago(function(f){return{...f,total:valor};});
     setPagosPago(function(prev){ return prev.length===1?[{...prev[0],monto:valor}]:prev; });
   }
   function confirmarPago(){
     var x=pagando; if(!x)return;
-    var monto=parseFloat(formPago.monto)||0;
+    var base=parseFloat(formPago.monto)||0;
+    var monto=totalAPagar();
+    var interes=Math.max(0,monto-base);
     if(monto<=0){alert("Poné el monto que se pagó.");return;}
     var medios=pagosPago.filter(function(pg){return pg.medio&&(parseFloat(pg.monto)||0)>0;})
                         .map(function(pg){return {medio:pg.medio,monto:parseFloat(pg.monto)||0};});
@@ -8213,13 +8237,14 @@ function PanelVencimientos(p){
       onSaveEgreso({
         id:egresoId, local:x.v.local, concepto:x.v.concepto, subramo:x.v.subramo||"Vencimiento",
         monto:monto, forma_pago:medios.length===1?medios[0].medio:"Varios medios", pagos:medios,
+        detalle:interes>0?("Incluye "+fmt(interes)+" de intereses por mora"):"",
         facturado:!!formPago.facturado, facturacion:formPago.facturado?formPago.facturacion:"",
         categoria:x.v.area, area:x.v.area,
         notas:"Pago de vencimiento — "+mesFiltro, fecha:formPago.fecha,
         usuario:usuario, created_at:new Date().toISOString()
       });
     }
-    var datosPago={fecha:formPago.fecha,monto:monto,
+    var datosPago={fecha:formPago.fecha,monto:monto,base:base,interes:interes,
       medio:medios.length===0?"":(medios.length===1?medios[0].medio:"Varios medios"),
       medios:medios,
       facturado:!!formPago.facturado,facturacion:formPago.facturado?formPago.facturacion:"",egreso_id:egresoId};
@@ -8833,7 +8858,7 @@ function PanelVencimientos(p){
                                       ):fmt(c.monto)}
                                     </td>
                                     <td style={{padding:"6px",fontSize:10,textAlign:"right",borderBottom:"1px solid #150C1C",color:c.pago?"#3A7D44":(vencida?"#C1440E":"#555")}}>
-                                      {c.pago?((c.pago.previo?"✅ ya venía · ":"✅ ")+fmtDate(c.pago.fecha)):(vencida?"⚠️ vencida":"pendiente")}
+                                      {c.pago?((c.pago.previo?"✅ ya venía · ":"✅ ")+fmtDate(c.pago.fecha)+((parseFloat(c.pago.interes)||0)>0?" · +"+fmt(c.pago.interes)+" int.":"")):(vencida?"⚠️ vencida":"pendiente")}
                                     </td>
                                     <td style={{padding:"6px",textAlign:"right",borderBottom:"1px solid #150C1C"}}>
                                       <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
@@ -8850,7 +8875,7 @@ function PanelVencimientos(p){
                           </table>
                         </div>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9,paddingTop:8,borderTop:"1px solid #8B2FC922"}}>
-                          <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}{rp.adeudadas>0?" · adeudado "+fmt(rp.montoAdeudado):""}</span>
+                          <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}{rp.adeudadas>0?" · adeudado "+fmt(rp.montoAdeudado):""}{rp.intereses>0?" · "+fmt(rp.intereses)+" de intereses (salieron "+fmt(rp.salido)+")":""}</span>
                           <div style={{display:"flex",gap:6}}>
                             <button onClick={function(){abrirEditarPlan(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar plan</button>
                             <button onClick={function(){agregarCuota(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>+ Cuota</button>
@@ -8989,7 +9014,10 @@ function PanelVencimientos(p){
       })()}
 
       {/* Marcar pagado */}
-      {pagando&&(
+      {pagando&&(function(){
+        var vencidoPago=!!(pagando.fecha&&pagando.fecha<hoy&&!pagando.pago);
+        var diasDeMora=vencidoPago?Math.round((new Date(hoy+"T00:00:00")-new Date(pagando.fecha+"T00:00:00"))/86400000):0;
+        return(
         <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
           <div style={{fontSize:11,color:"#3A7D44",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>✅ Marcar pagado</div>
           <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:12}}>{pagando.v.concepto} · {mesFiltro}</div>
@@ -8999,10 +9027,34 @@ function PanelVencimientos(p){
               <input type="date" value={formPago.fecha} onChange={function(e){setFormPago(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
             </div>
             <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto pagado</label>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{vencidoPago?"Monto de la cuota":"Monto pagado"}</label>
               <input type="number" value={formPago.monto} onChange={function(e){cambiarMontoPago(e.target.value);}} style={INP}/>
             </div>
+            {vencidoPago&&(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#C1440E",textTransform:"uppercase",marginBottom:5}}>Valor real a pagar</label>
+                <input type="number" value={formPago.total} onChange={function(e){cambiarTotalPago(e.target.value);}} placeholder="lo que hay que pagar hoy" style={{...INP,borderColor:interesDelPago()>0?"#C1440E66":"#2A2A2A"}}/>
+              </div>
+            )}
           </div>
+          {vencidoPago&&(
+            <div style={{background:"#1A0808",border:"1px solid #C1440E33",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:"#C1440E"}}>
+                  ⚠️ Venció {pagando.fecha?fmtDate(pagando.fecha):""}{diasDeMora>0?" · "+diasDeMora+" día"+(diasDeMora===1?"":"s")+" de atraso":""}
+                </span>
+                <span style={{fontSize:12,color:"#888"}}>
+                  {(function(){
+                    var base=parseFloat(formPago.monto)||0, inte=interesDelPago(), tot=totalAPagar();
+                    if(tot<base)return <span style={{color:"#D4A017"}}>El valor a pagar es menor que la cuota: se guarda {fmt(tot)}, sin intereses.</span>;
+                    if(inte<=0)return <span>Sin intereses · <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
+                    return <span>Cuota {fmt(base)} + <b style={{color:"#C1440E"}}>intereses {fmt(inte)}</b> ({Math.round(inte/base*1000)/10}%) = <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
+                  })()}
+                </span>
+              </div>
+              <div style={{fontSize:9,color:"#5A3030",marginTop:5}}>Poné <b style={{color:"#8A5050"}}>lo que hay que pagar hoy</b> —el número que da el organismo, con la mora adentro— y el interés sale solo de la diferencia contra la cuota. Es ese total el que sale de la cuenta y el que va al egreso.</div>
+            </div>
+          )}
           {!formPago.yaCargado&&(
             <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -9024,7 +9076,7 @@ function PanelVencimientos(p){
               {pagosPago.length>1&&(
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadran()?"#0A1A0A":"#1A0A0A"}}>
                   <span style={{color:"#555"}}>Total asignado</span>
-                  <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosPago())} / {fmt(parseFloat(formPago.monto||0))}{pagosCuadran()?" ✓":" ← diferencia"}</span>
+                  <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosPago())} / {fmt(totalAPagar())}{pagosCuadran()?" ✓":" ← diferencia"}</span>
                 </div>
               )}
               <div style={{fontSize:9,color:"#444",marginTop:6}}>Si se pagó con más de un medio —parte en efectivo, parte por transferencia, o desde dos cuentas— agregá una línea por cada uno.</div>
@@ -9050,9 +9102,10 @@ function PanelVencimientos(p){
             <button onClick={confirmarPago} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Confirmar pago</button>
             <button onClick={function(){setPagando(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
           </div>
-          {!formPago.yaCargado&&<div style={{fontSize:9,color:"#444",marginTop:8,lineHeight:1.6}}>Al confirmar se genera el egreso en 💰 Egresos, área {pagando.v.area}, con este medio de pago. No hay que cargarlo de nuevo.</div>}
+          {!formPago.yaCargado&&<div style={{fontSize:9,color:"#444",marginTop:8,lineHeight:1.6}}>Al confirmar se genera el egreso en 💰 Egresos, área {pagando.v.area}, con este medio de pago{interesDelPago()>0?" y los intereses adentro del monto":""}. No hay que cargarlo de nuevo.</div>}
         </div>
-      )}
+        );
+      })()}
 
       {/* Lista */}
       {grupoFiltro&&!verTodos&&(sueltosDelMes.length===0?(
@@ -9102,7 +9155,7 @@ function PanelVencimientos(p){
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>
                     {x.v.debito_cuenta&&!x.pago&&<div style={{fontSize:10,color:"#1A6B8A",marginTop:2}}>🔁 Se debita de {etiquetaCuenta(x.v.debito_cuenta)}{x.v.debito_cbu?" · "+x.v.debito_cbu:""}</div>}
-                    {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{(x.pago.medios&&x.pago.medios.length>1)?" · "+x.pago.medios.map(function(pg){return pg.medio+" "+fmt(pg.monto);}).join(" + "):(x.pago.medio?" · "+x.pago.medio:"")}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
+                    {x.pago&&<div style={{fontSize:10,color:"#3A7D4499",marginTop:2}}>Pagado el {fmtDate(x.pago.fecha)}{(x.pago.medios&&x.pago.medios.length>1)?" · "+x.pago.medios.map(function(pg){return pg.medio+" "+fmt(pg.monto);}).join(" + "):(x.pago.medio?" · "+x.pago.medio:"")}{(parseFloat(x.pago.interes)||0)>0?" · incluye "+fmt(x.pago.interes)+" de intereses":""}{x.pago.egreso_id?" · egreso generado":" · cargado a mano"}</div>}
                     {x.v.notas&&<div style={{fontSize:10,color:"#444",marginTop:3,fontStyle:"italic"}}>📝 {x.v.notas}</div>}
                   </div>
                   <div style={{textAlign:"right"}}>

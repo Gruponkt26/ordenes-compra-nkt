@@ -226,6 +226,17 @@ cartel en la portada del módulo, donde cada línea lleva a su organismo. Cuenta
 recurrentes de este mes y del que viene, los de una sola vez y las cuotas de los planes; lo
 que ya se pagó no aparece.
 
+**Pagar algo vencido: se carga el total y el interés sale solo.** Cuando lo que se está
+pagando ya venció —un vencimiento suelto o la cuota de un plan—, el formulario suma un campo
+**Valor real a pagar**: el número que da el organismo, con la mora adentro. El interés se
+calcula como la diferencia contra la cuota y queda a la vista («Cuota $100.000 + intereses
+$18.500 (18,5%) = $118.500»), sin tener que hacer la cuenta a mano. El egreso se genera por
+el total, con el detalle de cuánto fue interés.
+
+El interés **no descuenta del plan**: pagar con mora saca más plata de la cuenta pero no
+adelanta el plan, así que lo pagado del plan sigue siendo la cuota y el interés se cuenta
+aparte («Pagado $100.000 · resta $100.000 · $18.500 de intereses (salieron $118.500)»).
+
 **El pago y su egreso van juntos, en los dos sentidos.** El pago guarda el `egreso_id` del
 egreso que generó, así que si el egreso se borra desde 💰 Egresos el vencimiento vuelve a
 quedar impago —y avisa en pantalla, porque el cambio pasa en otra pantalla—, y si el pago se

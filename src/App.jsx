@@ -7765,6 +7765,19 @@ function grupoDe(id){
   return GRUPOS_VENC.find(function(g){return g.id===id;})||GRUPOS_VENC[GRUPOS_VENC.length-1];
 }
 function grupoIdDe(v){ return grupoDe(v.grupo||"otros").id; }
+// AFIP, ARBA y el gremio no se le pagan a un local: se le pagan a un CUIT. El IVA, el
+// F.931 o la cuota sindical son de la persona jurídica, no del salón donde se vendió. Los
+// otros rubros —municipal, servicios, otros— sí son del local que los usa: la tasa de
+// Seguridad e Higiene y la luz vienen a nombre de una dirección.
+var CUITS_VENC=[
+  {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"CUIT personal",corto:"CUIT personal",color:"#C1440E",local:"l1",cubre:"El Bodegón"},
+  {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"Calzón Gitano SRL",corto:"SRL",color:"#1A6B8A",local:"l4",cubre:"Kusama + Colantonio's"},
+];
+var GRUPOS_POR_CUIT=["afip","arba","gremio"];
+function porCuit(grupo){ return GRUPOS_POR_CUIT.indexOf(grupoDe(grupo||"otros").id)>=0; }
+function cuitVenc(id){ return CUITS_VENC.find(function(c){return c.id===id;})||CUITS_VENC[1]; }
+// Lo cargado antes de que existiera el campo: el Bodegón es el CUIT personal, el resto la SRL.
+function cuitIdDe(v){ return v.cuit||(v.local==="l1"?"c1":"c2"); }
 
 function periodoDe(fecha){ return (fecha||"").substring(0,7); }
 function diasHabilesNo(){ return null; }
@@ -7846,11 +7859,11 @@ function PanelVencimientos(p){
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
-  var FORM_VACIO={local:"l1",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
+  var FORM_VACIO={local:"l1",cuit:"c2",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
@@ -7908,7 +7921,7 @@ function PanelVencimientos(p){
     setEditId(null); setShowForm(true);
   }
   function abrirEditar(v){
-    setForm({local:v.local||"l1",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
+    setForm({local:v.local||"l1",cuit:cuitIdDe(v),concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
     setEditId(v.id); setShowForm(true);
   }
   function doSave(){
@@ -7916,7 +7929,9 @@ function PanelVencimientos(p){
     var anterior=vencimientos.find(function(x){return x.id===editId;});
     var v={
       id:editId||("venc_"+String(Date.now())),
-      local:form.local, concepto:form.concepto.trim(), area:form.area, subramo:form.subramo||"",
+      local:porCuit(form.grupo)?cuitVenc(form.cuit).local:form.local,
+      cuit:porCuit(form.grupo)?form.cuit:"",
+      concepto:form.concepto.trim(), area:form.area, subramo:form.subramo||"",
       monto:parseFloat(form.monto)||0,
       recurrente:!!form.recurrente,
       dia:form.recurrente?(parseInt(form.dia,10)||1):null,
@@ -7945,7 +7960,9 @@ function PanelVencimientos(p){
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"otros";
     onSave({
       id:"plan_"+String(Date.now()),
-      tipo:"plan", grupo:g, local:formPlan.local, area:grupoDe(g).area,
+      tipo:"plan", grupo:g, area:grupoDe(g).area,
+      local:porCuit(g)?cuitVenc(formPlan.cuit).local:formPlan.local,
+      cuit:porCuit(g)?formPlan.cuit:"",
       concepto:formPlan.concepto.trim(), referencia:formPlan.nro_plan.trim(),
       nro_plan:formPlan.nro_plan.trim(),
       monto:parseFloat(formPlan.montoCuota)||0,
@@ -8119,17 +8136,31 @@ function PanelVencimientos(p){
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto estimado</label>
               <input type="number" value={form.monto} onChange={function(e){setForm(function(f){return{...f,monto:e.target.value};});}} placeholder="0" style={INP}/>
             </div>
-            <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
-              <select value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
-                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
-              </select>
-            </div>
+            {porCuit(form.grupo)?(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CUIT</label>
+                <select value={form.cuit} onChange={function(e){setForm(function(f){return{...f,cuit:e.target.value};});}} style={INP}>
+                  {CUITS_VENC.map(function(c){return <option key={c.id} value={c.id}>{c.label} — {c.cuit}</option>;})}
+                </select>
+                <div style={{fontSize:9,color:"#444",marginTop:4}}>{cuitVenc(form.cuit).cubre} · el egreso se carga en {(getLocal(cuitVenc(form.cuit).local)||{}).nombre}</div>
+              </div>
+            ):(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+                <select value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                  {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                </select>
+              </div>
+            )}
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Rubro</label>
-              <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>
-                {GRUPOS_VENC.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
-              </select>
+              {grupoFiltro&&grupoFiltro!=="all"?(
+                <div style={{...INP,display:"flex",alignItems:"center",color:grupoDe(form.grupo).color,fontWeight:700,background:"#0A0A0A"}}>{grupoDe(form.grupo).label}</div>
+              ):(
+                <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>
+                  {GRUPOS_VENC.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
+                </select>
+              )}
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Identificador</label>
@@ -8203,12 +8234,22 @@ function PanelVencimientos(p){
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>N° de plan</label>
               <input value={formPlan.nro_plan} onChange={function(e){setFormPlan(function(f){return{...f,nro_plan:e.target.value};});}} placeholder="J-123456" style={INP}/>
             </div>
-            <div>
-              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
-              <select value={formPlan.local} onChange={function(e){setFormPlan(function(f){return{...f,local:e.target.value};});}} style={INP}>
-                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
-              </select>
-            </div>
+            {porCuit(grupoFiltro)?(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CUIT</label>
+                <select value={formPlan.cuit} onChange={function(e){setFormPlan(function(f){return{...f,cuit:e.target.value};});}} style={INP}>
+                  {CUITS_VENC.map(function(c){return <option key={c.id} value={c.id}>{c.label} — {c.cuit}</option>;})}
+                </select>
+                <div style={{fontSize:9,color:"#444",marginTop:4}}>{cuitVenc(formPlan.cuit).cubre} · el egreso se carga en {(getLocal(cuitVenc(formPlan.cuit).local)||{}).nombre}</div>
+              </div>
+            ):(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+                <select value={formPlan.local} onChange={function(e){setFormPlan(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                  {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                </select>
+              </div>
+            )}
           </div>
           <div style={{background:"#0A0A0A",borderRadius:9,padding:"11px 13px",marginBottom:10}}>
             <div style={{fontSize:10,color:"#A855F7",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Cuota 0 — anticipo</div>
@@ -8270,6 +8311,7 @@ function PanelVencimientos(p){
                 var rp=resumenPlan(v);
                 var abierto=planAbierto===v.id;
                 var l=getLocal(v.local);
+                var cq=porCuit(v.grupo)?cuitVenc(cuitIdDe(v)):null;
                 return(
                   <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
                     <div onClick={function(){setPlanAbierto(abierto?null:v.id);}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -8279,7 +8321,7 @@ function PanelVencimientos(p){
                           {v.concepto} {v.nro_plan?<span style={{fontSize:11,color:"#A855F7",fontWeight:400}}>· plan {v.nro_plan}</span>:null}
                         </div>
                         <div style={{fontSize:10,color:"#555",marginTop:3}}>
-                          <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:v.local}</span> · {rp.pagadas} de {rp.cuotas} pagadas
+                          <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {rp.pagadas} de {rp.cuotas} pagadas
                           {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
                         </div>
                       </div>
@@ -8410,6 +8452,7 @@ function PanelVencimientos(p){
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {delMes2.map(function(x){
             var l=getLocal(x.v.local);
+            var cq=porCuit(x.v.grupo)?cuitVenc(cuitIdDe(x.v)):null;
             var e=estado(x);
             return(
               <div key={x.v.id} style={{background:"#111",border:"1px solid "+(x.pago?"#3A7D4422":(x.dias!==null&&x.dias<0?"#C1440E44":"#1A1A1A")),borderRadius:10,padding:"12px 14px"}}>
@@ -8442,7 +8485,7 @@ function PanelVencimientos(p){
                       );
                     })()}
                     <div style={{fontSize:10,color:"#555",marginTop:3}}>
-                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:l?l.color:"#555"}}>{l?l.emoji+" "+l.nombre:x.v.local}</span> · <span style={{color:grupoDe(x.v.grupo).color}}>{grupoDe(x.v.grupo).corto}</span> · {x.v.area}
+                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:x.v.local)}</span> · <span style={{color:grupoDe(x.v.grupo).color}}>{grupoDe(x.v.grupo).corto}</span> · {x.v.area}
                       {x.v.recurrente?" · todos los meses":" · una vez"}
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>

@@ -7850,7 +7850,7 @@ function cuotasDe(v){
 }
 
 function PanelVencimientos(p){
-  var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, usuario=p.usuario;
+  var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
   var [diag,setDiag]=useState(null); // informe del guardado de prueba
   var hoy=new Date().toISOString().split("T")[0];
@@ -8059,8 +8059,14 @@ function PanelVencimientos(p){
     }
     setPagando(null);
   }
+  // Deshacer el pago borra el egreso que había generado: son la misma plata, y dejar el
+  // egreso suelto sería contarla como gastada sin que nada la explique.
   function deshacerPago(x){
-    if(!window.confirm("¿Marcar como impago "+x.v.concepto+(x.cuota?" — cuota "+x.cuota.nro:"")+"?\n\nOjo: el egreso que se generó NO se borra, hay que borrarlo desde Egresos."))return;
+    var pago=x.cuota?x.cuota.pago:x.pago;
+    var egresoId=pago&&pago.egreso_id;
+    if(!window.confirm("¿Marcar como impago "+x.v.concepto+(x.cuota?" — cuota "+(x.cuota.nro===0?"anticipo":x.cuota.nro):"")+"?\n\n"
+      +(egresoId?"El egreso que se había generado en 💰 Egresos se borra también.":"No había egreso generado: el pago estaba cargado a mano, así que en Egresos no se toca nada.")))return;
+    if(egresoId&&onDeleteEgreso)onDeleteEgreso(egresoId);
     if(x.cuota){ guardarCuota(x.v,x.cuota.nro,{pago:null}); return; }
     onSave({...x.v,pagos:(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;})});
   }
@@ -8616,7 +8622,8 @@ function PanelVencimientos(p){
       <div style={{fontSize:9,color:"#444",marginTop:14,lineHeight:1.7}}>
         <b style={{color:"#666"}}>Un vencimiento no es un gasto:</b> es lo que hay que pagar. El gasto nace al marcarlo pagado, y ahí se genera solo el egreso en 💰 Egresos con su medio de pago y su factura — por eso no hay que cargarlo de nuevo.<br/>
         <b style={{color:"#666"}}>Los recurrentes</b> aparecen todos los meses en el día que les pusiste, y cada mes se marca pagado por separado. El monto es estimado: al pagar se carga el real.<br/>
-        <b style={{color:"#666"}}>Las cuotas pagadas</b> se cuentan solas: son las que se fueron marcando pagadas acá, más las que ya venían pagas al cargarlo. Cuando se paga la última, el vencimiento deja de aparecer.
+        <b style={{color:"#666"}}>Las cuotas pagadas</b> se cuentan solas: son las que se fueron marcando pagadas acá, más las que ya venían pagas al cargarlo. Cuando se paga la última, el vencimiento deja de aparecer.<br/>
+        <b style={{color:"#666"}}>El pago y su egreso van juntos:</b> si se borra el egreso desde 💰 Egresos, el vencimiento vuelve a quedar impago; y si acá se deshace el pago, se borra el egreso. Nunca queda uno sin el otro.
       </div>
       )}
     </div>
@@ -15552,6 +15559,42 @@ export default function App() {
     limpiarTabs();
     setVista(v);
   }
+  // Un egreso nacido de un vencimiento queda atado a él por el egreso_id que guardó el pago.
+  // Los dos lados se mueven juntos: si se borra el egreso, el vencimiento vuelve a estar
+  // impago —si no, quedaría marcado como pagado sin que la plata figure en ningún lado—, y
+  // si se deshace el pago desde Vencimientos, el egreso se borra.
+  function borrarEgresoSolo(id){
+    sbDeleteGasto(id);
+    setGastos(function(p){return p.filter(function(g){return g.id!==id;});});
+  }
+  function despagarPorEgreso(egresoId){
+    if(!egresoId)return;
+    vencimientos.forEach(function(v){
+      var tocado=false, nuevo={...v};
+      var cs=Array.isArray(v.cuotas_plan)?v.cuotas_plan:[];
+      if(cs.some(function(c){return c.pago&&c.pago.egreso_id===egresoId;})){
+        nuevo.cuotas_plan=cs.map(function(c){return (c.pago&&c.pago.egreso_id===egresoId)?{...c,pago:null}:c;});
+        tocado=true;
+      }
+      var pgs=Array.isArray(v.pagos)?v.pagos:[];
+      if(pgs.some(function(pg){return pg.egreso_id===egresoId;})){
+        nuevo.pagos=pgs.filter(function(pg){return pg.egreso_id!==egresoId;});
+        tocado=true;
+      }
+      if(!tocado)return;
+      setVencimientos(function(prev){return prev.map(function(x){return x.id===v.id?nuevo:x;});});
+      sbSaveVencimiento(nuevo);
+      // Se avisa, porque el vencimiento cambia de estado en otra pantalla: si no, alguien
+      // borra un egreso y no se entera de que volvió a deber ese pago.
+      window.setTimeout(function(){
+        alert("Ese egreso venía del vencimiento \""+v.concepto+"\": volvió a quedar impago en 📅 Vencimientos.");
+      },100);
+    });
+  }
+  function borrarEgreso(id){
+    borrarEgresoSolo(id);
+    despagarPorEgreso(id);
+  }
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
   function saveOrden(o){
@@ -15872,7 +15915,7 @@ export default function App() {
                 onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
-                onDeleteEgresoSueldo={function(id){sbDeleteGasto(id);setGastos(function(prev){return prev.filter(function(g){return g.id!==id;});});}}
+                onDeleteEgresoSueldo={borrarEgreso}
                 vacaciones={vacaciones}
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}
@@ -16125,7 +16168,7 @@ export default function App() {
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
               onSave={function(g){sbSaveGasto(g);setGastos(function(p){var f=p.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
-              onDelete={function(id){sbDeleteGasto(id);setGastos(function(p){return p.filter(function(g){return g.id!==id;});});}}
+              onDelete={borrarEgreso}
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}
               onSaveArea={function(a){setAreasCustomGastos(function(p){return p.includes(a)?p:[...p,a];});}}
@@ -16159,6 +16202,7 @@ export default function App() {
                 await sbDeleteVencimiento(id);
               }}
               onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              onDeleteEgreso={borrarEgresoSolo}
             />
           )}
 

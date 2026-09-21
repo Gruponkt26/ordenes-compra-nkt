@@ -7850,11 +7850,23 @@ function armarCuotas(opts){
     var dd=Math.min(dia,ultimo);
     return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
   }
+  // Un plan que ya se venía pagando se carga con las cuotas viejas marcadas pagadas. Ese
+  // pago no genera egreso: la plata salió antes de que el plan existiera en la app, y
+  // generarlo ahora sería contarla dos veces. Queda marcado como "previo" para poder
+  // distinguirlo de los que se pagaron acá.
+  function yaPaga(c){ return {...c, pago:{fecha:c.vence, monto:c.monto, medio:"", medios:[], facturado:false, facturacion:"", egreso_id:null, previo:true}}; }
   var anticipo=parseFloat(opts.anticipo)||0;
-  if(anticipo>0)out.push({nro:0,monto:anticipo,vence:opts.fechaAnticipo||fechaDe(opts.mesInicio,0),pago:null});
+  if(anticipo>0){
+    var cAnt={nro:0,monto:anticipo,vence:opts.fechaAnticipo||fechaDe(opts.mesInicio,0),pago:null};
+    out.push(opts.anticipoPagado?yaPaga(cAnt):cAnt);
+  }
   var n=parseInt(opts.cantidad,10)||0;
   var monto=parseFloat(opts.montoCuota)||0;
-  for(var i=1;i<=n;i++) out.push({nro:i,monto:monto,vence:fechaDe(opts.mesInicio,i-1),pago:null});
+  var yaPagadas=Math.max(0,Math.min(n,parseInt(opts.pagadas,10)||0));
+  for(var i=1;i<=n;i++){
+    var c={nro:i,monto:monto,vence:fechaDe(opts.mesInicio,i-1),pago:null};
+    out.push(i<=yaPagadas?yaPaga(c):c);
+  }
   return out;
 }
 
@@ -7933,7 +7945,7 @@ function PanelVencimientos(p){
   var FORM_PAGO={fecha:hoy,monto:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
@@ -8511,9 +8523,39 @@ function PanelVencimientos(p){
                 <input type="month" value={formPlan.mesInicio} onChange={function(e){setFormPlan(function(f){return{...f,mesInicio:e.target.value};});}} style={INP}/>
               </div>
             </div>
+            {/* Un plan que ya se venía pagando: se carga entero y las cuotas viejas nacen
+                pagadas, sin generar egresos —esa plata salió antes—. */}
+            <div style={{borderTop:"1px solid #8B2FC922",marginTop:11,paddingTop:11}}>
+              <div style={{fontSize:9,color:"#A855F7",textTransform:"uppercase",letterSpacing:1,marginBottom:7}}>¿Ya lo venías pagando?</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:9,alignItems:"end"}}>
+                <div>
+                  <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Cuotas ya pagadas</label>
+                  <input type="number" min="0" max={formPlan.cantidad||undefined} value={formPlan.pagadas} onChange={function(e){setFormPlan(function(f){return{...f,pagadas:e.target.value};});}} placeholder="0" style={INP}/>
+                </div>
+                {(parseFloat(formPlan.anticipo)||0)>0&&(
+                  <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,color:formPlan.anticipoPagado?"#A855F7":"#666",paddingBottom:9}}>
+                    <input type="checkbox" checked={!!formPlan.anticipoPagado} onChange={function(e){var b=e.target.checked;setFormPlan(function(f){return{...f,anticipoPagado:b};});}}/>
+                    El anticipo ya está pagado
+                  </label>
+                )}
+              </div>
+              {formPlan.anticipoPagado&&formPlan.fechaAnticipo&&formPlan.mesInicio&&formPlan.fechaAnticipo.substring(0,7)>formPlan.mesInicio&&(
+                <div style={{fontSize:10,color:"#D4A017",marginTop:6}}>⚠️ El anticipo quedó con fecha {fmtDate(formPlan.fechaAnticipo)}, posterior a la primera cuota. Si el plan arrancó antes, corregí la fecha del anticipo arriba.</div>
+              )}
+              <div style={{fontSize:9,color:"#444",marginTop:6,lineHeight:1.6}}>
+                Poné el <b style={{color:"#666"}}>mes de la primera cuota</b> arriba —el de verdad, aunque sea pasado— y acá cuántas llevás pagadas: las primeras nacen marcadas pagadas. <b style={{color:"#666"}}>No generan egresos</b>, porque esa plata salió antes de cargarlo acá. Después, en la planilla, se corrige el monto o la fecha de cualquiera.
+              </div>
+            </div>
             {(parseInt(formPlan.cantidad,10)||0)>0&&(parseFloat(formPlan.montoCuota)||0)>0&&(
               <div style={{fontSize:11,color:"#A855F7",marginTop:9}}>
                 {formPlan.cantidad} cuotas de {fmt(parseFloat(formPlan.montoCuota))}{(parseFloat(formPlan.anticipo)||0)>0?" + anticipo de "+fmt(parseFloat(formPlan.anticipo)):""} = <b>{fmt((parseFloat(formPlan.anticipo)||0)+(parseInt(formPlan.cantidad,10)||0)*(parseFloat(formPlan.montoCuota)||0))}</b>
+                {(function(){
+                  var yp=Math.max(0,Math.min(parseInt(formPlan.cantidad,10)||0,parseInt(formPlan.pagadas,10)||0));
+                  var pagado=yp*(parseFloat(formPlan.montoCuota)||0)+(formPlan.anticipoPagado?(parseFloat(formPlan.anticipo)||0):0);
+                  if(pagado<=0)return null;
+                  var totalPlan=(parseFloat(formPlan.anticipo)||0)+(parseInt(formPlan.cantidad,10)||0)*(parseFloat(formPlan.montoCuota)||0);
+                  return <div style={{color:"#3A7D44",marginTop:3}}>Nace con {fmt(pagado)} ya pagado{yp>0?" ("+yp+" cuota"+(yp===1?"":"s")+(formPlan.anticipoPagado?" + el anticipo":"")+")":" (el anticipo)"} · resta {fmt(totalPlan-pagado)}</div>;
+                })()}
               </div>
             )}
           </div>
@@ -8640,7 +8682,7 @@ function PanelVencimientos(p){
                                       ):fmt(c.monto)}
                                     </td>
                                     <td style={{padding:"6px",fontSize:10,textAlign:"right",borderBottom:"1px solid #150C1C",color:c.pago?"#3A7D44":(vencida?"#C1440E":"#555")}}>
-                                      {c.pago?"✅ "+fmtDate(c.pago.fecha):(vencida?"⚠️ vencida":"pendiente")}
+                                      {c.pago?((c.pago.previo?"✅ ya venía · ":"✅ ")+fmtDate(c.pago.fecha)):(vencida?"⚠️ vencida":"pendiente")}
                                     </td>
                                     <td style={{padding:"6px",textAlign:"right",borderBottom:"1px solid #150C1C"}}>
                                       <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>

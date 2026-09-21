@@ -305,6 +305,13 @@ egreso que se genera al pagar.
 
 ### Planes de pago
 
+**Un plan que ya se venía pagando** se carga entero igual: se pone el **mes de la primera
+cuota de verdad**, aunque sea pasado, y en «¿Ya lo venías pagando?» cuántas cuotas llevás
+pagadas (y si el anticipo ya está pago). Las primeras nacen marcadas pagadas y **no generan
+egresos** —esa plata salió antes de que el plan existiera acá, generarlos sería contarla dos
+veces—. En la planilla se distinguen: dicen «✅ ya venía» en vez de «✅». Después se corrige
+el monto o la fecha de cualquier cuota, una por una.
+
 La tarjeta de cada plan lleva sus **cuatro cuentas**, sacadas de las cuotas y no de un
 contador a mano: **totales**, **pagadas**, **por pagar** —las que faltan y todavía no
 vencieron— y **adeudadas** —las que faltan y ya vencieron—, cada una con su cantidad y su

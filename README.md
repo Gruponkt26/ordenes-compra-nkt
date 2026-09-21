@@ -264,6 +264,12 @@ impago de cada uno. Es donde aparece lo que vence en otro mes —que en la vista
 definición, no se ve—, con un buscador por concepto, identificador, N° de plan o alias, y un
 **Ir a su mes →** que abre el organismo en el mes que corresponde.
 
+Tiene además un **filtro de mes propio**, que arranca en «todos los meses» y se puede acotar
+a uno: muestra lo que cae ahí —los recurrentes, que caen todos los meses; los de una sola
+vez cuya fecha sea de ese mes; y los planes con alguna cuota que venza ahí—. La lista de
+meses incluye cualquier mes al que apunte algo cargado, aunque quede lejos, así nada queda
+fuera de alcance.
+
 ARBA y Municipalidad van separados a propósito: son dos organismos distintos, con sus
 propios vencimientos y su propia boleta. Lo que se haya cargado con el rubro viejo `iibb`,
 de cuando iban juntos, entra por **ARBA**, que es donde se declara Ingresos Brutos.

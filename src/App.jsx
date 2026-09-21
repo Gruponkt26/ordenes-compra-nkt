@@ -7898,6 +7898,7 @@ function PanelVencimientos(p){
   var [diag,setDiag]=useState(null); // informe del guardado de prueba
   var [verTodos,setVerTodos]=useState(false); // la lista general, sin filtro de mes
   var [buscar,setBuscar]=useState("");
+  var [mesTodos,setMesTodos]=useState(""); // filtro de mes de la vista general; "" = todos
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -8179,7 +8180,7 @@ function PanelVencimientos(p){
         <div>
           {verTodos?(
             <div>
-              <button onClick={function(){setVerTodos(false);setBuscar("");}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
+              <button onClick={function(){setVerTodos(false);setBuscar("");setMesTodos("");}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:"#F0EDE8"}}>🗂️ Todo lo cargado</div>
             </div>
           ):grupoFiltro?(
@@ -8634,8 +8635,26 @@ function PanelVencimientos(p){
           en otro mes, que en la vista mensual no aparece por definición. */}
       {verTodos&&(function(){
         var texto=buscar.trim().toLowerCase();
+        // Cae en un mes si tiene algo que pagar ahí: un recurrente cae todos los meses, uno
+        // de una sola vez sólo en el de su fecha, y un plan en los meses de sus cuotas.
+        function caeEn(v,mes){
+          if(!mes)return true;
+          if(esPlan(v))return cuotasPlan(v).some(function(c){return (c.vence||"").substring(0,7)===mes;});
+          if(v.recurrente)return true;
+          return periodoDe(v.fecha)===mes;
+        }
+        // Los meses que ofrece el filtro: los de siempre más cualquiera al que apunte algo
+        // cargado, para que nada quede fuera de alcance.
+        var mesesTodos=meses.slice();
+        vencimientos.forEach(function(v){
+          if(v.activo===false)return;
+          var ms=esPlan(v)?cuotasPlan(v).map(function(c){return (c.vence||"").substring(0,7);}):[periodoDe(v.fecha)];
+          ms.forEach(function(m){ if(m&&mesesTodos.indexOf(m)<0)mesesTodos.push(m); });
+        });
+        mesesTodos.sort();
         var todos=vencimientos.filter(function(v){
           if(v.activo===false)return false;
+          if(!caeEn(v,mesTodos))return false;
           if(!texto)return true;
           return [v.concepto,v.referencia,v.nro_plan,v.notas,grupoDe(v.grupo).corto,v.debito_cbu].join(" ").toLowerCase().indexOf(texto)>=0;
         });
@@ -8665,10 +8684,21 @@ function PanelVencimientos(p){
         var ordenados=GRUPOS_VENC.filter(function(g){return (porGrupo[g.id]||[]).length>0;});
         return(
           <div>
-            <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar por concepto, identificador, N° de plan o alias..." style={{...INP,marginBottom:12}}/>
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+              <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar por concepto, identificador, N° de plan o alias..." style={{...INP,flex:1,minWidth:200}}/>
+              <select value={mesTodos} onChange={function(e){setMesTodos(e.target.value);}} style={{...INP,width:"auto",minWidth:150,cursor:"pointer",borderColor:mesTodos?"#D4A017":"#2A2A2A",color:mesTodos?"#D4A017":"#F0EDE8"}}>
+                <option value="">📅 Todos los meses</option>
+                {mesesTodos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+              </select>
+            </div>
+            {mesTodos&&(
+              <div style={{fontSize:10,color:"#555",marginBottom:10,marginTop:-4}}>
+                Lo que cae en {mesTodos}. Los de todos los meses aparecen siempre; el monto y la fecha que se muestran siguen siendo los del próximo impago.
+              </div>
+            )}
             {todos.length===0?(
               <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
-                <div style={{fontSize:13,color:"#555"}}>{buscar?"No hay nada que coincida con \""+buscar+"\".":"No hay vencimientos cargados."}</div>
+                <div style={{fontSize:13,color:"#555"}}>{buscar?"No hay nada que coincida con \""+buscar+"\""+(mesTodos?" en "+mesTodos:"")+".":(mesTodos?"No hay nada que caiga en "+mesTodos+".":"No hay vencimientos cargados.")}</div>
               </div>
             ):ordenados.map(function(g){
               var lista=porGrupo[g.id].slice().sort(function(a,b){return proximo(a).localeCompare(proximo(b));});

@@ -184,8 +184,13 @@ alter table vencimientos add column if not exists cuit           text;
 ```
 
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
-sesiones y avisa en pantalla. Si lo que falta es una columna, el vencimiento **se guarda
-igual** sin ese dato y el aviso dice cuál falta.
+sesiones y avisa en pantalla.
+
+**Si falta una columna, el módulo lo dice solo.** Al entrar a Vencimientos se le pregunta a
+la tabla por las columnas nuevas y, si falta alguna, aparece arriba un cartel rojo con
+cuáles son y el `alter table` listo para copiar. Un vencimiento suelto **se guarda igual**
+sin ese dato; un **plan** no, porque sin `tipo` y `cuotas_plan` no se podría ni leer ni
+pagar: ahí el guardado se corta y dice qué correr.
 
 ### Un vencimiento no es un gasto
 

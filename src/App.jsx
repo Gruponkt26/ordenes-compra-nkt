@@ -7851,6 +7851,7 @@ function cuotasDe(v){
 
 function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, usuario=p.usuario;
+  var faltanColumnas=p.faltanColumnas||[];
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -8066,8 +8067,29 @@ function PanelVencimientos(p){
     return {txt:"En "+x.dias+" días",color:"#666"};
   }
 
+  var sqlFaltante=faltanColumnas.map(function(k){return SQL_VENCIMIENTOS[k]||("-- falta la columna "+k);}).join("\n");
+  var rompePlanes=faltanColumnas.some(function(k){return COLUMNAS_PLAN.indexOf(k)>=0;});
+
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {faltanColumnas.length>0&&(
+        <div style={{background:"#1A0808",border:"1px solid #C1440E66",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#C1440E",marginBottom:5}}>
+            ⚠️ A la tabla <b>vencimientos</b> {faltanColumnas.length===1?"le falta 1 columna":"le faltan "+faltanColumnas.length+" columnas"}: {faltanColumnas.join(", ")}
+          </div>
+          <div style={{fontSize:11,color:"#888",lineHeight:1.6,marginBottom:9}}>
+            {rompePlanes
+              ? "Sin ellas los planes de pago no se pueden guardar —un plan sin sus cuotas no se podría ni leer ni pagar—. "
+              : "Lo que se cargue se guarda igual, pero esos datos quedan afuera. "}
+            Corré esto en Supabase → SQL Editor y volvé a entrar:
+          </div>
+          <pre style={{background:"#0A0A0A",border:"1px solid #2A2A2A",borderRadius:8,padding:"10px 12px",fontSize:10,color:"#8B9",overflowX:"auto",margin:0,whiteSpace:"pre",fontFamily:"monospace"}}>{sqlFaltante}</pre>
+          <button onClick={function(){
+            try{ navigator.clipboard.writeText(sqlFaltante); alert("SQL copiado. Pegalo en Supabase → SQL Editor y dale Run."); }
+            catch(e){ alert(sqlFaltante); }
+          }} style={{marginTop:9,background:"none",border:"1px solid #C1440E66",borderRadius:8,color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"7px 13px"}}>📋 Copiar el SQL</button>
+        </div>
+      )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div>
           {grupoFiltro?(
@@ -14418,12 +14440,40 @@ async function sbDeleteCierre(id) {
 }
 
 // ─── VENCIMIENTOS SUPABASE ────────────────────────────────────────────────────
+// Un jsonb puede volver como texto si la columna se creó como text. Se parsea igual, así
+// un plan con sus cuotas no se ve vacío por culpa del tipo de la columna.
+function comoLista(v){
+  if(Array.isArray(v))return v;
+  if(typeof v==="string"&&v.trim()){ try{ var d=JSON.parse(v); return Array.isArray(d)?d:[]; }catch(e){ return []; } }
+  return [];
+}
 async function sbLoadVencimientos() {
   try {
     var r = await fetch(SURL + "/rest/v1/vencimientos?order=created_at.desc", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
     var d = await r.json();
-    return Array.isArray(d) ? d : [];
+    if(!Array.isArray(d))return [];
+    return d.map(function(v){ return {...v, cuotas_plan:comoLista(v.cuotas_plan), pagos:comoLista(v.pagos)}; });
   } catch(e) { return []; }
+}
+// Qué columnas nuevas le faltan a la tabla, preguntando antes de que alguien intente
+// guardar: Postgrest contesta 400 nombrando la primera que no existe, así que se la saca y
+// se vuelve a preguntar. Si está todo, es una sola consulta que no trae ninguna fila.
+var COLUMNAS_NUEVAS_VENC=["grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit"];
+async function sbColumnasFaltantesVencimientos() {
+  var pide = COLUMNAS_NUEVAS_VENC.slice();
+  var faltan = [];
+  try {
+    for (var i = 0; i < COLUMNAS_NUEVAS_VENC.length + 1 && pide.length > 0; i++) {
+      var r = await fetch(SURL + "/rest/v1/vencimientos?select=" + pide.join(",") + "&limit=1", { headers: SH });
+      if (r.ok) return faltan;
+      var err = await r.text();
+      var falta = columnaFaltante(err);
+      if (!falta || pide.indexOf(falta) < 0) return faltan;
+      faltan.push(falta);
+      pide = pide.filter(function(k){ return k !== falta; });
+    }
+  } catch(e) {}
+  return faltan;
 }
 // El ALTER TABLE de cada columna nueva, para poder mostrarlo en pantalla en vez de mandar
 // a buscarlo al README.
@@ -15223,6 +15273,7 @@ export default function App() {
   var [conceptosGastos,setConceptosGastos]=useState([]);
   var [areasCustomGastos,setAreasCustomGastos]=useState([]);
   var [vencimientos,setVencimientos]=useState([]);
+  var [faltanColsVenc,setFaltanColsVenc]=useState([]);
 
   var [refrescando,setRefrescando]=useState(false);
 
@@ -15249,6 +15300,7 @@ export default function App() {
     sbLoadAdelantos().then(function(d){setAdelantos(d);}).catch(function(){});
     sbLoadCierres().then(function(d){setCierres(d);}).catch(function(){});
     sbLoadVencimientos().then(function(d){setVencimientos(d);}).catch(function(){});
+    sbColumnasFaltantesVencimientos().then(function(d){setFaltanColsVenc(d);}).catch(function(){});
     sbLoadCategoriasGastos().then(function(d){setCategoriasGastos(d);}).catch(function(){});
     sbLoadProveedores().then(function(d){if(d)setProveedores(d);}).catch(function(){});
     sbLoadMenuStock().then(function(d){
@@ -16014,6 +16066,7 @@ export default function App() {
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
             <PanelVencimientos
               vencimientos={vencimientos}
+              faltanColumnas={faltanColsVenc}
               usuario={cu.nombre}
               onSave={async function(v){
                 setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});

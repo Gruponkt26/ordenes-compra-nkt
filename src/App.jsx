@@ -15086,6 +15086,7 @@ export default function App() {
   var [filtroMes,setFiltroMes]=useState("all");
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState(null); // null | compras | admin
+  var [entradaMod,setEntradaMod]=useState(0); // sube cada vez que se entra a un módulo: limpia los tabs
   var [subCompras,setSubCompras]=useState(null); // dentro de Compras: null (elección) | "ordenes" | "stock"
   // Default admin vista
   var [vista,setVista]=useState("despacho");
@@ -15294,6 +15295,25 @@ export default function App() {
       />
     );
   }
+  // Entrar a un módulo deja los tabs y filtros como recién abiertos:
+  // vuelve a la vista inicial, limpia los filtros compartidos y remonta el contenido.
+  function limpiarTabs(){
+    setSubCompras(null);
+    setVistaProv("gestion");
+    setFiltroStatus("all");setFiltroLocal("all");setFiltroMes("all");
+    setShowOrden(false);setShowGest(false);setShowMisProds(false);setShowPrecios(false);
+    setShowEditorMenu(false);setShowUsers(false);setShowEditorCats(false);setShowExportarGastos(false);
+    setEntradaMod(function(n){return n+1;});
+  }
+  function abrirModulo(id,vistaInicial){
+    limpiarTabs();
+    setModulo(id);
+    if(vistaInicial)setVista(vistaInicial);
+  }
+  function irVista(v){
+    limpiarTabs();
+    setVista(v);
+  }
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
   function saveOrden(o){
@@ -15326,21 +15346,21 @@ export default function App() {
         {/* MÓDULOS PRINCIPALES — ocultos dentro de Compras, que es pantalla propia */}
         {esSofia&&modulo&&modulo!=="compras"&&(
           <div style={{borderBottom:"1px solid #111",background:"#080808",padding:"8px 20px",display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
-            <button onClick={function(){setModulo(null);}}
+            <button onClick={function(){abrirModulo(null);}}
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             {[
-              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");setSubCompras(null);}},
-              {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
-              {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
-              {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
-              {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
-              {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){setModulo("socios");setVista("socios_aportes");}},
-              {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
-              {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
-              {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
-              {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
-              {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){setModulo("comandas");setVista("comandas_inicio");}},
+              {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
+              {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
+              {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
+              {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
+              {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+              {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
+              {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
+              {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
+              {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
+              {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
+              {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -15350,7 +15370,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{padding:"14px 20px",maxWidth:900,margin:"0 auto"}}>
+        <div key={"entrada-"+entradaMod} style={{padding:"14px 20px",maxWidth:900,margin:"0 auto"}}>
 
           {/* PANTALLA DE INICIO — cuando no hay módulo seleccionado */}
           {esSofia&&!modulo&&(
@@ -15361,17 +15381,17 @@ export default function App() {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
-                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){setModulo("compras");setVista("despacho");setSubCompras(null);}},
-                  {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){setModulo("admin");setVista("dashboard");}},
-                  {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){setModulo("proveedores");setVista("prov_inicio");}},
-                  {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){setModulo("locales");setVista("loc_inicio");}},
-                  {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){setModulo("personal");setVista("personal_inicio");}},
-                  {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){setModulo("socios");setVista("socios_aportes");}},
-                  {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){setModulo("usuarios");setVista("usuarios_inicio");}},
-                  {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){setModulo("ideas");setVista("ideas_inicio");}},
-                  {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){setModulo("pautas");setVista("pautas_inicio");}},
-                  {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){setModulo("deportes");setVista("deportes_inicio");}},
-                  {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){setModulo("comandas");setVista("comandas_inicio");}},
+                  {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
+                  {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
+                  {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
+                  {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
+                  {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+                  {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
+                  {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
+                  {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
+                  {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
+                  {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
+                  {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -15386,7 +15406,7 @@ export default function App() {
           {enCompras&&((esSofia&&modulo==="compras")||subCompras)&&(
             <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
               {esSofia&&modulo==="compras"&&(
-                <button onClick={function(){setModulo(null);setSubCompras(null);}}
+                <button onClick={function(){abrirModulo(null);}}
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>← Módulos</button>
               )}
               {subCompras&&(
@@ -15412,6 +15432,7 @@ export default function App() {
                 esSofia?[]:[{id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0}]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
+                  limpiarTabs();
                   setSubCompras(m.id);
                   if(m.id==="ordenes")setVista(verDespacho?"despacho":"historial");
                   else if(m.id==="stock"){setVista("stock");asegurarLocalStock();}
@@ -15533,12 +15554,12 @@ export default function App() {
                     var activo=modActivo===sm.id;
                     return(
                       <button key={sm.id} onClick={function(){
-                        if(sm.id==="dashboard")setVista("dashboard");
-                        else if(sm.id==="egresos")setVista("egresos");
-                        else if(sm.id==="cierres")setVista("cierres");
-                        else if(sm.id==="vencimientos")setVista("vencimientos");
-                        else if(sm.id==="finanzas")setVista("resultados");
-                        else if(sm.id==="configadmin")setVista("configadmin");
+                        if(sm.id==="dashboard")irVista("dashboard");
+                        else if(sm.id==="egresos")irVista("egresos");
+                        else if(sm.id==="cierres")irVista("cierres");
+                        else if(sm.id==="vencimientos")irVista("vencimientos");
+                        else if(sm.id==="finanzas")irVista("resultados");
+                        else if(sm.id==="configadmin")irVista("configadmin");
                       }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#444",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
                         {sm.label}
                       </button>

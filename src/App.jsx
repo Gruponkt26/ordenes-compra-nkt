@@ -7938,6 +7938,7 @@ function PanelVencimientos(p){
   // que se está mirando: es donde se las paga, así que es lo que se quiere ver.
   var [planTogg,setPlanTogg]=useState({});
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
+  var [editPlan,setEditPlan]=useState(null);   // datos del plan que se está editando
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
   var FORM_VACIO={local:"l1",cuit:"c2",debito_cuenta:"",debito_cbu:"",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
@@ -8074,6 +8075,53 @@ function PanelVencimientos(p){
     setShowPlan(false);
   }
   // Una cuota de un plan se paga igual que cualquier vencimiento: genera su egreso.
+  // Editar un plan ya cargado: los datos de la cabecera —nombre, número, CUIT, débito— se
+  // cambian sin tocar las cuotas, que tienen su propia edición fila por fila.
+  function abrirEditarPlan(v){
+    setEditPlan({
+      id:v.id, concepto:v.concepto||"", nro_plan:v.nro_plan||v.referencia||"",
+      cuit:cuitIdDe(v), local:v.local||"l4",
+      debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||""
+    });
+  }
+  function guardarEditarPlan(v){
+    var f=editPlan;
+    if(!f.concepto.trim()){alert("El plan necesita un nombre.");return;}
+    onSave({...v,
+      concepto:f.concepto.trim(),
+      nro_plan:f.nro_plan.trim(), referencia:f.nro_plan.trim(),
+      cuit:porCuit(v.grupo)?f.cuit:"",
+      local:porCuit(v.grupo)?cuitVenc(f.cuit).local:f.local,
+      debito_cuenta:f.debito_cuenta||"", debito_cbu:(f.debito_cbu||"").trim(),
+      notas:f.notas||""
+    });
+    setEditPlan(null);
+  }
+  // Una cuota más al final: los planes se estiran —una refinanciación, un recálculo— y
+  // rehacer el plan entero perdería lo ya pagado.
+  function agregarCuota(v){
+    var cs=cuotasPlan(v);
+    var ultima=cs.length?cs[cs.length-1]:null;
+    var nro=cs.reduce(function(a,c){return Math.max(a,c.nro||0);},0)+1;
+    var vence=hoy;
+    if(ultima&&ultima.vence){
+      var pr=ultima.vence.split("-");
+      var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10),1);
+      var ultimoDia=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      var dia=Math.min(parseInt(pr[2],10),ultimoDia);
+      vence=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(dia).padStart(2,"0");
+    }
+    var nueva={nro:nro,monto:ultima?ultima.monto:0,vence:vence,pago:null};
+    onSave({...v,cuotas_plan:cs.concat([nueva]),cuotas:cs.length+1});
+  }
+  function borrarCuota(v,nro){
+    var cs=cuotasPlan(v);
+    var c=cs.find(function(x){return x.nro===nro;});
+    if(c&&c.pago){alert("Esa cuota está pagada. Deshacé el pago antes de borrarla.");return;}
+    if(!window.confirm("¿Borrar la cuota "+(nro===0?"anticipo":nro)+" del plan?"))return;
+    var quedan=cs.filter(function(x){return x.nro!==nro;});
+    onSave({...v,cuotas_plan:quedan,cuotas:quedan.length});
+  }
   function guardarCuota(v, nro, cambios){
     var cs=cuotasPlan(v).map(function(c){return c.nro===nro?{...c,...cambios}:c;});
     onSave({...v,cuotas_plan:cs});
@@ -8651,6 +8699,56 @@ function PanelVencimientos(p){
                         );
                       })}
                     </div>
+                    {editPlan&&editPlan.id===v.id&&(
+                      <div style={{borderTop:"1px solid #8B2FC922",padding:"12px 14px",background:"#0A0710"}}>
+                        <div style={{fontSize:9,color:"#A855F7",textTransform:"uppercase",letterSpacing:1,marginBottom:9}}>✏️ Editar el plan</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:9,marginBottom:9}}>
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Nombre</label>
+                            <input value={editPlan.concepto} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,concepto:x};});}} style={INP}/>
+                          </div>
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>N° de plan</label>
+                            <input value={editPlan.nro_plan} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,nro_plan:x};});}} style={INP}/>
+                          </div>
+                          {porCuit(v.grupo)?(
+                            <div>
+                              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CUIT</label>
+                              <select value={editPlan.cuit} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,cuit:x};});}} style={INP}>
+                                {CUITS_VENC.map(function(c){return <option key={c.id} value={c.id}>{c.label} — {c.cuit}</option>;})}
+                              </select>
+                            </div>
+                          ):(
+                            <div>
+                              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Local</label>
+                              <select value={editPlan.local} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,local:x};});}} style={INP}>
+                                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                              </select>
+                            </div>
+                          )}
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>🔁 Se debita de</label>
+                            <select value={editPlan.debito_cuenta} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,debito_cuenta:x};});}} style={INP}>
+                              <option value="">— No se debita solo —</option>
+                              {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>CBU o alias</label>
+                            <input value={editPlan.debito_cbu} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,debito_cbu:x};});}} placeholder="CBU, alias o nº de cuenta" style={INP} disabled={!editPlan.debito_cuenta}/>
+                          </div>
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+                            <input value={editPlan.notas} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,notas:x};});}} style={INP}/>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={function(){guardarEditarPlan(v);}} style={{background:"#8B2FC9",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"9px 16px"}}>💾 Guardar</button>
+                          <button onClick={function(){setEditPlan(null);}} style={{padding:"9px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+                        </div>
+                        <div style={{fontSize:9,color:"#444",marginTop:8}}>Los montos y las fechas de cada cuota se editan una por una, abajo, con su ✏️.</div>
+                      </div>
+                    )}
                     {abierto&&(
                       <div style={{borderTop:"1px solid #8B2FC922",padding:"10px 12px",background:"#0A0710"}}>
                         <div style={{overflowX:"auto"}}>
@@ -8689,6 +8787,7 @@ function PanelVencimientos(p){
                                         {!c.pago&&<button onClick={function(){abrirPago({v:v,cuota:c,fecha:c.vence,pago:null,dias:null});}} style={{background:"#3A7D44",border:"none",borderRadius:5,color:"#fff",fontSize:9,fontWeight:700,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>Pagar</button>}
                                         {c.pago&&<button onClick={function(){deshacerPago({v:v,cuota:c});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:5,color:"#666",fontSize:9,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>Deshacer</button>}
                                         <button onClick={function(){setEditCuota(editando?null:{planId:v.id,nro:c.nro});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:5,color:editando?"#A855F7":"#666",fontSize:9,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>{editando?"listo":"✏️"}</button>
+                                        {!c.pago&&<button onClick={function(){borrarCuota(v,c.nro);}} title="Borrar esta cuota" style={{background:"none",border:"1px solid #C1440E33",borderRadius:5,color:"#C1440E88",fontSize:9,cursor:"pointer",padding:"4px 8px",fontFamily:"'Inter',sans-serif"}}>✕</button>}
                                       </div>
                                     </td>
                                   </tr>
@@ -8699,7 +8798,11 @@ function PanelVencimientos(p){
                         </div>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9,paddingTop:8,borderTop:"1px solid #8B2FC922"}}>
                           <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}{rp.adeudadas>0?" · adeudado "+fmt(rp.montoAdeudado):""}</span>
-                          <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar plan</button>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={function(){abrirEditarPlan(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar plan</button>
+                            <button onClick={function(){agregarCuota(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>+ Cuota</button>
+                            <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar plan</button>
+                          </div>
                         </div>
                       </div>
                     )}

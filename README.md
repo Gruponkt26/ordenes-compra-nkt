@@ -312,6 +312,13 @@ egresos** —esa plata salió antes de que el plan existiera acá, generarlos se
 veces—. En la planilla se distinguen: dicen «✅ ya venía» en vez de «✅». Después se corrige
 el monto o la fecha de cualquier cuota, una por una.
 
+**Un plan cargado se edita entero.** Abajo de la planilla hay tres botones: **✏️ Editar
+plan** cambia el nombre, el N° de plan, el CUIT (o el local), el débito automático y las
+notas, sin tocar las cuotas; **+ Cuota** agrega una al final —con el monto de la última y un
+mes más— para cuando el plan se estira; y **🗑️ Borrar plan** lo saca entero. Dentro de la
+planilla, cada cuota tiene su ✏️ para el monto y la fecha, y las impagas un ✕ para borrarlas
+—una pagada primero hay que deshacerla—.
+
 La tarjeta de cada plan lleva sus **cuatro cuentas**, sacadas de las cuotas y no de un
 contador a mano: **totales**, **pagadas**, **por pagar** —las que faltan y todavía no
 vencieron— y **adeudadas** —las que faltan y ya vencieron—, cada una con su cantidad y su

@@ -8000,6 +8000,18 @@ function PanelVencimientos(p){
       usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
     };
     onSave(v); setShowForm(false); setEditId(null);
+    // Un vencimiento de una sola vez sólo aparece en el mes de su fecha. Si se cargó con una
+    // fecha de otro mes, el filtro se mueve solo: si no, se guarda bien pero no se ve por
+    // ningún lado y parece que no se guardó.
+    if(!v.recurrente&&v.fecha&&periodoDe(v.fecha)!==mesFiltro){
+      setMesFiltro(periodoDe(v.fecha));
+      return;
+    }
+    // El otro caso en que se guarda pero no se ve: nace con todas las cuotas ya pagadas.
+    var cu=cuotasDe(v);
+    if(cu&&cu.completo){
+      alert("Quedó guardado, pero con las "+cu.total+" cuotas ya pagadas, así que no aparece en la lista: un vencimiento terminado deja de figurar.\n\nSi te faltan cuotas por pagar, editalo y bajá \"Ya pagadas antes\".");
+    }
   }
   function abrirPlan(){
     // El anticipo se paga ahora y las cuotas arrancan el mes que viene: si arrancaran este
@@ -8381,9 +8393,16 @@ function PanelVencimientos(p){
                 </div>
               </div>
             ):(
-              <div style={{maxWidth:220}}>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
-                <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+              <div>
+                <div style={{maxWidth:220}}>
+                  <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
+                  <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+                </div>
+                <div style={{fontSize:9,color:form.fecha&&periodoDe(form.fecha)!==mesFiltro?"#D4A017":"#444",marginTop:6,lineHeight:1.6}}>
+                  {form.fecha&&periodoDe(form.fecha)!==mesFiltro
+                    ? "Aparece en "+periodoDe(form.fecha)+", no en "+mesFiltro+": al guardarlo se cambia el mes solo para que lo veas."
+                    : "Un vencimiento de una sola vez aparece sólo en el mes de esta fecha."}
+                </div>
               </div>
             )}
           </div>

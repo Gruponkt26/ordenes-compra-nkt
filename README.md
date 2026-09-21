@@ -262,6 +262,13 @@ egreso que se genera al pagar.
 
 ### Planes de pago
 
+Un plan aparece **una sola vez**: su tarjeta, en 📋 Planes de pago, con la planilla adentro.
+Las cuotas del mes no se repiten abajo como filas sueltas —se pagan desde la planilla, que
+es donde están el monto, la fecha y el estado de cada una—. La tarjeta dice de entrada
+cuántas cuotas caen en el mes que se está mirando, cuánto suman y cuántas están vencidas, y
+se abre sola cuando hay alguna. Los totales de arriba siguen contando todo, planes
+incluidos.
+
 AFIP, ARBA y la municipalidad no mandan un vencimiento por mes: mandan **un plan**, con su
 número, su **anticipo —la cuota cero—** y cuotas que casi nunca valen lo mismo entre sí. Por
 eso un plan es otra cosa que un vencimiento suelto y guarda **sus cuotas una por una**, con

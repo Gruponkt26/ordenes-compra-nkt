@@ -7861,7 +7861,9 @@ function PanelVencimientos(p){
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
   var [showPlan,setShowPlan]=useState(false);  // alta de plan de pago
-  var [planAbierto,setPlanAbierto]=useState(null); // plan cuya planilla se está mirando
+  // Qué planilla está abierta. Sin tocar nada, un plan abre solo si tiene cuotas en el mes
+  // que se está mirando: es donde se las paga, así que es lo que se quiere ver.
+  var [planTogg,setPlanTogg]=useState({});
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
@@ -7908,6 +7910,10 @@ function PanelVencimientos(p){
 
   var delMesTodos=delMes;
   var delMes2=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
+  // Las cuotas de un plan se pagan adentro de su planilla, así que no se repiten abajo como
+  // una fila suelta: el listado de abajo es lo que no es un plan. Los totales del mes siguen
+  // contando todo, planes incluidos.
+  var sueltosDelMes=delMes2.filter(function(x){ return !x.cuota; });
   function montoDe(x){ return parseFloat((x.pago&&x.pago.monto)||(x.cuota?x.cuota.monto:x.v.monto)||0); }
   var totalMes=delMes2.reduce(function(a,x){return a+montoDe(x);},0);
   var pagado=delMes2.filter(function(x){return x.pago;}).reduce(function(a,x){return a+parseFloat(x.pago.monto||0);},0);
@@ -8379,12 +8385,16 @@ function PanelVencimientos(p){
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               {planes.map(function(v){
                 var rp=resumenPlan(v);
-                var abierto=planAbierto===v.id;
+                var delMesPlan=cuotasDelMes(v,mesFiltro);
+                var pendMes=delMesPlan.filter(function(c){return !c.pago;});
+                var vencMes=pendMes.filter(function(c){return c.vence&&c.vence<hoy;}).length;
+                var montoMes=pendMes.reduce(function(a,c){return a+(parseFloat(c.monto)||0);},0);
+                var abierto=planTogg[v.id]!==undefined?planTogg[v.id]:delMesPlan.length>0;
                 var l=getLocal(v.local);
                 var cq=porCuit(v.grupo)?cuitVenc(cuitIdDe(v)):null;
                 return(
                   <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
-                    <div onClick={function(){setPlanAbierto(abierto?null:v.id);}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <div onClick={function(){setPlanTogg(function(t){var n={...t};n[v.id]=!abierto;return n;});}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>
                           <span style={{fontSize:10,color:"#666",marginRight:6}}>{abierto?"▾":"▸"}</span>
@@ -8393,6 +8403,13 @@ function PanelVencimientos(p){
                         <div style={{fontSize:10,color:"#555",marginTop:3}}>
                           <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {rp.pagadas} de {rp.cuotas} pagadas
                           {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
+                        </div>
+                        <div style={{fontSize:10,marginTop:3,color:vencMes>0?"#C1440E":(pendMes.length>0?"#D4A017":"#3A7D44")}}>
+                          {delMesPlan.length===0
+                            ? "Sin cuotas en "+mesFiltro
+                            : (pendMes.length===0
+                                ? "✅ Las de "+mesFiltro+" están pagadas"
+                                : pendMes.length+" cuota"+(pendMes.length===1?"":"s")+" en "+mesFiltro+" · "+fmt(montoMes)+(vencMes>0?" · ⚠️ "+vencMes+" vencida"+(vencMes===1?"":"s"):""))}
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}>
@@ -8527,14 +8544,14 @@ function PanelVencimientos(p){
       )}
 
       {/* Lista */}
-      {grupoFiltro&&(delMes2.length===0?(
+      {grupoFiltro&&(sueltosDelMes.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
-          <div style={{fontSize:13,color:"#555"}}>No hay vencimientos cargados para este mes.</div>
-          <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>{grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes."}</div>
+          <div style={{fontSize:13,color:"#555"}}>{delMes2.length>0?"Este mes sólo hay cuotas de planes.":"No hay vencimientos cargados para este mes."}</div>
+          <div style={{fontSize:11,color:"#3A3A3A",marginTop:5}}>{delMes2.length>0?"Están arriba, adentro de su plan, con su cuota y su botón de pagar.":(grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes.")}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
-          {delMes2.map(function(x){
+          {sueltosDelMes.map(function(x){
             var l=getLocal(x.v.local);
             var cq=porCuit(x.v.grupo)?cuitVenc(cuitIdDe(x.v)):null;
             var e=estado(x);

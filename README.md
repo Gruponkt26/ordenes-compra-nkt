@@ -180,6 +180,7 @@ alter table vencimientos add column if not exists cuotas_previas int default 0;
 alter table vencimientos add column if not exists tipo           text default 'simple';
 alter table vencimientos add column if not exists nro_plan       text;
 alter table vencimientos add column if not exists cuotas_plan    jsonb default '[]'::jsonb;
+alter table vencimientos add column if not exists cuit           text;
 ```
 
 Hasta que exista la tabla, el módulo abre y se puede usar, pero no guarda nada entre
@@ -207,8 +208,8 @@ nada: sólo queda marcado como pagado.
 **Un submódulo por organismo.** El módulo abre en una portada con seis tarjetas —🏛️ AFIP,
 🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio y 📦 Otros—, cada una con lo que le falta
 pagar este mes, cuántos vencieron o en cuántos días cae el próximo. Se entra a uno y adentro
-pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro. Arriba queda el
-← para volver y una barra para saltar a otro submódulo sin pasar por la portada.
+pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro —adentro de AFIP
+no aparece nada de ARBA ni de los otros—. Arriba queda sólo el ← para volver a la portada.
 
 Abajo de las tarjetas hay un **Ver todos juntos**, para las veces en que interesa el mes
 completo y no un organismo en particular.
@@ -217,7 +218,23 @@ ARBA y Municipalidad van separados a propósito: son dos organismos distintos, c
 propios vencimientos y su propia boleta. Lo que se haya cargado con el rubro viejo `iibb`,
 de cuando iban juntos, entra por **ARBA**, que es donde se declara Ingresos Brutos.
 
-Al dar de alta desde adentro de un submódulo, el rubro ya viene puesto.
+Al dar de alta desde adentro de un submódulo, el rubro **queda fijo**: es el del submódulo
+donde estás, no se elige.
+
+**AFIP, ARBA y Gremio van por CUIT, no por local.** El IVA, el F.931 o la cuota sindical son
+de la persona jurídica, no del salón donde se vendió, así que en esos tres rubros —y en sus
+planes de pago— se elige el CUIT:
+
+| CUIT | Quién | Cubre | El egreso se carga en |
+|------|-------|-------|----------------------|
+| 20-26958479-4 | Colantonio Carlos Nicolas | El Bodegón | 🍷 El Bodegón |
+| 30-71844629-1 | Calzon Gitano SRL | Kusama + Colantonio's | 🏢 Oficina |
+
+Municipalidad, Servicios y Otros siguen **por local**: la tasa de Seguridad e Higiene y la
+luz vienen a nombre de una dirección. Como el egreso que se genera al pagar siempre necesita
+un local, en los rubros por CUIT lo pone el CUIT: el personal es el Bodegón, y lo de la SRL
+—que es de dos locales a la vez— va a Oficina, igual que ya venían los planes de pago. Lo
+cargado antes de que existiera el campo se lee igual: Bodegón = CUIT personal, el resto SRL.
 
 Cada rubro trae además **el área de egreso que le suele corresponder** (AFIP e IIBB a
 Administrativo, Servicios a Servicios, Gremio a Sueldos): al elegir el rubro se completa

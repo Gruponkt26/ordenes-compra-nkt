@@ -257,8 +257,12 @@ pagar este mes, cuántos vencieron o en cuántos días cae el próximo. Se entra
 pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro —adentro de AFIP
 no aparece nada de ARBA ni de los otros—. Arriba queda sólo el ← para volver a la portada.
 
-Abajo de las tarjetas hay un **Ver todos juntos**, para las veces en que interesa el mes
-completo y no un organismo en particular.
+Abajo de las tarjetas hay dos botones. **📅 Ver todos juntos** muestra el mes completo sin
+separar por organismo. **🗂️ Todo lo cargado** es otra cosa: la lista general de todo lo que
+existe, **sin filtro de mes**, agrupada por rubro y ordenada por el próximo vencimiento
+impago de cada uno. Es donde aparece lo que vence en otro mes —que en la vista mensual, por
+definición, no se ve—, con un buscador por concepto, identificador, N° de plan o alias, y un
+**Ir a su mes →** que abre el organismo en el mes que corresponde.
 
 ARBA y Municipalidad van separados a propósito: son dos organismos distintos, con sus
 propios vencimientos y su propia boleta. Lo que se haya cargado con el rubro viejo `iibb`,

@@ -204,16 +204,36 @@ async function sbLoadVacaciones() {
     return Array.isArray(d)?d:[];
   } catch(e){return [];}
 }
+// Guardar sin mirar la respuesta es lo mismo que no guardar: la pantalla muestra el dato,
+// la base no lo tiene y recién se nota al recargar. Acá se mira y se dice qué pasó, con el
+// SQL cuando la causa es la tabla o el RLS.
+var SQL_VACACIONES="create table if not exists vacaciones (\n  id              text primary key,\n  empleado_id     text,\n  empleado_nombre text,\n  fecha_desde     date,\n  fecha_hasta     date,\n  notas           text,\n  created_at      timestamptz default now()\n);\nalter table vacaciones disable row level security;";
+function explicarErrorTabla(tabla, err, sqlCrear){
+  var t=String(err||"").replace(/\\/g,"");
+  if(/PGRST205/.test(t)||new RegExp('relation "?(public\\.)?'+tabla+'"? does not exist','i').test(t)||/Could not find the table/i.test(t)){
+    return "Falta la tabla \""+tabla+"\" en Supabase."+(sqlCrear?"\n\nCorré esto en Supabase → SQL Editor:\n\n"+sqlCrear:"");
+  }
+  if(/row-level security|42501/i.test(t)){
+    return "La tabla \""+tabla+"\" tiene la seguridad por filas (RLS) activada, así que Supabase rechaza todo lo que se quiera guardar.\n\nCorré esto en Supabase → SQL Editor:\n\nalter table "+tabla+" disable row level security;";
+  }
+  var m=/Could not find the '([^']+)' column/i.exec(t)||/column "?([a-z0-9_]+)"? of relation/i.exec(t)||/column "?(?:[a-z_]+\.)?([a-z0-9_]+)"? does not exist/i.exec(t);
+  if(m)return "A la tabla \""+tabla+"\" le falta la columna \""+m[1]+"\".\n\nCorré esto en Supabase → SQL Editor:\n\nalter table "+tabla+" add column if not exists "+m[1]+" text;";
+  return "Error al guardar en \""+tabla+"\": "+t.slice(0,300);
+}
 async function sbSaveVacacion(v) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/vacaciones",{method:"POST",headers:h,body:JSON.stringify(v)});
-  } catch(e){}
+    var r=await fetch(SURL+"/rest/v1/vacaciones",{method:"POST",headers:h,body:JSON.stringify(v)});
+    if(!r.ok){ alert(explicarErrorTabla("vacaciones", await r.text(), SQL_VACACIONES)); return false; }
+    return true;
+  } catch(e){ alert("Error de conexión al guardar las vacaciones: "+e.message); return false; }
 }
 async function sbDeleteVacacion(id) {
   try {
-    await fetch(SURL+"/rest/v1/vacaciones?id=eq."+id,{method:"DELETE",headers:SH});
-  } catch(e){}
+    var r=await fetch(SURL+"/rest/v1/vacaciones?id=eq."+id,{method:"DELETE",headers:SH});
+    if(!r.ok){ alert(explicarErrorTabla("vacaciones", await r.text(), SQL_VACACIONES)); return false; }
+    return true;
+  } catch(e){ alert("Error de conexión al borrar las vacaciones: "+e.message); return false; }
 }
 
 async function sbLoadLocalesDatos() {
@@ -3823,8 +3843,8 @@ function PanelInformePersonal({sueldos, gastos, cargasSociales, empleados}){
 
 // ─── PANEL VACACIONES ─────────────────────────────────────────────────────────
 function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
-  var [anio,setAnio]=useState(2025);
-  var [mes,setMes]=useState(6); // 0-based, 6=julio
+  var [anio,setAnio]=useState(new Date().getFullYear());
+  var [mes,setMes]=useState(new Date().getMonth());
   var [showForm,setShowForm]=useState(false);
   var [form,setForm]=useState({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""});
   var [editVac,setEditVac]=useState(null);
@@ -3859,7 +3879,13 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
   }
 
   function doSave(){
-    if(!form.empleado_id||!form.fecha_desde||!form.fecha_hasta)return;
+    // Antes, si faltaba un dato el botón no hacía nada y parecía roto.
+    var faltan=[];
+    if(!form.empleado_id)faltan.push("el empleado");
+    if(!form.fecha_desde)faltan.push("la fecha de inicio");
+    if(!form.fecha_hasta)faltan.push("la fecha de fin");
+    if(faltan.length>0){ alert("Falta "+faltan.join(", ")+"."); return; }
+    if(form.fecha_hasta<form.fecha_desde){ alert("La fecha de fin es anterior a la de inicio."); return; }
     var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:form.notas,created_at:editVac?editVac.created_at:new Date().toISOString()};
     if(onSave)onSave(v);
     setShowForm(false);setEditVac(null);
@@ -3996,7 +4022,9 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
               </div>
             </div>
             <div style={{display:"flex",gap:8,marginTop:14}}>
-              <button onClick={doSave} disabled={!form.empleado_id||!form.fecha_desde||!form.fecha_hasta} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
+              {/* El botón queda apagado si falta algo, pero se puede tocar: al tocarlo dice qué
+                  falta. Deshabilitado y del mismo color parecía roto. */}
+              <button onClick={doSave} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:(!form.empleado_id||!form.fecha_desde||!form.fecha_hasta)?"#1A2A33":"#1A6B8A",color:(!form.empleado_id||!form.fecha_desde||!form.fecha_hasta)?"#5A7A88":"#fff",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar</button>
               <button onClick={function(){setShowForm(false);setEditVac(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
             </div>
           </div>

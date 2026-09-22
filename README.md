@@ -138,7 +138,27 @@ Hasta que la columna exista, **los aportes y retiros no se van a guardar**: la a
 pantalla con un cartel rojo indicando justamente esto. Los registros viejos, sin el dato,
 se siguen comportando como antes (la cuenta se asume del mismo local del movimiento).
 
-### ⚠️ Tabla `vencimientos`
+### ⚠️ Tabla `vacaciones`
+
+Las vacaciones del calendario de 👥 Personal necesitan su tabla:
+
+```sql
+create table if not exists vacaciones (
+  id              text primary key,
+  empleado_id     text,
+  empleado_nombre text,
+  fecha_desde     date,
+  fecha_hasta     date,
+  notas           text,
+  created_at      timestamptz default now()
+);
+alter table vacaciones disable row level security;
+```
+
+Si falta la tabla, o está el RLS prendido, el guardado **lo dice en pantalla con el SQL para
+copiar**: antes se guardaba en la pantalla y no en la base, y recién se notaba al recargar.
+
+## ⚠️ Tabla `vencimientos`
 
 El módulo 📅 **Vencimientos a pagar**, dentro de Administración, necesita su propia tabla.
 Corré esto en Supabase → SQL Editor:

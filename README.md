@@ -1456,9 +1456,11 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
 2. **Cuatro números**: ventas del período, deuda (con cuánto está vencido), lo que vence en
    7 días y el neto de socios.
 3. **Cinco tarjetas**, en dos columnas cuando la pantalla da:
-   - **💳 Deudas por título**, en dos bloques: **vencido sin pagar**, por rubro —AFIP, ARBA,
+   - **💳 Deudas por título**, en dos bloques: **vencido este mes**, por rubro —AFIP, ARBA,
      Municipalidad, Servicios, Gremio, Créditos, Otros—, y **saldo con proveedores**, uno por
-     proveedor, con el total abajo.
+     proveedor, con el total abajo. Se cuenta lo que se venció **en el mes en curso**; si
+     quedó algo de meses anteriores, una línea lo dice y lo deja afuera del total, para no
+     esconderlo ni mezclarlo con lo del mes.
    - **🏪 Cierres de caja** del período, con su local y su total.
    - **📅 Vencimientos**: sólo **lo que viene**, con su fecha —«cuota 3 · 26/09/2026 · en
      4d»—, mirando dos meses para que siempre se vea lo próximo aunque no caiga esta semana.

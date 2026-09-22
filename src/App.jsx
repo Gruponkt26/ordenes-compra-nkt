@@ -16890,8 +16890,6 @@ export default function App() {
             var mesCurrent=new Date().toISOString().slice(0,7);
             var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
             var cierresToday=cierres.filter(function(c){return c.fecha===hoy;});
-            var localesConCierre=cierresToday.map(function(c){return c.local;});
-            var localesSinCierre=LOCALES.filter(function(l){return l.id!=="l4"&&!localesConCierre.includes(l.id);});
             var ventasHoy=cierresToday.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
             var gastosMes=gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             var ventasMes=cierres.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
@@ -16902,84 +16900,9 @@ export default function App() {
                   <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📊 Dashboard</div>
                 </div>
 
-                {/* Alertas */}
-                {localesSinCierre.length>0&&(
-                  <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-                    <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>⚠️ Cierres faltantes hoy</div>
-                    <div style={{fontSize:10,color:"#888",marginTop:4}}>{localesSinCierre.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}</div>
-                  </div>
-                )}
-
-                {/* Un plan a punto de caerse es más urgente que un vencimiento suelto:
-                    perderlo significa volver a la deuda original, con sus intereses. */}
-                {(function(){
-                  var enRiesgo=planesEnRiesgo(vencimientos);
-                  if(enRiesgo.length===0)return null;
-                  var hayCaidos=enRiesgo.some(function(x){return x.rg.caido;});
-                  var color=hayCaidos?"#C1440E":"#D4A017";
-                  return(
-                    <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
-                        <div style={{fontSize:11,color:color,fontWeight:800}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
-                        <button onClick={function(){irVista("vencimientos");}} style={{background:"none",border:"1px solid "+color+"55",borderRadius:7,color:color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>Ver planes →</button>
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                        {enRiesgo.map(function(x,i){
-                          var g=grupoDe(x.v.grupo);
-                          return(
-                            <div key={i} style={{fontSize:10,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
-                              <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
-                                {x.rg.caido
-                                  ? x.rg.adeudadas+" cuotas vencidas: se cayó"
-                                  : x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Lo que vence esta semana, o ya venció: es lo primero que hay que ver al entrar */}
-                {(function(){
-                  var av=avisosVencimientos(vencimientos,7);
-                  if(av.length===0)return null;
-                  var vencidos=av.filter(function(a){return a.dias<0;});
-                  var total=av.reduce(function(a,x){return a+x.monto;},0);
-                  var color=vencidos.length>0?"#C1440E":"#D4A017";
-                  return(
-                    <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:7}}>
-                        <div style={{fontSize:11,color:color,fontWeight:700}}>
-                          🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"Vence esta semana"}
-                          {vencidos.length>0&&av.length>vencidos.length?" · "+(av.length-vencidos.length)+" por vencer":""}
-                        </div>
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                          <span style={{fontSize:12,fontWeight:800,color:color,fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</span>
-                          <button onClick={function(){irVista("vencimientos");}} style={{background:"none",border:"1px solid "+color+"55",borderRadius:7,color:color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>Ver vencimientos →</button>
-                        </div>
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                        {av.slice(0,5).map(function(a,i){
-                          var g=grupoDe(a.v.grupo);
-                          return(
-                            <div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:10,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
-                              <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
-                                {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita</span>:null}
-                              </span>
-                              <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
-                                {a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"vence hoy":"en "+a.dias+"d")} · {fmt(a.monto)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {av.length>5&&<div style={{fontSize:10,color:"#555",marginTop:2}}>y {av.length-5} más…</div>}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Los avisos —cierres que faltan, vencimientos, planes por caerse— viven en
+                    🔔 Novedades del día, que es el módulo que los junta. Acá quedan los
+                    números del negocio, sin nada que reclame atención. */}
 
                 {/* Cards resumen */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>

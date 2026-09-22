@@ -1407,6 +1407,27 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
 ---
 
+## 🔔 Novedades del día
+
+Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No
+guarda nada propio: lee de los mismos lugares que los módulos, así que no hay que entrar a
+cada uno para ver si hay algo.
+
+- **El resumen**: ventas del día con cuántos cierres hay, cuántos locales faltan cerrar,
+  cuántos vencimientos están vencidos o vencen en 7 días, y el neto de aportes menos retiros.
+- **Planes por caerse**, arriba de todo cuando los hay, con la misma regla del módulo de
+  vencimientos.
+- **🏪 Cierres de caja**: los del día, con su local, quién lo cargó y el total, y el aviso de
+  los locales que todavía no cerraron.
+- **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días, con el 🔁 de los que se
+  debitan solos.
+- **🤝 Aportes y retiros de socios**: quién puso o sacó, de qué local, con qué medio.
+
+Arriba a la derecha hay **Hoy · Ayer · 7 días**, que mueve los cierres y los movimientos de
+socios; los vencimientos miran siempre la misma ventana, porque lo que ya venció no deja de
+importar por cambiar el filtro. Cada sección tiene su botón para entrar al módulo que
+corresponde.
+
 ## Estructura del proyecto
 ```
 compras-pro/

@@ -1413,8 +1413,10 @@ Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay 
 guarda nada propio: lee de los mismos lugares que los módulos, así que no hay que entrar a
 cada uno para ver si hay algo.
 
-Los avisos viven **sólo acá**: el Dashboard de Administración quedó con los números del
-negocio y nada que reclame atención, para no tener la misma alerta en dos pantallas.
+Los avisos de **vencimientos** y de **planes por caerse** viven sólo acá: el Dashboard de
+Administración quedó con los números del negocio, para no tener la misma alerta en dos
+pantallas. El **cierre que falta** sí se muestra en los dos, porque es de hoy y es lo que ese
+panel mira.
 
 - **El resumen**: ventas del día con cuántos cierres hay, cuántos locales faltan cerrar,
   cuántos vencimientos están vencidos o vencen en 7 días, y el neto de aportes menos retiros.

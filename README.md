@@ -1433,6 +1433,22 @@ socios; los vencimientos miran siempre la misma ventana, porque lo que ya venci�
 importar por cambiar el filtro. Cada sección tiene su botón para entrar al módulo que
 corresponde.
 
+## ♻️ Recuperar los productos de un proveedor
+
+Los productos de un proveedor viven en su propia tabla, pero **su nombre queda grabado en
+cada orden que se le pidió y en cada precio que se le cargó**. Si esa lista se pierde, se
+puede reconstruir desde ahí.
+
+En 🏭 Proveedores, al elegir un proveedor, si hay productos que ya tuvo y hoy no están en la
+lista aparece un cartel con el botón **♻️ Recuperar**: muestra cuáles son, los agrega a la
+lista de abajo y ahí se borran los que no van antes de guardar. No es un backup —sólo
+aparece lo que alguna vez se pidió o se le puso precio—, pero suele ser casi todo.
+
+**Guardar productos borra los del proveedor y los vuelve a escribir**, así que una lista
+vacía los borraría a todos. Cuando un proveedor pasaría de tener productos a no tener
+ninguno se pregunta antes, con su nombre y cuántos tenía; si no se confirma, no se toca ni
+la base ni la pantalla.
+
 ## Estructura del proyecto
 ```
 compras-pro/

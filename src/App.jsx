@@ -8056,6 +8056,7 @@ function PanelNovedades(p){
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
+  var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   var ayer=new Date(Date.now()-86400000).toISOString().split("T")[0];
   var desdeSemana=new Date(Date.now()-6*86400000).toISOString().split("T")[0];
@@ -8076,6 +8077,9 @@ function PanelNovedades(p){
 
   var avisos=avisosVencimientos(vencimientos,7);
   var vencidos=avisos.filter(function(a){return a.dias<0;});
+  // La tarjeta de vencimientos muestra lo que viene, no lo que ya se debe —eso está en
+  // Deudas—. Mira dos meses para que siempre se vea lo próximo, aunque no caiga esta semana.
+  var porVencer=avisosVencimientos(vencimientos,60).filter(function(a){return a.dias>=0;});
   var enRiesgo=planesEnRiesgo(vencimientos);
 
   // Quién está de vacaciones: las que se cruzan con el día —o con la ventana— que se mira.
@@ -8184,9 +8188,14 @@ function PanelNovedades(p){
   function Sub(props){
     return <div style={{fontSize:9,color:"#454545",textTransform:"uppercase",letterSpacing:1,marginTop:props.primera?0:10,paddingTop:props.primera?0:8,borderTop:props.primera?"none":"1px solid #141414",marginBottom:1}}>{props.children}</div>;
   }
+  // "+N más" no es un cartel: se toca y muestra el resto ahí mismo. Un número que dice que
+  // hay algo más y no deja verlo es peor que no cortar la lista.
   function Mas(props){
-    if(!props.n||props.n<=0)return null;
-    return <div style={{fontSize:10,color:"#3A3A3A",marginTop:5}}>+{props.n} más</div>;
+    var abierto=!!expandido[props.id];
+    if(!props.n||props.n<=0)return abierto?(
+      <button onClick={function(){setExpandido(function(e){var n={...e};n[props.id]=false;return n;});}} style={{background:"none",border:"none",color:"#3A3A3A",fontSize:10,cursor:"pointer",padding:"5px 0 0",fontFamily:"'Inter',sans-serif"}}>ver menos</button>
+    ):null;
+    return <button onClick={function(){setExpandido(function(e){var n={...e};n[props.id]=true;return n;});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10,cursor:"pointer",padding:"5px 0 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>+{props.n} más</button>;
   }
   var vacio={fontSize:11.5,color:"#3A3A3A"};
 
@@ -8257,12 +8266,12 @@ function PanelNovedades(p){
                   der={fmt(x.vencido)} color="#E0714A"/>;
               })}
               {deudaProv.length>0&&<Sub primera={deudaRubros.length===0}>Saldo con proveedores</Sub>}
-              {deudaProv.slice(0,5).map(function(x,i){
+              {(expandido.prov?deudaProv:deudaProv.slice(0,5)).map(function(x,i){
                 return <Fila key={x.pv.id} primera={i===0}
                   izq={<span>🏭 {x.pv.nombre}{x.pv.categoria?<span style={{color:"#454545"}}> · {x.pv.categoria}</span>:null}</span>}
                   der={fmt(x.saldo)} color="#C8C8C8"/>;
               })}
-              <Mas n={deudaProv.length-5}/>
+              <Mas id="prov" n={expandido.prov?0:deudaProv.length-5}/>
               <div style={{display:"flex",justifyContent:"space-between",marginTop:9,paddingTop:9,borderTop:"1px solid #1A1A1A"}}>
                 <span style={{fontSize:11,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Total</span>
                 <span style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(totalDeuda)}</span>
@@ -8276,38 +8285,33 @@ function PanelNovedades(p){
             <div style={vacio}>Sin cierres {etiquetaRango}.</div>
           ):(
             <div>
-              {cierresR.slice(0,5).map(function(c,i){
+              {(expandido.cierres?cierresR:cierresR.slice(0,5)).map(function(c,i){
                 var l=getLocal(c.local);
                 return <Fila key={c.id} primera={i===0}
                   izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
                   der={fmt(c.total_ventas)} color="#C8C8C8"/>;
               })}
-              <Mas n={cierresR.length-5}/>
+              <Mas id="cierres" n={expandido.cierres?0:cierresR.length-5}/>
             </div>
           )}
         </Seccion>
 
         <Seccion titulo="📅 Vencimientos" color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
-          {avisos.length===0?(
-            <div style={vacio}>Nada vencido ni por vencer en 7 días.</div>
+          {porVencer.length===0?(
+            <div style={vacio}>Nada por vencer en los próximos dos meses.{vencidos.length>0?" Lo vencido está en Deudas.":""}</div>
           ):(
             <div>
-              {avisos.slice(0,6).map(function(a,i){
+              {(expandido.venc?porVencer:porVencer.slice(0,6)).map(function(a,i){
                 var g=grupoDe(a.v.grupo);
                 return <Fila key={i} primera={i===0}
                   izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
-                  der={(a.dias<0?"vencido hace "+Math.abs(a.dias)+"d":(a.dias===0?"hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
-                  color={a.dias<0?"#E0714A":(a.dias===0?"#D4A017":"#7A7A7A")}/>;
+                  der={fmtDate(a.fecha)+" · "+(a.dias===0?"hoy":"en "+a.dias+"d")+" · "+fmt(a.monto)}
+                  color={a.dias===0?"#D4A017":(a.dias<=7?"#B8963A":"#7A7A7A")}/>;
               })}
-              <Mas n={avisos.length-6}/>
+              <Mas id="venc" n={expandido.venc?0:porVencer.length-6}/>
               {vencidos.length>0&&(
                 <div style={{fontSize:9.5,color:"#8A4A38",marginTop:7,paddingTop:7,borderTop:"1px solid #141414"}}>
-                  Los {vencidos.length===1?"vencido va":vencidos.length+" vencidos van"} también en Deudas: ya se debían pagar.
-                </div>
-              )}
-              {porDelante>0&&(
-                <div style={{fontSize:9.5,color:"#3F3F3F",marginTop:vencidos.length>0?3:7,paddingTop:vencidos.length>0?0:7,borderTop:vencidos.length>0?"none":"1px solid #141414"}}>
-                  Cuotas de planes por delante, todavía sin vencer: {fmt(porDelante)}.
+                  {vencidos.length===1?"Hay 1 vencido":"Hay "+vencidos.length+" vencidos"} sin pagar: {fmt(vencidos.reduce(function(a,x){return a+x.monto;},0))}, en Deudas.
                 </div>
               )}
             </div>
@@ -8326,13 +8330,13 @@ function PanelNovedades(p){
                   der={quedan<0?"volvió":(quedan===0?"vuelve mañana":"quedan "+quedan+"d")} color="#4AA8B8"/>;
               })}
               {vacProximas.length>0&&<Sub primera={deVacaciones.length===0}>Se van en dos meses · {vacProximas.length}</Sub>}
-              {vacProximas.slice(0,5).map(function(v,i){
+              {(expandido.vac?vacProximas:vacProximas.slice(0,5)).map(function(v,i){
                 var e=empDe(v); var faltan=diasEntre(hoy,v.fecha_desde);
                 return <Fila key={"vp"+(v.id||i)} primera={i===0}
                   izq={<span style={{color:"#8A8A8A"}}>{e.nombre}{e.local?<span style={{color:"#454545"}}> · {(getLocal(e.local)||{}).nombre}</span>:null}</span>}
                   der={fmtDate(v.fecha_desde)+" · en "+faltan+"d"} color="#5A5A5A"/>;
               })}
-              <Mas n={vacProximas.length-5}/>
+              <Mas id="vac" n={expandido.vac?0:vacProximas.length-5}/>
             </div>
           )}
         </Seccion>
@@ -8342,17 +8346,17 @@ function PanelNovedades(p){
             <div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>
           ):(
             <div>
-              {aportesR.slice(0,4).map(function(a,i){
+              {(expandido.socios?aportesR:aportesR.slice(0,4)).map(function(a,i){
                 return <Fila key={"a"+a.id} primera={i===0}
                   izq={<span>{a.socio}<span style={{color:"#454545"}}> · aporte{a.tipo_aporte?" · "+a.tipo_aporte:""}</span></span>}
                   der={"+"+fmt(a.monto)} color="#4C9A5A"/>;
               })}
-              {retirosR.slice(0,4).map(function(r,i){
+              {(expandido.socios?retirosR:retirosR.slice(0,4)).map(function(r,i){
                 return <Fila key={"r"+r.id} primera={aportesR.length===0&&i===0}
                   izq={<span>{r.socio}<span style={{color:"#454545"}}> · retiro{r.tipo_retiro?" · "+r.tipo_retiro:""}</span></span>}
                   der={"−"+fmt(r.monto)} color="#E0714A"/>;
               })}
-              <Mas n={(aportesR.length-4>0?aportesR.length-4:0)+(retirosR.length-4>0?retirosR.length-4:0)}/>
+              <Mas id="socios" n={expandido.socios?0:((aportesR.length-4>0?aportesR.length-4:0)+(retirosR.length-4>0?retirosR.length-4:0))}/>
             </div>
           )}
         </Seccion>
@@ -8360,7 +8364,7 @@ function PanelNovedades(p){
       </div>
 
       <div style={{fontSize:9.5,color:"#2E2E2E",marginTop:14,lineHeight:1.7}}>
-<b style={{color:"#4A4A4A"}}>Deuda</b> es lo que ya se debería haber pagado: los vencimientos vencidos sin pagar y el saldo de los proveedores. <b style={{color:"#4A4A4A"}}>Vencimiento</b> es lo que todavía no venció —la luz de este mes, la cuota que viene de un plan—: se mira, pero no se debe.
+<b style={{color:"#4A4A4A"}}>Deuda</b> es lo que ya se debería haber pagado: los vencimientos vencidos sin pagar y el saldo de los proveedores. <b style={{color:"#4A4A4A"}}>Vencimiento</b> es lo que todavía no venció —la luz de este mes, la cuota del 26 de un plan—: se mira, pero no se debe. Cada cosa está en una tarjeta sola, sin repetirse.
       </div>
     </div>
   );

@@ -8053,6 +8053,7 @@ function avisosVencimientos(vencimientos, diasAviso){
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
+  var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -8098,17 +8099,65 @@ function PanelNovedades(p){
     return v.fecha_desde&&v.fecha_desde>hoy&&v.fecha_desde<=dosMeses;
   }).sort(function(a,b){return String(a.fecha_desde).localeCompare(String(b.fecha_desde));});
 
+  // ── Las deudas, por título ──────────────────────────────────────────────
+  // Deuda es lo que ya se debe más lo que ya se comprometió: lo vencido sin pagar y las
+  // cuotas que le quedan a cada plan. Un recurrente que todavía no venció —la luz del mes
+  // que viene— no es deuda, es un gasto que va a venir, y por eso no se cuenta.
+  var deudaRubros=GRUPOS_VENC.map(function(g){
+    var vencido=0, comprometido=0, cuantos=0;
+    vencimientos.forEach(function(v){
+      if(v.activo===false||grupoIdDe(v)!==g.id)return;
+      if(esPlan(v)){
+        cuotasPlan(v).forEach(function(c){
+          if(c.pago||!c.vence)return;
+          var m=parseFloat(c.monto)||0;
+          if(c.vence<hoy){vencido+=m;}else{comprometido+=m;}
+          cuantos++;
+        });
+        return;
+      }
+      var cu=cuotasDe(v);
+      if(cu&&cu.completo)return;
+      // De un vencimiento suelto sólo se debe lo que ya venció y no se pagó, y sólo del mes
+      // en curso: sumar los meses anteriores de un recurrente daría por impago todo lo que
+      // nunca se marcó pagado, que es otra cosa que una deuda.
+      var mes=hoy.substring(0,7);
+      var f=fechaVencimiento(v,mes);
+      if(f&&f<hoy&&!pagoDelPeriodo(v,mes)){
+        vencido+=parseFloat(v.monto)||0;
+        cuantos++;
+      }
+    });
+    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido+comprometido, cuantos:cuantos};
+  }).filter(function(x){ return x.total>0; });
+
+  var deudaProv=proveedores.map(function(pv){
+    var movs=saldosProv.filter(function(m){return m.prov_id===pv.id;});
+    var saldo=movs.reduce(function(a,m){
+      var v=parseFloat(m.monto)||0;
+      return m.tipo==="pago"?a-v:a+v;   // saldo_inicial y compra suman, pago resta
+    },0);
+    return {pv:pv, saldo:saldo};
+  }).filter(function(x){ return x.saldo>0.5; })
+    .sort(function(a,b){ return b.saldo-a.saldo; });
+
+  var totalDeuda=deudaRubros.reduce(function(a,x){return a+x.total;},0)
+                +deudaProv.reduce(function(a,x){return a+x.saldo;},0);
+  var totalVencido=deudaRubros.reduce(function(a,x){return a+x.vencido;},0);
+
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
   var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
   var totalAportes=aportesR.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
   var totalRetiros=retirosR.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
 
+  // Una sola familia de piezas para todo el panel: título sobrio, filas aireadas y un solo
+  // acento por sección. Lo que no es un número va en gris: si todo grita, no se lee nada.
   function Seccion(props){
     return(
-      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:props.vacio?0:10}}>
-          <div style={{fontSize:12,fontWeight:800,color:props.color}}>{props.titulo}</div>
-          {props.ir&&<button onClick={props.ir} style={{background:"none",border:"1px solid "+props.color+"44",borderRadius:7,color:props.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>{props.irTxt||"Ver →"}</button>}
+      <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:14,padding:"15px 17px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:9}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#8A8A8A",letterSpacing:0.3}}>{props.titulo}</div>
+          {props.ir&&<button onClick={props.ir} style={{background:"none",border:"none",color:props.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.8}}>{props.irTxt||"Ver"} →</button>}
         </div>
         {props.children}
       </div>
@@ -8116,153 +8165,180 @@ function PanelNovedades(p){
   }
   function Fila(props){
     return(
-      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline",padding:"6px 0",borderTop:props.primera?"none":"1px solid #ffffff0A"}}>
-        <div style={{fontSize:12,color:"#ccc",minWidth:0}}>{props.izq}</div>
-        <div style={{fontSize:12,color:props.color||"#888",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline",padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414"}}>
+        <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
+        <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
       </div>
     );
   }
-  var vacio={fontSize:11,color:"#3A3A3A"};
+  function Sub(props){
+    return <div style={{fontSize:9,color:"#454545",textTransform:"uppercase",letterSpacing:1,marginTop:props.primera?0:10,paddingTop:props.primera?0:8,borderTop:props.primera?"none":"1px solid #141414",marginBottom:1}}>{props.children}</div>;
+  }
+  function Mas(props){
+    if(!props.n||props.n<=0)return null;
+    return <div style={{fontSize:10,color:"#3A3A3A",marginTop:5}}>+{props.n} más</div>;
+  }
+  var vacio={fontSize:11.5,color:"#3A3A3A"};
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:10,flexWrap:"wrap",marginBottom:14}}>
+      {/* Encabezado */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:10,flexWrap:"wrap",marginBottom:16}}>
         <div>
-          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🔔 Novedades del día</div>
-          <div style={{fontSize:11,color:"#555",marginTop:2}}>{fmtDate(hoy)}</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800}}>🔔 Novedades del día</div>
+          <div style={{fontSize:11,color:"#4A4A4A",marginTop:3}}>{fmtDate(hoy)}{rango!=="hoy"?" · mirando "+etiquetaRango:""}</div>
         </div>
-        <div style={{display:"flex",gap:5}}>
+        <div style={{display:"flex",gap:4,background:"#0C0C0C",borderRadius:9,padding:3}}>
           {[["hoy","Hoy"],["ayer","Ayer"],["semana","7 días"]].map(function(t){
             var act=rango===t[0];
-            return <button key={t[0]} onClick={function(){setRango(t[0]);}} style={{padding:"7px 13px",borderRadius:8,border:"1px solid "+(act?"#D4A017":"#1E1E1E"),background:act?"#D4A01722":"#111",color:act?"#D4A017":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+            return <button key={t[0]} onClick={function(){setRango(t[0]);}} style={{padding:"6px 13px",borderRadius:7,border:"none",background:act?"#1C1C1C":"transparent",color:act?"#E8E8E8":"#4A4A4A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor:"pointer"}}>{t[1]}</button>;
           })}
         </div>
       </div>
 
-      {/* El resumen de un vistazo */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:12}}>
+      {/* Lo urgente, si lo hay: una sola línea por cosa */}
+      {(function(){
+        var avisos=[];
+        if(faltanCerrar.length>0)avisos.push({txt:"Falta el cierre de hoy en "+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:false});
+        enRiesgo.forEach(function(x){
+          avisos.push({rojo:x.rg.caido,
+            txt:(x.rg.caido?"Se cayó el plan ":"Por caerse el plan ")+(x.v.nro_plan||x.v.concepto)+" de "+grupoDe(x.v.grupo).corto+" — "+x.rg.adeudadas+" cuotas vencidas"+(x.rg.caido?"":", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")});
+        });
+        if(vencidos.length>0)avisos.push({rojo:true,txt:vencidos.length+" vencimiento"+(vencidos.length===1?"":"s")+" sin pagar · "+fmt(vencidos.reduce(function(a,x){return a+x.monto;},0))});
+        if(avisos.length===0)return null;
+        var hayRojo=avisos.some(function(a){return a.rojo;});
+        return(
+          <div style={{border:"1px solid "+(hayRojo?"#C1440E44":"#D4A01733"),background:hayRojo?"#140807":"#12100A",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+            {avisos.map(function(a,i){
+              return <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0"}}>{a.rojo?"🚨":"⚠️"} {a.txt}</div>;
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Los cuatro números que importan */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {[
-          {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),c:"#C1440E",d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
-          {t:"Falta cerrar hoy",v:String(faltanCerrar.length),c:faltanCerrar.length>0?"#D4A017":"#3A7D44",d:faltanCerrar.length>0?faltanCerrar.map(function(l){return l.emoji;}).join(" "):"todos cerrados"},
-          {t:"Vencimientos",v:String(avisos.length),c:vencidos.length>0?"#C1440E":"#1A6B8A",d:vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"próximos 7 días"},
-          {t:"Socios",v:fmt(totalAportes-totalRetiros),c:"#8B2FC9",d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")},
-          {t:"De vacaciones",v:String(deVacaciones.length),c:deVacaciones.length>0?"#00BCD4":"#3A7D44",d:deVacaciones.length>0?deVacaciones.map(function(v){return empDe(v).nombre.split(" ")[0];}).join(" · "):(vacProximas.length>0?vacProximas.length+" por venir":"nadie")}
+          {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
+          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido":"nada vencido",alerta:totalVencido>0},
+          {t:"Vence en 7 días",v:fmt(avisos.reduce(function(a,x){return a+x.monto;},0)),d:avisos.length+" vencimiento"+(avisos.length===1?"":"s")},
+          {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
-          <div key={x.t} style={{background:"#111",border:"1px solid "+x.c+"33",borderRadius:10,padding:"11px 13px"}}>
-            <div style={{fontSize:9,color:x.c,textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
-            <div style={{fontSize:19,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{x.v}</div>
-            <div style={{fontSize:10,color:"#555",marginTop:2}}>{x.d}</div>
+          <div key={x.t} style={{background:"#0C0C0C",padding:"13px 15px"}}>
+            <div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
+            <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.alerta?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{x.v}</div>
+            <div style={{fontSize:10,color:"#3F3F3F",marginTop:2}}>{x.d}</div>
           </div>
         );})}
       </div>
 
-      {/* Planes por caerse: lo más caro de dejar pasar */}
-      {enRiesgo.length>0&&(
-        <div style={{background:enRiesgo.some(function(x){return x.rg.caido;})?"#1A0808":"#14100A",border:"1px solid "+(enRiesgo.some(function(x){return x.rg.caido;})?"#C1440E66":"#D4A01766"),borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:800,color:enRiesgo.some(function(x){return x.rg.caido;})?"#C1440E":"#D4A017",marginBottom:6}}>
-            {enRiesgo.some(function(x){return x.rg.caido;})?"🚨 Planes caídos":"⚠️ Planes por caerse"}
-          </div>
-          {enRiesgo.map(function(x,i){
-            var g=grupoDe(x.v.grupo);
-            return(
-              <div key={i} style={{fontSize:11,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
-                <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
-                  {x.rg.caido?x.rg.adeudadas+" cuotas vencidas: se cayó":x.rg.adeudadas+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
-                </span>
+      {/* Las secciones, en dos columnas cuando entra */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
+
+        <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
+          {(deudaRubros.length+deudaProv.length)===0?(
+            <div style={vacio}>Nada vencido sin pagar ni cuotas por delante.</div>
+          ):(
+            <div>
+              {deudaRubros.map(function(x,i){
+                return <Fila key={x.g.id} primera={i===0}
+                  izq={<span>{x.g.label}{x.vencido>0?<span style={{color:"#8A4A38"}}> · {fmt(x.vencido)} vencido</span>:null}</span>}
+                  der={fmt(x.total)} color={x.vencido>0?"#E0714A":"#C8C8C8"}/>;
+              })}
+              {deudaProv.length>0&&(
+                <Fila primera={deudaRubros.length===0}
+                  izq={<span>🏭 Proveedores<span style={{color:"#454545"}}> · {deudaProv.length} con saldo</span></span>}
+                  der={fmt(deudaProv.reduce(function(a,x){return a+x.saldo;},0))} color="#C8C8C8"/>
+              )}
+              <div style={{display:"flex",justifyContent:"space-between",marginTop:9,paddingTop:9,borderTop:"1px solid #1A1A1A"}}>
+                <span style={{fontSize:11,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Total</span>
+                <span style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(totalDeuda)}</span>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          )}
+        </Seccion>
 
-      {/* Cierres */}
-      <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Ver cierres →">
-        {faltanCerrar.length>0&&(
-          <div style={{background:"#14100A",border:"1px solid #D4A01733",borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:11,color:"#D4A017"}}>
-            ⚠️ Falta el cierre de hoy en {faltanCerrar.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}
-          </div>
-        )}
-        {cierresR.length===0?(
-          <div style={vacio}>No hay cierres cargados {etiquetaRango}.</div>
-        ):cierresR.map(function(c,i){
-          var l=getLocal(c.local);
-          return <Fila key={c.id} primera={i===0}
-            izq={<span><span style={{color:l?l.color:"#888"}}>{l?l.emoji+" "+l.nombre:c.local}</span>{rango!=="hoy"?" · "+fmtDate(c.fecha):""}{c.usuario?" · "+c.usuario:""}</span>}
-            der={fmt(c.total_ventas)} color="#F0EDE8"/>;
-        })}
-      </Seccion>
+        <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
+          {cierresR.length===0?(
+            <div style={vacio}>Sin cierres {etiquetaRango}.</div>
+          ):(
+            <div>
+              {cierresR.slice(0,5).map(function(c,i){
+                var l=getLocal(c.local);
+                return <Fila key={c.id} primera={i===0}
+                  izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
+                  der={fmt(c.total_ventas)} color="#C8C8C8"/>;
+              })}
+              <Mas n={cierresR.length-5}/>
+            </div>
+          )}
+        </Seccion>
 
-      {/* Vencimientos */}
-      <Seccion titulo="📅 Vencimientos" color="#D4A017" ir={p.irVencimientos} irTxt="Ver vencimientos →">
-        {avisos.length===0?(
-          <div style={vacio}>Nada vencido ni por vencer en los próximos 7 días.</div>
-        ):avisos.slice(0,8).map(function(a,i){
-          var g=grupoDe(a.v.grupo);
-          return <Fila key={i} primera={i===0}
-            izq={<span><span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}{a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁</span>:null}</span>}
-            der={(a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"vence hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
-            color={a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}/>;
-        })}
-        {avisos.length>8&&<div style={{fontSize:10,color:"#555",marginTop:5}}>y {avisos.length-8} más…</div>}
-      </Seccion>
+        <Seccion titulo="📅 Vencimientos" color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
+          {avisos.length===0?(
+            <div style={vacio}>Nada vencido ni por vencer en 7 días.</div>
+          ):(
+            <div>
+              {avisos.slice(0,6).map(function(a,i){
+                var g=grupoDe(a.v.grupo);
+                return <Fila key={i} primera={i===0}
+                  izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
+                  der={(a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
+                  color={a.dias<0?"#E0714A":(a.dias===0?"#D4A017":"#7A7A7A")}/>;
+              })}
+              <Mas n={avisos.length-6}/>
+            </div>
+          )}
+        </Seccion>
 
-      {/* Vacaciones */}
-      <Seccion titulo="🏖️ De vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Ver calendario →">
-        {(deVacaciones.length+vacProximas.length)===0?(
-          <div style={vacio}>Nadie de vacaciones {etiquetaRango}, ni con licencia arrancando en los próximos dos meses.</div>
-        ):(
-          <div>
-            {deVacaciones.map(function(v,i){
-              var e=empDe(v);
-              var l=e.local?getLocal(e.local):null;
-              var quedan=diasEntre(hoy,v.fecha_hasta);
-              return <Fila key={"v"+(v.id||i)} primera={i===0}
-                izq={<span>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}</span>}
-                der={quedan<0?("volvió el "+fmtDate(v.fecha_hasta)):("hasta el "+fmtDate(v.fecha_hasta)+" · "+(quedan===0?"vuelve mañana":"quedan "+quedan+" día"+(quedan===1?"":"s")))}
-                color="#00BCD4"/>;
-            })}
-            {vacProximas.length>0&&(
-              <div style={{fontSize:9,color:"#3A5560",textTransform:"uppercase",letterSpacing:1,marginTop:deVacaciones.length>0?9:0,marginBottom:2,paddingTop:deVacaciones.length>0?7:0,borderTop:deVacaciones.length>0?"1px solid #ffffff0A":"none"}}>
-                Se van en los próximos dos meses · {vacProximas.length}
-              </div>
-            )}
-            {vacProximas.slice(0,10).map(function(v,i){
-              var e=empDe(v);
-              var l=e.local?getLocal(e.local):null;
-              var faltan=diasEntre(hoy,v.fecha_desde);
-              var largo=diasEntre(v.fecha_desde,v.fecha_hasta)+1;
-              return <Fila key={"vp"+(v.id||i)} primera={i===0}
-                izq={<span style={{color:"#888"}}>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}{largo>0?<span style={{color:"#444"}}> · {largo} día{largo===1?"":"s"}</span>:null}</span>}
-                der={fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)+" · en "+faltan+" día"+(faltan===1?"":"s")}
-                color="#555"/>;
-            })}
-            {vacProximas.length>10&&<div style={{fontSize:10,color:"#555",marginTop:4}}>y {vacProximas.length-10} más…</div>}
-          </div>
-        )}
-      </Seccion>
+        <Seccion titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
+          {(deVacaciones.length+vacProximas.length)===0?(
+            <div style={vacio}>Nadie de licencia, ni en los próximos dos meses.</div>
+          ):(
+            <div>
+              {deVacaciones.map(function(v,i){
+                var e=empDe(v); var quedan=diasEntre(hoy,v.fecha_hasta);
+                return <Fila key={"v"+(v.id||i)} primera={i===0}
+                  izq={<span>{e.nombre}{e.local?<span style={{color:"#454545"}}> · {(getLocal(e.local)||{}).nombre}</span>:null}</span>}
+                  der={quedan<0?"volvió":(quedan===0?"vuelve mañana":"quedan "+quedan+"d")} color="#4AA8B8"/>;
+              })}
+              {vacProximas.length>0&&<Sub primera={deVacaciones.length===0}>Se van en dos meses · {vacProximas.length}</Sub>}
+              {vacProximas.slice(0,5).map(function(v,i){
+                var e=empDe(v); var faltan=diasEntre(hoy,v.fecha_desde);
+                return <Fila key={"vp"+(v.id||i)} primera={i===0}
+                  izq={<span style={{color:"#8A8A8A"}}>{e.nombre}{e.local?<span style={{color:"#454545"}}> · {(getLocal(e.local)||{}).nombre}</span>:null}</span>}
+                  der={fmtDate(v.fecha_desde)+" · en "+faltan+"d"} color="#5A5A5A"/>;
+              })}
+              <Mas n={vacProximas.length-5}/>
+            </div>
+          )}
+        </Seccion>
 
-      {/* Socios */}
-      <Seccion titulo="🤝 Aportes y retiros de socios" color="#8B2FC9" ir={p.irSocios} irTxt="Ver socios →">
-        {(aportesR.length+retirosR.length)===0?(
-          <div style={vacio}>Los socios no pusieron ni sacaron nada {etiquetaRango}.</div>
-        ):(
-          <div>
-            {aportesR.map(function(a,i){
-              var l=getLocal(a.local);
-              return <Fila key={"a"+a.id} primera={i===0}
-                izq={<span><span style={{color:"#3A7D44"}}>↑ aporte</span> · {a.socio}{l?" · "+l.emoji+" "+l.nombre:""}{a.tipo_aporte?" · "+a.tipo_aporte:""}{rango!=="hoy"?" · "+fmtDate(a.fecha):""}</span>}
-                der={"+"+fmt(a.monto)} color="#3A7D44"/>;
-            })}
-            {retirosR.map(function(r,i){
-              var l=getLocal(r.local);
-              return <Fila key={"r"+r.id} primera={aportesR.length===0&&i===0}
-                izq={<span><span style={{color:"#C1440E"}}>↓ retiro</span> · {r.socio}{l?" · "+l.emoji+" "+l.nombre:""}{r.tipo_retiro?" · "+r.tipo_retiro:""}{rango!=="hoy"?" · "+fmtDate(r.fecha):""}</span>}
-                der={"−"+fmt(r.monto)} color="#C1440E"/>;
-            })}
-          </div>
-        )}
-      </Seccion>
+        <Seccion titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
+          {(aportesR.length+retirosR.length)===0?(
+            <div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>
+          ):(
+            <div>
+              {aportesR.slice(0,4).map(function(a,i){
+                return <Fila key={"a"+a.id} primera={i===0}
+                  izq={<span>{a.socio}<span style={{color:"#454545"}}> · aporte{a.tipo_aporte?" · "+a.tipo_aporte:""}</span></span>}
+                  der={"+"+fmt(a.monto)} color="#4C9A5A"/>;
+              })}
+              {retirosR.slice(0,4).map(function(r,i){
+                return <Fila key={"r"+r.id} primera={aportesR.length===0&&i===0}
+                  izq={<span>{r.socio}<span style={{color:"#454545"}}> · retiro{r.tipo_retiro?" · "+r.tipo_retiro:""}</span></span>}
+                  der={"−"+fmt(r.monto)} color="#E0714A"/>;
+              })}
+              <Mas n={(aportesR.length-4>0?aportesR.length-4:0)+(retirosR.length-4>0?retirosR.length-4:0)}/>
+            </div>
+          )}
+        </Seccion>
+
+      </div>
+
+      <div style={{fontSize:9.5,color:"#2E2E2E",marginTop:14,lineHeight:1.7}}>
+        Deuda es lo que ya se debe más lo que ya se comprometió: lo vencido sin pagar, las cuotas que le quedan a cada plan y el saldo de los proveedores. Lo que todavía no venció no se cuenta.
+      </div>
     </div>
   );
 }
@@ -17012,6 +17088,7 @@ export default function App() {
             <PanelNovedades
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados}
+              proveedores={proveedores} saldosProveedores={saldosProveedores}
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={function(){abrirModulo("admin","vencimientos");}}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}

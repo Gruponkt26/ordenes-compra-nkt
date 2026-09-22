@@ -1430,33 +1430,32 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 ## 🔔 Novedades del día
 
 Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No
-guarda nada propio: lee de los mismos lugares que los módulos, así que no hay que entrar a
-cada uno para ver si hay algo.
+guarda nada propio: lee de los mismos lugares que los módulos, con las mismas reglas, así que
+no puede decir algo distinto.
 
-Los avisos de **vencimientos** y de **planes por caerse** viven sólo acá: el Dashboard de
-Administración quedó con los números del negocio, para no tener la misma alerta en dos
-pantallas. El **cierre que falta** sí se muestra en los dos, porque es de hoy y es lo que ese
-panel mira.
+La pantalla está armada para leerse de un vistazo, de arriba abajo:
 
-- **El resumen**: ventas del día con cuántos cierres hay, cuántos locales faltan cerrar,
-  cuántos vencimientos están vencidos o vencen en 7 días, y el neto de aportes menos retiros.
-- **Planes por caerse**, arriba de todo cuando los hay, con la misma regla del módulo de
-  vencimientos.
-- **🏪 Cierres de caja**: los del día, con su local, quién lo cargó y el total, y el aviso de
-  los locales que todavía no cerraron.
-- **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días, con el 🔁 de los que se
-  debitan solos.
-- **🤝 Aportes y retiros de socios**: quién puso o sacó, de qué local, con qué medio.
-- **🏖️ De vacaciones**: quién está de licencia, de qué local y hasta cuándo —con los días
-  que le quedan—, y abajo **quiénes se van en los próximos dos meses**, con el período
-  completo, cuántos días son y en cuántos arranca. Un franco se cubre en el día, pero
-  reemplazar a alguien dos semanas se arma con tiempo. El botón abre el calendario de
-  👥 Personal directamente en la solapa de Vacaciones.
+1. **Lo urgente**, si lo hay: una línea por cosa —el cierre que falta, un plan por caerse o
+   caído, lo vencido sin pagar—. Si no hay nada, la franja no aparece.
+2. **Cuatro números**: ventas del período, deuda (con cuánto está vencido), lo que vence en
+   7 días y el neto de socios.
+3. **Cinco tarjetas**, en dos columnas cuando la pantalla da:
+   - **💳 Deudas por título**: cuánto se debe en cada rubro —AFIP, ARBA, Municipalidad,
+     Servicios, Gremio, Créditos, Otros— y en proveedores, marcando lo vencido, con el total
+     abajo. Deuda es **lo que ya se debe más lo que ya se comprometió**: lo vencido sin
+     pagar, las cuotas que le quedan a cada plan y el saldo de los proveedores. Lo que
+     todavía no venció no se cuenta: la luz del mes que viene es un gasto que va a venir, no
+     una deuda.
+   - **🏪 Cierres de caja** del período, con su local y su total.
+   - **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días.
+   - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
+     próximos dos meses.
+   - **🤝 Socios**: los aportes y retiros del período.
 
-Arriba a la derecha hay **Hoy · Ayer · 7 días**, que mueve los cierres y los movimientos de
-socios; los vencimientos miran siempre la misma ventana, porque lo que ya venció no deja de
-importar por cambiar el filtro. Cada sección tiene su botón para entrar al módulo que
-corresponde.
+Arriba a la derecha, **Hoy · Ayer · 7 días** mueve los cierres y los movimientos de socios;
+los vencimientos y las deudas miran siempre lo mismo, porque lo que se debe no cambia por
+mirar otro día. Cada tarjeta lleva al módulo que le toca, y las listas largas se cortan con
+un «+N más».
 
 ## ♻️ Recuperar los productos de un proveedor
 

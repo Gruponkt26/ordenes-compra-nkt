@@ -16412,6 +16412,24 @@ export default function App() {
   // Los dos lados se mueven juntos: si se borra el egreso, el vencimiento vuelve a estar
   // impago —si no, quedaría marcado como pagado sin que la plata figure en ningún lado—, y
   // si se deshace el pago desde Vencimientos, el egreso se borra.
+  // Guardar productos borra los del proveedor y vuelve a escribirlos. Si la lista que llega
+  // viene vacía para un proveedor que tenía productos, eso no es una edición: es una lista
+  // que se perdió en el camino, y guardarla los borraría a todos sin aviso. Se pregunta, y
+  // si no se confirma ese proveedor no se toca.
+  function provsAEscribir(pd){
+    var salida=[];
+    Object.keys(pd||{}).forEach(function(provId){
+      var nuevos=(pd[provId]||[]).length;
+      var tenia=((productos||{})[provId]||[]).length;
+      if(nuevos===0&&tenia>0){
+        var pv=(proveedores||[]).find(function(x){return x.id===provId;});
+        var nombre=pv?pv.nombre:provId;
+        if(!window.confirm("Vas a dejar a \""+nombre+"\" sin ningún producto (tenía "+tenia+").\n\n¿Es lo que querés? Si no, cancelá y no se toca."))return;
+      }
+      salida.push(provId);
+    });
+    return salida;
+  }
   function borrarEgresoSolo(id){
     sbDeleteGasto(id);
     setGastos(function(p){return p.filter(function(g){return g.id!==id;});});
@@ -17250,7 +17268,7 @@ export default function App() {
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){
         pv.forEach(function(p){ sbSaveProveedor(p); });
         // Para cada proveedor: borrar primero, luego guardar
-        var provIds=Object.keys(pd);
+        var provIds=provsAEscribir(pd);
         async function saveProds(){
           for(var i=0;i<provIds.length;i++){
             var provId=provIds[i];
@@ -17261,11 +17279,15 @@ export default function App() {
           }
         }
         saveProds();
-        setProveedores(pv);setProductos(pd);setShowGest(false);
+        // Lo que no se escribió queda como estaba, para que la pantalla no muestre algo
+        // distinto de lo que quedó guardado.
+        var quedan={...productos};
+        provIds.forEach(function(id){ quedan[id]=pd[id]; });
+        setProveedores(pv);setProductos(quedan);setShowGest(false);
       }}/>}
       {showMisProds&&<MisProductosModal proveedores={proveedores} productos={productos} onClose={function(){setShowMisProds(false);}} onSave={function(pd){
+        var ids=provsAEscribir(pd);
         async function saveProds2(){
-          var ids=Object.keys(pd);
           for(var i=0;i<ids.length;i++){
             var provId=ids[i];
             await sbDeleteProducto(provId);
@@ -17275,7 +17297,9 @@ export default function App() {
           }
         }
         saveProds2();
-        setProductos(pd);setShowMisProds(false);
+        var quedan2={...productos};
+        ids.forEach(function(id){ quedan2[id]=pd[id]; });
+        setProductos(quedan2);setShowMisProds(false);
       }}/>}
       {showExportarGastos&&<ExportarGastosModal gastos={gastos} onClose={function(){setShowExportarGastos(false);}}/>}
       {showEditorCats&&<EditorCategoriasGastos categorias={categoriasGastos} onClose={function(){setShowEditorCats(false);}} onSave={function(cats){setCategoriasGastos(cats);setShowEditorCats(false);}}/>}

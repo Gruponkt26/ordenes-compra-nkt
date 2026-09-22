@@ -8100,9 +8100,9 @@ function PanelNovedades(p){
   }).sort(function(a,b){return String(a.fecha_desde).localeCompare(String(b.fecha_desde));});
 
   // ── Las deudas, por título ──────────────────────────────────────────────
-  // Deuda es lo que ya se debe más lo que ya se comprometió: lo vencido sin pagar y las
-  // cuotas que le quedan a cada plan. Un recurrente que todavía no venció —la luz del mes
-  // que viene— no es deuda, es un gasto que va a venir, y por eso no se cuenta.
+  // Deuda es lo que ya se debería haber pagado: lo vencido sin pagar y el saldo de los
+  // proveedores. Lo que todavía no venció —la luz de este mes, la cuota que viene de un
+  // plan— no es deuda: es un vencimiento, y va en su propia tarjeta.
   var deudaRubros=GRUPOS_VENC.map(function(g){
     var vencido=0, comprometido=0, cuantos=0;
     vencimientos.forEach(function(v){
@@ -8111,8 +8111,9 @@ function PanelNovedades(p){
         cuotasPlan(v).forEach(function(c){
           if(c.pago||!c.vence)return;
           var m=parseFloat(c.monto)||0;
-          if(c.vence<hoy){vencido+=m;}else{comprometido+=m;}
-          cuantos++;
+          // Se cuentan sólo las vencidas: el número de al lado del monto tiene que ser de
+          // lo mismo que el monto.
+          if(c.vence<hoy){vencido+=m;cuantos++;}else{comprometido+=m;}
         });
         return;
       }
@@ -8128,8 +8129,17 @@ function PanelNovedades(p){
         cuantos++;
       }
     });
-    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido+comprometido, cuantos:cuantos};
-  }).filter(function(x){ return x.total>0; });
+    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos};
+  }).filter(function(x){ return x.vencido>0; });
+  // Lo que todavía no venció, por si interesa el compromiso por delante de los planes.
+  var porDelante=GRUPOS_VENC.reduce(function(a,g){
+    var suma=0;
+    vencimientos.forEach(function(v){
+      if(v.activo===false||!esPlan(v)||grupoIdDe(v)!==g.id)return;
+      cuotasPlan(v).forEach(function(c){ if(!c.pago&&c.vence&&c.vence>=hoy)suma+=parseFloat(c.monto)||0; });
+    });
+    return a+suma;
+  },0);
 
   var deudaProv=proveedores.map(function(pv){
     var movs=saldosProv.filter(function(m){return m.prov_id===pv.id;});
@@ -8141,9 +8151,9 @@ function PanelNovedades(p){
   }).filter(function(x){ return x.saldo>0.5; })
     .sort(function(a,b){ return b.saldo-a.saldo; });
 
-  var totalDeuda=deudaRubros.reduce(function(a,x){return a+x.total;},0)
-                +deudaProv.reduce(function(a,x){return a+x.saldo;},0);
+  var totalProv=deudaProv.reduce(function(a,x){return a+x.saldo;},0);
   var totalVencido=deudaRubros.reduce(function(a,x){return a+x.vencido;},0);
+  var totalDeuda=totalVencido+totalProv;
 
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
   var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
@@ -8220,8 +8230,8 @@ function PanelNovedades(p){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
-          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido":"nada vencido",alerta:totalVencido>0},
-          {t:"Vence en 7 días",v:fmt(avisos.reduce(function(a,x){return a+x.monto;},0)),d:avisos.length+" vencimiento"+(avisos.length===1?"":"s")},
+          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0},
+          {t:"Vence en 7 días",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
           <div key={x.t} style={{background:"#0C0C0C",padding:"13px 15px"}}>
@@ -8237,19 +8247,22 @@ function PanelNovedades(p){
 
         <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
-            <div style={vacio}>Nada vencido sin pagar ni cuotas por delante.</div>
+            <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
           ):(
             <div>
+              {deudaRubros.length>0&&<Sub primera={true}>Vencido sin pagar</Sub>}
               {deudaRubros.map(function(x,i){
                 return <Fila key={x.g.id} primera={i===0}
-                  izq={<span>{x.g.label}{x.vencido>0?<span style={{color:"#8A4A38"}}> · {fmt(x.vencido)} vencido</span>:null}</span>}
-                  der={fmt(x.total)} color={x.vencido>0?"#E0714A":"#C8C8C8"}/>;
+                  izq={<span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
+                  der={fmt(x.vencido)} color="#E0714A"/>;
               })}
-              {deudaProv.length>0&&(
-                <Fila primera={deudaRubros.length===0}
-                  izq={<span>🏭 Proveedores<span style={{color:"#454545"}}> · {deudaProv.length} con saldo</span></span>}
-                  der={fmt(deudaProv.reduce(function(a,x){return a+x.saldo;},0))} color="#C8C8C8"/>
-              )}
+              {deudaProv.length>0&&<Sub primera={deudaRubros.length===0}>Saldo con proveedores</Sub>}
+              {deudaProv.slice(0,5).map(function(x,i){
+                return <Fila key={x.pv.id} primera={i===0}
+                  izq={<span>🏭 {x.pv.nombre}{x.pv.categoria?<span style={{color:"#454545"}}> · {x.pv.categoria}</span>:null}</span>}
+                  der={fmt(x.saldo)} color="#C8C8C8"/>;
+              })}
+              <Mas n={deudaProv.length-5}/>
               <div style={{display:"flex",justifyContent:"space-between",marginTop:9,paddingTop:9,borderTop:"1px solid #1A1A1A"}}>
                 <span style={{fontSize:11,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Total</span>
                 <span style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(totalDeuda)}</span>
@@ -8283,10 +8296,20 @@ function PanelNovedades(p){
                 var g=grupoDe(a.v.grupo);
                 return <Fila key={i} primera={i===0}
                   izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
-                  der={(a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
+                  der={(a.dias<0?"vencido hace "+Math.abs(a.dias)+"d":(a.dias===0?"hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
                   color={a.dias<0?"#E0714A":(a.dias===0?"#D4A017":"#7A7A7A")}/>;
               })}
               <Mas n={avisos.length-6}/>
+              {vencidos.length>0&&(
+                <div style={{fontSize:9.5,color:"#8A4A38",marginTop:7,paddingTop:7,borderTop:"1px solid #141414"}}>
+                  Los {vencidos.length===1?"vencido va":vencidos.length+" vencidos van"} también en Deudas: ya se debían pagar.
+                </div>
+              )}
+              {porDelante>0&&(
+                <div style={{fontSize:9.5,color:"#3F3F3F",marginTop:vencidos.length>0?3:7,paddingTop:vencidos.length>0?0:7,borderTop:vencidos.length>0?"none":"1px solid #141414"}}>
+                  Cuotas de planes por delante, todavía sin vencer: {fmt(porDelante)}.
+                </div>
+              )}
             </div>
           )}
         </Seccion>
@@ -8337,7 +8360,7 @@ function PanelNovedades(p){
       </div>
 
       <div style={{fontSize:9.5,color:"#2E2E2E",marginTop:14,lineHeight:1.7}}>
-        Deuda es lo que ya se debe más lo que ya se comprometió: lo vencido sin pagar, las cuotas que le quedan a cada plan y el saldo de los proveedores. Lo que todavía no venció no se cuenta.
+<b style={{color:"#4A4A4A"}}>Deuda</b> es lo que ya se debería haber pagado: los vencimientos vencidos sin pagar y el saldo de los proveedores. <b style={{color:"#4A4A4A"}}>Vencimiento</b> es lo que todavía no venció —la luz de este mes, la cuota que viene de un plan—: se mira, pero no se debe.
       </div>
     </div>
   );

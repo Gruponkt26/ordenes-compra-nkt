@@ -1440,17 +1440,21 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
 2. **Cuatro números**: ventas del período, deuda (con cuánto está vencido), lo que vence en
    7 días y el neto de socios.
 3. **Cinco tarjetas**, en dos columnas cuando la pantalla da:
-   - **💳 Deudas por título**: cuánto se debe en cada rubro —AFIP, ARBA, Municipalidad,
-     Servicios, Gremio, Créditos, Otros— y en proveedores, marcando lo vencido, con el total
-     abajo. Deuda es **lo que ya se debe más lo que ya se comprometió**: lo vencido sin
-     pagar, las cuotas que le quedan a cada plan y el saldo de los proveedores. Lo que
-     todavía no venció no se cuenta: la luz del mes que viene es un gasto que va a venir, no
-     una deuda.
+   - **💳 Deudas por título**, en dos bloques: **vencido sin pagar**, por rubro —AFIP, ARBA,
+     Municipalidad, Servicios, Gremio, Créditos, Otros—, y **saldo con proveedores**, uno por
+     proveedor, con el total abajo.
    - **🏪 Cierres de caja** del período, con su local y su total.
-   - **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días.
+   - **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días, más lo que le queda por
+     delante a los planes.
    - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.
+
+**Deuda y vencimiento no son lo mismo**, y el panel los separa. **Deuda** es lo que ya se
+debería haber pagado: un vencimiento cuya fecha ya pasó y sigue impago, y el saldo que se le
+debe a un proveedor. **Vencimiento** es lo que todavía no venció —la luz de este mes, la
+cuota que viene de un plan—: se mira para no llegar tarde, pero no se debe. Un vencido
+aparece en las dos tarjetas, y la de vencimientos lo aclara.
 
 Arriba a la derecha, **Hoy · Ayer · 7 días** mueve los cierres y los movimientos de socios;
 los vencimientos y las deudas miran siempre lo mismo, porque lo que se debe no cambia por

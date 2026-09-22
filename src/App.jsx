@@ -8088,9 +8088,14 @@ function PanelNovedades(p){
   var deVacaciones=vacaciones.filter(function(v){
     return v.fecha_desde&&v.fecha_hasta&&v.fecha_desde<=refHasta&&v.fecha_hasta>=refDesde;
   }).sort(function(a,b){return String(a.fecha_hasta).localeCompare(String(b.fecha_hasta));});
-  var enSieteDias=new Date(Date.now()+7*86400000).toISOString().split("T")[0];
+  // Las que vienen se avisan con dos meses: un franco se cubre en el día, pero reemplazar a
+  // alguien dos semanas se arma con tiempo.
+  var dosMeses=(function(){
+    var d=new Date(); d.setMonth(d.getMonth()+2);
+    return d.toISOString().split("T")[0];
+  })();
   var vacProximas=vacaciones.filter(function(v){
-    return v.fecha_desde&&v.fecha_desde>hoy&&v.fecha_desde<=enSieteDias;
+    return v.fecha_desde&&v.fecha_desde>hoy&&v.fecha_desde<=dosMeses;
   }).sort(function(a,b){return String(a.fecha_desde).localeCompare(String(b.fecha_desde));});
 
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
@@ -8142,7 +8147,7 @@ function PanelNovedades(p){
           {t:"Falta cerrar hoy",v:String(faltanCerrar.length),c:faltanCerrar.length>0?"#D4A017":"#3A7D44",d:faltanCerrar.length>0?faltanCerrar.map(function(l){return l.emoji;}).join(" "):"todos cerrados"},
           {t:"Vencimientos",v:String(avisos.length),c:vencidos.length>0?"#C1440E":"#1A6B8A",d:vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"próximos 7 días"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),c:"#8B2FC9",d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")},
-          {t:"De vacaciones",v:String(deVacaciones.length),c:deVacaciones.length>0?"#00BCD4":"#3A7D44",d:deVacaciones.length>0?deVacaciones.map(function(v){return empDe(v).nombre.split(" ")[0];}).join(" · "):(vacProximas.length>0?vacProximas.length+" arranca"+(vacProximas.length===1?"":"n")+" esta semana":"nadie")}
+          {t:"De vacaciones",v:String(deVacaciones.length),c:deVacaciones.length>0?"#00BCD4":"#3A7D44",d:deVacaciones.length>0?deVacaciones.map(function(v){return empDe(v).nombre.split(" ")[0];}).join(" · "):(vacProximas.length>0?vacProximas.length+" por venir":"nadie")}
         ].map(function(x){return(
           <div key={x.t} style={{background:"#111",border:"1px solid "+x.c+"33",borderRadius:10,padding:"11px 13px"}}>
             <div style={{fontSize:9,color:x.c,textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
@@ -8205,7 +8210,7 @@ function PanelNovedades(p){
       {/* Vacaciones */}
       <Seccion titulo="🏖️ De vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Ver calendario →">
         {(deVacaciones.length+vacProximas.length)===0?(
-          <div style={vacio}>Nadie de vacaciones {etiquetaRango}, ni arrancando esta semana.</div>
+          <div style={vacio}>Nadie de vacaciones {etiquetaRango}, ni con licencia arrancando en los próximos dos meses.</div>
         ):(
           <div>
             {deVacaciones.map(function(v,i){
@@ -8217,15 +8222,22 @@ function PanelNovedades(p){
                 der={quedan<0?("volvió el "+fmtDate(v.fecha_hasta)):("hasta el "+fmtDate(v.fecha_hasta)+" · "+(quedan===0?"vuelve mañana":"quedan "+quedan+" día"+(quedan===1?"":"s")))}
                 color="#00BCD4"/>;
             })}
-            {vacProximas.map(function(v,i){
+            {vacProximas.length>0&&(
+              <div style={{fontSize:9,color:"#3A5560",textTransform:"uppercase",letterSpacing:1,marginTop:deVacaciones.length>0?9:0,marginBottom:2,paddingTop:deVacaciones.length>0?7:0,borderTop:deVacaciones.length>0?"1px solid #ffffff0A":"none"}}>
+                Se van en los próximos dos meses · {vacProximas.length}
+              </div>
+            )}
+            {vacProximas.slice(0,10).map(function(v,i){
               var e=empDe(v);
               var l=e.local?getLocal(e.local):null;
               var faltan=diasEntre(hoy,v.fecha_desde);
-              return <Fila key={"vp"+(v.id||i)} primera={deVacaciones.length===0&&i===0}
-                izq={<span style={{color:"#888"}}>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}</span>}
-                der={"arranca el "+fmtDate(v.fecha_desde)+" · en "+faltan+" día"+(faltan===1?"":"s")}
+              var largo=diasEntre(v.fecha_desde,v.fecha_hasta)+1;
+              return <Fila key={"vp"+(v.id||i)} primera={i===0}
+                izq={<span style={{color:"#888"}}>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}{largo>0?<span style={{color:"#444"}}> · {largo} día{largo===1?"":"s"}</span>:null}</span>}
+                der={fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)+" · en "+faltan+" día"+(faltan===1?"":"s")}
                 color="#555"/>;
             })}
+            {vacProximas.length>10&&<div style={{fontSize:10,color:"#555",marginTop:4}}>y {vacProximas.length-10} más…</div>}
           </div>
         )}
       </Seccion>

@@ -1448,8 +1448,10 @@ panel mira.
   debitan solos.
 - **🤝 Aportes y retiros de socios**: quién puso o sacó, de qué local, con qué medio.
 - **🏖️ De vacaciones**: quién está de licencia, de qué local y hasta cuándo —con los días
-  que le quedan—, más los que arrancan dentro de los próximos 7 días. El botón abre el
-  calendario de 👥 Personal directamente en la solapa de Vacaciones.
+  que le quedan—, y abajo **quiénes se van en los próximos dos meses**, con el período
+  completo, cuántos días son y en cuántos arranca. Un franco se cubre en el día, pero
+  reemplazar a alguien dos semanas se arma con tiempo. El botón abre el calendario de
+  👥 Personal directamente en la solapa de Vacaciones.
 
 Arriba a la derecha hay **Hoy · Ayer · 7 días**, que mueve los cierres y los movimientos de
 socios; los vencimientos miran siempre la misma ventana, porque lo que ya venció no deja de

@@ -1444,8 +1444,9 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      Municipalidad, Servicios, Gremio, Créditos, Otros—, y **saldo con proveedores**, uno por
      proveedor, con el total abajo.
    - **🏪 Cierres de caja** del período, con su local y su total.
-   - **📅 Vencimientos**: lo vencido y lo que vence dentro de 7 días, más lo que le queda por
-     delante a los planes.
+   - **📅 Vencimientos**: sólo **lo que viene**, con su fecha —«cuota 3 · 26/09/2026 · en
+     4d»—, mirando dos meses para que siempre se vea lo próximo aunque no caiga esta semana.
+     Lo vencido no se repite acá: va en Deudas, y una línea al pie lo recuerda.
    - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.
@@ -1459,7 +1460,8 @@ aparece en las dos tarjetas, y la de vencimientos lo aclara.
 Arriba a la derecha, **Hoy · Ayer · 7 días** mueve los cierres y los movimientos de socios;
 los vencimientos y las deudas miran siempre lo mismo, porque lo que se debe no cambia por
 mirar otro día. Cada tarjeta lleva al módulo que le toca, y las listas largas se cortan con
-un «+N más».
+un **«+N más» que se toca y las abre ahí mismo** —un número que avisa que hay algo más y no
+deja verlo es peor que no cortar la lista—.
 
 ## ♻️ Recuperar los productos de un proveedor
 

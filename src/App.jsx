@@ -7950,6 +7950,170 @@ function avisosVencimientos(vencimientos, diasAviso){
   });
   return out.sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
 }
+// ─── NOVEDADES DEL DÍA ────────────────────────────────────────────────────────
+// Lo que pasó y lo que hay que mirar, en una sola pantalla: los cierres de caja del día,
+// lo que vence, y lo que los socios pusieron o sacaron. No agrega datos nuevos —los lee de
+// los mismos lugares que los módulos— pero evita tener que entrar a cada uno para ver si
+// hay algo.
+function PanelNovedades(p){
+  var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
+  var hoy=new Date().toISOString().split("T")[0];
+  var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+  var ayer=new Date(Date.now()-86400000).toISOString().split("T")[0];
+  var desdeSemana=new Date(Date.now()-6*86400000).toISOString().split("T")[0];
+  function enRango(f){
+    if(!f)return false;
+    var d=String(f).substring(0,10);
+    if(rango==="hoy")return d===hoy;
+    if(rango==="ayer")return d===ayer;
+    return d>=desdeSemana&&d<=hoy;
+  }
+  var etiquetaRango=rango==="hoy"?"hoy":(rango==="ayer"?"ayer":"los últimos 7 días");
+
+  var cierresR=cierres.filter(function(c){return enRango(c.fecha);})
+    .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
+  var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+  var localesConCierre=cierres.filter(function(c){return c.fecha===hoy;}).map(function(c){return c.local;});
+  var faltanCerrar=LOCALES.filter(function(l){return l.id!=="l4"&&localesConCierre.indexOf(l.id)<0;});
+
+  var avisos=avisosVencimientos(vencimientos,7);
+  var vencidos=avisos.filter(function(a){return a.dias<0;});
+  var enRiesgo=planesEnRiesgo(vencimientos);
+
+  var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
+  var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
+  var totalAportes=aportesR.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+  var totalRetiros=retirosR.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
+
+  function Seccion(props){
+    return(
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:props.vacio?0:10}}>
+          <div style={{fontSize:12,fontWeight:800,color:props.color}}>{props.titulo}</div>
+          {props.ir&&<button onClick={props.ir} style={{background:"none",border:"1px solid "+props.color+"44",borderRadius:7,color:props.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>{props.irTxt||"Ver →"}</button>}
+        </div>
+        {props.children}
+      </div>
+    );
+  }
+  function Fila(props){
+    return(
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline",padding:"6px 0",borderTop:props.primera?"none":"1px solid #ffffff0A"}}>
+        <div style={{fontSize:12,color:"#ccc",minWidth:0}}>{props.izq}</div>
+        <div style={{fontSize:12,color:props.color||"#888",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
+      </div>
+    );
+  }
+  var vacio={fontSize:11,color:"#3A3A3A"};
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🔔 Novedades del día</div>
+          <div style={{fontSize:11,color:"#555",marginTop:2}}>{fmtDate(hoy)}</div>
+        </div>
+        <div style={{display:"flex",gap:5}}>
+          {[["hoy","Hoy"],["ayer","Ayer"],["semana","7 días"]].map(function(t){
+            var act=rango===t[0];
+            return <button key={t[0]} onClick={function(){setRango(t[0]);}} style={{padding:"7px 13px",borderRadius:8,border:"1px solid "+(act?"#D4A017":"#1E1E1E"),background:act?"#D4A01722":"#111",color:act?"#D4A017":"#555",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+          })}
+        </div>
+      </div>
+
+      {/* El resumen de un vistazo */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:12}}>
+        {[
+          {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),c:"#C1440E",d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
+          {t:"Falta cerrar hoy",v:String(faltanCerrar.length),c:faltanCerrar.length>0?"#D4A017":"#3A7D44",d:faltanCerrar.length>0?faltanCerrar.map(function(l){return l.emoji;}).join(" "):"todos cerrados"},
+          {t:"Vencimientos",v:String(avisos.length),c:vencidos.length>0?"#C1440E":"#1A6B8A",d:vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"próximos 7 días"},
+          {t:"Socios",v:fmt(totalAportes-totalRetiros),c:"#8B2FC9",d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
+        ].map(function(x){return(
+          <div key={x.t} style={{background:"#111",border:"1px solid "+x.c+"33",borderRadius:10,padding:"11px 13px"}}>
+            <div style={{fontSize:9,color:x.c,textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
+            <div style={{fontSize:19,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{x.v}</div>
+            <div style={{fontSize:10,color:"#555",marginTop:2}}>{x.d}</div>
+          </div>
+        );})}
+      </div>
+
+      {/* Planes por caerse: lo más caro de dejar pasar */}
+      {enRiesgo.length>0&&(
+        <div style={{background:enRiesgo.some(function(x){return x.rg.caido;})?"#1A0808":"#14100A",border:"1px solid "+(enRiesgo.some(function(x){return x.rg.caido;})?"#C1440E66":"#D4A01766"),borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:800,color:enRiesgo.some(function(x){return x.rg.caido;})?"#C1440E":"#D4A017",marginBottom:6}}>
+            {enRiesgo.some(function(x){return x.rg.caido;})?"🚨 Planes caídos":"⚠️ Planes por caerse"}
+          </div>
+          {enRiesgo.map(function(x,i){
+            var g=grupoDe(x.v.grupo);
+            return(
+              <div key={i} style={{fontSize:11,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
+                <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
+                  {x.rg.caido?x.rg.adeudadas+" cuotas vencidas: se cayó":x.rg.adeudadas+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Cierres */}
+      <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Ver cierres →">
+        {faltanCerrar.length>0&&(
+          <div style={{background:"#14100A",border:"1px solid #D4A01733",borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:11,color:"#D4A017"}}>
+            ⚠️ Falta el cierre de hoy en {faltanCerrar.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}
+          </div>
+        )}
+        {cierresR.length===0?(
+          <div style={vacio}>No hay cierres cargados {etiquetaRango}.</div>
+        ):cierresR.map(function(c,i){
+          var l=getLocal(c.local);
+          return <Fila key={c.id} primera={i===0}
+            izq={<span><span style={{color:l?l.color:"#888"}}>{l?l.emoji+" "+l.nombre:c.local}</span>{rango!=="hoy"?" · "+fmtDate(c.fecha):""}{c.usuario?" · "+c.usuario:""}</span>}
+            der={fmt(c.total_ventas)} color="#F0EDE8"/>;
+        })}
+      </Seccion>
+
+      {/* Vencimientos */}
+      <Seccion titulo="📅 Vencimientos" color="#D4A017" ir={p.irVencimientos} irTxt="Ver vencimientos →">
+        {avisos.length===0?(
+          <div style={vacio}>Nada vencido ni por vencer en los próximos 7 días.</div>
+        ):avisos.slice(0,8).map(function(a,i){
+          var g=grupoDe(a.v.grupo);
+          return <Fila key={i} primera={i===0}
+            izq={<span><span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}{a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁</span>:null}</span>}
+            der={(a.dias<0?"venció hace "+Math.abs(a.dias)+"d":(a.dias===0?"vence hoy":"en "+a.dias+"d"))+" · "+fmt(a.monto)}
+            color={a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}/>;
+        })}
+        {avisos.length>8&&<div style={{fontSize:10,color:"#555",marginTop:5}}>y {avisos.length-8} más…</div>}
+      </Seccion>
+
+      {/* Socios */}
+      <Seccion titulo="🤝 Aportes y retiros de socios" color="#8B2FC9" ir={p.irSocios} irTxt="Ver socios →">
+        {(aportesR.length+retirosR.length)===0?(
+          <div style={vacio}>Los socios no pusieron ni sacaron nada {etiquetaRango}.</div>
+        ):(
+          <div>
+            {aportesR.map(function(a,i){
+              var l=getLocal(a.local);
+              return <Fila key={"a"+a.id} primera={i===0}
+                izq={<span><span style={{color:"#3A7D44"}}>↑ aporte</span> · {a.socio}{l?" · "+l.emoji+" "+l.nombre:""}{a.tipo_aporte?" · "+a.tipo_aporte:""}{rango!=="hoy"?" · "+fmtDate(a.fecha):""}</span>}
+                der={"+"+fmt(a.monto)} color="#3A7D44"/>;
+            })}
+            {retirosR.map(function(r,i){
+              var l=getLocal(r.local);
+              return <Fila key={"r"+r.id} primera={aportesR.length===0&&i===0}
+                izq={<span><span style={{color:"#C1440E"}}>↓ retiro</span> · {r.socio}{l?" · "+l.emoji+" "+l.nombre:""}{r.tipo_retiro?" · "+r.tipo_retiro:""}{rango!=="hoy"?" · "+fmtDate(r.fecha):""}</span>}
+                der={"−"+fmt(r.monto)} color="#C1440E"/>;
+            })}
+          </div>
+        )}
+      </Seccion>
+    </div>
+  );
+}
+
 function PanelVencimientos(p){
   var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
@@ -16316,6 +16480,7 @@ export default function App() {
               style={{padding:"8px 10px",borderRadius:8,border:"none",background:"none",color:"#444",fontSize:16,cursor:"pointer"}} title="Inicio">🏠</button>
             <div style={{width:1,height:20,background:"#222",margin:"0 4px"}}/>
             {[
+              {id:"novedades",emoji:"🔔",label:"Novedades",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
               {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
@@ -16347,6 +16512,7 @@ export default function App() {
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
+                  {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
                   {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
@@ -16655,6 +16821,16 @@ export default function App() {
           {esSofia&&modulo==="deportes"&&(
             <PanelDeportes deportes={deportes} usuario={cu.nombre}
               onSave={guardarDeporte} onDelete={borrarDeporte}/>
+          )}
+
+          {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
+          {esSofia&&modulo==="novedades"&&(
+            <PanelNovedades
+              cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
+              irCierres={function(){abrirModulo("admin","cierres");}}
+              irVencimientos={function(){abrirModulo("admin","vencimientos");}}
+              irSocios={function(){abrirModulo("socios","socios_aportes");}}
+            />
           )}
 
           {/* MÓDULO LOCALES */}

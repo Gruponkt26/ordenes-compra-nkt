@@ -343,7 +343,9 @@ que cae en el **mes siguiente** (el 12). Los dos se ponen una vez en el alta, va
 todas las cuotas y se ven debajo de la fecha en la planilla: «16/10/2026 · 2º 26/10/2026 ·
 corrido 12/11/2026». Con 0 en cualquiera de los dos, esa fecha no existe. Se guardan en cada
 cuota, así que correr las fechas del plan las recalcula, y ✏️ Editar plan los cambia para
-todas. Al pagar algo vencido, el aviso recuerda las dos fechas que le quedaban.
+todas. Un plan cargado antes de que existieran estas fechas **abre con los días de siempre
+puestos —26 y 12— y lo avisa**: alcanza con entrar a ✏️ Editar plan y guardar para que todas
+sus cuotas los tengan. Al pagar algo vencido, el aviso recuerda las dos fechas que le quedaban.
 
 **Un plan que ya se venía pagando** se carga entero igual: se pone el **mes de la primera
 cuota de verdad**, aunque sea pasado, y en «¿Ya lo venías pagando?» cuántas cuotas llevás

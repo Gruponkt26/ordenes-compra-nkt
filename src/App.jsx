@@ -7957,6 +7957,26 @@ function resumenPlan(v){
   };
 }
 // Arma las cuotas de un plan nuevo: el anticipo primero, si lo hay, y después una por mes.
+// Una cuota puede tener hasta tres fechas: la del plan, el segundo vencimiento —el 26 del
+// mismo mes— y el corrido, que cae en el mes siguiente. Se guardan en la cuota, no en el
+// plan, así cada una queda con las suyas aunque después se corran las fechas.
+function fechaConDia(anio, mes0, dia){
+  var d=new Date(anio,mes0,1);
+  var ultimo=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  var dd=Math.min(Math.max(1,dia),ultimo);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(dd).padStart(2,"0");
+}
+// A partir de la fecha de la cuota: el segundo en su mismo mes, el corrido en el siguiente.
+function fechasExtra(vence, diaSegundo, diaCorrido){
+  if(!vence)return {};
+  var pr=vence.split("-"), anio=parseInt(pr[0],10), mes0=parseInt(pr[1],10)-1;
+  var out={};
+  var s2=parseInt(diaSegundo,10);
+  var s3=parseInt(diaCorrido,10);
+  if(s2>0)out.vence2=fechaConDia(anio,mes0,s2);
+  if(s3>0)out.vence3=fechaConDia(anio,mes0+1,s3);
+  return out;
+}
 function armarCuotas(opts){
   var out=[];
   var dia=Math.max(1,Math.min(31,parseInt(opts.dia,10)||10));
@@ -7972,16 +7992,17 @@ function armarCuotas(opts){
   // generarlo ahora sería contarla dos veces. Queda marcado como "previo" para poder
   // distinguirlo de los que se pagaron acá.
   function yaPaga(c){ return {...c, pago:{fecha:c.vence, monto:c.monto, medio:"", medios:[], facturado:false, facturacion:"", egreso_id:null, previo:true}}; }
+  function conExtras(c){ return {...c, ...fechasExtra(c.vence,opts.dia_segundo,opts.dia_corrido)}; }
   var anticipo=parseFloat(opts.anticipo)||0;
   if(anticipo>0){
-    var cAnt={nro:0,monto:anticipo,vence:opts.fechaAnticipo||fechaDe(opts.mesInicio,0),pago:null};
+    var cAnt=conExtras({nro:0,monto:anticipo,vence:opts.fechaAnticipo||fechaDe(opts.mesInicio,0),pago:null});
     out.push(opts.anticipoPagado?yaPaga(cAnt):cAnt);
   }
   var n=parseInt(opts.cantidad,10)||0;
   var monto=parseFloat(opts.montoCuota)||0;
   var yaPagadas=Math.max(0,Math.min(n,parseInt(opts.pagadas,10)||0));
   for(var i=1;i<=n;i++){
-    var c={nro:i,monto:monto,vence:fechaDe(opts.mesInicio,i-1),pago:null};
+    var c=conExtras({nro:i,monto:monto,vence:fechaDe(opts.mesInicio,i-1),pago:null});
     out.push(i<=yaPagadas?yaPaga(c):c);
   }
   return out;
@@ -8397,7 +8418,7 @@ function PanelVencimientos(p){
   var FORM_PAGO={fecha:hoy,monto:"",total:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,caduca_en:"3",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,caduca_en:"3",dia_segundo:"26",dia_corrido:"12",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
 
   var meses=[];
@@ -8540,6 +8561,8 @@ function PanelVencimientos(p){
       cuit:cuitIdDe(v), local:v.local||"l4",
       debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||"",
       caduca_en:String(caducaEn(v)),
+      dia_segundo:(function(){var c=cuotasPlan(v).find(function(x){return x.vence2;});return c?String(parseInt(c.vence2.split("-")[2],10)):"";})(),
+      dia_corrido:(function(){var c=cuotasPlan(v).find(function(x){return x.vence3;});return c?String(parseInt(c.vence3.split("-")[2],10)):"";})(),
       tieneAnticipo:!!ant, fechaAnticipo:(ant&&ant.vence)||"", primera:(pri&&pri.vence)||""
     });
   }
@@ -8557,7 +8580,9 @@ function PanelVencimientos(p){
       var d=new Date(anio,mes-1+(c.nro-pri.nro),1);
       var ultimo=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
       var vence=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(Math.min(dia,ultimo)).padStart(2,"0");
-      var nueva={...c,vence:vence};
+      var diaSeg=c.vence2?parseInt(c.vence2.split("-")[2],10):0;
+      var diaCor=c.vence3?parseInt(c.vence3.split("-")[2],10):0;
+      var nueva={...c,vence:vence,...fechasExtra(vence,diaSeg,diaCor)};
       if(c.pago&&c.pago.previo)nueva.pago={...c.pago,fecha:vence};
       return nueva;
     });
@@ -8568,6 +8593,13 @@ function PanelVencimientos(p){
     var cs=cuotasPlan(v);
     var pri=primeraCuota(v);
     if(f.primera&&pri&&f.primera!==pri.vence)cs=reprogramar(cs,f.primera);
+    // Los días del 2º vencimiento y del corrido se recalculan sobre todas las cuotas: son
+    // del plan, aunque se guarden en cada una.
+    cs=cs.map(function(c){
+      var n={...c};
+      delete n.vence2; delete n.vence3;
+      return {...n, ...fechasExtra(c.vence,f.dia_segundo,f.dia_corrido)};
+    });
     var ant=cuotaAnticipo(v);
     if(f.tieneAnticipo&&f.fechaAnticipo&&ant&&f.fechaAnticipo!==ant.vence){
       cs=cs.map(function(c){
@@ -8602,7 +8634,11 @@ function PanelVencimientos(p){
       var dia=Math.min(parseInt(pr[2],10),ultimoDia);
       vence=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(dia).padStart(2,"0");
     }
-    var nueva={nro:nro,monto:ultima?ultima.monto:0,vence:vence,pago:null};
+    // La cuota nueva hereda los días del segundo vencimiento y del corrido, sacados de la
+    // última: son del plan, no de una cuota en particular.
+    var diaSeg=ultima&&ultima.vence2?parseInt(ultima.vence2.split("-")[2],10):0;
+    var diaCor=ultima&&ultima.vence3?parseInt(ultima.vence3.split("-")[2],10):0;
+    var nueva={nro:nro,monto:ultima?ultima.monto:0,vence:vence,pago:null,...fechasExtra(vence,diaSeg,diaCor)};
     onSave({...v,cuotas_plan:cs.concat([nueva]),cuotas:cs.length+1});
   }
   function borrarCuota(v,nro){
@@ -9105,6 +9141,16 @@ function PanelVencimientos(p){
                 <input type="month" value={formPlan.mesInicio} onChange={function(e){setFormPlan(function(f){return{...f,mesInicio:e.target.value};});}} style={INP}/>
               </div>
               <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>2º vencimiento</label>
+                <input type="number" min="0" max="31" value={formPlan.dia_segundo} onChange={function(e){setFormPlan(function(f){return{...f,dia_segundo:e.target.value};});}} style={INP}/>
+                <div style={{fontSize:9,color:"#444",marginTop:4}}>día del mismo mes · 0 = no tiene</div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencimiento corrido al</label>
+                <input type="number" min="0" max="31" value={formPlan.dia_corrido} onChange={function(e){setFormPlan(function(f){return{...f,dia_corrido:e.target.value};});}} style={INP}/>
+                <div style={{fontSize:9,color:"#444",marginTop:4}}>día del mes siguiente · 0 = no tiene</div>
+              </div>
+              <div>
                 <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se cae con</label>
                 <input type="number" min="1" max="12" value={formPlan.caduca_en} onChange={function(e){setFormPlan(function(f){return{...f,caduca_en:e.target.value};});}} style={INP}/>
                 <div style={{fontSize:9,color:"#444",marginTop:4}}>cuotas impagas</div>
@@ -9306,6 +9352,14 @@ function PanelVencimientos(p){
                             </div>
                           )}
                           <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>2º vencimiento (día)</label>
+                            <input type="number" min="0" max="31" value={editPlan.dia_segundo} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,dia_segundo:x};});}} placeholder="0 = no tiene" style={INP}/>
+                          </div>
+                          <div>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Corrido al (día del mes siguiente)</label>
+                            <input type="number" min="0" max="31" value={editPlan.dia_corrido} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,dia_corrido:x};});}} placeholder="0 = no tiene" style={INP}/>
+                          </div>
+                          <div>
                             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Se cae con (cuotas impagas)</label>
                             <input type="number" min="1" max="12" value={editPlan.caduca_en} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,caduca_en:x};});}} style={INP}/>
                           </div>
@@ -9350,7 +9404,16 @@ function PanelVencimientos(p){
                                     <td style={{padding:"6px",fontSize:11,color:vencida?"#C1440E":"#888",borderBottom:"1px solid #150C1C"}}>
                                       {editando?(
                                         <input type="date" defaultValue={c.vence} onChange={function(e){guardarCuota(v,c.nro,{vence:e.target.value});}} style={{...INP,padding:"4px 6px",fontSize:11}}/>
-                                      ):(c.vence?fmtDate(c.vence):"—")}
+                                      ):(
+                                        <div>
+                                          <div>{c.vence?fmtDate(c.vence):"—"}</div>
+                                          {(c.vence2||c.vence3)&&!c.pago&&(
+                                            <div style={{fontSize:9,color:"#5A5A5A",marginTop:1}}>
+                                              {c.vence2?"2º "+fmtDate(c.vence2):""}{c.vence2&&c.vence3?" · ":""}{c.vence3?"corrido "+fmtDate(c.vence3):""}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
                                     </td>
                                     <td style={{padding:"6px",fontSize:11,textAlign:"right",color:"#F0EDE8",borderBottom:"1px solid #150C1C"}}>
                                       {editando?(
@@ -9542,6 +9605,12 @@ function PanelVencimientos(p){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
                 <span style={{fontSize:11,color:"#C1440E"}}>
                   ⚠️ Venció {pagando.fecha?fmtDate(pagando.fecha):""}{diasDeMora>0?" · "+diasDeMora+" día"+(diasDeMora===1?"":"s")+" de atraso":""}
+                  {pagando.cuota&&(pagando.cuota.vence2||pagando.cuota.vence3)?(
+                    <span style={{color:"#8A5050"}}>
+                      {pagando.cuota.vence2?" · 2º "+fmtDate(pagando.cuota.vence2):""}
+                      {pagando.cuota.vence3?" · corrido "+fmtDate(pagando.cuota.vence3):""}
+                    </span>
+                  ):null}
                 </span>
                 <span style={{fontSize:12,color:"#888"}}>
                   {(function(){

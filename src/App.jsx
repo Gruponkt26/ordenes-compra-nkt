@@ -8561,8 +8561,11 @@ function PanelVencimientos(p){
       cuit:cuitIdDe(v), local:v.local||"l4",
       debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||"",
       caduca_en:String(caducaEn(v)),
-      dia_segundo:(function(){var c=cuotasPlan(v).find(function(x){return x.vence2;});return c?String(parseInt(c.vence2.split("-")[2],10)):"";})(),
-      dia_corrido:(function(){var c=cuotasPlan(v).find(function(x){return x.vence3;});return c?String(parseInt(c.vence3.split("-")[2],10)):"";})(),
+      // Un plan cargado antes de que existieran estas fechas abre con los días de siempre
+      // puestos: alcanza con guardar para que todas sus cuotas los tengan.
+      sinFechasExtra:!cuotasPlan(v).some(function(x){return x.vence2||x.vence3;}),
+      dia_segundo:(function(){var c=cuotasPlan(v).find(function(x){return x.vence2;});return c?String(parseInt(c.vence2.split("-")[2],10)):"26";})(),
+      dia_corrido:(function(){var c=cuotasPlan(v).find(function(x){return x.vence3;});return c?String(parseInt(c.vence3.split("-")[2],10)):"12";})(),
       tieneAnticipo:!!ant, fechaAnticipo:(ant&&ant.vence)||"", primera:(pri&&pri.vence)||""
     });
   }
@@ -9146,7 +9149,7 @@ function PanelVencimientos(p){
                 <div style={{fontSize:9,color:"#444",marginTop:4}}>día del mismo mes · 0 = no tiene</div>
               </div>
               <div>
-                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencimiento corrido al</label>
+                <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencimiento corrido</label>
                 <input type="number" min="0" max="31" value={formPlan.dia_corrido} onChange={function(e){setFormPlan(function(f){return{...f,dia_corrido:e.target.value};});}} style={INP}/>
                 <div style={{fontSize:9,color:"#444",marginTop:4}}>día del mes siguiente · 0 = no tiene</div>
               </div>
@@ -9356,7 +9359,7 @@ function PanelVencimientos(p){
                             <input type="number" min="0" max="31" value={editPlan.dia_segundo} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,dia_segundo:x};});}} placeholder="0 = no tiene" style={INP}/>
                           </div>
                           <div>
-                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Corrido al (día del mes siguiente)</label>
+                            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencimiento corrido (día del mes siguiente)</label>
                             <input type="number" min="0" max="31" value={editPlan.dia_corrido} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,dia_corrido:x};});}} placeholder="0 = no tiene" style={INP}/>
                           </div>
                           <div>
@@ -9368,6 +9371,11 @@ function PanelVencimientos(p){
                             <input type="date" value={editPlan.primera} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,primera:x};});}} style={INP}/>
                           </div>
                         </div>
+                        {editPlan.sinFechasExtra&&(
+                          <div style={{fontSize:10,color:"#D4A017",marginBottom:9}}>
+                            Este plan todavía no tiene 2º vencimiento ni corrido. Con estos días puestos, al guardar se los agrego a todas sus cuotas.
+                          </div>
+                        )}
                         {(function(){
                           var pri=primeraCuota(v);
                           if(!pri||!editPlan.primera||editPlan.primera===pri.vence)return null;

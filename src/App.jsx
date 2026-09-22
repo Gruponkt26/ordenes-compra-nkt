@@ -8052,6 +8052,7 @@ function avisosVencimientos(vencimientos, diasAviso){
 // hay algo.
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
+  var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var hoy=new Date().toISOString().split("T")[0];
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -8075,6 +8076,22 @@ function PanelNovedades(p){
   var avisos=avisosVencimientos(vencimientos,7);
   var vencidos=avisos.filter(function(a){return a.dias<0;});
   var enRiesgo=planesEnRiesgo(vencimientos);
+
+  // Quién está de vacaciones: las que se cruzan con el día —o con la ventana— que se mira.
+  var refDesde=rango==="hoy"?hoy:(rango==="ayer"?ayer:desdeSemana);
+  var refHasta=rango==="semana"?hoy:refDesde;
+  function empDe(v){
+    var e=empleados.find(function(x){return x.id===v.empleado_id;});
+    return {nombre:(e&&e.nombre)||v.empleado_nombre||"—", local:e&&e.local};
+  }
+  function diasEntre(a,b){ return Math.round((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/86400000); }
+  var deVacaciones=vacaciones.filter(function(v){
+    return v.fecha_desde&&v.fecha_hasta&&v.fecha_desde<=refHasta&&v.fecha_hasta>=refDesde;
+  }).sort(function(a,b){return String(a.fecha_hasta).localeCompare(String(b.fecha_hasta));});
+  var enSieteDias=new Date(Date.now()+7*86400000).toISOString().split("T")[0];
+  var vacProximas=vacaciones.filter(function(v){
+    return v.fecha_desde&&v.fecha_desde>hoy&&v.fecha_desde<=enSieteDias;
+  }).sort(function(a,b){return String(a.fecha_desde).localeCompare(String(b.fecha_desde));});
 
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
   var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
@@ -8124,7 +8141,8 @@ function PanelNovedades(p){
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),c:"#C1440E",d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
           {t:"Falta cerrar hoy",v:String(faltanCerrar.length),c:faltanCerrar.length>0?"#D4A017":"#3A7D44",d:faltanCerrar.length>0?faltanCerrar.map(function(l){return l.emoji;}).join(" "):"todos cerrados"},
           {t:"Vencimientos",v:String(avisos.length),c:vencidos.length>0?"#C1440E":"#1A6B8A",d:vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):"próximos 7 días"},
-          {t:"Socios",v:fmt(totalAportes-totalRetiros),c:"#8B2FC9",d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
+          {t:"Socios",v:fmt(totalAportes-totalRetiros),c:"#8B2FC9",d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")},
+          {t:"De vacaciones",v:String(deVacaciones.length),c:deVacaciones.length>0?"#00BCD4":"#3A7D44",d:deVacaciones.length>0?deVacaciones.map(function(v){return empDe(v).nombre.split(" ")[0];}).join(" · "):(vacProximas.length>0?vacProximas.length+" arranca"+(vacProximas.length===1?"":"n")+" esta semana":"nadie")}
         ].map(function(x){return(
           <div key={x.t} style={{background:"#111",border:"1px solid "+x.c+"33",borderRadius:10,padding:"11px 13px"}}>
             <div style={{fontSize:9,color:x.c,textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
@@ -8182,6 +8200,34 @@ function PanelNovedades(p){
             color={a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}/>;
         })}
         {avisos.length>8&&<div style={{fontSize:10,color:"#555",marginTop:5}}>y {avisos.length-8} más…</div>}
+      </Seccion>
+
+      {/* Vacaciones */}
+      <Seccion titulo="🏖️ De vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Ver calendario →">
+        {(deVacaciones.length+vacProximas.length)===0?(
+          <div style={vacio}>Nadie de vacaciones {etiquetaRango}, ni arrancando esta semana.</div>
+        ):(
+          <div>
+            {deVacaciones.map(function(v,i){
+              var e=empDe(v);
+              var l=e.local?getLocal(e.local):null;
+              var quedan=diasEntre(hoy,v.fecha_hasta);
+              return <Fila key={"v"+(v.id||i)} primera={i===0}
+                izq={<span>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}</span>}
+                der={quedan<0?("volvió el "+fmtDate(v.fecha_hasta)):("hasta el "+fmtDate(v.fecha_hasta)+" · "+(quedan===0?"vuelve mañana":"quedan "+quedan+" día"+(quedan===1?"":"s")))}
+                color="#00BCD4"/>;
+            })}
+            {vacProximas.map(function(v,i){
+              var e=empDe(v);
+              var l=e.local?getLocal(e.local):null;
+              var faltan=diasEntre(hoy,v.fecha_desde);
+              return <Fila key={"vp"+(v.id||i)} primera={deVacaciones.length===0&&i===0}
+                izq={<span style={{color:"#888"}}>{e.nombre}{l?<span style={{color:l.color}}> · {l.emoji} {l.nombre}</span>:null}</span>}
+                der={"arranca el "+fmtDate(v.fecha_desde)+" · en "+faltan+" día"+(faltan===1?"":"s")}
+                color="#555"/>;
+            })}
+          </div>
+        )}
       </Seccion>
 
       {/* Socios */}
@@ -13126,7 +13172,7 @@ function PanelSueldos(p){
   var onSaveSueldo=p.onSaveSueldo, onDeleteSueldo=p.onDeleteSueldo;
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent="2026-07";
-  var [tab,setTab]=useState("estado");
+  var [tab,setTab]=useState(p.tabInicial||"estado");
   var [showFormCarga,setShowFormCarga]=useState(false);
   var [cargaEdit,setCargaEdit]=useState(null);
   var CUITS=[
@@ -16880,6 +16926,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
               </div>
               <PanelSueldos
+                tabInicial={vista==="vacaciones"?"vacaciones":undefined}
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
                 gastos={gastos}
@@ -16952,9 +16999,11 @@ export default function App() {
           {esSofia&&modulo==="novedades"&&(
             <PanelNovedades
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
+              vacaciones={vacaciones} empleados={empleados}
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={function(){abrirModulo("admin","vencimientos");}}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
+              irVacaciones={function(){abrirModulo("personal","vacaciones");}}
             />
           )}
 

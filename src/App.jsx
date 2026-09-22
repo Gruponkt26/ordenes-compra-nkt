@@ -7938,8 +7938,8 @@ function resumenPlan(v){
   var suma=function(l,f){return l.reduce(function(a,c){return a+f(c);},0);};
   var pagadas=cs.filter(function(c){return c.pago;});
   var impagas=cs.filter(function(c){return !c.pago;});
-  var adeudadas=impagas.filter(function(c){return c.vence&&c.vence<hoy;});
-  var porPagar=impagas.filter(function(c){return !(c.vence&&c.vence<hoy);});
+  var adeudadas=impagas.filter(function(c){return estaVencida(c,hoy);});
+  var porPagar=impagas.filter(function(c){return !estaVencida(c,hoy);});
   var total=suma(cs,monto);
   // Lo pagado que descuenta del plan es la cuota, no el interés: pagar una cuota con mora
   // saca más plata de la cuenta pero no adelanta el plan. El interés se cuenta aparte.
@@ -7977,6 +7977,17 @@ function fechasExtra(vence, diaSegundo, diaCorrido){
   if(s3>0)out.vence3=fechaConDia(anio,mes0+1,s3);
   return out;
 }
+// Hasta cuándo se puede pagar una cuota sin estar en falta: la última fecha que tenga. Si
+// el primer vencimiento fue el 16 pero el segundo es el 26, el 22 todavía no se debe nada.
+function venceFinal(c){ return (c&&(c.vence3||c.vence2||c.vence))||null; }
+// Para avisar, la fecha que viene: la primera de las tres que todavía no pasó. Con el 1º
+// vencido y el 2º el 26, lo que hay que mirar es el 26, no el corrido del mes siguiente.
+function venceProximo(c, hoy){
+  var fs=[c&&c.vence,c&&c.vence2,c&&c.vence3].filter(Boolean).sort();
+  for(var i=0;i<fs.length;i++){ if(fs[i]>=hoy)return fs[i]; }
+  return fs.length?fs[fs.length-1]:null;
+}
+function estaVencida(c, hoy){ var f=venceFinal(c); return !!(f&&f<hoy); }
 function armarCuotas(opts){
   var out=[];
   var dia=Math.max(1,Math.min(31,parseInt(opts.dia,10)||10));
@@ -8054,7 +8065,8 @@ function avisosVencimientos(vencimientos, diasAviso){
   }
   (vencimientos||[]).forEach(function(v){
     if(v.activo===false)return;
-    if(esPlan(v)){ cuotasPlan(v).forEach(function(c){ agregar(v,c,c.vence,c.pago); }); return; }
+    // De una cuota se mira la última fecha que tenga: mientras haya plazo, no está vencida.
+    if(esPlan(v)){ cuotasPlan(v).forEach(function(c){ agregar(v,c,venceProximo(c,hoy),c.pago); }); return; }
     var cu=cuotasDe(v);
     if(cu&&cu.completo)return; // ya se terminó de pagar
     if(v.recurrente){
@@ -8136,9 +8148,10 @@ function PanelNovedades(p){
         cuotasPlan(v).forEach(function(c){
           if(c.pago||!c.vence)return;
           var m=parseFloat(c.monto)||0;
-          // Se cuentan sólo las vencidas: el número de al lado del monto tiene que ser de
-          // lo mismo que el monto.
-          if(c.vence<hoy){vencido+=m;cuantos++;}else{comprometido+=m;}
+          // Deuda es la cuota a la que ya se le pasaron todas sus fechas. Si el primer
+          // vencimiento quedó atrás pero el segundo o el corrido todavía no llegaron, se
+          // puede pagar: no es deuda.
+          if(estaVencida(c,hoy)){vencido+=m;cuantos++;}else{comprometido+=m;}
         });
         return;
       }
@@ -8161,7 +8174,7 @@ function PanelNovedades(p){
     var suma=0;
     vencimientos.forEach(function(v){
       if(v.activo===false||!esPlan(v)||grupoIdDe(v)!==g.id)return;
-      cuotasPlan(v).forEach(function(c){ if(!c.pago&&c.vence&&c.vence>=hoy)suma+=parseFloat(c.monto)||0; });
+      cuotasPlan(v).forEach(function(c){ if(!c.pago&&!estaVencida(c,hoy))suma+=parseFloat(c.monto)||0; });
     });
     return a+suma;
   },0);
@@ -9290,8 +9303,8 @@ function PanelVencimientos(p){
                       {[
                         {t:"Totales",  n:rp.cuotas,    m:rp.total,           c:"#888"},
                         {t:"Pagadas",  n:rp.pagadas,   m:rp.pagado,          c:"#3A7D44"},
-                        {t:"Por pagar",n:rp.porPagar,  m:rp.montoPorPagar,   c:"#A855F7", sub:"aún no vencen"},
-                        {t:"Adeudadas",n:rp.adeudadas, m:rp.montoAdeudado,   c:"#C1440E", sub:"ya vencieron"}
+                        {t:"Por pagar",n:rp.porPagar,  m:rp.montoPorPagar,   c:"#A855F7", sub:"todavía en plazo"},
+                        {t:"Adeudadas",n:rp.adeudadas, m:rp.montoAdeudado,   c:"#C1440E", sub:"se pasó el plazo"}
                       ].map(function(x){
                         var apagado=x.n===0&&x.t!=="Totales";
                         return(
@@ -9403,7 +9416,10 @@ function PanelVencimientos(p){
                             <tbody>
                               {cuotasPlan(v).map(function(c){
                                 var editando=editCuota&&editCuota.planId===v.id&&editCuota.nro===c.nro;
-                                var vencida=!c.pago&&c.vence&&c.vence<hoy;
+                                var vencida=!c.pago&&estaVencida(c,hoy);
+                                // Pasó el primer vencimiento pero todavía queda plazo: no está en falta.
+                                var enPlazoExtra=!c.pago&&!vencida&&c.vence&&c.vence<hoy;
+                                var plazoHasta=enPlazoExtra?((c.vence2&&c.vence2>=hoy)?{f:c.vence2,t:"2º vto"}:((c.vence3&&c.vence3>=hoy)?{f:c.vence3,t:"corrido"}:null)):null;
                                 return(
                                   <tr key={c.nro}>
                                     <td style={{padding:"6px",fontSize:11,color:c.nro===0?"#A855F7":"#888",fontWeight:c.nro===0?700:400,borderBottom:"1px solid #150C1C"}}>
@@ -9428,8 +9444,10 @@ function PanelVencimientos(p){
                                         <input type="number" defaultValue={c.monto} onBlur={function(e){guardarCuota(v,c.nro,{monto:parseFloat(e.target.value)||0});}} style={{...INP,padding:"4px 6px",fontSize:11,textAlign:"right"}}/>
                                       ):fmt(c.monto)}
                                     </td>
-                                    <td style={{padding:"6px",fontSize:10,textAlign:"right",borderBottom:"1px solid #150C1C",color:c.pago?"#3A7D44":(vencida?"#C1440E":"#555")}}>
-                                      {c.pago?((c.pago.previo?"✅ ya venía · ":"✅ ")+fmtDate(c.pago.fecha)+((parseFloat(c.pago.interes)||0)>0?" · +"+fmt(c.pago.interes)+" int.":"")):(vencida?"⚠️ vencida":"pendiente")}
+                                    <td style={{padding:"6px",fontSize:10,textAlign:"right",borderBottom:"1px solid #150C1C",color:c.pago?"#3A7D44":(vencida?"#C1440E":(plazoHasta?"#D4A017":"#555"))}}>
+                                      {c.pago
+                                        ?((c.pago.previo?"✅ ya venía · ":"✅ ")+fmtDate(c.pago.fecha)+((parseFloat(c.pago.interes)||0)>0?" · +"+fmt(c.pago.interes)+" int.":""))
+                                        :(vencida?"⚠️ vencida":(plazoHasta?"⏳ "+plazoHasta.t+" "+fmtDate(plazoHasta.f):"pendiente"))}
                                     </td>
                                     <td style={{padding:"6px",textAlign:"right",borderBottom:"1px solid #150C1C"}}>
                                       <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>

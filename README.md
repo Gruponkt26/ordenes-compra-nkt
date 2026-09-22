@@ -347,6 +347,12 @@ todas. Un plan cargado antes de que existieran estas fechas **abre con los días
 puestos —26 y 12— y lo avisa**: alcanza con entrar a ✏️ Editar plan y guardar para que todas
 sus cuotas los tengan. Al pagar algo vencido, el aviso recuerda las dos fechas que le quedaban.
 
+**Una cuota está vencida recién cuando se le pasaron todas sus fechas.** Si el primer
+vencimiento fue el 16 pero el segundo es el 26, el día 22 todavía se puede pagar: la
+planilla la muestra como **⏳ 2º vto 26/09** y no como vencida, no entra en las adeudadas del
+plan, no cuenta para la caducidad y **no figura en las deudas** de 🔔 Novedades —figura en
+los vencimientos, con la fecha que viene—. Lo mismo con el corrido, que es la última.
+
 **Un plan que ya se venía pagando** se carga entero igual: se pone el **mes de la primera
 cuota de verdad**, aunque sea pasado, y en «¿Ya lo venías pagando?» cuántas cuotas llevás
 pagadas (y si el anticipo ya está pago). Las primeras nacen marcadas pagadas y **no generan

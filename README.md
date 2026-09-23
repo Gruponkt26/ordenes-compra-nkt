@@ -1614,6 +1614,32 @@ dice cuál falla y cómo se arregla:
 3. **Subir una foto** — separa el bucket que no existe del bucket que existe pero no es
    público.
 
+## 🧾 Facturas de servicios por cuotas
+
+La luz, el gas o el agua no llegan como «vence el 10 y son $90.000»: llegan con un
+**período**, un **número de asociado** y **dos cuotas**, cada una con su vencimiento y su
+importe, y **las dos se pagan**.
+
+En Vencimientos → **💡 Servicios** (y en Otros) hay un botón **+ Factura** con esos campos.
+Si la factura viene en un solo pago, se deja la cuota 2 vacía.
+
+Una factura guarda sus cuotas en la misma estructura que un plan de pago (`cuotas_plan`),
+así que todo lo que ya sabía recorrer cuotas la entiende sola: cada cuota se paga por
+separado con su propio botón, entra en los avisos de vencimiento próximo, y su deuda se
+cuenta en Novedades. Lo que **no** comparte con un plan es la **caducidad**: una factura de
+luz no se cae por dejar una cuota impaga —te cortan el servicio, que es otra cosa—, así que
+ese cartel no aparece.
+
+Se ve en la planilla como «Luz · período ago-sep 2026 · asoc. 4471/2», con el local y
+cuántas cuotas van pagadas.
+
+Hace falta esto en Supabase:
+
+```sql
+alter table vencimientos add column if not exists periodo      text;
+alter table vencimientos add column if not exists nro_asociado text;
+```
+
 ## 🔔 Novedades del día
 
 Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No

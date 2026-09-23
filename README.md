@@ -1464,9 +1464,11 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      $100.000 · CUIT personal $60.000»), los que van por local se parten por local, y el
      saldo de cada proveedor se parte por local («El Bodegón $250.000 · Kusama $180.000»).
    - **🏪 Cierres de caja** del período, con su local y su total.
-   - **📅 Vencimientos del mes**: lo que queda por vencer **en el mes en curso**, con su
-     fecha —«cuota 3 · 26/09/2026 · en 3d»—. Lo vencido no se repite acá: va en Deudas, y una
-     línea al pie lo recuerda.
+   - **📅 Vencimientos del mes**: lo que queda por vencer **en el mes en curso**, con **de
+     quién es** y su fecha —«AFIP · SRL · Plan T · cuota 3 — 26/09/2026 · en 3d»—. Igual que
+     en Deudas, los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— nombran el CUIT y
+     los que van por local nombran el local. Lo vencido no aparece acá, ni siquiera como
+     recordatorio: está entero en Deudas, arriba, y repetirlo era leer dos veces lo mismo.
    - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.
@@ -1474,8 +1476,8 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
 **Deuda y vencimiento no son lo mismo**, y el panel los separa. **Deuda** es lo que ya se
 debería haber pagado: un vencimiento cuya fecha ya pasó y sigue impago, y el saldo que se le
 debe a un proveedor. **Vencimiento** es lo que todavía no venció —la luz de este mes, la
-cuota que viene de un plan—: se mira para no llegar tarde, pero no se debe. Un vencido
-aparece en las dos tarjetas, y la de vencimientos lo aclara.
+cuota que viene de un plan—: se mira para no llegar tarde, pero no se debe. Cada cosa está
+en una tarjeta sola: un vencido aparece en Deudas y no se repite en Vencimientos.
 
 Arriba a la derecha, **Hoy · Ayer · 7 días** mueve los cierres y los movimientos de socios;
 los vencimientos y las deudas miran siempre lo mismo, porque lo que se debe no cambia por

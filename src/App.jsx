@@ -9055,6 +9055,14 @@ function PanelNovedades(p){
     .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
   var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
   var totalRetiroCaja=cierresR.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
+  // Los retiros van en su propio bloque abajo de los cierres, no colgando de cada uno: son
+  // dos cosas distintas —lo que entró y lo que salió del cajón— y mezcladas se leen mal.
+  var retirosCaja=cierresR.filter(function(c){return (parseFloat(c.retiro_caja||0)||0)>0;})
+    .sort(function(a,b){return (parseFloat(b.retiro_caja||0)||0)-(parseFloat(a.retiro_caja||0)||0);});
+  // El total abierto por local, pero sólo cuando hace falta: si cada local retiró una vez
+  // sola, el renglón ya lo dice y el desglose sería repetir lo de arriba. En una semana con
+  // varios retiros del mismo local, en cambio, es el único lugar donde se ve su suma.
+  var hayLocalRepetido=retirosCaja.length>new Set(retirosCaja.map(function(c){return c.local;})).size;
   // El total abierto por local: en una semana hay varios cierres del mismo local y un solo
   // número al pie no dice de dónde salió la plata.
   var retiroPorLocal=(function(){
@@ -9334,22 +9342,31 @@ function PanelNovedades(p){
             <div style={vacio}>Sin cierres {etiquetaRango}.</div>
           ):(
             <div>
+              {retirosCaja.length>0&&<Sub primera={true}>Cierres · {cierresR.length}</Sub>}
               {(expandido.cierres?cierresR:cierresR.slice(0,5)).map(function(c,i){
                 var l=getLocal(c.local);
-                // El retiro de caja del día, si lo hubo. El cierre sólo lo anota —no se
-                // descuenta de la venta—, pero es plata que salió del cajón y conviene verla.
-                var rc=parseFloat(c.retiro_caja||0);
-                return <Fila key={c.id} primera={i===0}
+                return <Fila key={c.id} primera={i===0&&retirosCaja.length===0}
                   izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
-                  detalle={rc>0?("💼 retiro de caja "+fmt(rc)+(c.retiro_caja_nota?" · "+c.retiro_caja_nota:"")):null}
                   der={fmt(c.total_ventas)} color="#C8C8C8"/>;
               })}
               <Mas id="cierres" n={expandido.cierres?0:cierresR.length-5}/>
-              {totalRetiroCaja>0&&(
-                <div style={{fontSize:11,color:"#8B6BB8",padding:"8px 2px 0",borderTop:"1px solid #141414",marginTop:6}}>
-                  💼 Retirado de caja {etiquetaRango}: <strong>{fmt(totalRetiroCaja)}</strong>
-                  <div style={{color:"#6A5A8A",marginTop:2}}>{retiroPorLocal}</div>
-                  <div style={{color:"#3F3F3F",marginTop:2}}>Queda anotado, no se resta de la venta.</div>
+
+              {retirosCaja.length>0&&(
+                <div>
+                  <Sub>💼 Retiros de caja · {retirosCaja.length}</Sub>
+                  {(expandido.retiros?retirosCaja:retirosCaja.slice(0,5)).map(function(c,i){
+                    var l=getLocal(c.local);
+                    return <Fila key={"rc"+c.id} primera={i===0}
+                      izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
+                      detalle={c.retiro_caja_nota||null}
+                      der={fmt(parseFloat(c.retiro_caja))} color="#8B6BB8"/>;
+                  })}
+                  <Mas id="retiros" n={expandido.retiros?0:retirosCaja.length-5}/>
+                  <div style={{fontSize:11,color:"#8B6BB8",padding:"7px 0 0",borderTop:"1px solid #141414",marginTop:6}}>
+                    Total {etiquetaRango}: <strong>{fmt(totalRetiroCaja)}</strong>
+                    {hayLocalRepetido&&<span style={{color:"#6A5A8A"}}> — {retiroPorLocal}</span>}
+                    <div style={{color:"#3F3F3F",marginTop:2}}>Queda anotado, no se resta de la venta.</div>
+                  </div>
                 </div>
               )}
             </div>

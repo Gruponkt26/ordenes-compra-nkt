@@ -8027,6 +8027,10 @@ function esPlan(v){ return v.tipo==="plan"; }
 // cuotas igual que un plan, así que todo lo que sabe recorrer cuotas la entiende sola; lo
 // que NO comparte es la caducidad: una factura no se cae por dejar una cuota impaga.
 function esFactura(v){ return v.tipo==="factura"; }
+// Un crédito bancario: la entidad, el tipo de préstamo, la TNA y la fecha de otorgamiento
+// son del préstamo, y las cuotas se arman de una vez como en un plan. Tampoco caduca: un
+// crédito impago se reclama y se informa al Veraz, no se "cae".
+function esCredito(v){ return v.tipo==="credito"; }
 // Los egresos que generó un vencimiento al pagarse: los de sus cuotas y los de sus pagos
 // sueltos. Borrar el vencimiento sin borrarlos deja gasto fantasma inflando el rubro.
 function egresosDe(v){
@@ -8039,7 +8043,7 @@ function egresosDe(v){
   });
   return ids.filter(function(id,i){ return ids.indexOf(id)===i; });
 }
-function tieneCuotas(v){ return esPlan(v)||esFactura(v); }
+function tieneCuotas(v){ return esPlan(v)||esFactura(v)||esCredito(v); }
 function cuotasPlan(v){ return Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]; }
 // Un plan puede tener más de una cuota en el mismo mes —el anticipo y la primera suelen caer
 // juntos—, así que devuelve todas: si devolviera sólo una, la otra quedaría invisible y el
@@ -9553,6 +9557,66 @@ function PanelVencimientos(p){
   var FORM_FACTURA={concepto:"Luz",local:"l1",nro_asociado:"",periodo:mesCurrent,debito_cuenta:"",debito_cbu:"",
     c1_vence:"",c1_monto:"",c2_vence:"",c2_monto:"",notas:""};
   var [formFactura,setFormFactura]=useState(FORM_FACTURA);
+  // El crédito bancario. La deuda a la fecha se carga a mano: es la que informa el banco,
+  // que incluye intereses devengados y casi nunca coincide con la suma de las cuotas que
+  // faltan. Se guardan las dos y se muestran las dos.
+  var FORM_CREDITO={entidad:"",descripcion:"",tipo_prestamo:"",fecha_otorgamiento:hoy,
+    local:"l1",cuit:"c2",cantidad:"12",montoCuota:"",dia:"10",mesInicio:mesCurrent,pagadas:"",
+    tna:"",deuda_actual:"",forma_pago:"",debito_cuenta:"",debito_cbu:"",notas:""};
+  var [formCredito,setFormCredito]=useState(FORM_CREDITO);
+  var [showCredito,setShowCredito]=useState(false);
+  var [editCreditoId,setEditCreditoId]=useState(null);
+
+  function abrirCredito(){
+    setFormCredito({...FORM_CREDITO,mesInicio:mesFiltro});
+    setEditCreditoId(null); setShowCredito(true); setShowForm(false); setShowPlan(false); setShowFactura(false);
+  }
+  function abrirEditarCredito(v){
+    var cs=cuotasPlan(v);
+    var prim=cs[0]||{};
+    setFormCredito({entidad:v.entidad||"", descripcion:v.concepto||"", tipo_prestamo:v.tipo_prestamo||"",
+      fecha_otorgamiento:v.fecha_otorgamiento||hoy, local:v.local||"l1", cuit:cuitIdDe(v),
+      cantidad:String(cs.length||12), montoCuota:String(prim.monto||""),
+      dia:String(prim.vence?parseInt(prim.vence.substring(8,10),10):10),
+      mesInicio:prim.vence?prim.vence.substring(0,7):mesCurrent,
+      pagadas:String(cs.filter(function(c){return c.pago;}).length||""),
+      tna:v.tna||"", deuda_actual:v.deuda_actual||"", forma_pago:v.forma_pago||"",
+      debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"", notas:v.notas||""});
+    setEditCreditoId(v.id); setShowCredito(true); setShowForm(false); setShowPlan(false); setShowFactura(false);
+  }
+  function doSaveCredito(){
+    var f=formCredito;
+    if(!f.entidad.trim()){alert("¿De qué banco o entidad es el crédito?");return;}
+    if(!f.descripcion.trim()){alert("Ponele una descripción al crédito.");return;}
+    var cuotas=armarCuotas({cantidad:f.cantidad,montoCuota:f.montoCuota,dia:f.dia,mesInicio:f.mesInicio,pagadas:f.pagadas,anticipo:0});
+    if(cuotas.length===0){alert("El crédito no tiene cuotas: poné cuántas son.");return;}
+    var anterior=vencimientos.find(function(x){return x.id===editCreditoId;});
+    // Editar no pisa los pagos hechos desde la app: se conservan por número de cuota.
+    var viejas=anterior?cuotasPlan(anterior):[];
+    cuotas=cuotas.map(function(c){
+      var vieja=viejas.find(function(x){return x.nro===c.nro;});
+      return (vieja&&vieja.pago&&!vieja.pago.previo)?{...c,pago:vieja.pago}:c;
+    });
+    var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"creditos";
+    onSave({
+      id:editCreditoId||("cred_"+String(Date.now())),
+      tipo:"credito", grupo:g, area:grupoDe(g).area,
+      local:porCuit(g)?cuitVenc(f.cuit).local:f.local,
+      cuit:porCuit(g)?f.cuit:"",
+      concepto:f.descripcion.trim(),
+      entidad:f.entidad.trim(), tipo_prestamo:f.tipo_prestamo.trim(),
+      fecha_otorgamiento:f.fecha_otorgamiento||null,
+      tna:(f.tna||"").toString().trim(), deuda_actual:parseFloat(f.deuda_actual)||0,
+      forma_pago:f.forma_pago.trim(), referencia:f.entidad.trim(),
+      debito_cuenta:f.debito_cuenta||"", debito_cbu:(f.debito_cbu||"").trim(),
+      monto:parseFloat(f.montoCuota)||0,
+      recurrente:false, dia:null, fecha:null, activo:true,
+      notas:f.notas||"", subramo:"",
+      cuotas:cuotas.length, cuotas_previas:parseInt(f.pagadas,10)||0, cuotas_plan:cuotas,
+      usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
+    });
+    setShowCredito(false); setEditCreditoId(null);
+  }
   var [showFactura,setShowFactura]=useState(false);
   var [editFacturaId,setEditFacturaId]=useState(null);
 
@@ -10013,7 +10077,11 @@ function PanelVencimientos(p){
           {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros")&&(
             <button onClick={abrirFactura} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Factura</button>
           )}
-          {grupoFiltro&&!verTodos&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
+          {grupoFiltro&&!verTodos&&grupoFiltro==="creditos"&&(
+            <button onClick={abrirCredito} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Crédito</button>
+          )}
+          {/* Un crédito bancario no es un plan de facilidades: en Créditos esa opción confunde. */}
+          {grupoFiltro&&!verTodos&&grupoFiltro!=="creditos"&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
           {grupoFiltro&&!verTodos&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
       </div>
@@ -10266,6 +10334,103 @@ function PanelVencimientos(p){
       )}
 
       {/* Alta de un plan de pago */}
+      {showCredito&&(
+        <div style={{background:"#08120F",border:"1px solid #1A8A7B55",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#1A8A7B",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>
+            🏦 {editCreditoId?"Editar crédito":"Nuevo crédito"}
+          </div>
+          <div style={{fontSize:11,color:"#2A5A52",marginBottom:12}}>
+            Las cuotas se arman de una vez y después cada una se edita por separado. Si el crédito ya venía pagándose, poné cuántas cuotas llevás pagas.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Entidad bancaria</label>
+              <input list="cred-bancos" value={formCredito.entidad} onChange={function(e){setFormCredito(function(f){return{...f,entidad:e.target.value};});}} placeholder="Banco Provincia" style={INP}/>
+              <datalist id="cred-bancos">
+                {["Banco Provincia","Banco Nación","Banco Patagonia","Banco Galicia","Santander","BBVA","Macro","Credicoop","Mercado Pago"].map(function(x){return <option key={x} value={x}/>;})}
+              </datalist>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Descripción</label>
+              <input value={formCredito.descripcion} onChange={function(e){setFormCredito(function(f){return{...f,descripcion:e.target.value};});}} placeholder="Crédito para la cocina" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Tipo de préstamo</label>
+              <input list="cred-tipos" value={formCredito.tipo_prestamo} onChange={function(e){setFormCredito(function(f){return{...f,tipo_prestamo:e.target.value};});}} placeholder="Personal" style={INP}/>
+              <datalist id="cred-tipos">
+                {["Personal","Prendario","Hipotecario","Adelanto en cuenta","Descuento de cheques","Leasing","Tarjeta","Inversión productiva"].map(function(x){return <option key={x} value={x}/>;})}
+              </datalist>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha de otorgamiento</label>
+              <input type="date" value={formCredito.fecha_otorgamiento} onChange={function(e){setFormCredito(function(f){return{...f,fecha_otorgamiento:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>TNA %</label>
+              <input value={formCredito.tna} onChange={function(e){setFormCredito(function(f){return{...f,tna:e.target.value};});}} placeholder="75" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Deuda a la fecha</label>
+              <input type="number" value={formCredito.deuda_actual} onChange={function(e){setFormCredito(function(f){return{...f,deuda_actual:e.target.value};});}} placeholder="La que informa el banco" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Forma de pago</label>
+              <input list="cred-formas" value={formCredito.forma_pago} onChange={function(e){setFormCredito(function(f){return{...f,forma_pago:e.target.value};});}} placeholder="Débito automático" style={INP}/>
+              <datalist id="cred-formas">
+                {["Débito automático","Transferencia","Efectivo","Cheque","Débito en cuenta"].map(function(x){return <option key={x} value={x}/>;})}
+              </datalist>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>{porCuit("creditos")?"CUIT":"Local"}</label>
+              {porCuit("creditos")
+                ?<select value={formCredito.cuit} onChange={function(e){setFormCredito(function(f){return{...f,cuit:e.target.value};});}} style={INP}>
+                   {CUITS_VENC.map(function(c){return <option key={c.id} value={c.id}>{c.label}</option>;})}
+                 </select>
+                :<select value={formCredito.local} onChange={function(e){setFormCredito(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                   {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                 </select>}
+            </div>
+          </div>
+
+          <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Las cuotas y sus vencimientos</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Cantidad de cuotas</label>
+              <input type="number" value={formCredito.cantidad} onChange={function(e){setFormCredito(function(f){return{...f,cantidad:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Importe de cuota</label>
+              <input type="number" value={formCredito.montoCuota} onChange={function(e){setFormCredito(function(f){return{...f,montoCuota:e.target.value};});}} placeholder="0" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencen el día</label>
+              <input type="number" value={formCredito.dia} onChange={function(e){setFormCredito(function(f){return{...f,dia:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Primera cuota</label>
+              <input value={formCredito.mesInicio} onChange={function(e){setFormCredito(function(f){return{...f,mesInicio:e.target.value};});}} placeholder="2026-09" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Ya pagadas</label>
+              <input type="number" value={formCredito.pagadas} onChange={function(e){setFormCredito(function(f){return{...f,pagadas:e.target.value};});}} placeholder="0" style={INP}/>
+            </div>
+          </div>
+          {(parseInt(formCredito.cantidad,10)>0&&parseFloat(formCredito.montoCuota)>0)&&(
+            <div style={{fontSize:11,color:"#1A8A7B",marginBottom:10}}>
+              {formCredito.cantidad} cuotas de {fmt(parseFloat(formCredito.montoCuota))} · total a pagar <strong>{fmt(parseInt(formCredito.cantidad,10)*parseFloat(formCredito.montoCuota))}</strong>
+            </div>
+          )}
+          <div style={{marginBottom:10}}>
+            <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+            <input value={formCredito.notas} onChange={function(e){setFormCredito(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional" style={INP}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){setShowCredito(false);setEditCreditoId(null);}} style={{...GH,flex:1,padding:"11px"}}>Cancelar</button>
+            <button onClick={doSaveCredito} style={{...BS("#1A8A7B"),flex:2,padding:"11px"}}>{editCreditoId?"Guardar cambios":"Guardar crédito"}</button>
+          </div>
+        </div>
+      )}
+
       {showFactura&&(
         <div style={{background:"#08120F",border:"1px solid #1A8A7B55",borderRadius:12,padding:"16px",marginBottom:14}}>
           <div style={{fontSize:11,color:"#1A8A7B",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>
@@ -10478,7 +10643,9 @@ function PanelVencimientos(p){
         return(
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:"#A855F7",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>
-              {planes.every(esFactura)?"🧾 Facturas por cuotas":(planes.some(esFactura)?"📋 Planes y facturas":"📋 Planes de pago")}
+              {planes.every(esCredito)?"🏦 Créditos"
+                :(planes.every(esFactura)?"🧾 Facturas por cuotas"
+                :((planes.some(esFactura)||planes.some(esCredito))?"📋 Planes, facturas y créditos":"📋 Planes de pago"))}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               {planes.map(function(v){
@@ -10501,12 +10668,24 @@ function PanelVencimientos(p){
                             ?<span style={{fontSize:11,color:"#A855F7",fontWeight:400}}>
                                {v.periodo?" · período "+v.periodo:""}{v.nro_asociado?" · asoc. "+v.nro_asociado:""}
                              </span>
+                            :esCredito(v)
+                            ?<span style={{fontSize:11,color:"#1A8A7B",fontWeight:400}}>
+                               {v.entidad?" · "+v.entidad:""}{v.tipo_prestamo?" · "+v.tipo_prestamo:""}
+                             </span>
                             :(v.nro_plan?<span style={{fontSize:11,color:"#A855F7",fontWeight:400}}> · plan {v.nro_plan}</span>:null)}
                         </div>
                         <div style={{fontSize:10,color:"#555",marginTop:3}}>
                           <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {rp.pagadas} de {rp.cuotas} {esFactura(v)?"cuotas pagadas":"pagadas"}
                           {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
                         </div>
+                        {esCredito(v)&&(v.tna||v.deuda_actual>0||v.forma_pago||v.fecha_otorgamiento)&&(
+                          <div style={{fontSize:10,color:"#1A8A7B",marginTop:3}}>
+                            {v.tna?"TNA "+v.tna+"%":""}
+                            {v.deuda_actual>0?(v.tna?" · ":"")+"deuda a la fecha "+fmt(v.deuda_actual):""}
+                            {v.forma_pago?" · "+v.forma_pago:""}
+                            {v.fecha_otorgamiento?" · otorgado "+fmtDate(v.fecha_otorgamiento):""}
+                          </div>
+                        )}
                         {v.debito_cuenta&&<div style={{fontSize:10,color:"#1A6B8A",marginTop:3}}>🔁 Se debita de {etiquetaCuenta(v.debito_cuenta)}{v.debito_cbu?" · "+v.debito_cbu:""}</div>}
                         <div style={{fontSize:10,marginTop:3,color:vencMes>0?"#C1440E":(pendMes.length>0?"#D4A017":"#3A7D44")}}>
                           {delMesPlan.length===0
@@ -10522,9 +10701,10 @@ function PanelVencimientos(p){
                       </div>
                     </div>
                     {(function(){
-                      // Una factura de luz no caduca por una cuota impaga: te cortan el
-                      // servicio, que es otra cosa y no se avisa con este cartel.
-                      if(esFactura(v))return null;
+                      // Ni una factura de luz ni un crédito caducan por una cuota impaga:
+                      // a una te cortan el servicio y al otro te mandan al Veraz, que son
+                      // otras cosas y no se avisan con este cartel.
+                      if(esFactura(v)||esCredito(v))return null;
                       var rg=riesgoPlan(v);
                       if(!rg.caido&&!rg.enRiesgo)return null;
                       var color=rg.caido?"#C1440E":"#D4A017";
@@ -10713,11 +10893,13 @@ function PanelVencimientos(p){
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:9,paddingTop:8,borderTop:"1px solid #8B2FC922"}}>
                           <span style={{color:"#5A2A7A"}}>Pagado {fmt(rp.pagado)} · resta {fmt(rp.resta)}{rp.adeudadas>0?" · adeudado "+fmt(rp.montoAdeudado):""}{rp.intereses>0?" · "+fmt(rp.intereses)+" de intereses (salieron "+fmt(rp.salido)+")":""}</span>
                           <div style={{display:"flex",gap:6}}>
-                            {esFactura(v)
+                            {esCredito(v)
+                              ?<button onClick={function(){abrirEditarCredito(v);}} style={{background:"none",border:"1px solid #1A8A7B44",borderRadius:6,color:"#1A8A7B",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar crédito</button>
+                              :esFactura(v)
                               ?<button onClick={function(){abrirEditarFactura(v);}} style={{background:"none",border:"1px solid #1A8A7B44",borderRadius:6,color:"#1A8A7B",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar factura</button>
                               :<button onClick={function(){abrirEditarPlan(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar plan</button>}
                             <button onClick={function(){agregarCuota(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>+ Cuota</button>
-                            <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar {esFactura(v)?"factura":"plan"}</button>
+                            <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar {esFactura(v)?"factura":(esCredito(v)?"crédito":"plan")}</button>
                           </div>
                         </div>
                       </div>
@@ -16924,7 +17106,7 @@ async function sbLoadVencimientos() {
 // intente guardar y se quede sin entender por qué no anda.
 var COLUMNAS_NUEVAS_VENC=["local","concepto","area","subramo","monto","recurrente","dia","fecha","activo","notas","pagos","usuario",
   "grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu","caduca_en",
-  "periodo","nro_asociado"];
+  "periodo","nro_asociado","entidad","tipo_prestamo","fecha_otorgamiento","tna","deuda_actual","forma_pago"];
 async function sbColumnasFaltantesVencimientos() {
   var pide = COLUMNAS_NUEVAS_VENC.slice();
   var faltan = [];

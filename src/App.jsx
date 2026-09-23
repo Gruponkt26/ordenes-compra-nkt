@@ -9055,6 +9055,25 @@ function PanelNovedades(p){
     .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
   var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
   var totalRetiroCaja=cierresR.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
+  // El bloque de cierres no lista cierre por cierre: muestra cuánto lleva vendido cada
+  // local en lo que va del mes. Un renglón por local, que es el número con el que se
+  // maneja el negocio; el día a día está en el módulo de Cierres.
+  var cierresMes=cierres.filter(function(c){
+    var f=String(c.fecha||"");
+    return f.substring(0,7)===mesEnCurso&&f<=hoy;
+  });
+  var ventasPorLocal=(function(){
+    var m={};
+    cierresMes.forEach(function(c){
+      if(!m[c.local])m[c.local]={total:0,cuantos:0};
+      m[c.local].total+=parseFloat(c.total_ventas||0)||0;
+      m[c.local].cuantos++;
+    });
+    return Object.keys(m).map(function(k){ return {local:k, total:m[k].total, cuantos:m[k].cuantos}; })
+      .sort(function(a,b){return b.total-a.total;});
+  })();
+  var ventasMes=ventasPorLocal.reduce(function(a,x){return a+x.total;},0);
+
   // Los retiros van en su propio bloque abajo de los cierres, no colgando de cada uno: son
   // dos cosas distintas —lo que entró y lo que salió del cajón— y mezcladas se leen mal.
   var retirosCaja=cierresR.filter(function(c){return (parseFloat(c.retiro_caja||0)||0)>0;})
@@ -9338,18 +9357,24 @@ function PanelNovedades(p){
               </div>
             </div>
           )}
-          {cierresR.length===0?(
-            <div style={vacio}>Sin cierres {etiquetaRango}.</div>
+          {(ventasPorLocal.length+retirosCaja.length)===0?(
+            <div style={vacio}>Sin cierres en {mesEnCurso}.</div>
           ):(
             <div>
-              {retirosCaja.length>0&&<Sub primera={true}>Cierres · {cierresR.length}</Sub>}
-              {(expandido.cierres?cierresR:cierresR.slice(0,5)).map(function(c,i){
-                var l=getLocal(c.local);
-                return <Fila key={c.id} primera={i===0&&retirosCaja.length===0}
-                  izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
-                  der={fmt(c.total_ventas)} color="#C8C8C8"/>;
-              })}
-              <Mas id="cierres" n={expandido.cierres?0:cierresR.length-5}/>
+              {ventasPorLocal.length>0&&(
+                <div>
+                  <Sub primera={true}>Cierres del mes · hasta el {fmtDate(hoy).substring(0,5)}</Sub>
+                  {ventasPorLocal.map(function(x,i){
+                    var l=getLocal(x.local);
+                    return <Fila key={"vm"+x.local} primera={i===0}
+                      izq={<span>{l?l.emoji+" "+l.nombre:x.local}<span style={{color:"#454545"}}> · {x.cuantos} cierre{x.cuantos===1?"":"s"}</span></span>}
+                      der={fmt(x.total)} color="#C8C8C8"/>;
+                  })}
+                  <div style={{fontSize:11,color:"#8A8A8A",padding:"7px 0 0",borderTop:"1px solid #141414",marginTop:6}}>
+                    Total del mes: <strong style={{color:"#C8C8C8"}}>{fmt(ventasMes)}</strong>
+                  </div>
+                </div>
+              )}
 
               {retirosCaja.length>0&&(
                 <div>

@@ -1627,7 +1627,11 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— se parten por CUIT («SRL
      $100.000 · CUIT personal $60.000»), los que van por local se parten por local, y el
      saldo de cada proveedor se parte por local («El Bodegón $250.000 · Kusama $180.000»).
-   - **🏪 Cierres de caja** del período, con su local y su total.
+   - **🏪 Cierres de caja** del período, con su local y su total. Si ese día hubo **retiro
+     de caja**, va en una línea chica abajo con su monto y su nota —«💼 retiro de caja
+     $120.000 · pago proveedor verdura»—, y al pie el total retirado. El cierre sólo lo
+     anota: **no se descuenta de la venta**, pero es plata que salió del cajón y conviene
+     verla sin entrar a cada cierre.
    - **📅 Vencimientos del mes**: lo que queda por vencer **en el mes en curso**, con **de
      quién es** y su fecha —«AFIP · SRL · Plan T · cuota 3 — 26/09/2026 · en 3d»—. Igual que
      en Deudas, los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— nombran el CUIT y

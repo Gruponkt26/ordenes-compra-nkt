@@ -9054,6 +9054,7 @@ function PanelNovedades(p){
   var cierresR=cierres.filter(function(c){return enRango(c.fecha);})
     .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
   var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+  var totalRetiroCaja=cierresR.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
   var localesConCierre=cierres.filter(function(c){return c.fecha===hoy;}).map(function(c){return c.local;});
   var faltanCerrar=LOCALES.filter(function(l){return l.id!=="l4"&&localesConCierre.indexOf(l.id)<0;});
 
@@ -9308,11 +9309,21 @@ function PanelNovedades(p){
             <div>
               {(expandido.cierres?cierresR:cierresR.slice(0,5)).map(function(c,i){
                 var l=getLocal(c.local);
+                // El retiro de caja del día, si lo hubo. El cierre sólo lo anota —no se
+                // descuenta de la venta—, pero es plata que salió del cajón y conviene verla.
+                var rc=parseFloat(c.retiro_caja||0);
                 return <Fila key={c.id} primera={i===0}
                   izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#454545"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
+                  detalle={rc>0?("💼 retiro de caja "+fmt(rc)+(c.retiro_caja_nota?" · "+c.retiro_caja_nota:"")):null}
                   der={fmt(c.total_ventas)} color="#C8C8C8"/>;
               })}
               <Mas id="cierres" n={expandido.cierres?0:cierresR.length-5}/>
+              {totalRetiroCaja>0&&(
+                <div style={{fontSize:11,color:"#8B6BB8",padding:"8px 2px 0",borderTop:"1px solid #141414",marginTop:6}}>
+                  💼 Retirado de caja {etiquetaRango}: <strong>{fmt(totalRetiroCaja)}</strong>
+                  <span style={{color:"#3F3F3F"}}> — queda anotado, no se resta de la venta.</span>
+                </div>
+              )}
             </div>
           )}
         </Seccion>

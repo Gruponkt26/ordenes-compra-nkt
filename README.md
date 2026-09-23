@@ -1662,6 +1662,13 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.
 
+**Cada renglón lleva a donde está el dato.** En 💳 Deudas por título y en 📅 Vencimientos
+del mes, tocar un rubro —Servicios, AFIP, Municipalidad…— abre **ese submódulo** de
+Vencimientos, no la portada: el que hizo clic en «Servicios» ya dijo a dónde quería ir. Se
+marcan con un `›` al final, porque un renglón que se puede tocar y no lo parece no lo toca
+nadie. El botón «Vencimientos →» del encabezado sigue abriendo la portada con todos los
+submódulos.
+
 **Deuda y vencimiento no son lo mismo**, y el panel los separa. **Deuda** es lo que ya se
 debería haber pagado: un vencimiento cuya fecha ya pasó y sigue impago, y el saldo que se le
 debe a un proveedor. **Vencimiento** es lo que todavía no venció —la luz de este mes, la

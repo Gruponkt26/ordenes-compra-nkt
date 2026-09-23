@@ -9237,12 +9237,19 @@ function PanelNovedades(p){
       </div>
     );
   }
+  // Un renglón con onClick lleva a donde está ese dato. Se marca con un › al final: un
+  // renglón que se puede tocar y no lo parece no lo toca nadie.
   function Fila(props){
+    var clic=props.onClick;
     return(
-      <div style={{padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414"}}>
+      <div onClick={clic} role={clic?"button":undefined} tabIndex={clic?0:undefined}
+        onKeyDown={clic?function(e){ if(e.key==="Enter"||e.key===" "){e.preventDefault();clic();} }:undefined}
+        style={{padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414",cursor:clic?"pointer":"default"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline"}}>
           <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
-          <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
+          <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+            {props.der}{clic?<span style={{color:"#3A3A3A",marginLeft:5}}>›</span>:null}
+          </div>
         </div>
         {props.detalle&&<div style={{fontSize:10,color:"#4A4A4A",marginTop:2,fontVariantNumeric:"tabular-nums"}}>{props.detalle}</div>}
       </div>
@@ -9327,6 +9334,7 @@ function PanelNovedades(p){
                 return <Fila key={x.g.id} primera={i===0}
                   izq={<span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
                   detalle={x.detalle}
+                  onClick={function(){p.irVencimientos(x.g.id);}}
                   der={fmt(x.vencido)} color="#E0714A"/>;
               })}
               {deudaProv.length>0&&<Sub primera={deudaRubros.length===0}>Saldo con proveedores</Sub>}
@@ -9409,6 +9417,7 @@ function PanelNovedades(p){
                 var duenio=porCuit(a.v.grupo)?cuitVenc(cuitIdDe(a.v)).corto:((getLocal(a.v.local)||{}).nombre||"");
                 return <Fila key={i} primera={i===0}
                   izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span>{duenio?<span style={{color:"#5A5A5A"}}> · {duenio}</span>:null} · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
+                  onClick={function(){p.irVencimientos(g.id);}}
                   der={fmtDate(a.fecha)+" · "+(a.dias===0?"hoy":"en "+a.dias+"d")+" · "+fmt(a.monto)}
                   color={a.dias===0?"#D4A017":(a.dias<=7?"#B8963A":"#7A7A7A")}/>;
               })}
@@ -9499,7 +9508,10 @@ function PanelVencimientos(p){
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [grupoFiltro,setGrupoFiltro]=useState(null); // null = portada con los submódulos
+  // null = portada con los submódulos. Si se entró desde Novedades tocando un rubro, se
+  // abre directo ahí: el que hizo clic en "Servicios" ya dijo a dónde quería ir. El panel
+  // se re-monta al cambiar de módulo, así que alcanza con tomarlo del arranque.
+  var [grupoFiltro,setGrupoFiltro]=useState(p.grupoInicial||null);
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
@@ -17667,6 +17679,7 @@ export default function App() {
   var [pautas,setPautas]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [fichajes,setFichajes]=useState([]);
+  var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
   var [deportes,setDeportes]=useState([]);
@@ -17893,6 +17906,14 @@ export default function App() {
     setShowOrden(false);setShowGest(false);setShowMisProds(false);setShowPrecios(false);
     setShowEditorMenu(false);setShowUsers(false);setShowEditorCats(false);setShowExportarGastos(false);
     setEntradaMod(function(n){return n+1;});
+  }
+  // Ir a Vencimientos, y si se pidió un rubro, abrirlo directo ahí.
+  // El botón "Vencimientos →" de la tarjeta pasa esta función directo a un onClick, así que
+  // el primer argumento puede ser el evento de React en vez de un rubro. Sólo se acepta un
+  // id de texto: cualquier otra cosa abre la portada, como antes.
+  function irAVencimientos(g){
+    setVencGrupo(typeof g==="string"?g:null);
+    abrirModulo("admin","vencimientos");
   }
   function abrirModulo(id,vistaInicial){
     limpiarTabs();
@@ -18376,7 +18397,7 @@ export default function App() {
               vacaciones={vacaciones} empleados={empleados}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
               irCierres={function(){abrirModulo("admin","cierres");}}
-              irVencimientos={function(){abrirModulo("admin","vencimientos");}}
+              irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
@@ -18603,7 +18624,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
-            <PanelVencimientos
+            <PanelVencimientos grupoInicial={vencGrupo}
               vencimientos={vencimientos}
               faltanColumnas={faltanColsVenc}
               usuario={cu.nombre}

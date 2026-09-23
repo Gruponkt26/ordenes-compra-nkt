@@ -1621,7 +1621,16 @@ La luz, el gas o el agua no llegan como «vence el 10 y son $90.000»: llegan co
 importe, y **las dos se pagan**.
 
 En Vencimientos → **💡 Servicios** (y en Otros) hay un botón **+ Factura** con esos campos.
-Si la factura viene en un solo pago, se deja la cuota 2 vacía.
+
+Las cuotas son **una lista**: arranca con dos, que es lo que trae la mayoría, y con
+**+ Agregar cuota** se suman hasta **12**. Cada una propone el mes siguiente a la última y su
+mismo importe, porque cargar ocho cuotas iguales a mano es donde se cuelan los errores. Si
+viene en un solo pago, se borra la fila que sobra con la ✕.
+
+**El tope es un año desde la primera cuota.** Si las fechas se estiran más, avisa en pantalla
+y no deja guardar: más que eso ya no es una factura sino un plan de pago, y conviene cargarlo
+como tal para que tenga su número y su caducidad. Las filas vacías del final se ignoran, y
+las cuotas se guardan ordenadas por fecha aunque se carguen desordenadas.
 
 Una factura guarda sus cuotas en la misma estructura que un plan de pago (`cuotas_plan`),
 así que todo lo que ya sabía recorrer cuotas la entiende sola: cada cuota se paga por

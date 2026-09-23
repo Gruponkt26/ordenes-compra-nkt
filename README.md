@@ -1651,6 +1651,13 @@ Ahora el cartel de borrado dice cuántos egresos se van con él y los borra. Los
 otros vencimientos no se tocan: sólo los que llevan el `egreso_id` de sus propias cuotas y
 pagos.
 
+**Los que quedaron huérfanos de antes** no se recuperan solos: el `egreso_id` que los unía
+se fue con el vencimiento borrado. Para ésos, en 📅 Vencimientos aparece un botón
+**🧹 N huérfanos** al lado del 🩺 cuando los hay. Lista cuáles son, con su monto y su fecha,
+y los borra. Reconoce sólo los que generó la app al pagar un vencimiento (su id empieza con
+`egr_venc_`): un egreso cargado a mano nunca se toca, aunque haya salido de un vencimiento
+marcado como «ya cargado».
+
 ## 🏦 Créditos bancarios
 
 Un crédito no es un plan de facilidades ni un servicio, así que tiene su propia carga:

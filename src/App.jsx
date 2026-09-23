@@ -8033,6 +8033,16 @@ function esFactura(v){ return v.tipo==="factura"; }
 function esCredito(v){ return v.tipo==="credito"; }
 // Los egresos que generó un vencimiento al pagarse: los de sus cuotas y los de sus pagos
 // sueltos. Borrar el vencimiento sin borrarlos deja gasto fantasma inflando el rubro.
+// Un egreso queda huérfano cuando el vencimiento que lo generó se borró sin llevárselo:
+// pasaba antes de que borrar un vencimiento borrara sus egresos, y el gasto queda cargado
+// sin nada que lo respalde. Se reconocen por el id, que la app arma al generarlos.
+function egresosHuerfanos(gastos, vencimientos){
+  var vivos={};
+  (vencimientos||[]).forEach(function(v){ egresosDe(v).forEach(function(id){ vivos[id]=true; }); });
+  return (gastos||[]).filter(function(g){
+    return String(g.id||"").indexOf("egr_venc_")===0 && !vivos[g.id];
+  });
+}
 function egresosDe(v){
   var ids=[];
   (Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]).forEach(function(c){
@@ -10073,6 +10083,23 @@ function PanelVencimientos(p){
               {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
             </select>
           )}
+          {(function(){
+            var hu=egresosHuerfanos(p.gastos,vencimientos);
+            if(hu.length===0)return null;
+            var total=hu.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+            return (
+              <button onClick={function(){
+                var lista=hu.slice(0,8).map(function(g){return "· "+g.concepto+" "+fmt(g.monto)+" ("+fmtDate(g.fecha)+")";}).join("\n");
+                if(!window.confirm("Hay "+hu.length+" egreso"+(hu.length===1?"":"s")+" por "+fmt(total)+" que generó un vencimiento que ya no existe.\n\n"
+                  +lista+(hu.length>8?"\n· …y "+(hu.length-8)+" más":"")
+                  +"\n\n¿Borrarlos? Son gasto cargado sin nada que lo respalde."))return;
+                hu.forEach(function(g){ if(onDeleteEgreso)onDeleteEgreso(g.id); });
+              }} title="Egresos de vencimientos que ya no existen"
+                style={{background:"none",border:"1px solid #C1440E55",borderRadius:8,color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>
+                🧹 {hu.length} huérfano{hu.length===1?"":"s"}
+              </button>
+            );
+          })()}
           <button onClick={async function(){ setDiag("Probando..."); setDiag(await sbDiagnosticoVencimientos()); }} title="Guarda un plan de prueba y muestra qué contesta la base" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>🩺</button>
           {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros")&&(
             <button onClick={abrirFactura} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Factura</button>
@@ -18976,6 +19003,7 @@ export default function App() {
               }}
               onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
               onDeleteEgreso={borrarEgresoSolo}
+              gastos={gastos}
             />
           )}
 

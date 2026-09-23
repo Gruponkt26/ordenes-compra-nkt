@@ -9083,11 +9083,12 @@ function PanelNovedades(p){
     var d=new Date(); d.setMonth(d.getMonth()+2);
     return d.toISOString().split("T")[0];
   })();
-  // Altas y bajas del período que se está mirando: quién entró y quién se fue. Son las dos
-  // novedades de personal que cambian el sueldo, el F931 y las claves de todo.
-  var altas=empleados.filter(function(e){return enRango(e.fecha_alta);})
+  // Altas y bajas: van por MES, no por el selector de arriba. Una alta del día 5 sigue
+  // siendo la novedad del mes cuando se mira el 23, y es el mes lo que se liquida.
+  function esDelMes(f){ return !!f&&String(f).substring(0,7)===mesEnCurso; }
+  var altas=empleados.filter(function(e){return esDelMes(e.fecha_alta);})
     .sort(function(a,b){return String(b.fecha_alta||"").localeCompare(String(a.fecha_alta||""));});
-  var bajas=empleados.filter(function(e){return enRango(e.fecha_baja);})
+  var bajas=empleados.filter(function(e){return esDelMes(e.fecha_baja);})
     .sort(function(a,b){return String(b.fecha_baja||"").localeCompare(String(a.fecha_baja||""));});
 
   var vacProximas=vacaciones.filter(function(v){
@@ -9336,7 +9337,7 @@ function PanelNovedades(p){
         </Seccion>
 
         {(altas.length+bajas.length)>0&&(
-        <Seccion titulo="👥 Altas y bajas" color="#4CAF50" ir={p.irPersonal} irTxt="Personal">
+        <Seccion titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Personal">
           <div>
             {altas.length>0&&<Sub primera={true}>Entraron · {altas.length}</Sub>}
             {altas.map(function(e,i){

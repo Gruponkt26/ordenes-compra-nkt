@@ -9834,13 +9834,27 @@ var MEDIOS_POR_LOCAL={
   ]
 };
 
+// Si el medio pertenece al local que paga. Un egreso puede pagarse con varios medios, y
+// alcanza con que uno sea de otro local para que el egreso esté cruzado: mirar sólo el
+// primero dejaba afuera los pagos divididos, que sí aparecían en Saldos entre locales
+// —ese cálculo siempre recorrió todos los medios— y no en la lista de Pagos cruzados.
+function medioEsDelLocal(medio, localMedios){
+  var fp=(medio||"").trim();
+  if(fp==="Efectivo")return true; // efectivo sin subforma siempre OK
+  return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
+}
 function esMedioCorrecto(gasto){
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];
   if(!localMedios)return true; // l4 no se controla
-  var fp=(gasto.forma_pago||"").trim();
-  // Efectivo sin subforma siempre OK
-  if(fp==="Efectivo")return true;
-  return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
+  var lista=mediosDe(gasto);
+  if(lista.length===0)return medioEsDelLocal(gasto.forma_pago,localMedios);
+  return lista.every(function(pg){ return medioEsDelLocal(pg.medio,localMedios); });
+}
+// De qué local es un medio, para poder decir a quién le corresponde.
+function localDelMedio(medio){
+  return Object.keys(MEDIOS_POR_LOCAL).find(function(lid){
+    return MEDIOS_POR_LOCAL[lid].some(function(m){return (medio||"").startsWith(m)&&m!=="Efectivo";});
+  })||null;
 }
 
 function PanelCruzados(p){
@@ -10048,17 +10062,23 @@ function PanelCruzados(p){
               <div key={lid} style={{background:"#111",border:"1px solid "+(l?l.color+"33":"#1A1A1A"),borderRadius:12,padding:"12px 14px",marginBottom:10}}>
                 <div style={{fontSize:13,fontWeight:700,color:l?l.color:"#F0EDE8",marginBottom:8}}>{l?l.emoji:""} {l?l.nombre:lid} <span style={{fontSize:11,fontWeight:400,color:"#555"}}>· {lista.length} gasto{lista.length!==1?"s":""}</span></div>
                 {lista.map(function(g){
-                  var localCorrecto=Object.keys(MEDIOS_POR_LOCAL).find(function(lid2){
-                    return MEDIOS_POR_LOCAL[lid2].some(function(m){return (g.forma_pago||"").startsWith(m)&&m!=="Efectivo";});
-                  });
+                  // Entre todos los medios con los que se pagó, el que es de otro local: con
+                  // un pago dividido, el cruzado puede no ser el primero.
+                  var medios=mediosDe(g).map(function(pg){return pg.medio;});
+                  if(medios.length===0)medios=[g.forma_pago];
+                  var medioCruzado=medios.find(function(fp){
+                    var otro=localDelMedio(fp);
+                    return otro&&otro!==lid;
+                  })||g.forma_pago;
+                  var localCorrecto=localDelMedio(medioCruzado);
                   var lc=localCorrecto?getLocal(localCorrecto):null;
                   return(
                     <div key={g.id} style={{borderBottom:"1px solid #1A1A1A",padding:"8px 0"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,color:"#F0EDE8",fontWeight:600}}>{g.concepto}</div>
-                          <div style={{fontSize:10,color:"#E07B00",marginTop:2}}>💳 {g.forma_pago}</div>
-                          {lc&&<div style={{fontSize:10,color:"#555",marginTop:2}}>→ Este medio corresponde a <span style={{color:lc.color}}>{lc.emoji} {lc.nombre}</span></div>}
+                          <div style={{fontSize:10,color:"#E07B00",marginTop:2}}>💳 {medios.length>1?medios.join(" + "):g.forma_pago}</div>
+                          {lc&&<div style={{fontSize:10,color:"#555",marginTop:2}}>→ {medios.length>1?medioCruzado+" corresponde":"Este medio corresponde"} a <span style={{color:lc.color}}>{lc.emoji} {lc.nombre}</span></div>}
                           <div style={{fontSize:10,color:"#444",marginTop:2}}>{fmtDate(g.fecha)} · {g.categoria}</div>
                         </div>
                         <div style={{fontSize:13,fontWeight:700,color:"#E07B00",fontFamily:"'Playfair Display',serif",marginLeft:10}}>${parseFloat(g.monto||0).toLocaleString("es-AR")}</div>

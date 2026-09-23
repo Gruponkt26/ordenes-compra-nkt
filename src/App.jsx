@@ -8280,7 +8280,16 @@ function PanelFichar(p){
   var [cara,setCara]=useState(null);      // true/false si el navegador sabe mirar, null si no
   var [errCam,setErrCam]=useState("");
   var [recibo,setRecibo]=useState(null);  // lo último marcado, para mostrarlo
-  var videoRef=useRef(null), streamRef=useRef(null);
+  var videoRef=useRef(null), streamRef=useRef(null), vueltaRef=useRef(null);
+  // La cámara se prende mientras haga falta, y "camara"→"guardando" no la reinicia.
+  var camaraOn=(fase==="camara"||fase==="guardando");
+
+  function cancelarVuelta(){ if(vueltaRef.current){ clearTimeout(vueltaRef.current); vueltaRef.current=null; } }
+  useEffect(function(){ return cancelarVuelta; },[]);
+  // Red de seguridad: una fase de cámara sin nadie elegido vuelve a la lista en vez de
+  // romper la pantalla. Quedarse sin fichar por una pantalla en blanco es lo peor que
+  // puede pasar acá.
+  useEffect(function(){ if(!elegido&&camaraOn)setFase("lista"); },[elegido,camaraOn]);
 
   function guardarLocal(v){ setLocal(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
   function guardarKiosco(v){ setKiosco(v); try{ window.localStorage.setItem("nkt_fichaje_kiosco",v?"1":"0"); }catch(e){} }
@@ -8300,7 +8309,7 @@ function PanelFichar(p){
   // La cámara vive mientras dure la pantalla de marcación y se apaga al salir: dejarla
   // prendida en una tablet que queda sola todo el día no le hace bien a nadie.
   useEffect(function(){
-    if(fase!=="camara"&&fase!=="guardando"){ apagar(); return; }
+    if(!camaraOn){ apagar(); return; }
     var vivo=true, timer=null;
     var det=detectorDeCaras();
     if(!det)setCara(null);
@@ -8325,15 +8334,15 @@ function PanelFichar(p){
       });
     function apagarTodo(){ vivo=false; if(timer)clearInterval(timer); apagar(); }
     return apagarTodo;
-  },[fase]);
+  },[camaraOn]);
 
   function apagar(){
     if(streamRef.current){ streamRef.current.getTracks().forEach(function(t){t.stop();}); streamRef.current=null; }
     if(videoRef.current)videoRef.current.srcObject=null;
   }
 
-  function abrirCamara(emp){ setElegido(emp); setCara(null); setErrCam(""); setRecibo(null); setFase("camara"); }
-  function volver(){ setFase("lista"); setElegido(null); setCara(null); setErrCam(""); }
+  function abrirCamara(emp){ cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null); setFase("camara"); }
+  function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); }
 
   async function marcar(tipo){
     if(!elegido)return;
@@ -8357,7 +8366,13 @@ function PanelFichar(p){
     setRecibo({...fila, aviso:avisoFoto});
     setFase("listo");
     // En la tablet del local la pantalla vuelve sola a la lista: el próximo ya está esperando.
-    setTimeout(function(){ setFase(function(f){ return f==="listo"?"lista":f; }); setElegido(null); },6000);
+    // Se cancela si alguien tocó antes al siguiente: si no, a los 6 segundos le borraba el
+    // elegido de abajo de los pies y la pantalla quedaba en blanco.
+    cancelarVuelta();
+    vueltaRef.current=setTimeout(function(){
+      vueltaRef.current=null;
+      setFase("lista"); setElegido(null);
+    },6000);
   }
 
   var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:16};
@@ -8381,7 +8396,7 @@ function PanelFichar(p){
   }
 
   // ── La cámara ──
-  if(fase==="camara"||fase==="guardando"){
+  if(camaraOn&&elegido){
     var est=estadoDe(elegido.id);
     var sugerido=est.adentro?"salida":"entrada";
     var puede=!errCam&&cara!==false;

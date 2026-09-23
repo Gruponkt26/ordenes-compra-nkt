@@ -8088,6 +8088,7 @@ function PanelNovedades(p){
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
   var hoy=new Date().toISOString().split("T")[0];
+  var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -8110,9 +8111,11 @@ function PanelNovedades(p){
 
   var avisos=avisosVencimientos(vencimientos,7);
   var vencidos=avisos.filter(function(a){return a.dias<0;});
-  // La tarjeta de vencimientos muestra lo que viene, no lo que ya se debe —eso está en
-  // Deudas—. Mira dos meses para que siempre se vea lo próximo, aunque no caiga esta semana.
-  var porVencer=avisosVencimientos(vencimientos,60).filter(function(a){return a.dias>=0;});
+  // La tarjeta de vencimientos muestra lo que viene en el mes en curso, no lo que ya se
+  // debe —eso está en Deudas, entero—.
+  var porVencer=avisosVencimientos(vencimientos,70).filter(function(a){
+    return a.dias>=0&&String(a.fecha||"").substring(0,7)===mesEnCurso;
+  });
   var enRiesgo=planesEnRiesgo(vencimientos);
 
   // Quién está de vacaciones: las que se cruzan con el día —o con la ventana— que se mira.
@@ -8140,8 +8143,6 @@ function PanelNovedades(p){
   // Deuda es lo que ya se debería haber pagado: lo vencido sin pagar y el saldo de los
   // proveedores. Lo que todavía no venció —la luz de este mes, la cuota que viene de un
   // plan— no es deuda: es un vencimiento, y va en su propia tarjeta.
-  var mesEnCurso=hoy.substring(0,7);
-  var deudaVieja=0; // lo vencido de meses anteriores, que se menciona pero no se lista
   var deudaRubros=GRUPOS_VENC.map(function(g){
     var vencido=0, comprometido=0, cuantos=0;
     vencimientos.forEach(function(v){
@@ -8153,12 +8154,8 @@ function PanelNovedades(p){
           // Deuda es la cuota a la que ya se le pasaron todas sus fechas. Si el primer
           // vencimiento quedó atrás pero el segundo o el corrido todavía no llegaron, se
           // puede pagar: no es deuda.
-          if(estaVencida(c,hoy)){
-            // Novedades muestra el mes en curso: lo de meses anteriores se cuenta aparte y
-            // se menciona en una línea, para no esconderlo ni mezclarlo.
-            if((venceFinal(c)||"").substring(0,7)===mesEnCurso){vencido+=m;cuantos++;}
-            else deudaVieja+=m;
-          }else{comprometido+=m;}
+          // La deuda se muestra entera, venga del mes que venga: lo que se debe se debe.
+          if(estaVencida(c,hoy)){vencido+=m;cuantos++;}else{comprometido+=m;}
         });
         return;
       }
@@ -8297,10 +8294,10 @@ function PanelNovedades(p){
 
         <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
-            <div style={vacio}>Nada vencido este mes ni saldo con proveedores.{deudaVieja>0?" Sí hay "+fmt(deudaVieja)+" de meses anteriores.":""}</div>
+            <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
           ):(
             <div>
-              {deudaRubros.length>0&&<Sub primera={true}>Vencido este mes · {mesEnCurso}</Sub>}
+              {deudaRubros.length>0&&<Sub primera={true}>Vencido sin pagar</Sub>}
               {deudaRubros.map(function(x,i){
                 return <Fila key={x.g.id} primera={i===0}
                   izq={<span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
@@ -8317,11 +8314,7 @@ function PanelNovedades(p){
                 <span style={{fontSize:11,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Total</span>
                 <span style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(totalDeuda)}</span>
               </div>
-              {deudaVieja>0&&(
-                <div style={{fontSize:9.5,color:"#8A4A38",marginTop:6}}>
-                  Además hay {fmt(deudaVieja)} vencido de meses anteriores, que no se cuenta acá.
-                </div>
-              )}
+
             </div>
           )}
         </Seccion>
@@ -8342,9 +8335,9 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion titulo="📅 Vencimientos" color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
           {porVencer.length===0?(
-            <div style={vacio}>Nada por vencer en los próximos dos meses.{vencidos.length>0?" Lo vencido está en Deudas.":""}</div>
+            <div style={vacio}>Nada más por vencer en {mesEnCurso}.{vencidos.length>0?" Lo vencido está en Deudas.":""}</div>
           ):(
             <div>
               {(expandido.venc?porVencer:porVencer.slice(0,6)).map(function(a,i){

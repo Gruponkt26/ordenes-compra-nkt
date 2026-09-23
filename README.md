@@ -1633,9 +1633,11 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      en Deudas, los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— nombran el CUIT y
      los que van por local nombran el local. Lo vencido no aparece acá, ni siquiera como
      recordatorio: está entero en Deudas, arriba, y repetirlo era leer dos veces lo mismo.
-   - **👥 Altas y bajas**: quién entró y quién se fue en el período que se está mirando,
-     con su local y, en las bajas, el motivo. Son las dos novedades de personal que cambian
-     el sueldo y el F931. La tarjeta sólo aparece si hubo alguna.
+   - **👥 Altas y bajas del mes**: quién entró y quién se fue, con su local y, en las bajas,
+     el motivo. Son las dos novedades de personal que cambian el sueldo y el F931. Van por
+     **mes**, no por el selector de arriba: un alta del día 5 sigue siendo la novedad del mes
+     cuando se mira el 23, y es el mes lo que se liquida. La tarjeta sólo aparece si hubo
+     alguna.
    - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.

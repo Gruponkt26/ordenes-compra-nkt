@@ -1492,6 +1492,25 @@ la del día**: el que entra a las 20 y sale a la 1 sigue adentro aunque haya cam
 fecha. Por eso también las horas se calculan con la **hora local**, no con la UTC: un cierre
 a las 22:30 quedaría con fecha del día siguiente si se usara `toISOString()`.
 
+### Las jornadas y los francos
+
+En 🕐 Fichaje → **📆 Jornadas** se carga el horario de cada uno, día por día de la semana.
+**Un día sin horario es franco.** Hay un botón para copiar el horario cargado al resto de
+los días —la mayoría trabaja siempre lo mismo—, que respeta los francos ya marcados. Un
+turno que termina antes de empezar (22:00 → 02:00) se entiende como cruce de medianoche.
+
+Con la jornada cargada, el Registro deja de mostrar sólo lo que marcaron y **lo compara
+contra lo que les tocaba**:
+
+- **Previstas**: las horas del mes hasta hoy. Lo que todavía no pasó no se le reclama a nadie.
+- **La diferencia**, al lado de las horas trabajadas: `−1h 30 de 136h` en rojo si falta,
+  verde si sobra, gris si la diferencia es menor a media hora.
+- **Faltas**: los días que le tocaban y no marcó, listados por fecha al abrir su renglón.
+- **En franco**: lo que marcó un día que tenía libre, etiquetado en la fila.
+
+Al que **no tiene jornada cargada no se le compara nada** —no se sabe qué le tocaba— y el
+renglón lo dice. La pestaña avisa cuántos faltan.
+
 ### El registro
 
 En 🕐 Fichaje → **Registro** está el parte del mes: horas totales, cuánta gente marcó y
@@ -1505,6 +1524,12 @@ al medio.
 Cuando no anduvo la cámara o alguien se olvidó de marcar, **✎ Marca manual** carga la
 entrada o la salida a mano, con fecha, hora y el motivo. Queda anotada como manual (se ve un
 ✎ en vez de la foto), para que se note la diferencia con lo que marcó la persona.
+
+**Corregir a mano y borrar marcas es sólo de administración.** Cambia lo que se le paga a
+alguien, así que no puede quedar del lado del que ficha. El Registro entero se abre nada más
+que desde el módulo de Sofía, y además el permiso viaja explícito al panel (`puedeEditar`),
+para que un cambio de navegación futuro no lo regale sin querer: sin él no aparecen ni el
+botón de marca manual ni los 🗑.
 
 Se cargan **los últimos cuatro meses** de marcas: alcanza para liquidar el mes y discutir el
 anterior, sin traer años de datos que nadie mira.
@@ -1540,7 +1565,11 @@ Y la columna del PIN en la tabla de empleados:
 
 ```sql
 alter table empleados add column if not exists pin text;
+alter table empleados add column if not exists jornada jsonb;
 ```
+
+La jornada va en una sola columna del empleado, no en una tabla aparte: es un dato de la
+persona, no un registro que crezca.
 
 Y en **Supabase → Storage**, un bucket llamado **`fichajes`**, marcado como **público**. Si
 el bucket no está, **la marcación se guarda igual, sin foto**, y avisa en pantalla: llegar
@@ -1604,6 +1633,9 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      en Deudas, los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— nombran el CUIT y
      los que van por local nombran el local. Lo vencido no aparece acá, ni siquiera como
      recordatorio: está entero en Deudas, arriba, y repetirlo era leer dos veces lo mismo.
+   - **👥 Altas y bajas**: quién entró y quién se fue en el período que se está mirando,
+     con su local y, en las bajas, el motivo. Son las dos novedades de personal que cambian
+     el sueldo y el F931. La tarjeta sólo aparece si hubo alguna.
    - **🏖️ Vacaciones**: quién está de licencia y cuánto le queda, y quiénes se van en los
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.

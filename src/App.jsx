@@ -8264,6 +8264,48 @@ function sacarFoto(v){
   });
 }
 
+// ─── JORNADAS Y FRANCOS ───────────────────────────────────────────────────────
+// Qué le toca trabajar a cada uno, día por día de la semana. Un día sin horario es franco.
+// Va en una sola columna jsonb de empleados, no en una tabla aparte: es un dato del
+// empleado, no un registro que crezca.
+var DIAS_SEM=[{k:"d1",n:"Lun"},{k:"d2",n:"Mar"},{k:"d3",n:"Mié"},{k:"d4",n:"Jue"},
+              {k:"d5",n:"Vie"},{k:"d6",n:"Sáb"},{k:"d0",n:"Dom"}];
+function claveDia(fecha){
+  // getDay() sobre la fecha local: 0 es domingo, igual que las claves.
+  if(!fecha)return null;
+  var pr=String(fecha).substring(0,10).split("-");
+  var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10));
+  return "d"+d.getDay();
+}
+function jornadaDe(emp){
+  var j=(emp&&emp.jornada)||null;
+  if(typeof j==="string"){ try{ j=JSON.parse(j); }catch(e){ j=null; } }
+  return (j&&typeof j==="object")?j:null;
+}
+// Lo que le toca ese día: {franco, desde, hasta, minutos}. Sin jornada cargada devuelve
+// null —no se sabe—, que no es lo mismo que un franco.
+function turnoDe(emp, fecha){
+  var j=jornadaDe(emp); if(!j)return null;
+  var k=claveDia(fecha); if(!k)return null;
+  var d=j[k];
+  if(!d||d.franco||!d.desde||!d.hasta)return {franco:true, minutos:0};
+  var a=String(d.desde).split(":"), b=String(d.hasta).split(":");
+  var m1=parseInt(a[0],10)*60+parseInt(a[1],10), m2=parseInt(b[0],10)*60+parseInt(b[1],10);
+  // Un turno que termina antes de empezar cruza la medianoche: cierra al día siguiente.
+  var min=m2>m1?(m2-m1):(m2+1440-m1);
+  return {franco:false, desde:d.desde, hasta:d.hasta, minutos:min};
+}
+// Los días del mes hasta hoy: lo que viene todavía no se le puede reclamar a nadie.
+function diasDelMesHasta(mes, hoy){
+  var pr=String(mes).split("-"), anio=parseInt(pr[0],10), m=parseInt(pr[1],10);
+  var ultimo=new Date(anio,m,0).getDate(), out=[];
+  for(var i=1;i<=ultimo;i++){
+    var f=anio+"-"+String(m).padStart(2,"0")+"-"+String(i).padStart(2,"0");
+    if(f<=hoy)out.push(f);
+  }
+  return out;
+}
+
 // La pantalla con la que marcan los chicos. Sirve igual en la tablet fija del local —que se
 // queda siempre acá— y en el celular de cada uno.
 function PanelFichar(p){
@@ -8627,10 +8669,148 @@ function PanelPines(p){
   );
 }
 
+// Las jornadas: qué días y en qué horario le toca a cada uno. Los días sin horario son
+// francos, y de ahí sale lo que después el Registro compara contra lo que marcaron.
+function PanelJornadas(p){
+  var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var [localF,setLocalF]=useState("all");
+  var [borr,setBorr]=useState({});     // id → jornada en edición
+  var [guardando,setGuardando]=useState("");
+  var [abierto,setAbierto]=useState({});
+
+  var lista=empleados.filter(function(e){return localF==="all"||e.local===localF;})
+    .sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));});
+  var sinJornada=lista.filter(function(e){return !jornadaDe(e);}).length;
+
+  function actual(e){ return borr[e.id]||jornadaDe(e)||{}; }
+  function tocar(e, k, campo, valor){
+    var j={...actual(e)};
+    var d={...(j[k]||{})};
+    d[campo]=valor;
+    if(campo==="franco"&&valor){ d.desde=""; d.hasta=""; }
+    if(campo!=="franco")d.franco=false;
+    j[k]=d;
+    setBorr(function(o){var n={...o};n[e.id]=j;return n;});
+  }
+  // La mayoría trabaja el mismo horario todos los días que trabaja: se copia el primero
+  // que esté cargado al resto, y después se toca la excepción.
+  function copiarATodos(e){
+    var j={...actual(e)};
+    var base=DIAS_SEM.map(function(d){return j[d.k];}).find(function(d){return d&&!d.franco&&d.desde&&d.hasta;});
+    if(!base){ alert("Cargá primero un día con horario y después lo copio al resto."); return; }
+    DIAS_SEM.forEach(function(d){
+      var act=j[d.k];
+      if(act&&act.franco)return;   // los francos se respetan
+      j[d.k]={franco:false, desde:base.desde, hasta:base.hasta};
+    });
+    setBorr(function(o){var n={...o};n[e.id]=j;return n;});
+  }
+  async function guardar(e){
+    var j=actual(e);
+    var malo=DIAS_SEM.find(function(d){
+      var x=j[d.k];
+      return x&&!x.franco&&((x.desde&&!x.hasta)||(x.hasta&&!x.desde));
+    });
+    if(malo){ alert("En "+malo.n+" falta una de las dos horas. Poné las dos, o marcalo franco."); return; }
+    setGuardando(e.id);
+    var r=await p.onSaveEmpleado({...e, jornada:j});
+    setGuardando("");
+    if(r!==false)setBorr(function(o){var n={...o};delete n[e.id];return n;});
+  }
+  function minSemana(e){
+    return DIAS_SEM.reduce(function(a,d){
+      var x=(actual(e))[d.k];
+      if(!x||x.franco||!x.desde||!x.hasta)return a;
+      var A=x.desde.split(":"), B=x.hasta.split(":");
+      var m1=parseInt(A[0],10)*60+parseInt(A[1],10), m2=parseInt(B[0],10)*60+parseInt(B[1],10);
+      return a+(m2>m1?(m2-m1):(m2+1440-m1));
+    },0);
+  }
+
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:14};
+  return (
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{...CAJA,marginBottom:12,fontSize:12,color:"#666",lineHeight:1.6}}>
+        El horario de cada uno, día por día. <strong style={{color:"#888"}}>Un día sin horario es franco.</strong> Con esto
+        cargado, el Registro compara lo que marcaron contra lo que les tocaba y avisa las
+        faltas y lo que se marcó en un franco.
+        {sinJornada>0&&<div style={{color:"#D4A017",marginTop:6}}>⚠️ {sinJornada} sin jornada cargada — de esos no se puede comparar nada.</div>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+      </div>
+      {lista.length===0?(
+        <div style={{...CAJA,color:"#555",fontSize:13,textAlign:"center"}}>No hay empleados en este local.</div>
+      ):lista.map(function(e){
+        var ab=!!abierto[e.id], j=actual(e), cambio=!!borr[e.id];
+        var l=getLocal(e.local)||{};
+        var francos=DIAS_SEM.filter(function(d){var x=j[d.k];return !x||x.franco||!x.desde;}).map(function(d){return d.n;});
+        return (
+          <div key={e.id} style={{...CAJA,marginBottom:8,padding:0,overflow:"hidden"}}>
+            <button onClick={function(){setAbierto(function(o){var n={...o};n[e.id]=!n[e.id];return n;});}}
+              style={{width:"100%",background:"none",border:"none",padding:"13px 15px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left",fontFamily:"'Inter',sans-serif"}}>
+              <span style={{fontSize:11,color:"#444"}}>{ab?"▾":"▸"}</span>
+              <span style={{flex:1,minWidth:0}}>
+                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{e.nombre}</span>
+                <span style={{fontSize:11,color:"#444"}}> · {l.emoji} {l.nombre}</span>
+                <div style={{fontSize:10.5,color:"#3F3F3F",marginTop:2}}>
+                  {jornadaDe(e)||cambio
+                    ?(francos.length===7?"Sin días de trabajo":"Franco: "+(francos.length?francos.join(", "):"ninguno"))
+                    :<span style={{color:"#D4A017"}}>Sin jornada cargada</span>}
+                </div>
+              </span>
+              <span style={{fontSize:13,fontWeight:700,color:"#5A5A5A",fontVariantNumeric:"tabular-nums"}}>{fmtHs(minSemana(e))}/sem</span>
+            </button>
+            {ab&&(
+              <div style={{borderTop:"1px solid #161616",padding:"10px 15px 14px"}}>
+                {DIAS_SEM.map(function(d){
+                  var x=j[d.k]||{};
+                  var esFranco=!!x.franco||(!x.desde&&!x.hasta);
+                  return (
+                    <div key={d.k} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",flexWrap:"wrap"}}>
+                      <span style={{width:34,fontSize:12,fontWeight:700,color:esFranco?"#3F3F3F":"#F0EDE8"}}>{d.n}</span>
+                      <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#555",cursor:"pointer",width:70}}>
+                        <input type="checkbox" checked={esFranco} onChange={function(ev){tocar(e,d.k,"franco",ev.target.checked);}}/>
+                        franco
+                      </label>
+                      <input type="time" value={x.desde||""} disabled={esFranco}
+                        onChange={function(ev){tocar(e,d.k,"desde",ev.target.value);}}
+                        style={{...INP,width:104,opacity:esFranco?0.3:1,padding:"6px 8px",fontSize:12}}/>
+                      <span style={{color:"#2A2A2A"}}>→</span>
+                      <input type="time" value={x.hasta||""} disabled={esFranco}
+                        onChange={function(ev){tocar(e,d.k,"hasta",ev.target.value);}}
+                        style={{...INP,width:104,opacity:esFranco?0.3:1,padding:"6px 8px",fontSize:12}}/>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                  <button onClick={function(){copiarATodos(e);}} style={{...GH,padding:"8px 12px",fontSize:11.5}}>Copiar el horario al resto</button>
+                  <button onClick={function(){guardar(e);}} disabled={!cambio||guardando===e.id}
+                    style={{...BS(cambio?"#1A8A7B":"#222"),padding:"8px 16px",fontSize:12,marginLeft:"auto",opacity:cambio?1:0.4,cursor:cambio?"pointer":"default"}}>
+                    {guardando===e.id?"…":"Guardar"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // El parte para la administración: quién marcó, cuánto trabajó y la foto de cada marca.
 function PanelFichajes(p){
   var fichajes=p.fichajes||[], empleados=p.empleados||[];
-  var mesHoy=fechaLocal().substring(0,7);
+  // Corregir a mano y borrar marcas cambia lo que se le paga a alguien: es de Sofía y de
+  // nadie más. Hoy el Registro ya sólo se abre desde su módulo, pero el permiso viaja
+  // explícito para que un cambio de navegación no lo regale sin querer.
+  var puedeEditar=p.puedeEditar!==false;
+  var hoy=fechaLocal();
+  var mesHoy=hoy.substring(0,7);
   var [mes,setMes]=useState(mesHoy);
   var [localF,setLocalF]=useState("all");
   var [abierto,setAbierto]=useState({});
@@ -8653,15 +8833,30 @@ function PanelFichajes(p){
         return ref&&String(ref.fecha||"").substring(0,7)===mes;
       });
     var min=jor.reduce(function(a,j){return a+minutosDe(j);},0);
-    var dias=[...new Set(jor.map(function(j){return (j.entrada||j.salida).fecha;}))].length;
+    var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
+    var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
+    // Contra la jornada cargada: lo previsto hasta hoy, los días que le tocaban y no marcó,
+    // y lo que marcó en un franco. Sin jornada no se compara nada: no se sabe qué le tocaba.
+    var tiene=!!jornadaDe(e), previstas=0, faltas=[], francosTrabajados=0;
+    if(tiene){
+      diasDelMesHasta(mes,hoy).forEach(function(f){
+        var t=turnoDe(e,f); if(!t)return;
+        if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
+        previstas+=t.minutos;
+        if(!conMarcas[f])faltas.push(f);
+      });
+    }
     return {e:e, jor:jor.sort(function(a,b){
       return String((b.entrada||b.salida).momento||"").localeCompare(String((a.entrada||a.salida).momento||""));
-    }), min:min, dias:dias, abiertas:abiertas};
-  }).filter(function(x){return x.jor.length>0;})
+    }), min:min, dias:dias, abiertas:abiertas,
+      tieneJornada:tiene, previstas:previstas, faltas:faltas, francosTrabajados:francosTrabajados};
+  }).filter(function(x){return x.jor.length>0||x.faltas.length>0;})
     .sort(function(a,b){return b.min-a.min;});
 
   var totalMin=porEmpleado.reduce(function(a,x){return a+x.min;},0);
+  var totalPrevistas=porEmpleado.reduce(function(a,x){return a+x.previstas;},0);
+  var totalFaltas=porEmpleado.reduce(function(a,x){return a+x.faltas.length;},0);
 
   async function guardarManual(){
     var emp=empleados.find(function(e){return e.id===manual.empleado_id;});
@@ -8693,8 +8888,8 @@ function PanelFichajes(p){
           :<span style={{width:26,height:26,borderRadius:6,background:"#141414",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#444"}}>{f.manual?"✎":"—"}</span>}
         <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
         {f.cara===false&&<span title="El navegador no vio una cara" style={{fontSize:10}}>⚠️</span>}
-        <button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
-          style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:11,padding:"0 2px"}} title="Borrar">🗑</button>
+        {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
+          style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:11,padding:"0 2px"}} title="Borrar">🗑</button>}
       </span>
     );
   }
@@ -8709,14 +8904,20 @@ function PanelFichajes(p){
           <option value="all">Todos los locales</option>
           {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
         </select>
-        <button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12,marginLeft:"auto"}}>✎ Marca manual</button>
+        {puedeEditar&&<button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12,marginLeft:"auto"}}>✎ Marca manual</button>}
       </div>
 
       <div style={{...CAJA,marginBottom:12,display:"flex",gap:20,flexWrap:"wrap"}}>
         <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Horas del mes</div>
           <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{fmtHs(totalMin)}</div></div>
-        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Con marcas</div>
+        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Empleados</div>
           <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{porEmpleado.length}</div></div>
+        {totalPrevistas>0&&(
+          <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Previstas</div>
+            <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#5A5A5A"}}>{fmtHs(totalPrevistas)}</div></div>
+        )}
+        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Faltas</div>
+          <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:totalFaltas>0?"#C1440E":"#F0EDE8"}}>{totalFaltas}</div></div>
         <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Sin cerrar</div>
           <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:porEmpleado.reduce(function(a,x){return a+x.abiertas;},0)>0?"#D4A017":"#F0EDE8"}}>
             {porEmpleado.reduce(function(a,x){return a+x.abiertas;},0)}</div></div>
@@ -8737,18 +8938,38 @@ function PanelFichajes(p){
                 <span style={{fontSize:11,color:"#444"}}> · {l.emoji} {l.nombre}</span>
                 <div style={{fontSize:10.5,color:"#3F3F3F",marginTop:2}}>
                   {x.dias} día{x.dias===1?"":"s"}
+                  {x.faltas.length>0?<span style={{color:"#C1440E"}}> · {x.faltas.length} falta{x.faltas.length===1?"":"s"}</span>:null}
+                  {x.francosTrabajados>0?<span style={{color:"#8B2FC9"}}> · {x.francosTrabajados} en franco</span>:null}
                   {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
+                  {!x.tieneJornada?<span style={{color:"#D4A017"}}> · sin jornada</span>:null}
                 </div>
               </span>
-              <span style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</span>
+              <span style={{textAlign:"right"}}>
+                <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</div>
+                {x.previstas>0&&(
+                  <div style={{fontSize:10.5,fontVariantNumeric:"tabular-nums",
+                    color:Math.abs(x.min-x.previstas)<30?"#3F3F3F":(x.min<x.previstas?"#C1440E":"#3A7D44")}}>
+                    {(x.min>=x.previstas?"+":"−")+fmtHs(Math.abs(x.min-x.previstas))} de {fmtHs(x.previstas)}
+                  </div>
+                )}
+              </span>
             </button>
             {ab&&(
               <div style={{borderTop:"1px solid #161616"}}>
+                {x.faltas.length>0&&(
+                  <div style={{padding:"9px 15px",fontSize:11.5,color:"#C1440E",lineHeight:1.6}}>
+                    No marcó en días que le tocaban: {x.faltas.map(function(f){return fmtDate(f);}).join(" · ")}
+                  </div>
+                )}
                 {x.jor.map(function(j,i){
                   var ref=j.entrada||j.salida;
+                  var t=turnoDe(x.e,ref.fecha);
                   return (
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 15px",borderTop:i===0?"none":"1px solid #121212",flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,color:"#5A5A5A",width:86,flexShrink:0}}>{fmtDate(ref.fecha)}</span>
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 15px",borderTop:(i===0&&x.faltas.length===0)?"none":"1px solid #121212",flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:"#5A5A5A",width:86,flexShrink:0}}>
+                        {fmtDate(ref.fecha)}
+                        {t&&t.franco?<span style={{color:"#8B2FC9",fontSize:10}}> franco</span>:null}
+                      </span>
                       <Marca f={j.entrada} et="Entrada"/>
                       <span style={{color:"#2A2A2A"}}>→</span>
                       <Marca f={j.salida} et="Salida"/>
@@ -8777,7 +8998,7 @@ function PanelFichajes(p){
         </div>
       )}
 
-      {showManual&&(
+      {showManual&&puedeEditar&&(
         <div style={{position:"fixed",inset:0,background:"#000C",zIndex:95,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:16,padding:18,width:"100%",maxWidth:360}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>✎ Marca manual</div>
@@ -8862,6 +9083,13 @@ function PanelNovedades(p){
     var d=new Date(); d.setMonth(d.getMonth()+2);
     return d.toISOString().split("T")[0];
   })();
+  // Altas y bajas del período que se está mirando: quién entró y quién se fue. Son las dos
+  // novedades de personal que cambian el sueldo, el F931 y las claves de todo.
+  var altas=empleados.filter(function(e){return enRango(e.fecha_alta);})
+    .sort(function(a,b){return String(b.fecha_alta||"").localeCompare(String(a.fecha_alta||""));});
+  var bajas=empleados.filter(function(e){return enRango(e.fecha_baja);})
+    .sort(function(a,b){return String(b.fecha_baja||"").localeCompare(String(a.fecha_baja||""));});
+
   var vacProximas=vacaciones.filter(function(v){
     return v.fecha_desde&&v.fecha_desde>hoy&&v.fecha_desde<=dosMeses;
   }).sort(function(a,b){return String(a.fecha_desde).localeCompare(String(b.fecha_desde));});
@@ -9106,6 +9334,26 @@ function PanelNovedades(p){
             </div>
           )}
         </Seccion>
+
+        {(altas.length+bajas.length)>0&&(
+        <Seccion titulo="👥 Altas y bajas" color="#4CAF50" ir={p.irPersonal} irTxt="Personal">
+          <div>
+            {altas.length>0&&<Sub primera={true}>Entraron · {altas.length}</Sub>}
+            {altas.map(function(e,i){
+              return <Fila key={"al"+e.id} primera={i===0}
+                izq={<span>{e.nombre}{e.local?<span style={{color:"#454545"}}> · {(getLocal(e.local)||{}).nombre}</span>:null}{e.categoria?<span style={{color:"#454545"}}> · {e.categoria}</span>:null}</span>}
+                der={fmtDate(e.fecha_alta)} color="#3A7D44"/>;
+            })}
+            {bajas.length>0&&<Sub primera={altas.length===0}>Se fueron · {bajas.length}</Sub>}
+            {bajas.map(function(e,i){
+              return <Fila key={"ba"+e.id} primera={i===0}
+                izq={<span>{e.nombre}{e.local?<span style={{color:"#454545"}}> · {(getLocal(e.local)||{}).nombre}</span>:null}</span>}
+                detalle={e.motivo_baja||null}
+                der={fmtDate(e.fecha_baja)} color="#C1440E"/>;
+            })}
+          </div>
+        </Seccion>
+        )}
 
         <Seccion titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(
@@ -17977,7 +18225,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_pines","🔑 PINs","#8B2FC9"]].map(function(t){
+                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"]].map(function(t){
                   var act=vista===t[0];
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
@@ -17988,7 +18236,9 @@ export default function App() {
               </div>
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   onFichar={guardarFichaje} onDelete={borrarFichaje}/>
+                   puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje}/>
+                :vista==="fichajes_jornadas"
+                ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
@@ -18047,6 +18297,7 @@ export default function App() {
               irVencimientos={function(){abrirModulo("admin","vencimientos");}}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
+              irPersonal={function(){abrirModulo("personal","personal_inicio");}}
             />
           )}
 

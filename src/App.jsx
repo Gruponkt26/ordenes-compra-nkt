@@ -8027,6 +8027,18 @@ function esPlan(v){ return v.tipo==="plan"; }
 // cuotas igual que un plan, así que todo lo que sabe recorrer cuotas la entiende sola; lo
 // que NO comparte es la caducidad: una factura no se cae por dejar una cuota impaga.
 function esFactura(v){ return v.tipo==="factura"; }
+// Los egresos que generó un vencimiento al pagarse: los de sus cuotas y los de sus pagos
+// sueltos. Borrar el vencimiento sin borrarlos deja gasto fantasma inflando el rubro.
+function egresosDe(v){
+  var ids=[];
+  (Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]).forEach(function(c){
+    if(c.pago&&c.pago.egreso_id)ids.push(c.pago.egreso_id);
+  });
+  (Array.isArray(v.pagos)?v.pagos:[]).forEach(function(pg){
+    if(pg&&pg.egreso_id)ids.push(pg.egreso_id);
+  });
+  return ids.filter(function(id,i){ return ids.indexOf(id)===i; });
+}
 function tieneCuotas(v){ return esPlan(v)||esFactura(v); }
 function cuotasPlan(v){ return Array.isArray(v.cuotas_plan)?v.cuotas_plan:[]; }
 // Un plan puede tener más de una cuota en el mismo mes —el anticipo y la primera suelen caer
@@ -9824,8 +9836,12 @@ function PanelVencimientos(p){
   }
 
   function borrar(v){
-    if(!window.confirm("¿Borrar el vencimiento \""+v.concepto+"\"?\n\nLos egresos que ya generó quedan como están."))return;
-    onDelete(v.id);
+    var eg=egresosDe(v);
+    var que=esFactura(v)?"la factura":(esPlan(v)?"el plan":"el vencimiento");
+    var msg="¿Borrar "+que+" \""+v.concepto+"\"?";
+    if(eg.length>0)msg+="\n\nTambién se borra"+(eg.length===1?"":"n")+" "+eg.length+" egreso"+(eg.length===1?"":"s")+" que generó al pagarse. Si no, quedaría ese gasto cargado sin nada que lo respalde.";
+    if(!window.confirm(msg))return;
+    onDelete(v.id, eg);
   }
 
   function abrirPago(x){
@@ -18769,8 +18785,11 @@ export default function App() {
                 setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
                 await sbSaveVencimiento(v);
               }}
-              onDelete={async function(id){
+              onDelete={async function(id,egresos){
                 setVencimientos(function(prev){return prev.filter(function(x){return x.id!==id;});});
+                // Los egresos se borran solos, sin despagar nada: el vencimiento que los
+                // generó ya no existe, así que borrarEgreso volvería a buscarlo al pedo.
+                (egresos||[]).forEach(function(eid){ borrarEgresoSolo(eid); });
                 await sbDeleteVencimiento(id);
               }}
               onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}

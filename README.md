@@ -1640,6 +1640,17 @@ alter table vencimientos add column if not exists periodo      text;
 alter table vencimientos add column if not exists nro_asociado text;
 ```
 
+### Borrar un vencimiento se lleva sus egresos
+
+Pagar un vencimiento genera un egreso. Borrar ese **egreso** ya despagaba el vencimiento y
+avisaba. Faltaba la otra mitad: borrar el **vencimiento** dejaba los egresos dados de alta,
+sin nada que los respalde, inflando el rubro para siempre — y es justo lo que pasa cuando
+alguien carga una factura de prueba y después la borra.
+
+Ahora el cartel de borrado dice cuántos egresos se van con él y los borra. Los egresos de
+otros vencimientos no se tocan: sólo los que llevan el `egreso_id` de sus propias cuotas y
+pagos.
+
 ## 🔔 Novedades del día
 
 Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No

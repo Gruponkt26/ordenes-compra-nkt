@@ -1661,16 +1661,21 @@ marcado como «ya cargado».
 ## 🏦 Créditos bancarios
 
 Un crédito no es un plan de facilidades ni un servicio, así que tiene su propia carga:
-**+ Crédito**, con entidad bancaria, descripción, tipo de préstamo, fecha de otorgamiento,
-TNA, deuda a la fecha, forma de pago, y las cuotas (cuántas, de cuánto, qué día vencen y
+**+ Crédito**, con entidad bancaria, N° de crédito, descripción, monto inicial, tipo de
+préstamo, fecha de otorgamiento, TNA, deuda a la fecha, forma de pago, y las cuotas (cuántas, de cuánto, qué día vencen y
 desde qué mes). En Créditos **no aparece «+ Plan de pago»**: ahí esa opción confundía.
 
 La **deuda a la fecha se carga a mano**: es la que informa el banco, que incluye intereses
 devengados y casi nunca coincide con la suma de las cuotas que faltan. Se guardan las dos y
 se muestran las dos, que es justamente lo que sirve para compararlas.
 
-En la planilla se lee «Crédito cocina Kusama · Banco Provincia · Inversión productiva», y
-abajo «TNA 68,5% · deuda a la fecha $3.200.000 · Débito automático · otorgado 23/09/2026».
+En la planilla se lee «Crédito cocina Kusama · Banco Provincia · N° 98877/4 · Inversión
+productiva», y abajo «inicial $2.500.000 · TNA 68,5% · deuda a la fecha $3.200.000 · Débito
+automático · otorgado 23/09/2026». El **monto inicial** al lado de la **deuda a la fecha**
+es lo que muestra de un vistazo cuánto se avanzó y cuánto se lo comieron los intereses.
+
+El N° de crédito queda además como **referencia**, que es el campo por el que se busca: sirve
+más buscar por número que por banco, porque del mismo banco puede haber varios.
 
 Como los planes y las facturas, guarda sus cuotas en `cuotas_plan`, así que cada una se paga
 por separado y entra en los avisos y en la deuda. **Tampoco caduca**: un crédito impago se
@@ -1685,6 +1690,8 @@ alter table vencimientos add column if not exists fecha_otorgamiento date;
 alter table vencimientos add column if not exists tna                text;
 alter table vencimientos add column if not exists deuda_actual       numeric default 0;
 alter table vencimientos add column if not exists forma_pago         text;
+alter table vencimientos add column if not exists monto_inicial      numeric default 0;
+alter table vencimientos add column if not exists nro_credito        text;
 ```
 
 ## 🔔 Novedades del día

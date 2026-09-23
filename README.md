@@ -1658,6 +1658,19 @@ y los borra. Reconoce sólo los que generó la app al pagar un vencimiento (su i
 `egr_venc_`): un egreso cargado a mano nunca se toca, aunque haya salido de un vencimiento
 marcado como «ya cargado».
 
+### El aviso de columnas que faltan
+
+Antes era un cartel rojo con el SQL que ocupaba media pantalla de Vencimientos todos los
+días. Ahora **el 🩺 se pone ámbar y muestra cuántas faltan** («🩺 2»); al tocarlo las nombra
+y da el `alter table` de cada una, arriba del diagnóstico de siempre. Que no moleste no
+quiere decir que no esté: si el 🩺 está ámbar, hay datos que se descartan al guardar.
+
+## 🏥 Obra Social
+
+Submódulo propio, al lado de Gremio. Va **por CUIT** y no por local, como el gremio: los
+aportes y contribuciones son una obligación del empleador, no de cada local. Gremio queda
+para la cuota sindical.
+
 ## 🏦 Créditos bancarios
 
 Un crédito no es un plan de facilidades ni un servicio, así que tiene su propia carga:

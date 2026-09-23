@@ -1521,6 +1521,24 @@ el bucket no está, **la marcación se guarda igual, sin foto**, y avisa en pant
 tarde y que no ande la cámara son dos problemas distintos, y perder el horario por el
 segundo sería el peor de los dos.
 
+### Probarlo desde el celular
+
+La app está en Vercel, así que sirve por **HTTPS**, que es lo que el navegador exige para
+dejar abrir la cámara. Se entra al link de siempre desde el celular y anda.
+
+Dos cosas que hay que tener en cuenta:
+
+- **El permiso de cámara se pide una vez por aparato.** Si se rechaza sin querer, no vuelve
+  a preguntar solo: hay que tocar el candado en la barra de direcciones y habilitarlo a
+  mano. La app avisa con ese texto cuando pasa.
+- **Desde `localhost` o una IP de la red local (`http://192.168...`) la cámara no abre.** No
+  es la app: los navegadores sólo dan cámara en HTTPS o en `localhost`. Probar siempre por
+  el link de Vercel.
+
+El CSP de `vercel.json` tiene que dejar pasar las imágenes de Supabase
+(`img-src ... https://*.supabase.co`), o las fotos se suben bien pero salen rotas al
+mostrarlas.
+
 ### Si no guarda
 
 En 🕐 Fichaje hay un botón **🔧 Probar guardado** que prueba las tres cosas por separado y

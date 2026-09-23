@@ -8368,17 +8368,14 @@ function PanelNovedades(p){
             <div>
               {(expandido.venc?porVencer:porVencer.slice(0,6)).map(function(a,i){
                 var g=grupoDe(a.v.grupo);
+                // De quién es: el CUIT en los rubros que van por CUIT, el local en los demás.
+                var duenio=porCuit(a.v.grupo)?cuitVenc(cuitIdDe(a.v)).corto:((getLocal(a.v.local)||{}).nombre||"");
                 return <Fila key={i} primera={i===0}
-                  izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
+                  izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span>{duenio?<span style={{color:"#5A5A5A"}}> · {duenio}</span>:null} · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
                   der={fmtDate(a.fecha)+" · "+(a.dias===0?"hoy":"en "+a.dias+"d")+" · "+fmt(a.monto)}
                   color={a.dias===0?"#D4A017":(a.dias<=7?"#B8963A":"#7A7A7A")}/>;
               })}
               <Mas id="venc" n={expandido.venc?0:porVencer.length-6}/>
-              {vencidos.length>0&&(
-                <div style={{fontSize:9.5,color:"#8A4A38",marginTop:7,paddingTop:7,borderTop:"1px solid #141414"}}>
-                  {vencidos.length===1?"Hay 1 vencido":"Hay "+vencidos.length+" vencidos"} sin pagar: {fmt(vencidos.reduce(function(a,x){return a+x.monto;},0))}, en Deudas.
-                </div>
-              )}
             </div>
           )}
         </Seccion>

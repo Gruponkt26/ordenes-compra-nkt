@@ -7978,7 +7978,8 @@ var GRUPOS_VENC=[
   {id:"arba",      label:"🏙️ ARBA",          corto:"ARBA",          color:"#8B2FC9", area:"Administrativo", detalle:"Ingresos Brutos provincial"},
   {id:"municipal", label:"🏘️ Municipalidad", corto:"Municipalidad", color:"#E07B00", area:"Administrativo", detalle:"Seguridad e Higiene, tasas"},
   {id:"servicios", label:"💡 Servicios",     corto:"Servicios",     color:"#D4A017", area:"Servicios",      detalle:"Luz, gas, internet"},
-  {id:"gremio",    label:"👥 Gremio",        corto:"Gremio",        color:"#3A7D44", area:"Sueldos",        detalle:"Cuota sindical, obra social"},
+  {id:"gremio",    label:"👥 Gremio",        corto:"Gremio",        color:"#3A7D44", area:"Sueldos",        detalle:"Cuota sindical y aportes al gremio"},
+  {id:"obra_social",label:"🏥 Obra Social",  corto:"Obra Social",   color:"#00BCD4", area:"Sueldos",        detalle:"Aportes y contribuciones de la obra social"},
   {id:"creditos",  label:"🏦 Créditos",      corto:"Créditos",      color:"#1A8A7B", area:"Administrativo", detalle:"Préstamos y créditos bancarios"},
   {id:"otros",     label:"📦 Otros",         corto:"Otros",         color:"#C1440E", area:"Administrativo", detalle:"Alquiler, cuotas, el resto"},
 ];
@@ -7997,7 +7998,7 @@ var CUITS_VENC=[
   {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"CUIT personal",corto:"CUIT personal",color:"#C1440E",local:"l1",cubre:"El Bodegón"},
   {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"Calzón Gitano SRL",corto:"SRL",color:"#1A6B8A",local:"l4",cubre:"Kusama + Colantonio's"},
 ];
-var GRUPOS_POR_CUIT=["afip","arba","gremio","creditos"];
+var GRUPOS_POR_CUIT=["afip","arba","gremio","obra_social","creditos"];
 function porCuit(grupo){ return GRUPOS_POR_CUIT.indexOf(grupoDe(grupo||"otros").id)>=0; }
 function cuitVenc(id){ return CUITS_VENC.find(function(c){return c.id===id;})||CUITS_VENC[1]; }
 // Lo cargado antes de que existiera el campo: el Bodegón es el CUIT personal, el resto la SRL.
@@ -10040,24 +10041,6 @@ function PanelVencimientos(p){
           }} style={{marginTop:9,background:"none",border:"1px solid #1A6B8A66",borderRadius:8,color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"7px 13px"}}>📋 Copiar el informe</button>
         </div>
       )}
-      {faltanColumnas.length>0&&(
-        <div style={{background:"#1A0808",border:"1px solid #C1440E66",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-          <div style={{fontSize:12,fontWeight:800,color:"#C1440E",marginBottom:5}}>
-            ⚠️ A la tabla <b>vencimientos</b> {faltanColumnas.length===1?"le falta 1 columna":"le faltan "+faltanColumnas.length+" columnas"}: {faltanColumnas.join(", ")}
-          </div>
-          <div style={{fontSize:11,color:"#888",lineHeight:1.6,marginBottom:9}}>
-            {rompePlanes
-              ? "Sin ellas los planes de pago no se pueden guardar —un plan sin sus cuotas no se podría ni leer ni pagar—. "
-              : "Lo que se cargue se guarda igual, pero esos datos quedan afuera. "}
-            Corré esto en Supabase → SQL Editor y volvé a entrar:
-          </div>
-          <pre style={{background:"#0A0A0A",border:"1px solid #2A2A2A",borderRadius:8,padding:"10px 12px",fontSize:10,color:"#8B9",overflowX:"auto",margin:0,whiteSpace:"pre",fontFamily:"monospace"}}>{sqlFaltante}</pre>
-          <button onClick={function(){
-            try{ navigator.clipboard.writeText(sqlFaltante); alert("SQL copiado. Pegalo en Supabase → SQL Editor y dale Run."); }
-            catch(e){ alert(sqlFaltante); }
-          }} style={{marginTop:9,background:"none",border:"1px solid #C1440E66",borderRadius:8,color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"7px 13px"}}>📋 Copiar el SQL</button>
-        </div>
-      )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div>
           {verTodos?(
@@ -10102,7 +10085,23 @@ function PanelVencimientos(p){
               </button>
             );
           })()}
-          <button onClick={async function(){ setDiag("Probando..."); setDiag(await sbDiagnosticoVencimientos()); }} title="Guarda un plan de prueba y muestra qué contesta la base" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>🩺</button>
+          {/* El cartel rojo con el SQL ocupaba media pantalla todos los días. La info no se
+              pierde: el 🩺 se pone ámbar cuando falta alguna columna y la nombra al tocarlo,
+              con su alter table. Que no moleste no quiere decir que no esté. */}
+          <button onClick={async function(){
+            setDiag("Probando...");
+            var falta=faltanColumnas.length>0
+              ? "⚠️ A la tabla vencimientos "+(faltanColumnas.length===1?"le falta 1 columna":"le faltan "+faltanColumnas.length+" columnas")+": "+faltanColumnas.join(", ")
+                +"\n\n"+(rompePlanes
+                  ? "Sin ellas los planes de pago no se pueden guardar."
+                  : "Lo que se cargue se guarda igual, pero esos datos quedan afuera.")
+                +"\n\nCorré esto en Supabase → SQL Editor y volvé a entrar:\n\n"+sqlFaltante+"\n\n———\n\n"
+              : "";
+            setDiag(falta+(await sbDiagnosticoVencimientos()));
+          }} title={faltanColumnas.length>0?("Faltan "+faltanColumnas.length+" columnas en la tabla — tocá para ver el SQL"):"Guarda un plan de prueba y muestra qué contesta la base"}
+            style={{background:"none",border:"1px solid "+(faltanColumnas.length>0?"#D4A01766":"#2A2A2A"),borderRadius:8,color:faltanColumnas.length>0?"#D4A017":"#666",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>
+            🩺{faltanColumnas.length>0?" "+faltanColumnas.length:""}
+          </button>
           {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros")&&(
             <button onClick={abrirFactura} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Factura</button>
           )}
@@ -17176,6 +17175,16 @@ var SQL_VENCIMIENTOS={
   debito_cuenta:"alter table vencimientos add column if not exists debito_cuenta  text;",
   debito_cbu:"alter table vencimientos add column if not exists debito_cbu     text;",
   caduca_en:"alter table vencimientos add column if not exists caduca_en      int default 3;",
+  periodo:"alter table vencimientos add column if not exists periodo        text;",
+  nro_asociado:"alter table vencimientos add column if not exists nro_asociado   text;",
+  entidad:"alter table vencimientos add column if not exists entidad        text;",
+  tipo_prestamo:"alter table vencimientos add column if not exists tipo_prestamo  text;",
+  fecha_otorgamiento:"alter table vencimientos add column if not exists fecha_otorgamiento date;",
+  tna:"alter table vencimientos add column if not exists tna            text;",
+  deuda_actual:"alter table vencimientos add column if not exists deuda_actual   numeric default 0;",
+  forma_pago:"alter table vencimientos add column if not exists forma_pago     text;",
+  monto_inicial:"alter table vencimientos add column if not exists monto_inicial  numeric default 0;",
+  nro_credito:"alter table vencimientos add column if not exists nro_credito    text;",
   local:"alter table vencimientos add column if not exists local          text;",
   concepto:"alter table vencimientos add column if not exists concepto       text;",
   area:"alter table vencimientos add column if not exists area           text;",

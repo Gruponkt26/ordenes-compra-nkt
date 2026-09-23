@@ -9055,6 +9055,12 @@ function PanelNovedades(p){
     .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
   var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
   var totalRetiroCaja=cierresR.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
+  // "No hubo retiros" y "el retiro no se está guardando" se ven igual en pantalla y son
+  // cosas muy distintas. Se distinguen: Postgrest devuelve la clave en null cuando la
+  // columna existe y está vacía, y la omite del todo cuando la columna no existe. Si
+  // ningún cierre la trae siquiera, falta el alter table y los retiros se vienen
+  // perdiendo en silencio desde siempre.
+  var faltaColRetiro=cierres.length>0&&cierres.every(function(c){ return c.retiro_caja===undefined; });
   var localesConCierre=cierres.filter(function(c){return c.fecha===hoy;}).map(function(c){return c.local;});
   var faltanCerrar=LOCALES.filter(function(l){return l.id!=="l4"&&localesConCierre.indexOf(l.id)<0;});
 
@@ -9303,6 +9309,16 @@ function PanelNovedades(p){
         </Seccion>
 
         <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
+          {faltaColRetiro&&(
+            <div style={{fontSize:11,color:"#D4A017",lineHeight:1.6,padding:"0 0 9px",borderBottom:"1px solid #141414",marginBottom:8}}>
+              ⚠️ El <strong>retiro de caja</strong> no se está guardando: falta la columna en la tabla.
+              Lo que se cargó hasta ahora en ese campo se perdió. Corré en Supabase → SQL Editor:
+              <div style={{color:"#8A8A8A",fontFamily:"monospace",fontSize:10.5,marginTop:5,wordBreak:"break-all"}}>
+                alter table cierres_caja add column if not exists retiro_caja numeric default 0;<br/>
+                alter table cierres_caja add column if not exists retiro_caja_nota text;
+              </div>
+            </div>
+          )}
           {cierresR.length===0?(
             <div style={vacio}>Sin cierres {etiquetaRango}.</div>
           ):(

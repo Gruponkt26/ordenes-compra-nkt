@@ -494,6 +494,13 @@ Hasta que las columnas existan el cierre **igual se guarda**, pero sin el retiro
 reintenta sin ese campo, avisa en pantalla y deja el `alter table` a la vista para
 copiarlo. Los cierres viejos, sin el dato, se ven como siempre.
 
+Ese aviso aparece **en el momento de guardar**, así que es fácil que se pierda. Por eso
+Novedades del día lo vuelve a decir: si **ningún** cierre trae la columna, la tarjeta de
+cierres muestra el `alter table` arriba de todo. «No hubo retiros» y «el retiro no se está
+guardando» se ven igual en pantalla y son cosas muy distintas, así que se distinguen por
+cómo contesta Postgrest: manda la clave en `null` cuando la columna existe y está vacía, y
+la **omite del todo** cuando la columna no existe.
+
 ### El pago de cuenta corriente pregunta por la factura
 
 Pagar la cuenta corriente de un proveedor genera solo un egreso en Egresos → Proveedores.

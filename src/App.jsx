@@ -240,11 +240,11 @@ async function sbDeleteVacacion(id) {
 // Cada vez que alguien entra o sale queda una fila con la hora, quién es, de qué local,
 // desde qué aparato y una foto sacada en el momento. La foto no se compara con nada: es
 // la prueba. Si alguien fichó por otro, se ve.
-var SQL_FICHAJES="create table if not exists fichajes (\n  id              text primary key,\n  empleado_id     text,\n  empleado_nombre text,\n  local           text,\n  fecha           date,\n  hora            text,\n  tipo            text,\n  momento         timestamptz,\n  foto_url        text,\n  cara            boolean,\n  lat             double precision,\n  lng             double precision,\n  aparato         text,\n  usuario         text,\n  manual          boolean,\n  notas           text,\n  created_at      timestamptz default now()\n);\nalter table fichajes disable row level security;\ncreate index if not exists fichajes_fecha_idx on fichajes (fecha);";
+var SQL_FICHAJES="create table if not exists fichajes (\n  id              text primary key,\n  empleado_id     text,\n  empleado_nombre text,\n  local           text,\n  fecha           date,\n  hora            text,\n  tipo            text,\n  momento         timestamptz,\n  foto_url        text,\n  cara            boolean,\n  lat             double precision,\n  lng             double precision,\n  aparato         text,\n  usuario         text,\n  manual          boolean,\n  con_pin         boolean,\n  notas           text,\n  created_at      timestamptz default now()\n);\nalter table fichajes disable row level security;\ncreate index if not exists fichajes_fecha_idx on fichajes (fecha);";
 
 // El remedio genérico propone "text" para cualquier columna que falte, pero acá no todas
 // son texto: "cara" guardada como texto haría que f.cara===false no sea nunca cierto.
-var TIPOS_FICHAJES={cara:"boolean", manual:"boolean", lat:"double precision", lng:"double precision",
+var TIPOS_FICHAJES={cara:"boolean", manual:"boolean", con_pin:"boolean", lat:"double precision", lng:"double precision",
   momento:"timestamptz", fecha:"date", created_at:"timestamptz default now()"};
 function explicarErrorFichajes(err){
   var base=explicarErrorTabla("fichajes", err, SQL_FICHAJES);
@@ -8276,7 +8276,9 @@ function PanelFichar(p){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
   });
   var [elegido,setElegido]=useState(null);
-  var [fase,setFase]=useState("lista");   // lista | camara | guardando | listo
+  var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
+  var [pin,setPin]=useState("");          // lo que va tecleando
+  var [pinMal,setPinMal]=useState(false);
   var [cara,setCara]=useState(null);      // true/false si el navegador sabe mirar, null si no
   var [errCam,setErrCam]=useState("");
   var [recibo,setRecibo]=useState(null);  // lo último marcado, para mostrarlo
@@ -8341,8 +8343,27 @@ function PanelFichar(p){
     if(videoRef.current)videoRef.current.srcObject=null;
   }
 
-  function abrirCamara(emp){ cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null); setFase("camara"); }
-  function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); }
+  // Al que todavía no tiene PIN cargado se lo deja marcar igual: si no, nadie podría
+  // fichar hasta que administración termine de cargarlos uno por uno. La pestaña de PINs
+  // avisa cuántos faltan.
+  function pinDe(emp){ return String((emp&&emp.pin)||"").trim(); }
+  function elegir(emp){
+    cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
+    setPin(""); setPinMal(false);
+    setFase(pinDe(emp)?"pin":"camara");
+  }
+  function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); }
+  // Se comprueba solo al cuarto dígito: nadie tiene que buscar un botón de "aceptar".
+  function tecla(d){
+    if(fase!=="pin")return;
+    setPinMal(false);
+    var v=(pin+String(d)).slice(0,4);
+    setPin(v);
+    if(v.length===4){
+      if(v===pinDe(elegido)){ setPin(""); setFase("camara"); }
+      else { setPinMal(true); setTimeout(function(){ setPin(""); },450); }
+    }
+  }
 
   async function marcar(tipo){
     if(!elegido)return;
@@ -8360,7 +8381,8 @@ function PanelFichar(p){
     var fila={id:id, empleado_id:elegido.id, empleado_nombre:elegido.nombre, local:local,
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:foto, cara:cara, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
-      aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false, notas:""};
+      aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
+      con_pin:!!pinDe(elegido), notas:""};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:avisoFoto});
@@ -8396,6 +8418,48 @@ function PanelFichar(p){
   }
 
   // ── La cámara ──
+  // ── El PIN ──
+  // Teclas grandes: esto se usa con las manos ocupadas y un celular en la otra mano.
+  if(fase==="pin"&&elegido){
+    return (
+      <div style={{fontFamily:"'Inter',sans-serif",maxWidth:320,margin:"0 auto"}}>
+        <button onClick={volver} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
+        <div style={{...CAJA,textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800,color:"#F0EDE8"}}>{elegido.nombre}</div>
+          <div style={{fontSize:11,color:"#444",marginTop:2,marginBottom:16}}>Tu PIN de 4 números</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:6}}>
+            {[0,1,2,3].map(function(i){
+              var lleno=pin.length>i;
+              return <span key={i} style={{width:14,height:14,borderRadius:"50%",
+                background:pinMal?"#C1440E":(lleno?"#1A8A7B":"#1E1E1E"),
+                border:"1px solid "+(pinMal?"#C1440E":(lleno?"#1A8A7B":"#2A2A2A")),
+                transition:"background 0.12s"}}/>;
+            })}
+          </div>
+          <div style={{fontSize:11.5,height:16,color:pinMal?"#C1440E":"#333",marginBottom:12}}>
+            {pinMal?"PIN incorrecto":""}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {[1,2,3,4,5,6,7,8,9].map(function(n){
+              return <button key={n} onClick={function(){tecla(n);}}
+                style={{padding:"17px 0",borderRadius:12,border:"1px solid #1E1E1E",background:"#111",
+                  color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:21,fontWeight:700,cursor:"pointer"}}>{n}</button>;
+            })}
+            <button onClick={function(){setPin("");setPinMal(false);}}
+              style={{padding:"17px 0",borderRadius:12,border:"1px solid #1E1E1E",background:"#0C0C0C",
+                color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Borrar</button>
+            <button onClick={function(){tecla(0);}}
+              style={{padding:"17px 0",borderRadius:12,border:"1px solid #1E1E1E",background:"#111",
+                color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:21,fontWeight:700,cursor:"pointer"}}>0</button>
+            <button onClick={function(){setPin(function(v){return v.slice(0,-1);});setPinMal(false);}}
+              style={{padding:"17px 0",borderRadius:12,border:"1px solid #1E1E1E",background:"#0C0C0C",
+                color:"#555",fontFamily:"'Inter',sans-serif",fontSize:17,fontWeight:700,cursor:"pointer"}}>⌫</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if(camaraOn&&elegido){
     var est=estadoDe(elegido.id);
     var sugerido=est.adentro?"salida":"entrada";
@@ -8463,7 +8527,7 @@ function PanelFichar(p){
             var est=estadoDe(e.id);
             var col=est.adentro?"#3A7D44":"#333";
             return (
-              <button key={e.id} onClick={function(){abrirCamara(e);}}
+              <button key={e.id} onClick={function(){elegir(e);}}
                 style={{background:"#0F0F0F",border:"1px solid "+(est.adentro?"#3A7D4455":"#1A1A1A"),borderRadius:13,padding:"15px 12px",
                   textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
                 <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
@@ -8478,6 +8542,87 @@ function PanelFichar(p){
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Los PINs, que carga administración. Cuatro números por persona: no es una contraseña, es
+// lo que hace falta para que "marcá vos por mí" deje de ser gratis. Alcanza para eso.
+function PanelPines(p){
+  var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var [localF,setLocalF]=useState("all");
+  var [edit,setEdit]=useState({});   // id → lo que se está tecleando
+  var [verPin,setVerPin]=useState({});
+  var [guardando,setGuardando]=useState("");
+
+  var lista=empleados.filter(function(e){return localF==="all"||e.local===localF;})
+    .sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));});
+  var sinPin=lista.filter(function(e){return !String(e.pin||"").trim();}).length;
+
+  function valorDe(e){ var v=edit[e.id]; return v===undefined?String(e.pin||""):v; }
+  function escribir(e,v){
+    var limpio=String(v).replace(/[^0-9]/g,"").slice(0,4);
+    setEdit(function(o){var n={...o};n[e.id]=limpio;return n;});
+  }
+  // Cuatro números al azar, para no tener que inventarlos de a uno.
+  function sortear(e){ escribir(e,String(Math.floor(1000+Math.random()*9000))); }
+  async function guardar(e){
+    var v=valorDe(e).trim();
+    if(v&&v.length!==4){ alert("El PIN tiene que ser de 4 números."); return; }
+    var repe=empleados.find(function(x){ return x.id!==e.id&&String(x.pin||"").trim()===v&&v; });
+    if(repe){ alert("Ese PIN ya es de "+repe.nombre+". Poné otro, si no no sirve para distinguirlos."); return; }
+    setGuardando(e.id);
+    await p.onSaveEmpleado({...e, pin:v});
+    setGuardando("");
+    setEdit(function(o){var n={...o};delete n[e.id];return n;});
+  }
+
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:14};
+  return (
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{...CAJA,marginBottom:12,fontSize:12,color:"#666",lineHeight:1.6}}>
+        Con PIN cargado, al tocar su nombre primero tiene que marcarlo y recién después se
+        abre la cámara. <strong style={{color:"#888"}}>Al que no tenga PIN se lo deja marcar igual</strong>, para que
+        nadie se quede sin fichar mientras los cargás.
+        {sinPin>0&&<div style={{color:"#D4A017",marginTop:6}}>⚠️ {sinPin} sin PIN todavía.</div>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+      </div>
+      {lista.length===0?(
+        <div style={{...CAJA,color:"#555",fontSize:13,textAlign:"center"}}>No hay empleados en este local.</div>
+      ):lista.map(function(e){
+        var v=valorDe(e), cambio=edit[e.id]!==undefined&&edit[e.id]!==String(e.pin||"");
+        var l=getLocal(e.local)||{};
+        return (
+          <div key={e.id} style={{...CAJA,marginBottom:7,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <span style={{flex:1,minWidth:130}}>
+              <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{e.nombre}</div>
+              <div style={{fontSize:10.5,color:"#444"}}>{l.emoji} {l.nombre}</div>
+            </span>
+            <input value={verPin[e.id]?v:(v?"••••".slice(0,v.length):"")}
+              onChange={function(ev){escribir(e,ev.target.value);}}
+              onFocus={function(){setVerPin(function(o){var n={...o};n[e.id]=true;return n;});}}
+              inputMode="numeric" placeholder="sin PIN" maxLength={4}
+              style={{...INP,width:86,textAlign:"center",letterSpacing:4,fontSize:15,fontWeight:700}}/>
+            <button onClick={function(){setVerPin(function(o){var n={...o};n[e.id]=!n[e.id];return n;});}}
+              style={{...GH,padding:"7px 9px",fontSize:12}} title={verPin[e.id]?"Ocultar":"Ver"}>{verPin[e.id]?"🙈":"👁"}</button>
+            <button onClick={function(){sortear(e);}} style={{...GH,padding:"7px 10px",fontSize:11.5}} title="Sortear uno">🎲</button>
+            <button onClick={function(){guardar(e);}} disabled={!cambio||guardando===e.id}
+              style={{...BS(cambio?"#1A8A7B":"#222"),padding:"7px 13px",fontSize:12,opacity:cambio?1:0.4,cursor:cambio?"pointer":"default"}}>
+              {guardando===e.id?"…":"Guardar"}
+            </button>
+          </div>
+        );
+      })}
+      <div style={{fontSize:10.5,color:"#333",marginTop:10,lineHeight:1.6}}>
+        El PIN frena el favor entre compañeros, que es el problema real. No es una
+        contraseña: cuatro números se miran por encima del hombro. Por eso la foto se saca
+        igual, siempre — esa es la prueba.
+      </div>
     </div>
   );
 }
@@ -16663,11 +16808,16 @@ async function sbLoadEmpleados() {
     return await r.json();
   } catch(e) { return []; }
 }
+// Devuelve {ok, error} en vez de tragarse todo: un guardado que falla en silencio es peor
+// que uno que falla a los gritos. Los que ya lo llamaban ignoran el resultado y siguen
+// andando igual.
 async function sbSaveEmpleado(emp) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/empleados", { method: "POST", headers: h, body: JSON.stringify(emp) });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/empleados", { method: "POST", headers: h, body: JSON.stringify(emp) });
+    if(!r.ok)return {ok:false, error:explicarErrorTabla("empleados", await r.text(), null)};
+    return {ok:true};
+  } catch(e) { return {ok:false, error:"Error de conexión al guardar el empleado: "+((e&&e.message)||e)}; }
 }
 async function sbDeleteEmpleado(id) {
   try {
@@ -17393,6 +17543,14 @@ export default function App() {
     if(r&&r.ok)setFichajes(function(prev){ return [f].concat(prev.filter(function(x){return x.id!==f.id;})); });
     return r;
   }
+  // Guardar un empleado avisa si Supabase lo rechaza: cargar un PIN y que se pierda en
+  // silencio sería peor que no tener PIN.
+  async function guardarEmpleado(emp){
+    var r=await sbSaveEmpleado(emp);
+    if(r&&r.ok===false){ alert(r.error); return false; }
+    setEmpleados(function(prev){ var f=prev.filter(function(x){return x.id!==emp.id;}); return [emp].concat(f); });
+    return true;
+  }
   function borrarFichaje(id){
     sbDeleteFichaje(id);
     setFichajes(function(prev){ return prev.filter(function(f){return f.id!==id;}); });
@@ -17819,7 +17977,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"]].map(function(t){
+                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_pines","🔑 PINs","#8B2FC9"]].map(function(t){
                   var act=vista===t[0];
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
@@ -17831,6 +17989,8 @@ export default function App() {
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
                    onFichar={guardarFichaje} onDelete={borrarFichaje}/>
+                :vista==="fichajes_pines"
+                ?<PanelPines empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
                    localSugerido={cu.local} onFichar={guardarFichaje}/>}
             </div>

@@ -8143,8 +8143,20 @@ function PanelNovedades(p){
   // Deuda es lo que ya se debería haber pagado: lo vencido sin pagar y el saldo de los
   // proveedores. Lo que todavía no venció —la luz de este mes, la cuota que viene de un
   // plan— no es deuda: es un vencimiento, y va en su propia tarjeta.
+  // Abrir cada renglón por quién lo debe: los rubros que van por CUIT —AFIP, ARBA, Gremio,
+  // Créditos— se parten por CUIT, y los que van por local, por local.
+  function sumarEn(mapa, clave, monto){ if(!clave)return; mapa[clave]=(mapa[clave]||0)+monto; }
+  function detalleRubro(g, mapa){
+    var claves=Object.keys(mapa).filter(function(k){return mapa[k]>0.5;})
+      .sort(function(a,b){return mapa[b]-mapa[a];});
+    if(claves.length===0)return null;
+    return claves.map(function(k){
+      var et=porCuit(g.id)?cuitVenc(k).corto:((getLocal(k)||{}).nombre||k);
+      return et+" "+fmt(mapa[k]);
+    }).join(" · ");
+  }
   var deudaRubros=GRUPOS_VENC.map(function(g){
-    var vencido=0, comprometido=0, cuantos=0;
+    var vencido=0, comprometido=0, cuantos=0, quien={};
     vencimientos.forEach(function(v){
       if(v.activo===false||grupoIdDe(v)!==g.id)return;
       if(esPlan(v)){
@@ -8155,7 +8167,8 @@ function PanelNovedades(p){
           // vencimiento quedó atrás pero el segundo o el corrido todavía no llegaron, se
           // puede pagar: no es deuda.
           // La deuda se muestra entera, venga del mes que venga: lo que se debe se debe.
-          if(estaVencida(c,hoy)){vencido+=m;cuantos++;}else{comprometido+=m;}
+          if(estaVencida(c,hoy)){vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);}
+          else{comprometido+=m;}
         });
         return;
       }
@@ -8167,11 +8180,13 @@ function PanelNovedades(p){
       var mes=hoy.substring(0,7);
       var f=fechaVencimiento(v,mes);
       if(f&&f<hoy&&!pagoDelPeriodo(v,mes)){
-        vencido+=parseFloat(v.monto)||0;
+        var mv=parseFloat(v.monto)||0;
+        vencido+=mv;
         cuantos++;
+        sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,mv);
       }
     });
-    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos};
+    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos, detalle:detalleRubro(g,quien)};
   }).filter(function(x){ return x.vencido>0; });
   // Lo que todavía no venció, por si interesa el compromiso por delante de los planes.
   var porDelante=GRUPOS_VENC.reduce(function(a,g){
@@ -8185,11 +8200,17 @@ function PanelNovedades(p){
 
   var deudaProv=proveedores.map(function(pv){
     var movs=saldosProv.filter(function(m){return m.prov_id===pv.id;});
+    var porLocal={};
     var saldo=movs.reduce(function(a,m){
       var v=parseFloat(m.monto)||0;
-      return m.tipo==="pago"?a-v:a+v;   // saldo_inicial y compra suman, pago resta
+      var signo=m.tipo==="pago"?-1:1;   // saldo_inicial y compra suman, pago resta
+      sumarEn(porLocal,m.local,signo*v);
+      return a+signo*v;
     },0);
-    return {pv:pv, saldo:saldo};
+    var det=Object.keys(porLocal).filter(function(k){return porLocal[k]>0.5;})
+      .sort(function(a,b){return porLocal[b]-porLocal[a];})
+      .map(function(k){ return ((getLocal(k)||{}).nombre||k)+" "+fmt(porLocal[k]); }).join(" · ");
+    return {pv:pv, saldo:saldo, detalle:det||null};
   }).filter(function(x){ return x.saldo>0.5; })
     .sort(function(a,b){ return b.saldo-a.saldo; });
 
@@ -8217,9 +8238,12 @@ function PanelNovedades(p){
   }
   function Fila(props){
     return(
-      <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline",padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414"}}>
-        <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
-        <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
+      <div style={{padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline"}}>
+          <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
+          <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{props.der}</div>
+        </div>
+        {props.detalle&&<div style={{fontSize:10,color:"#4A4A4A",marginTop:2,fontVariantNumeric:"tabular-nums"}}>{props.detalle}</div>}
       </div>
     );
   }
@@ -8301,12 +8325,14 @@ function PanelNovedades(p){
               {deudaRubros.map(function(x,i){
                 return <Fila key={x.g.id} primera={i===0}
                   izq={<span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
+                  detalle={x.detalle}
                   der={fmt(x.vencido)} color="#E0714A"/>;
               })}
               {deudaProv.length>0&&<Sub primera={deudaRubros.length===0}>Saldo con proveedores</Sub>}
               {(expandido.prov?deudaProv:deudaProv.slice(0,5)).map(function(x,i){
                 return <Fila key={x.pv.id} primera={i===0}
                   izq={<span>🏭 {x.pv.nombre}{x.pv.categoria?<span style={{color:"#454545"}}> · {x.pv.categoria}</span>:null}</span>}
+                  detalle={x.detalle}
                   der={fmt(x.saldo)} color="#C8C8C8"/>;
               })}
               <Mas id="prov" n={expandido.prov?0:deudaProv.length-5}/>

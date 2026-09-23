@@ -1459,7 +1459,10 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
    - **💳 Deudas por título**, en dos bloques: **vencido sin pagar**, por rubro —AFIP, ARBA,
      Municipalidad, Servicios, Gremio, Créditos, Otros—, y **saldo con proveedores**, uno por
      proveedor, con el total abajo. La deuda se muestra **entera**, venga del mes que venga:
-     lo que se debe se debe.
+     lo que se debe se debe. Cada renglón se abre en una línea chica con **quién la debe**:
+     los rubros que van por CUIT —AFIP, ARBA, Gremio, Créditos— se parten por CUIT («SRL
+     $100.000 · CUIT personal $60.000»), los que van por local se parten por local, y el
+     saldo de cada proveedor se parte por local («El Bodegón $250.000 · Kusama $180.000»).
    - **🏪 Cierres de caja** del período, con su local y su total.
    - **📅 Vencimientos del mes**: lo que queda por vencer **en el mes en curso**, con su
      fecha —«cuota 3 · 26/09/2026 · en 3d»—. Lo vencido no se repite acá: va en Deudas, y una

@@ -1443,6 +1443,84 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 
 ---
 
+## 🕐 Fichaje
+
+Los chicos marcan entrada y salida, y la app **saca una foto en el momento**. La foto no se
+compara con nada ni se reconoce a nadie: **es la prueba**. Si alguien fichó por un
+compañero, se ve en la foto y listo. Eso evita tener que guardar datos biométricos de los
+empleados, que en Argentina son dato sensible bajo la Ley 25.326 y necesitan consentimiento
+firmado.
+
+Sí se usa **detección de cara** —no reconocimiento—: el navegador mira si hay *una* cara en
+el cuadro, sin averiguar de quién es. Si no ve ninguna, no deja marcar, así nadie ficha
+apuntando al techo o con el dedo sobre la cámara. Esto anda en Chrome de Android; en iPhone
+el navegador no lo trae, así que ahí la foto se saca igual y la marca queda con `cara` en
+blanco. Nunca bloquea el fichaje por no poder mirar.
+
+### Dónde se ficha
+
+- **La tablet del local**: se entra a 🕐 Fichaje → Fichar, se elige el local una vez y se
+  tilda **«Tablet del local»**. Queda guardado en ese aparato, así que la pantalla abre
+  siempre igual. Después de cada marca vuelve sola a la lista a los 6 segundos.
+- **El celular de cada uno**: los usuarios que no son administración ven una tarjeta
+  **🕐 Fichar** en su pantalla de inicio. Las marcas hechas desde un celular quedan con
+  `aparato = celular` y, si el que ficha da permiso, con la ubicación: en el registro
+  aparece un **📍 dónde** que abre el mapa. Si no da permiso, se guarda igual sin ubicación.
+
+La lista muestra a cada uno con un punto verde si está adentro («Adentro desde 09:12») o
+gris si no. **Adentro o afuera se decide por la última marca de las últimas 18 horas, no por
+la del día**: el que entra a las 20 y sale a la 1 sigue adentro aunque haya cambiado la
+fecha. Por eso también las horas se calculan con la **hora local**, no con la UTC: un cierre
+a las 22:30 quedaría con fecha del día siguiente si se usara `toISOString()`.
+
+### El registro
+
+En 🕐 Fichaje → **Registro** está el parte del mes: horas totales, cuánta gente marcó y
+cuántos turnos quedaron **sin cerrar** (alguien que entró y nunca marcó la salida). Abriendo
+cada empleado se ven sus jornadas, con la miniatura de cada foto —se hace clic y se agranda,
+con el local, el aparato y el mapa— y un 🗑 para borrar una marca mal puesta.
+
+Un turno que cruza la medianoche se cuenta **entero en el día en que se entró**, no partido
+al medio.
+
+Cuando no anduvo la cámara o alguien se olvidó de marcar, **✎ Marca manual** carga la
+entrada o la salida a mano, con fecha, hora y el motivo. Queda anotada como manual (se ve un
+✎ en vez de la foto), para que se note la diferencia con lo que marcó la persona.
+
+Se cargan **los últimos cuatro meses** de marcas: alcanza para liquidar el mes y discutir el
+anterior, sin traer años de datos que nadie mira.
+
+### Lo que hay que crear en Supabase
+
+```sql
+create table if not exists fichajes (
+  id              text primary key,
+  empleado_id     text,
+  empleado_nombre text,
+  local           text,
+  fecha           date,
+  hora            text,
+  tipo            text,
+  momento         timestamptz,
+  foto_url        text,
+  cara            boolean,
+  lat             double precision,
+  lng             double precision,
+  aparato         text,
+  usuario         text,
+  manual          boolean,
+  notas           text,
+  created_at      timestamptz default now()
+);
+alter table fichajes disable row level security;
+create index if not exists fichajes_fecha_idx on fichajes (fecha);
+```
+
+Y en **Supabase → Storage**, un bucket llamado **`fichajes`**, marcado como **público**. Si
+el bucket no está, **la marcación se guarda igual, sin foto**, y avisa en pantalla: llegar
+tarde y que no ande la cámara son dos problemas distintos, y perder el horario por el
+segundo sería el peor de los dos.
+
 ## 🔔 Novedades del día
 
 Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No

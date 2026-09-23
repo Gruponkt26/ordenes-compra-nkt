@@ -9565,8 +9565,12 @@ function PanelVencimientos(p){
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
   // La factura de un servicio: el período y el número de asociado son de la cuenta, y las
   // dos cuotas se pagan las dos, cada una con su fecha y su importe.
+  // Las cuotas son una lista: la mayoría de las facturas vienen en dos, pero un convenio de
+  // pago de una deuda de luz puede venir en ocho. El tope es un año desde la primera —más
+  // que eso ya no es una factura, es un plan— y doce cuotas.
+  var MAX_CUOTAS_FACTURA=12;
   var FORM_FACTURA={concepto:"Luz",local:"l1",nro_asociado:"",periodo:mesCurrent,debito_cuenta:"",debito_cbu:"",
-    c1_vence:"",c1_monto:"",c2_vence:"",c2_monto:"",notas:""};
+    cuotas:[{vence:"",monto:""},{vence:"",monto:""}],notas:""};
   var [formFactura,setFormFactura]=useState(FORM_FACTURA);
   // El crédito bancario. La deuda a la fecha se carga a mano: es la que informa el banco,
   // que incluye intereses devengados y casi nunca coincide con la suma de las cuotas que
@@ -9639,25 +9643,59 @@ function PanelVencimientos(p){
   }
   function abrirEditarFactura(v){
     var cs=cuotasPlan(v);
-    var c1=cs[0]||{}, c2=cs[1]||{};
     setFormFactura({concepto:v.concepto||"", local:v.local||"l1", nro_asociado:v.nro_asociado||"",
       periodo:v.periodo||mesFiltro, debito_cuenta:v.debito_cuenta||"", debito_cbu:v.debito_cbu||"",
-      c1_vence:c1.vence||"", c1_monto:c1.monto||"", c2_vence:c2.vence||"", c2_monto:c2.monto||"",
+      cuotas:cs.length>0?cs.map(function(c){return {vence:c.vence||"",monto:String(c.monto||"")};}):[{vence:"",monto:""}],
       notas:v.notas||""});
     setEditFacturaId(v.id); setShowFactura(true); setShowForm(false); setShowPlan(false);
+  }
+  // Agregar una cuota propone el mes siguiente a la última y su mismo importe: cargar ocho
+  // cuotas iguales a mano es donde se cuelan los errores.
+  function agregarCuotaFactura(){
+    setFormFactura(function(f){
+      if(f.cuotas.length>=MAX_CUOTAS_FACTURA)return f;
+      var ult=f.cuotas[f.cuotas.length-1]||{};
+      var prop="";
+      if(ult.vence){
+        var pr=ult.vence.split("-");
+        var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10),1);
+        var dia=parseInt(pr[2],10);
+        var ultimo=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+        prop=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(Math.min(dia,ultimo)).padStart(2,"0");
+      }
+      return {...f,cuotas:f.cuotas.concat([{vence:prop,monto:ult.monto||""}])};
+    });
+  }
+  function quitarCuotaFactura(i){
+    setFormFactura(function(f){ return f.cuotas.length<=1?f:{...f,cuotas:f.cuotas.filter(function(_,j){return j!==i;})}; });
+  }
+  function tocarCuotaFactura(i,campo,valor){
+    setFormFactura(function(f){
+      return {...f,cuotas:f.cuotas.map(function(c,j){ if(j!==i)return c; var n={...c}; n[campo]=valor; return n; })};
+    });
   }
   function doSaveFactura(){
     var f=formFactura;
     if(!f.concepto.trim()){alert("Ponele un concepto a la factura (Luz, Gas, Agua...).");return;}
-    if(!f.c1_vence||!(parseFloat(f.c1_monto)>0)){alert("La cuota 1 necesita su vencimiento y su importe.");return;}
-    // La cuota 2 es opcional: hay facturas que vienen en un solo pago.
-    var hayDos=!!f.c2_vence||!!f.c2_monto;
-    if(hayDos&&(!f.c2_vence||!(parseFloat(f.c2_monto)>0))){alert("A la cuota 2 le falta el vencimiento o el importe. Completá los dos, o dejá los dos vacíos si la factura viene en un solo pago.");return;}
+    // Se ignoran las filas vacías del final: agregar una de más y no llenarla es normal.
+    var filas=f.cuotas.filter(function(c){ return c.vence||c.monto; });
+    if(filas.length===0){alert("La factura necesita al menos una cuota con su vencimiento y su importe.");return;}
+    var mala=filas.findIndex(function(c){ return !c.vence||!(parseFloat(c.monto)>0); });
+    if(mala>=0){alert("A la cuota "+(mala+1)+" le falta el vencimiento o el importe. Completá los dos, o borrá la fila.");return;}
+    var fechas=filas.map(function(c){return c.vence;}).sort();
+    // Un año desde la primera: más que eso ya no es una factura sino un plan de pago, y
+    // conviene cargarlo como tal para que tenga su caducidad y su número.
+    var dias=Math.round((new Date(fechas[fechas.length-1]+"T00:00:00")-new Date(fechas[0]+"T00:00:00"))/86400000);
+    if(dias>366){
+      alert("Las cuotas se estiran "+dias+" días, más de un año.\n\nUna factura llega hasta un año; si es más largo conviene cargarlo como plan de pago, que además lleva su número y su caducidad.");
+      return;
+    }
     var anterior=vencimientos.find(function(x){return x.id===editFacturaId;});
     var viejas=anterior?cuotasPlan(anterior):[];
     // Se conservan los pagos ya hechos: editar el importe de una cuota paga no la despaga.
-    var cuotas=[{nro:1, vence:f.c1_vence, monto:parseFloat(f.c1_monto)||0, pago:(viejas[0]||{}).pago||null}];
-    if(hayDos)cuotas.push({nro:2, vence:f.c2_vence, monto:parseFloat(f.c2_monto)||0, pago:(viejas[1]||{}).pago||null});
+    var cuotas=filas.map(function(c,i){
+      return {nro:i+1, vence:c.vence, monto:parseFloat(c.monto)||0, pago:(viejas[i]||{}).pago||null};
+    }).sort(function(a,b){return a.vence.localeCompare(b.vence);}).map(function(c,i){ return {...c,nro:i+1}; });
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"servicios";
     onSave({
       id:editFacturaId||("fact_"+String(Date.now())),
@@ -10501,26 +10539,52 @@ function PanelVencimientos(p){
           </div>
 
           <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Las cuotas</div>
-          {[["1","c1_vence","c1_monto"],["2","c2_vence","c2_monto"]].map(function(c){
+          {formFactura.cuotas.map(function(c,i){
             return (
-              <div key={c[0]} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:9,flexWrap:"wrap"}}>
-                <div style={{fontSize:12,fontWeight:800,color:"#1A8A7B",width:64,paddingBottom:9}}>Cuota {c[0]}</div>
+              <div key={i} style={{display:"flex",gap:9,alignItems:"flex-end",marginBottom:9,flexWrap:"wrap"}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#1A8A7B",width:64,paddingBottom:9}}>Cuota {i+1}</div>
                 <div style={{flex:1,minWidth:130}}>
                   <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Vencimiento</label>
-                  <input type="date" value={formFactura[c[1]]} onChange={function(e){var v=e.target.value;setFormFactura(function(f){var n={...f};n[c[1]]=v;return n;});}} style={INP}/>
+                  <input type="date" value={c.vence} onChange={function(e){tocarCuotaFactura(i,"vence",e.target.value);}} style={INP}/>
                 </div>
                 <div style={{flex:1,minWidth:110}}>
                   <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Importe</label>
-                  <input type="number" value={formFactura[c[2]]} onChange={function(e){var v=e.target.value;setFormFactura(function(f){var n={...f};n[c[2]]=v;return n;});}} placeholder="0" style={INP}/>
+                  <input type="number" value={c.monto} onChange={function(e){tocarCuotaFactura(i,"monto",e.target.value);}} placeholder="0" style={INP}/>
                 </div>
+                <button onClick={function(){quitarCuotaFactura(i);}} disabled={formFactura.cuotas.length<=1}
+                  title="Quitar esta cuota"
+                  style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#555",fontSize:12,cursor:formFactura.cuotas.length<=1?"default":"pointer",padding:"9px 11px",opacity:formFactura.cuotas.length<=1?0.3:1}}>✕</button>
               </div>
             );
           })}
-          {(parseFloat(formFactura.c1_monto)>0||parseFloat(formFactura.c2_monto)>0)&&(
-            <div style={{fontSize:11,color:"#1A8A7B",marginBottom:10}}>
-              Total del período: <strong>{fmt((parseFloat(formFactura.c1_monto)||0)+(parseFloat(formFactura.c2_monto)||0))}</strong>
-            </div>
-          )}
+          {(function(){
+            var llenas=formFactura.cuotas.filter(function(c){return c.vence&&parseFloat(c.monto)>0;});
+            var total=formFactura.cuotas.reduce(function(a,c){return a+(parseFloat(c.monto)||0);},0);
+            var fechas=formFactura.cuotas.map(function(c){return c.vence;}).filter(Boolean).sort();
+            var dias=fechas.length>1?Math.round((new Date(fechas[fechas.length-1]+"T00:00:00")-new Date(fechas[0]+"T00:00:00"))/86400000):0;
+            return (
+              <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+                <button onClick={agregarCuotaFactura} disabled={formFactura.cuotas.length>=MAX_CUOTAS_FACTURA}
+                  style={{background:"none",border:"1px solid #1A8A7B55",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,
+                    cursor:formFactura.cuotas.length>=MAX_CUOTAS_FACTURA?"default":"pointer",padding:"7px 12px",opacity:formFactura.cuotas.length>=MAX_CUOTAS_FACTURA?0.35:1}}>
+                  + Agregar cuota
+                </button>
+                <span style={{fontSize:10,color:"#3F3F3F"}}>
+                  {formFactura.cuotas.length>=MAX_CUOTAS_FACTURA?"Máximo "+MAX_CUOTAS_FACTURA+" cuotas":"Hasta "+MAX_CUOTAS_FACTURA+", dentro de un año"}
+                </span>
+                {total>0&&(
+                  <span style={{fontSize:11,color:"#1A8A7B",marginLeft:"auto"}}>
+                    {llenas.length} cuota{llenas.length===1?"":"s"} · total <strong>{fmt(total)}</strong>
+                  </span>
+                )}
+                {dias>366&&(
+                  <span style={{fontSize:11,color:"#C1440E",width:"100%"}}>
+                    ⚠️ Se estiran {dias} días, más de un año. Si es más largo, cargalo como plan de pago.
+                  </span>
+                )}
+              </div>
+            );
+          })()}
           <div style={{marginBottom:10}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Notas</label>
             <input value={formFactura.notas} onChange={function(e){setFormFactura(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional" style={INP}/>

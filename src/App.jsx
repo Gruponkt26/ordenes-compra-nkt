@@ -9055,6 +9055,17 @@ function PanelNovedades(p){
     .sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
   var ventas=cierresR.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
   var totalRetiroCaja=cierresR.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
+  // El total abierto por local: en una semana hay varios cierres del mismo local y un solo
+  // número al pie no dice de dónde salió la plata.
+  var retiroPorLocal=(function(){
+    var m={};
+    cierresR.forEach(function(c){
+      var v=parseFloat(c.retiro_caja||0)||0;
+      if(v>0)m[c.local]=(m[c.local]||0)+v;
+    });
+    return Object.keys(m).sort(function(a,b){return m[b]-m[a];})
+      .map(function(k){ return ((getLocal(k)||{}).nombre||k)+" "+fmt(m[k]); }).join(" · ");
+  })();
   // "No hubo retiros" y "el retiro no se está guardando" se ven igual en pantalla y son
   // cosas muy distintas. Se distinguen: Postgrest devuelve la clave en null cuando la
   // columna existe y está vacía, y la omite del todo cuando la columna no existe. Si
@@ -9337,7 +9348,8 @@ function PanelNovedades(p){
               {totalRetiroCaja>0&&(
                 <div style={{fontSize:11,color:"#8B6BB8",padding:"8px 2px 0",borderTop:"1px solid #141414",marginTop:6}}>
                   💼 Retirado de caja {etiquetaRango}: <strong>{fmt(totalRetiroCaja)}</strong>
-                  <span style={{color:"#3F3F3F"}}> — queda anotado, no se resta de la venta.</span>
+                  <div style={{color:"#6A5A8A",marginTop:2}}>{retiroPorLocal}</div>
+                  <div style={{color:"#3F3F3F",marginTop:2}}>Queda anotado, no se resta de la venta.</div>
                 </div>
               )}
             </div>

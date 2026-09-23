@@ -1636,7 +1636,9 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      saldo de cada proveedor se parte por local («El Bodegón $250.000 · Kusama $180.000»).
    - **🏪 Cierres de caja** del período, con su local y su total. Si ese día hubo **retiro
      de caja**, va en una línea chica abajo con su monto y su nota —«💼 retiro de caja
-     $120.000 · pago proveedor verdura»—, y al pie el total retirado. El cierre sólo lo
+     $120.000 · pago proveedor verdura»—, y al pie el total retirado, **abierto por local**
+     («El Bodegón $200.000 · Kusama $50.000»): en una semana hay varios cierres del mismo
+     local y un solo número no dice de dónde salió la plata. El cierre sólo lo
      anota: **no se descuenta de la venta**, pero es plata que salió del cajón y conviene
      verla sin entrar a cada cierre.
    - **📅 Vencimientos del mes**: lo que queda por vencer **en el mes en curso**, con **de

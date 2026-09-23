@@ -236,6 +236,53 @@ async function sbDeleteVacacion(id) {
   } catch(e){ alert("Error de conexión al borrar las vacaciones: "+e.message); return false; }
 }
 
+// ─── FICHAJES ─────────────────────────────────────────────────────────────────
+// Cada vez que alguien entra o sale queda una fila con la hora, quién es, de qué local,
+// desde qué aparato y una foto sacada en el momento. La foto no se compara con nada: es
+// la prueba. Si alguien fichó por otro, se ve.
+var SQL_FICHAJES="create table if not exists fichajes (\n  id              text primary key,\n  empleado_id     text,\n  empleado_nombre text,\n  local           text,\n  fecha           date,\n  hora            text,\n  tipo            text,\n  momento         timestamptz,\n  foto_url        text,\n  cara            boolean,\n  lat             double precision,\n  lng             double precision,\n  aparato         text,\n  usuario         text,\n  manual          boolean,\n  notas           text,\n  created_at      timestamptz default now()\n);\nalter table fichajes disable row level security;\ncreate index if not exists fichajes_fecha_idx on fichajes (fecha);";
+
+async function sbLoadFichajes() {
+  try {
+    // Los últimos cuatro meses: alcanza para el sueldo del mes y para discutir el anterior,
+    // y no trae años de marcas que nadie va a mirar.
+    var desde=new Date(Date.now()-120*86400000);
+    var d0=desde.getFullYear()+"-"+String(desde.getMonth()+1).padStart(2,"0")+"-"+String(desde.getDate()).padStart(2,"0");
+    var r = await fetch(SURL + "/rest/v1/fichajes?fecha=gte."+d0+"&order=momento.desc&limit=10000", { headers: {...SH,"Cache-Control":"no-cache","Pragma":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveFichaje(f) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r=await fetch(SURL+"/rest/v1/fichajes",{method:"POST",headers:h,body:JSON.stringify(f)});
+    if(!r.ok){ return {ok:false, error:explicarErrorTabla("fichajes", await r.text(), SQL_FICHAJES)}; }
+    return {ok:true};
+  } catch(e){ return {ok:false, error:"Error de conexión al guardar el fichaje: "+e.message}; }
+}
+async function sbDeleteFichaje(id) {
+  try {
+    var r=await fetch(SURL+"/rest/v1/fichajes?id=eq."+id,{method:"DELETE",headers:SH});
+    if(!r.ok){ alert(explicarErrorTabla("fichajes", await r.text(), SQL_FICHAJES)); return false; }
+    return true;
+  } catch(e){ alert("Error de conexión al borrar el fichaje: "+e.message); return false; }
+}
+// La foto va al bucket "fichajes". Si el bucket no existe la marcación se guarda igual,
+// sin foto: llegar tarde y que no ande la cámara son dos problemas distintos, y perder el
+// horario por el segundo sería el peor de los dos.
+async function sbSubirFotoFichaje(blob, path) {
+  try {
+    var r = await fetch(SURL+"/storage/v1/object/fichajes/"+path,{
+      method:"POST",
+      headers:{"apikey":SKEY,"Authorization":"Bearer "+SKEY,"Content-Type":"image/jpeg","x-upsert":"true"},
+      body:blob
+    });
+    if(!r.ok){ return {ok:false, error:await r.text()}; }
+    return {ok:true, url:SURL+"/storage/v1/object/public/fichajes/"+path};
+  } catch(e) { return {ok:false, error:e&&e.message?e.message:String(e)}; }
+}
+
 async function sbLoadLocalesDatos() {
   try {
     var r = await fetch(SURL + "/rest/v1/locales_datos", { headers: SH });
@@ -8083,6 +8130,456 @@ function avisosVencimientos(vencimientos, diasAviso){
 // lo que vence, y lo que los socios pusieron o sacaron. No agrega datos nuevos —los lee de
 // los mismos lugares que los módulos— pero evita tener que entrar a cada uno para ver si
 // hay algo.
+// ─── FICHAJE ──────────────────────────────────────────────────────────────────
+// La hora local, no la UTC: toISOString() adelanta el día tres horas antes de tiempo, y una
+// salida a las 22:30 quedaría con fecha del día siguiente. En un restaurante que cierra
+// pasada la medianoche eso ensucia todos los partes.
+function fechaLocal(d){
+  var x=d||new Date();
+  return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");
+}
+function horaLocal(d){
+  var x=d||new Date();
+  return String(x.getHours()).padStart(2,"0")+":"+String(x.getMinutes()).padStart(2,"0");
+}
+function fmtHs(min){
+  var h=Math.floor(min/60), m=Math.round(min%60);
+  return h+"h"+(m>0?" "+String(m).padStart(2,"0"):"");
+}
+// Las marcas de alguien, en orden, armadas en pares entrada→salida. Un turno que cruza la
+// medianoche queda en un solo par: la jornada es del día en que se entró, no del que se salió.
+function jornadasDe(marcas){
+  var orden=(marcas||[]).slice().sort(function(a,b){return String(a.momento||"").localeCompare(String(b.momento||""));});
+  var pares=[], abierta=null;
+  orden.forEach(function(f){
+    if(f.tipo==="salida"){ pares.push({entrada:abierta,salida:f}); abierta=null; }
+    else { if(abierta)pares.push({entrada:abierta,salida:null}); abierta=f; }
+  });
+  if(abierta)pares.push({entrada:abierta,salida:null});
+  return pares;
+}
+function minutosDe(j){
+  if(!j.entrada||!j.salida)return 0;
+  var d=(new Date(j.salida.momento)-new Date(j.entrada.momento))/60000;
+  return d>0?d:0;
+}
+// El navegador sabe encontrar una cara sin ayuda de nadie en Chrome de Android; en iPhone
+// no existe. Cuando está, no deja marcar apuntando al techo. Cuando no está, se saca la
+// foto igual: la foto es la prueba, el detector es sólo para que la prueba sirva.
+function detectorDeCaras(){
+  try{ return (typeof window!=="undefined"&&window.FaceDetector)?new window.FaceDetector({fastMode:true,maxDetectedFaces:1}):null; }
+  catch(e){ return null; }
+}
+function ubicacionAhora(){
+  return new Promise(function(res){
+    if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
+    var listo=false;
+    function fin(v){ if(listo)return; listo=true; res(v); }
+    setTimeout(function(){ fin(null); },5000);
+    navigator.geolocation.getCurrentPosition(
+      function(pos){ fin({lat:pos.coords.latitude,lng:pos.coords.longitude}); },
+      function(){ fin(null); },
+      {enableHighAccuracy:false,timeout:5000,maximumAge:120000});
+  });
+}
+function sacarFoto(v){
+  return new Promise(function(res){
+    try{
+      if(!v||!v.videoWidth)return res(null);
+      var ancho=360, alto=Math.round(ancho*v.videoHeight/v.videoWidth)||270;
+      var c=document.createElement("canvas"); c.width=ancho; c.height=alto;
+      c.getContext("2d").drawImage(v,0,0,ancho,alto);
+      c.toBlob(function(b){ res(b||null); },"image/jpeg",0.7);
+    }catch(e){ res(null); }
+  });
+}
+
+// La pantalla con la que marcan los chicos. Sirve igual en la tablet fija del local —que se
+// queda siempre acá— y en el celular de cada uno.
+function PanelFichar(p){
+  var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var fichajes=p.fichajes||[];
+  var [local,setLocal]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_local")||p.localSugerido||"l1"; }catch(e){ return p.localSugerido||"l1"; }
+  });
+  var [kiosco,setKiosco]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
+  });
+  var [elegido,setElegido]=useState(null);
+  var [fase,setFase]=useState("lista");   // lista | camara | guardando | listo
+  var [cara,setCara]=useState(null);      // true/false si el navegador sabe mirar, null si no
+  var [errCam,setErrCam]=useState("");
+  var [recibo,setRecibo]=useState(null);  // lo último marcado, para mostrarlo
+  var videoRef=useRef(null), streamRef=useRef(null);
+
+  function guardarLocal(v){ setLocal(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
+  function guardarKiosco(v){ setKiosco(v); try{ window.localStorage.setItem("nkt_fichaje_kiosco",v?"1":"0"); }catch(e){} }
+
+  var delLocal=empleados.filter(function(e){return e.local===local;});
+
+  // Adentro o afuera se decide por la última marca de las últimas 18 horas, no por la del
+  // día: el que entró a las 20 y sale a la 1 sigue adentro aunque haya cambiado la fecha.
+  function estadoDe(empId){
+    var limite=new Date(Date.now()-18*3600000).toISOString();
+    var mias=fichajes.filter(function(f){return f.empleado_id===empId&&String(f.momento||"")>=limite;})
+      .sort(function(a,b){return String(a.momento||"").localeCompare(String(b.momento||""));});
+    var ult=mias[mias.length-1];
+    return {adentro:!!(ult&&ult.tipo!=="salida"), ultimo:ult};
+  }
+
+  // La cámara vive mientras dure la pantalla de marcación y se apaga al salir: dejarla
+  // prendida en una tablet que queda sola todo el día no le hace bien a nadie.
+  useEffect(function(){
+    if(fase!=="camara"&&fase!=="guardando"){ apagar(); return; }
+    var vivo=true, timer=null;
+    var det=detectorDeCaras();
+    if(!det)setCara(null);
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},audio:false})
+      .then(function(st){
+        if(!vivo){ st.getTracks().forEach(function(t){t.stop();}); return; }
+        streamRef.current=st;
+        if(videoRef.current){ videoRef.current.srcObject=st; videoRef.current.play().catch(function(){}); }
+        if(det){
+          timer=setInterval(function(){
+            if(!videoRef.current||!videoRef.current.videoWidth)return;
+            det.detect(videoRef.current).then(function(caras){ if(vivo)setCara(caras&&caras.length>0); })
+              .catch(function(){ if(vivo)setCara(null); });
+          },700);
+        }
+      })
+      .catch(function(e){
+        if(!vivo)return;
+        setErrCam(e&&e.name==="NotAllowedError"
+          ?"No diste permiso para la cámara. Tocá el candado en la barra del navegador y habilitala."
+          :"No se pudo abrir la cámara: "+((e&&e.message)||e));
+      });
+    function apagarTodo(){ vivo=false; if(timer)clearInterval(timer); apagar(); }
+    return apagarTodo;
+  },[fase]);
+
+  function apagar(){
+    if(streamRef.current){ streamRef.current.getTracks().forEach(function(t){t.stop();}); streamRef.current=null; }
+    if(videoRef.current)videoRef.current.srcObject=null;
+  }
+
+  function abrirCamara(emp){ setElegido(emp); setCara(null); setErrCam(""); setRecibo(null); setFase("camara"); }
+  function volver(){ setFase("lista"); setElegido(null); setCara(null); setErrCam(""); }
+
+  async function marcar(tipo){
+    if(!elegido)return;
+    setFase("guardando");
+    var ahora=new Date();
+    var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
+    var blob=await sacarFoto(videoRef.current);
+    var foto=null, avisoFoto="";
+    if(blob){
+      var sub=await sbSubirFotoFichaje(blob, fechaLocal(ahora)+"/"+id+".jpg");
+      if(sub.ok)foto=sub.url;
+      else avisoFoto="La marca quedó guardada, pero la foto no se pudo subir. Falta el bucket \"fichajes\" en Supabase → Storage (creálo público).";
+    }
+    var pos=await ubicacionAhora();
+    var fila={id:id, empleado_id:elegido.id, empleado_nombre:elegido.nombre, local:local,
+      fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
+      foto_url:foto, cara:cara, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
+      aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false, notas:""};
+    var r=await p.onFichar(fila);
+    if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
+    setRecibo({...fila, aviso:avisoFoto});
+    setFase("listo");
+    // En la tablet del local la pantalla vuelve sola a la lista: el próximo ya está esperando.
+    setTimeout(function(){ setFase(function(f){ return f==="listo"?"lista":f; }); setElegido(null); },6000);
+  }
+
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:16};
+
+  // ── El recibo de lo que se acaba de marcar ──
+  if(fase==="listo"&&recibo){
+    var esEnt=recibo.tipo==="entrada";
+    return (
+      <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto",textAlign:"center",paddingTop:20}}>
+        <div style={{fontSize:54,marginBottom:6}}>{esEnt?"🟢":"🔴"}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8"}}>{recibo.empleado_nombre}</div>
+        <div style={{fontSize:15,fontWeight:800,color:esEnt?"#3A7D44":"#C1440E",marginTop:4,textTransform:"uppercase",letterSpacing:2}}>
+          {esEnt?"Entrada":"Salida"} · {recibo.hora}
+        </div>
+        <div style={{fontSize:11,color:"#444",marginTop:4}}>{fmtDate(recibo.fecha)} · {(getLocal(recibo.local)||{}).nombre||recibo.local}</div>
+        {recibo.foto_url&&<img src={recibo.foto_url} alt="" style={{width:150,borderRadius:12,marginTop:14,border:"1px solid #222"}}/>}
+        {recibo.aviso&&<div style={{fontSize:11,color:"#D4A017",marginTop:12,lineHeight:1.5}}>⚠️ {recibo.aviso}</div>}
+        <button onClick={volver} style={{...BS("#1A6B8A"),padding:"12px 24px",fontSize:14,marginTop:18}}>Listo</button>
+      </div>
+    );
+  }
+
+  // ── La cámara ──
+  if(fase==="camara"||fase==="guardando"){
+    var est=estadoDe(elegido.id);
+    var sugerido=est.adentro?"salida":"entrada";
+    var puede=!errCam&&cara!==false;
+    return (
+      <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
+        <button onClick={volver} disabled={fase==="guardando"} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
+        <div style={{...CAJA,textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800,color:"#F0EDE8"}}>{elegido.nombre}</div>
+          <div style={{fontSize:11,color:"#444",marginBottom:12}}>
+            {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
+          </div>
+          <div style={{position:"relative",borderRadius:14,overflow:"hidden",background:"#000",border:"1px solid "+(cara===true?"#3A7D44":cara===false?"#C1440E":"#222")}}>
+            <video ref={videoRef} playsInline muted autoPlay style={{width:"100%",display:"block",transform:"scaleX(-1)"}}/>
+            {fase==="guardando"&&(
+              <div style={{position:"absolute",inset:0,background:"#000A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#F0EDE8"}}>Guardando…</div>
+            )}
+          </div>
+          {errCam
+            ?<div style={{fontSize:12,color:"#C1440E",marginTop:10,lineHeight:1.5}}>{errCam}</div>
+            :<div style={{fontSize:12,marginTop:10,color:cara===true?"#3A7D44":cara===false?"#D4A017":"#555"}}>
+              {cara===true?"✅ Te veo bien":cara===false?"⚠️ No veo ninguna cara — acomodate frente a la cámara":"📷 Mirá a la cámara"}
+            </div>}
+          <div style={{display:"flex",gap:8,marginTop:14}}>
+            {["entrada","salida"].map(function(t){
+              var es=t===sugerido;
+              var col=t==="entrada"?"#3A7D44":"#C1440E";
+              return <button key={t} onClick={function(){marcar(t);}} disabled={!puede||fase==="guardando"}
+                style={{flex:es?2:1,padding:"16px 10px",borderRadius:12,border:"1px solid "+col+(es?"":"44"),
+                  background:es?col:"#111",color:es?"#fff":col,fontFamily:"'Inter',sans-serif",
+                  fontSize:es?15:13,fontWeight:800,cursor:puede?"pointer":"not-allowed",opacity:puede?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
+                {t==="entrada"?"🟢 Entrada":"🔴 Salida"}
+              </button>;
+            })}
+          </div>
+          <div style={{fontSize:10,color:"#333",marginTop:10}}>La foto queda guardada con la hora. No se compara con nada.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── La lista de los chicos ──
+  return (
+    <div style={{fontFamily:"'Inter',sans-serif",maxWidth:640,margin:"0 auto"}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+          var act=local===l.id;
+          return <button key={l.id} onClick={function(){guardarLocal(l.id);}}
+            style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",
+              color:act?l.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>;
+        })}
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#555",cursor:"pointer",marginLeft:"auto"}}>
+          <input type="checkbox" checked={kiosco} onChange={function(e){guardarKiosco(e.target.checked);}}/>
+          Tablet del local
+        </label>
+      </div>
+      <div style={{fontSize:11,color:"#444",marginBottom:10}}>
+        {fmtDate(fechaLocal())} · Tocá tu nombre para marcar
+      </div>
+      {delLocal.length===0?(
+        <div style={{...CAJA,color:"#555",fontSize:13,textAlign:"center"}}>No hay empleados cargados en este local.</div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8}}>
+          {delLocal.map(function(e){
+            var est=estadoDe(e.id);
+            var col=est.adentro?"#3A7D44":"#333";
+            return (
+              <button key={e.id} onClick={function(){abrirCamara(e);}}
+                style={{background:"#0F0F0F",border:"1px solid "+(est.adentro?"#3A7D4455":"#1A1A1A"),borderRadius:13,padding:"15px 12px",
+                  textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
+                  <span style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}/>
+                  <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.nombre}</span>
+                </div>
+                <div style={{fontSize:10.5,color:est.adentro?"#3A7D44":"#444"}}>
+                  {est.adentro?("Adentro desde "+(est.ultimo?est.ultimo.hora:"—")):(est.ultimo?("Salió "+est.ultimo.hora):"Sin marcar hoy")}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// El parte para la administración: quién marcó, cuánto trabajó y la foto de cada marca.
+function PanelFichajes(p){
+  var fichajes=p.fichajes||[], empleados=p.empleados||[];
+  var mesHoy=fechaLocal().substring(0,7);
+  var [mes,setMes]=useState(mesHoy);
+  var [localF,setLocalF]=useState("all");
+  var [abierto,setAbierto]=useState({});
+  var [foto,setFoto]=useState(null);
+  var [showManual,setShowManual]=useState(false);
+  var [manual,setManual]=useState({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
+
+  function fmtMes(m){ var pr=String(m).split("-"); return ["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pr[1],10)]+" "+pr[0]; }
+  var meses=[...new Set(fichajes.map(function(f){return String(f.fecha||"").substring(0,7);}).filter(Boolean))].sort().reverse();
+  if(meses.indexOf(mesHoy)<0)meses.unshift(mesHoy);
+
+  // Las jornadas se arman por empleado sobre todas sus marcas, y recién después se filtra
+  // por mes: si no, un turno que cruza la medianoche del último día del mes se partiría al medio.
+  var porEmpleado=empleados.filter(function(e){
+    return (localF==="all"||e.local===localF);
+  }).map(function(e){
+    var jor=jornadasDe(fichajes.filter(function(f){return f.empleado_id===e.id;}))
+      .filter(function(j){
+        var ref=(j.entrada||j.salida);
+        return ref&&String(ref.fecha||"").substring(0,7)===mes;
+      });
+    var min=jor.reduce(function(a,j){return a+minutosDe(j);},0);
+    var dias=[...new Set(jor.map(function(j){return (j.entrada||j.salida).fecha;}))].length;
+    var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
+    return {e:e, jor:jor.sort(function(a,b){
+      return String((b.entrada||b.salida).momento||"").localeCompare(String((a.entrada||a.salida).momento||""));
+    }), min:min, dias:dias, abiertas:abiertas};
+  }).filter(function(x){return x.jor.length>0;})
+    .sort(function(a,b){return b.min-a.min;});
+
+  var totalMin=porEmpleado.reduce(function(a,x){return a+x.min;},0);
+
+  async function guardarManual(){
+    var emp=empleados.find(function(e){return e.id===manual.empleado_id;});
+    if(!emp){alert("Elegí de quién es la marca.");return;}
+    if(!manual.fecha||!/^\d{2}:\d{2}$/.test(manual.hora)){alert("Revisá la fecha y la hora (HH:MM).");return;}
+    var pr=manual.fecha.split("-"), hm=manual.hora.split(":");
+    var cuando=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10),parseInt(hm[0],10),parseInt(hm[1],10),0);
+    var fila={id:"f"+cuando.getTime()+"_"+Math.random().toString(36).slice(2,7),
+      empleado_id:emp.id, empleado_nombre:emp.nombre, local:emp.local,
+      fecha:manual.fecha, hora:manual.hora, tipo:manual.tipo, momento:cuando.toISOString(),
+      foto_url:null, cara:null, lat:null, lng:null, aparato:"manual",
+      usuario:p.usuario||"", manual:true, notas:manual.notas||""};
+    var r=await p.onFichar(fila);
+    if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar la marca."); return; }
+    setShowManual(false);
+    setManual({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
+  }
+
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:14};
+
+  function Marca(q){
+    var f=q.f, et=q.et;
+    if(!f)return <span style={{fontSize:12,color:"#C1440E"}}>{et} —</span>;
+    return (
+      <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+        {f.foto_url
+          ?<img src={f.foto_url} alt="" onClick={function(){setFoto(f);}}
+             style={{width:26,height:26,borderRadius:6,objectFit:"cover",cursor:"pointer",border:"1px solid #222"}}/>
+          :<span style={{width:26,height:26,borderRadius:6,background:"#141414",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#444"}}>{f.manual?"✎":"—"}</span>}
+        <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
+        {f.cara===false&&<span title="El navegador no vio una cara" style={{fontSize:10}}>⚠️</span>}
+        <button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
+          style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:11,padding:"0 2px"}} title="Borrar">🗑</button>
+      </span>
+    );
+  }
+
+  return (
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
+          {meses.map(function(m){return <option key={m} value={m}>{fmtMes(m)}</option>;})}
+        </select>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+        <button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12,marginLeft:"auto"}}>✎ Marca manual</button>
+      </div>
+
+      <div style={{...CAJA,marginBottom:12,display:"flex",gap:20,flexWrap:"wrap"}}>
+        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Horas del mes</div>
+          <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{fmtHs(totalMin)}</div></div>
+        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Con marcas</div>
+          <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8"}}>{porEmpleado.length}</div></div>
+        <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Sin cerrar</div>
+          <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:porEmpleado.reduce(function(a,x){return a+x.abiertas;},0)>0?"#D4A017":"#F0EDE8"}}>
+            {porEmpleado.reduce(function(a,x){return a+x.abiertas;},0)}</div></div>
+      </div>
+
+      {porEmpleado.length===0?(
+        <div style={{...CAJA,color:"#555",fontSize:13,textAlign:"center"}}>Nadie marcó en {fmtMes(mes)}.</div>
+      ):porEmpleado.map(function(x){
+        var ab=!!abierto[x.e.id];
+        var l=getLocal(x.e.local)||{};
+        return (
+          <div key={x.e.id} style={{...CAJA,marginBottom:8,padding:0,overflow:"hidden"}}>
+            <button onClick={function(){setAbierto(function(o){var n={...o};n[x.e.id]=!n[x.e.id];return n;});}}
+              style={{width:"100%",background:"none",border:"none",padding:"13px 15px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left",fontFamily:"'Inter',sans-serif"}}>
+              <span style={{fontSize:11,color:"#444"}}>{ab?"▾":"▸"}</span>
+              <span style={{flex:1,minWidth:0}}>
+                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.e.nombre}</span>
+                <span style={{fontSize:11,color:"#444"}}> · {l.emoji} {l.nombre}</span>
+                <div style={{fontSize:10.5,color:"#3F3F3F",marginTop:2}}>
+                  {x.dias} día{x.dias===1?"":"s"}
+                  {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
+                </div>
+              </span>
+              <span style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</span>
+            </button>
+            {ab&&(
+              <div style={{borderTop:"1px solid #161616"}}>
+                {x.jor.map(function(j,i){
+                  var ref=j.entrada||j.salida;
+                  return (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 15px",borderTop:i===0?"none":"1px solid #121212",flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:"#5A5A5A",width:86,flexShrink:0}}>{fmtDate(ref.fecha)}</span>
+                      <Marca f={j.entrada} et="Entrada"/>
+                      <span style={{color:"#2A2A2A"}}>→</span>
+                      <Marca f={j.salida} et="Salida"/>
+                      <span style={{marginLeft:"auto",fontSize:13,fontWeight:700,color:minutosDe(j)>0?"#3A7D44":"#D4A017",fontVariantNumeric:"tabular-nums"}}>
+                        {minutosDe(j)>0?fmtHs(minutosDe(j)):"sin cerrar"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {foto&&(
+        <div onClick={function(){setFoto(null);}} style={{position:"fixed",inset:0,background:"#000D",zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{textAlign:"center"}}>
+            <img src={foto.foto_url} alt="" style={{maxWidth:"90vw",maxHeight:"70vh",borderRadius:14,border:"1px solid #222"}}/>
+            <div style={{fontSize:13,color:"#F0EDE8",marginTop:10,fontWeight:700}}>{foto.empleado_nombre} · {foto.tipo} {foto.hora}</div>
+            <div style={{fontSize:11,color:"#555",marginTop:3}}>
+              {fmtDate(foto.fecha)} · {(getLocal(foto.local)||{}).nombre||foto.local} · {foto.aparato||"—"}
+              {foto.lat?<a href={"https://maps.google.com/?q="+foto.lat+","+foto.lng} target="_blank" rel="noreferrer" style={{color:"#1A6B8A",marginLeft:8}}>📍 dónde</a>:null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManual&&(
+        <div style={{position:"fixed",inset:0,background:"#000C",zIndex:95,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:16,padding:18,width:"100%",maxWidth:360}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>✎ Marca manual</div>
+            <div style={{fontSize:11,color:"#555",marginBottom:14,lineHeight:1.5}}>Para corregir cuando no anduvo la cámara o alguien se olvidó de marcar. Queda anotada como manual.</div>
+            <select value={manual.empleado_id} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,empleado_id:v};});}} style={{...INP,marginBottom:8}}>
+              <option value="">— Quién —</option>
+              {empleados.filter(function(e){return e.activo!==false;}).map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
+            </select>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              {["entrada","salida"].map(function(t){
+                var act=manual.tipo===t, col=t==="entrada"?"#3A7D44":"#C1440E";
+                return <button key={t} onClick={function(){setManual(function(m){return{...m,tipo:t};});}}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid "+(act?col:"#1E1E1E"),background:act?col+"22":"#111",color:act?col:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  {t==="entrada"?"🟢 Entrada":"🔴 Salida"}</button>;
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <input type="date" value={manual.fecha} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,fecha:v};});}} style={{...INP,flex:1}}/>
+              <input type="time" value={manual.hora} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,hora:v};});}} style={{...INP,width:110}}/>
+            </div>
+            <input value={manual.notas} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,notas:v};});}} placeholder="Por qué se carga a mano (opcional)" style={{...INP,marginBottom:14}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setShowManual(false);}} style={{...GH,flex:1,padding:"11px"}}>Cancelar</button>
+              <button onClick={guardarManual} style={{...BS("#1A6B8A"),flex:1,padding:"11px"}}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
@@ -16604,6 +17101,7 @@ export default function App() {
   var [recetas,setRecetas]=useState([]);
   var [pautas,setPautas]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
+  var [fichajes,setFichajes]=useState([]);
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
   var [deportes,setDeportes]=useState([]);
@@ -16667,6 +17165,7 @@ export default function App() {
     sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
     sbLoadPautas().then(function(d){setPautas(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
+    sbLoadFichajes().then(function(d){setFichajes(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
     sbLoadIdeas().then(function(d){setIdeas(d||[]);}).catch(function(){});
     sbLoadDeportes().then(function(d){setDeportes(d||[]);}).catch(function(){});
@@ -16802,6 +17301,18 @@ export default function App() {
   }
   // Entrar a un módulo deja los tabs y filtros como recién abiertos:
   // vuelve a la vista inicial, limpia los filtros compartidos y remonta el contenido.
+  // Fichaje: la marca se pinta en pantalla apenas se guarda, porque el que fichó está
+  // mirando la tablet y quiere ver que quedó.
+  async function guardarFichaje(f){
+    var r=await sbSaveFichaje(f);
+    if(r&&r.ok)setFichajes(function(prev){ return [f].concat(prev.filter(function(x){return x.id!==f.id;})); });
+    return r;
+  }
+  function borrarFichaje(id){
+    sbDeleteFichaje(id);
+    setFichajes(function(prev){ return prev.filter(function(f){return f.id!==id;}); });
+  }
+
   function limpiarTabs(){
     setSubCompras(null);
     setVistaProv("gestion");
@@ -16915,6 +17426,7 @@ export default function App() {
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+              {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -16947,6 +17459,7 @@ export default function App() {
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+                  {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -16975,7 +17488,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -16990,7 +17503,8 @@ export default function App() {
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
-                esSofia?[]:[{id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0}]
+                esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
+                            {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0}]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   limpiarTabs();
@@ -17209,6 +17723,27 @@ export default function App() {
                 }}
                 onDeletePlanilla={function(id){sbDeletePlanillaSueldo(id);setPlanillaSueldos(function(prev){return prev.filter(function(item){return item.id!==id;});});}}
               />
+            </div>
+          )}
+
+          {/* MÓDULO FICHAJE — la pantalla con la que marcan los chicos, y el parte para la administración */}
+          {esSofia&&modulo==="fichaje"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"]].map(function(t){
+                  var act=vista===t[0];
+                  return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+              {vista==="fichajes_registro"
+                ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+                   onFichar={guardarFichaje} onDelete={borrarFichaje}/>
+                :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+                   localSugerido={cu.local} onFichar={guardarFichaje}/>}
             </div>
           )}
 
@@ -17627,6 +18162,12 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
+          {!esSofia&&subCompras==="fichar"&&(
+            <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+              localSugerido={cu.local} onFichar={guardarFichaje}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(

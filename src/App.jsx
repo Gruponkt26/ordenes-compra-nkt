@@ -242,6 +242,18 @@ async function sbDeleteVacacion(id) {
 // la prueba. Si alguien fichó por otro, se ve.
 var SQL_FICHAJES="create table if not exists fichajes (\n  id              text primary key,\n  empleado_id     text,\n  empleado_nombre text,\n  local           text,\n  fecha           date,\n  hora            text,\n  tipo            text,\n  momento         timestamptz,\n  foto_url        text,\n  cara            boolean,\n  lat             double precision,\n  lng             double precision,\n  aparato         text,\n  usuario         text,\n  manual          boolean,\n  notas           text,\n  created_at      timestamptz default now()\n);\nalter table fichajes disable row level security;\ncreate index if not exists fichajes_fecha_idx on fichajes (fecha);";
 
+// El remedio genérico propone "text" para cualquier columna que falte, pero acá no todas
+// son texto: "cara" guardada como texto haría que f.cara===false no sea nunca cierto.
+var TIPOS_FICHAJES={cara:"boolean", manual:"boolean", lat:"double precision", lng:"double precision",
+  momento:"timestamptz", fecha:"date", created_at:"timestamptz default now()"};
+function explicarErrorFichajes(err){
+  var base=explicarErrorTabla("fichajes", err, SQL_FICHAJES);
+  var m=/le falta la columna "([a-z0-9_]+)"/.exec(base);
+  if(!m)return base;
+  var tipo=TIPOS_FICHAJES[m[1]]||"text";
+  return base.replace("add column if not exists "+m[1]+" text;","add column if not exists "+m[1]+" "+tipo+";");
+}
+
 async function sbLoadFichajes() {
   try {
     // Los últimos cuatro meses: alcanza para el sueldo del mes y para discutir el anterior,
@@ -257,14 +269,14 @@ async function sbSaveFichaje(f) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
     var r=await fetch(SURL+"/rest/v1/fichajes",{method:"POST",headers:h,body:JSON.stringify(f)});
-    if(!r.ok){ return {ok:false, error:explicarErrorTabla("fichajes", await r.text(), SQL_FICHAJES)}; }
+    if(!r.ok){ return {ok:false, error:explicarErrorFichajes(await r.text())}; }
     return {ok:true};
   } catch(e){ return {ok:false, error:"Error de conexión al guardar el fichaje: "+e.message}; }
 }
 async function sbDeleteFichaje(id) {
   try {
     var r=await fetch(SURL+"/rest/v1/fichajes?id=eq."+id,{method:"DELETE",headers:SH});
-    if(!r.ok){ alert(explicarErrorTabla("fichajes", await r.text(), SQL_FICHAJES)); return false; }
+    if(!r.ok){ alert(explicarErrorFichajes(await r.text())); return false; }
     return true;
   } catch(e){ alert("Error de conexión al borrar el fichaje: "+e.message); return false; }
 }
@@ -281,6 +293,64 @@ async function sbSubirFotoFichaje(blob, path) {
     if(!r.ok){ return {ok:false, error:await r.text()}; }
     return {ok:true, url:SURL+"/storage/v1/object/public/fichajes/"+path};
   } catch(e) { return {ok:false, error:e&&e.message?e.message:String(e)}; }
+}
+
+// Cuando "no guarda" hay que saber QUÉ no guarda: la tabla, una columna, el permiso o el
+// bucket de las fotos. Cada prueba va sola y dice el remedio exacto, así no se adivina.
+async function sbDiagnosticoFichajes(){
+  var out=[], ahora=new Date(), id="fich_test_"+String(ahora.getTime());
+  var faltaTabla=false;
+
+  try{
+    var r=await fetch(SURL+"/rest/v1/fichajes?limit=1",{headers:SH});
+    var t=await r.text();
+    out.push("1) Leer la tabla → HTTP "+r.status+"  "+(r.ok?"OK":"FALLÓ"));
+    if(!r.ok){ faltaTabla=/Falta la tabla/.test(explicarErrorFichajes(t)); out.push("   "+explicarErrorFichajes(t)); }
+  }catch(e){ out.push("1) Leer la tabla → no se pudo conectar: "+(e&&e.message||e)); }
+
+  var fila={id:id, empleado_id:"test", empleado_nombre:"PRUEBA de guardado — se borra sola",
+    local:"l1", fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:"entrada",
+    momento:ahora.toISOString(), foto_url:null, cara:true, lat:null, lng:null,
+    aparato:"diagnostico", usuario:"diagnostico", manual:true, notas:"prueba"};
+  var guardo=false;
+  try{
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=representation"};
+    var r2=await fetch(SURL+"/rest/v1/fichajes",{method:"POST",headers:h,body:JSON.stringify(fila)});
+    var t2=await r2.text();
+    out.push("2) Guardar una marca → HTTP "+r2.status+"  "+(r2.ok?"OK":"FALLÓ"));
+    if(r2.ok){
+      guardo=true;
+      var d=null; try{ d=JSON.parse(t2); }catch(e){}
+      var vuelta=(Array.isArray(d)?d[0]:d)||{};
+      [["hora","la hora"],["tipo","entrada o salida"],["momento","el momento exacto"],
+       ["cara","si se vio una cara"],["aparato","el aparato"],["manual","si es manual"],
+       ["lat","la ubicación"],["foto_url","la foto"]].forEach(function(c){
+        if(vuelta[c[0]]===undefined)out.push("   ⚠️ No volvió "+c[1]+": falta la columna \""+c[0]+"\".");
+      });
+    } else out.push("   "+(faltaTabla?"Es la misma tabla que falta, arriba está el SQL.":explicarErrorFichajes(t2)));
+  }catch(e){ out.push("2) Guardar una marca → no se pudo conectar: "+(e&&e.message||e)); }
+
+  try{
+    // Un JPEG mínimo de verdad: cuatro bytes, sólo para ver si el bucket acepta.
+    var blob=new Blob([new Uint8Array([0xFF,0xD8,0xFF,0xD9])],{type:"image/jpeg"});
+    var sub=await sbSubirFotoFichaje(blob,"_prueba/"+id+".jpg");
+    out.push("3) Subir una foto → "+(sub.ok?"OK":"FALLÓ"));
+    if(!sub.ok){
+      var te=String(sub.error||"");
+      if(/bucket not found|not_?found/i.test(te))
+        out.push("   Falta el bucket \"fichajes\" en Supabase → Storage. Creálo y marcalo público.\n   Ojo: sin el bucket las marcas se guardan igual, pero sin foto.");
+      else if(/row-level|policy|unauthorized|403/i.test(te))
+        out.push("   El bucket \"fichajes\" existe pero no deja subir.\n   Supabase → Storage → fichajes → Configuration → marcalo como público.");
+      else out.push("   "+te.slice(0,250));
+    }
+  }catch(e){ out.push("3) Subir una foto → no se pudo conectar: "+(e&&e.message||e)); }
+
+  if(guardo){
+    try{ await fetch(SURL+"/rest/v1/fichajes?id=eq."+id,{method:"DELETE",headers:SH}); }catch(e){}
+    out.push("");
+    out.push("La marca de prueba se borró sola.");
+  }
+  return out.join("\n");
 }
 
 async function sbLoadLocalesDatos() {
@@ -17738,6 +17808,10 @@ export default function App() {
                   var act=vista===t[0];
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#555",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
+                <button onClick={async function(){
+                  var r=await sbDiagnosticoFichajes();
+                  alert("🔧 Diagnóstico del fichaje\n\n"+r);
+                }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}

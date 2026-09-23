@@ -1521,6 +1521,19 @@ el bucket no está, **la marcación se guarda igual, sin foto**, y avisa en pant
 tarde y que no ande la cámara son dos problemas distintos, y perder el horario por el
 segundo sería el peor de los dos.
 
+### Si no guarda
+
+En 🕐 Fichaje hay un botón **🔧 Probar guardado** que prueba las tres cosas por separado y
+dice cuál falla y cómo se arregla:
+
+1. **Leer la tabla** — si no está, muestra el `create table` entero.
+2. **Guardar una marca** — distingue la tabla que falta, el **RLS activado** (`alter table
+   fichajes disable row level security;`) y la **columna que falta**, con el tipo correcto
+   para cada una: `cara` y `manual` son `boolean`, `lat`/`lng` son `double precision`, no
+   `text`. La marca de prueba se borra sola.
+3. **Subir una foto** — separa el bucket que no existe del bucket que existe pero no es
+   público.
+
 ## 🔔 Novedades del día
 
 Un módulo principal que junta, en una sola pantalla, lo que pasó y lo que hay que mirar. No

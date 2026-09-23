@@ -1457,6 +1457,25 @@ apuntando al techo o con el dedo sobre la cámara. Esto anda en Chrome de Androi
 el navegador no lo trae, así que ahí la foto se saca igual y la marca queda con `cara` en
 blanco. Nunca bloquea el fichaje por no poder mirar.
 
+### El PIN
+
+Cada uno tiene **cuatro números propios**. Al tocar su nombre aparece un teclado, y recién
+con el PIN correcto se abre la cámara. Se comprueba solo al cuarto dígito, sin botón de
+aceptar.
+
+Se cargan en 🕐 Fichaje → **🔑 PINs**: un renglón por empleado, con 👁 para ver el que está
+puesto y 🎲 para sortear uno. No deja repetir un PIN entre dos personas —si se repitiera no
+distinguiría a nadie— y avisa cuántos quedan sin cargar.
+
+**Al que todavía no tiene PIN se lo deja marcar igual.** Si no, nadie podría fichar hasta
+que administración termine de cargarlos uno por uno. Cada marca guarda en `con_pin` si se
+validó o no, así se ve después cuáles pasaron por el teclado.
+
+El PIN frena **el favor entre compañeros**, que es el problema real: «marcá vos por mí» deja
+de ser gratis. No es una contraseña —cuatro números se miran por encima del hombro, y quien
+sepa leer la base los ve—, por eso **la foto se saca siempre igual**: esa es la prueba, y el
+PIN sólo sube el costo de intentarlo.
+
 ### Dónde se ficha
 
 - **La tablet del local**: se entra a 🕐 Fichaje → Fichar, se elige el local una vez y se
@@ -1509,11 +1528,18 @@ create table if not exists fichajes (
   aparato         text,
   usuario         text,
   manual          boolean,
+  con_pin         boolean,
   notas           text,
   created_at      timestamptz default now()
 );
 alter table fichajes disable row level security;
 create index if not exists fichajes_fecha_idx on fichajes (fecha);
+```
+
+Y la columna del PIN en la tabla de empleados:
+
+```sql
+alter table empleados add column if not exists pin text;
 ```
 
 Y en **Supabase → Storage**, un bucket llamado **`fichajes`**, marcado como **público**. Si

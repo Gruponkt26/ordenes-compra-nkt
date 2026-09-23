@@ -9570,7 +9570,7 @@ function PanelVencimientos(p){
   // El crédito bancario. La deuda a la fecha se carga a mano: es la que informa el banco,
   // que incluye intereses devengados y casi nunca coincide con la suma de las cuotas que
   // faltan. Se guardan las dos y se muestran las dos.
-  var FORM_CREDITO={entidad:"",descripcion:"",tipo_prestamo:"",fecha_otorgamiento:hoy,
+  var FORM_CREDITO={entidad:"",nro_credito:"",descripcion:"",tipo_prestamo:"",monto_inicial:"",fecha_otorgamiento:hoy,
     local:"l1",cuit:"c2",cantidad:"12",montoCuota:"",dia:"10",mesInicio:mesCurrent,pagadas:"",
     tna:"",deuda_actual:"",forma_pago:"",debito_cuenta:"",debito_cbu:"",notas:""};
   var [formCredito,setFormCredito]=useState(FORM_CREDITO);
@@ -9584,7 +9584,8 @@ function PanelVencimientos(p){
   function abrirEditarCredito(v){
     var cs=cuotasPlan(v);
     var prim=cs[0]||{};
-    setFormCredito({entidad:v.entidad||"", descripcion:v.concepto||"", tipo_prestamo:v.tipo_prestamo||"",
+    setFormCredito({entidad:v.entidad||"", nro_credito:v.nro_credito||"", descripcion:v.concepto||"",
+      tipo_prestamo:v.tipo_prestamo||"", monto_inicial:v.monto_inicial||"",
       fecha_otorgamiento:v.fecha_otorgamiento||hoy, local:v.local||"l1", cuit:cuitIdDe(v),
       cantidad:String(cs.length||12), montoCuota:String(prim.monto||""),
       dia:String(prim.vence?parseInt(prim.vence.substring(8,10),10):10),
@@ -9614,10 +9615,11 @@ function PanelVencimientos(p){
       local:porCuit(g)?cuitVenc(f.cuit).local:f.local,
       cuit:porCuit(g)?f.cuit:"",
       concepto:f.descripcion.trim(),
-      entidad:f.entidad.trim(), tipo_prestamo:f.tipo_prestamo.trim(),
+      entidad:f.entidad.trim(), nro_credito:f.nro_credito.trim(), tipo_prestamo:f.tipo_prestamo.trim(),
+      monto_inicial:parseFloat(f.monto_inicial)||0,
       fecha_otorgamiento:f.fecha_otorgamiento||null,
       tna:(f.tna||"").toString().trim(), deuda_actual:parseFloat(f.deuda_actual)||0,
-      forma_pago:f.forma_pago.trim(), referencia:f.entidad.trim(),
+      forma_pago:f.forma_pago.trim(), referencia:f.nro_credito.trim()||f.entidad.trim(),
       debito_cuenta:f.debito_cuenta||"", debito_cbu:(f.debito_cbu||"").trim(),
       monto:parseFloat(f.montoCuota)||0,
       recurrente:false, dia:null, fecha:null, activo:true,
@@ -10378,8 +10380,16 @@ function PanelVencimientos(p){
               </datalist>
             </div>
             <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>N° de crédito</label>
+              <input value={formCredito.nro_credito} onChange={function(e){setFormCredito(function(f){return{...f,nro_credito:e.target.value};});}} placeholder="00123456/7" style={INP}/>
+            </div>
+            <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Descripción</label>
               <input value={formCredito.descripcion} onChange={function(e){setFormCredito(function(f){return{...f,descripcion:e.target.value};});}} placeholder="Crédito para la cocina" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Monto inicial</label>
+              <input type="number" value={formCredito.monto_inicial} onChange={function(e){setFormCredito(function(f){return{...f,monto_inicial:e.target.value};});}} placeholder="Lo que te prestaron" style={INP}/>
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Tipo de préstamo</label>
@@ -10697,7 +10707,7 @@ function PanelVencimientos(p){
                              </span>
                             :esCredito(v)
                             ?<span style={{fontSize:11,color:"#1A8A7B",fontWeight:400}}>
-                               {v.entidad?" · "+v.entidad:""}{v.tipo_prestamo?" · "+v.tipo_prestamo:""}
+                               {v.entidad?" · "+v.entidad:""}{v.nro_credito?" · N° "+v.nro_credito:""}{v.tipo_prestamo?" · "+v.tipo_prestamo:""}
                              </span>
                             :(v.nro_plan?<span style={{fontSize:11,color:"#A855F7",fontWeight:400}}> · plan {v.nro_plan}</span>:null)}
                         </div>
@@ -10705,10 +10715,11 @@ function PanelVencimientos(p){
                           <span style={{color:cq?cq.color:(l?l.color:"#555")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:v.local)}</span> · {rp.pagadas} de {rp.cuotas} {esFactura(v)?"cuotas pagadas":"pagadas"}
                           {rp.completo?<span style={{color:"#3A7D44"}}> · terminado</span>:null}
                         </div>
-                        {esCredito(v)&&(v.tna||v.deuda_actual>0||v.forma_pago||v.fecha_otorgamiento)&&(
+                        {esCredito(v)&&(v.tna||v.deuda_actual>0||v.forma_pago||v.fecha_otorgamiento||v.monto_inicial>0)&&(
                           <div style={{fontSize:10,color:"#1A8A7B",marginTop:3}}>
-                            {v.tna?"TNA "+v.tna+"%":""}
-                            {v.deuda_actual>0?(v.tna?" · ":"")+"deuda a la fecha "+fmt(v.deuda_actual):""}
+                            {v.monto_inicial>0?"inicial "+fmt(v.monto_inicial):""}
+                            {v.tna?(v.monto_inicial>0?" · ":"")+"TNA "+v.tna+"%":""}
+                            {v.deuda_actual>0?((v.tna||v.monto_inicial>0)?" · ":"")+"deuda a la fecha "+fmt(v.deuda_actual):""}
                             {v.forma_pago?" · "+v.forma_pago:""}
                             {v.fecha_otorgamiento?" · otorgado "+fmtDate(v.fecha_otorgamiento):""}
                           </div>
@@ -17133,7 +17144,8 @@ async function sbLoadVencimientos() {
 // intente guardar y se quede sin entender por qué no anda.
 var COLUMNAS_NUEVAS_VENC=["local","concepto","area","subramo","monto","recurrente","dia","fecha","activo","notas","pagos","usuario",
   "grupo","referencia","cuotas","cuotas_previas","tipo","nro_plan","cuotas_plan","cuit","debito_cuenta","debito_cbu","caduca_en",
-  "periodo","nro_asociado","entidad","tipo_prestamo","fecha_otorgamiento","tna","deuda_actual","forma_pago"];
+  "periodo","nro_asociado","entidad","tipo_prestamo","fecha_otorgamiento","tna","deuda_actual","forma_pago",
+  "monto_inicial","nro_credito"];
 async function sbColumnasFaltantesVencimientos() {
   var pide = COLUMNAS_NUEVAS_VENC.slice();
   var faltan = [];

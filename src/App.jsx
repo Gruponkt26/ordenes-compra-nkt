@@ -9545,12 +9545,12 @@ function PanelVencimientos(p){
   // abre directo ahí: el que hizo clic en "Servicios" ya dijo a dónde quería ir. El panel
   // se re-monta al cambiar de módulo, así que alcanza con tomarlo del arranque.
   var [grupoFiltro,setGrupoFiltro]=useState(p.grupoInicial||null);
-  // Cada rubro se recorta por lo que lo organiza: los que van por CUIT, por CUIT; los que
-  // van por local, por local. Filtrar AFIP por local no diría nada —su local sale del CUIT
-  // y caería todo en Oficina—, así que ahí ni se ofrece.
-  var [localFiltro,setLocalFiltro]=useState("all");
-  var [cuitFiltro,setCuitFiltro]=useState("all");
-  function verGrupo(id){ setGrupoFiltro(id); setLocalFiltro("all"); setCuitFiltro("all"); }
+  // De quién es cada vencimiento: de un CUIT si su rubro va por CUIT —AFIP, ARBA, Gremio,
+  // Obra Social, Créditos— y de un local si va por local. Cada uno pertenece a uno solo de
+  // los dos, así que un único filtro parte la lista sin superponer nada ni esconder de más.
+  var [dueno,setDueno]=useState("all");
+  function verGrupo(id){ setGrupoFiltro(id); setDueno("all"); }
+  function duenoDe(v){ return porCuit(grupoIdDe(v))?cuitIdDe(v):v.local; }
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
@@ -9757,11 +9757,7 @@ function PanelVencimientos(p){
   var delMesGrupo=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
   // El recorte por local o por CUIT. Vale para la lista y también para los totales del mes:
   // si se está mirando Kusama, el total tiene que ser el de Kusama.
-  function pasaFiltro(v){
-    if(!grupoFiltro||grupoFiltro==="all")return true;
-    if(porCuit(grupoIdDe(v)))return cuitFiltro==="all"||cuitIdDe(v)===cuitFiltro;
-    return localFiltro==="all"||v.local===localFiltro;
-  }
+  function pasaFiltro(v){ return dueno==="all"||duenoDe(v)===dueno; }
   var delMes2=delMesGrupo.filter(function(x){ return pasaFiltro(x.v); });
   // Las cuotas de un plan se pagan adentro de su planilla, así que no se repiten abajo como
   // una fila suelta: el listado de abajo es lo que no es un plan. Los totales del mes siguen
@@ -10166,30 +10162,28 @@ function PanelVencimientos(p){
         </div>
       </div>
 
-      {/* El recorte de adentro del rubro. Cada uno ofrece el que lo organiza: por CUIT en
-          AFIP, ARBA, Gremio, Obra Social y Créditos; por local en los demás. En "Todos" no
-          se ofrece ninguno, porque ahí conviven las dos cosas y cualquiera de los dos
-          filtros escondería la mitad sin decirlo. */}
-      {grupoFiltro&&grupoFiltro!=="all"&&!verTodos&&(function(){
-        var porC=porCuit(grupoFiltro);
-        var opciones=porC
-          ? [{id:"all",txt:"Todos",color:"#888"}].concat(CUITS_VENC.map(function(c){ return {id:c.id,txt:c.corto,color:c.color,extra:c.cubre}; }))
-          : [{id:"all",txt:"Todos",color:"#888"}].concat(LOCALES.map(function(l){ return {id:l.id,txt:l.emoji+" "+l.nombre,color:l.color}; }));
-        var actual=porC?cuitFiltro:localFiltro;
-        function poner(id){ if(porC)setCuitFiltro(id); else setLocalFiltro(id); }
-        // Cuántos hay de cada uno en el mes, para no mandar a nadie a una lista vacía.
+      {/* El recorte por dueño. En un rubro se ofrece sólo lo que lo organiza —CUIT en AFIP,
+          ARBA, Gremio, Obra Social y Créditos; local en los demás—, y en "Todos" se ofrecen
+          las dos cosas juntas, que es donde conviven. Cada vencimiento cae en un solo
+          botón, así que la lista se parte sin superponer nada. */}
+      {grupoFiltro&&!verTodos&&(function(){
+        var todos=grupoFiltro==="all";
+        var porC=todos?true:porCuit(grupoFiltro);
+        var opciones=[];
+        if(todos||porC)opciones=opciones.concat(CUITS_VENC.map(function(c){ return {id:c.id,txt:c.corto,color:c.color,extra:c.cubre}; }));
+        if(todos||!porC)opciones=opciones.concat(LOCALES.map(function(l){ return {id:l.id,txt:l.emoji+" "+l.nombre,color:l.color}; }));
         function cuantos(id){
           if(id==="all")return delMesGrupo.length;
-          return delMesGrupo.filter(function(x){ return porC?cuitIdDe(x.v)===id:x.v.local===id; }).length;
+          return delMesGrupo.filter(function(x){ return duenoDe(x.v)===id; }).length;
         }
-        var conAlgo=opciones.filter(function(o){ return o.id==="all"||cuantos(o.id)>0; });
-        if(conAlgo.length<=2)return null;  // un solo local o CUIT: el filtro no recorta nada
+        var conAlgo=[{id:"all",txt:"Todos",color:"#888"}].concat(opciones.filter(function(o){ return cuantos(o.id)>0; }));
+        if(conAlgo.length<=2)return null;  // un solo dueño: el filtro no recorta nada
         return(
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
-            <span style={{fontSize:9.5,color:"#3F3F3F",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>{porC?"CUIT":"Local"}</span>
+            <span style={{fontSize:9.5,color:"#3F3F3F",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>De quién</span>
             {conAlgo.map(function(o){
-              var act=actual===o.id;
-              return <button key={o.id} onClick={function(){poner(o.id);}} title={o.extra||""}
+              var act=dueno===o.id;
+              return <button key={o.id} onClick={function(){setDueno(o.id);}} title={o.extra||""}
                 style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+(act?o.color:"#1E1E1E"),background:act?o.color+"22":"#111",
                   color:act?o.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
                 {o.txt}<span style={{color:act?o.color+"AA":"#3A3A3A",marginLeft:5,fontWeight:400}}>{cuantos(o.id)}</span>

@@ -9731,16 +9731,23 @@ function PanelNovedades(p){
       {(function(){
         var avisos=[];
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:true});
+        function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
+        // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
+        // cuota vence dentro de la ventana de "vence pronto", se avisan juntas en un renglón,
+        // no una vez como riesgo y otra vez como vencimiento.
+        var idsEnRiesgo={};
         enRiesgo.forEach(function(x){
+          idsEnRiesgo[x.v.id]=true;
+          var prox=vencenPronto.find(function(a){return a.v.id===x.v.id;});
           avisos.push({rojo:x.rg.caido,
-            txt:(x.rg.caido?"Se cayó el plan ":"Por caerse el plan ")+(x.v.nro_plan||x.v.concepto)+" de "+grupoDe(x.v.grupo).corto+" — "+x.rg.adeudadas+" cuotas vencidas"+(x.rg.caido?"":", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")});
+            txt:(x.rg.caido?"Se cayó el plan ":"Por caerse el plan ")+(x.v.nro_plan||x.v.concepto)+" de "+grupoDe(x.v.grupo).corto+" — "+x.rg.adeudadas+" cuotas vencidas"+(x.rg.caido?"":", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")+(prox?(" · la próxima vence "+cuando(prox.dias)+" — "+fmt(prox.monto)):"")});
         });
         if(vencidos.length>0)avisos.push({rojo:true,txt:vencidos.length+" vencimiento"+(vencidos.length===1?"":"s")+" sin pagar · "+fmt(vencidos.reduce(function(a,x){return a+x.monto;},0))});
-        // Uno por uno, no un total: acá lo que importa es saber cuál es, no cuántos hay.
-        vencenPronto.forEach(function(a){
+        // Uno por uno, no un total: acá lo que importa es saber cuál es, no cuántos hay. Los
+        // planes ya avisados arriba como "por caerse" no se repiten acá.
+        vencenPronto.filter(function(a){return !idsEnRiesgo[a.v.id];}).forEach(function(a){
           var g=grupoDe(a.v.grupo);
-          var cuando=a.dias===0?"hoy":(a.dias===1?"mañana":"en "+a.dias+" días");
-          avisos.push({rojo:false,txt:g.corto+" · "+a.v.concepto+(a.cuota?(a.cuota.nro===0?" · anticipo":" · cuota "+a.cuota.nro):"")+" vence "+cuando+" — "+fmt(a.monto)});
+          avisos.push({rojo:false,txt:g.corto+" · "+a.v.concepto+(a.cuota?(a.cuota.nro===0?" · anticipo":" · cuota "+a.cuota.nro):"")+" vence "+cuando(a.dias)+" — "+fmt(a.monto)});
         });
         if(avisos.length===0)return null;
         var hayRojo=avisos.some(function(a){return a.rojo;});

@@ -8221,6 +8221,16 @@ function planesEnRiesgo(vencimientos){
 // Las fechas que tiene un vencimiento. Un suelto tiene una sola; la cuota de un plan puede
 // tener tres —el 1º, el 2º y el corrido— y mientras quede una por delante todavía se puede
 // pagar. Decir "en 2 días" escondía justamente eso.
+// Los días que cada local no abre, para no reclamarle un cierre que no existe.
+// 0 es domingo, 1 lunes… como getDay().
+var DIAS_CERRADO={ l2:[1] };   // Kusama no abre los lunes
+function abreEseDia(localId, fecha){
+  var cerrados=DIAS_CERRADO[localId];
+  if(!cerrados||!fecha)return true;
+  var pr=String(fecha).substring(0,10).split("-");
+  var d=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10));
+  return cerrados.indexOf(d.getDay())<0;
+}
 function fechasDeAviso(a){
   if(a.cuota){
     var out=[{et:"", f:a.cuota.vence}];
@@ -9446,13 +9456,15 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
-  var hoy=new Date().toISOString().split("T")[0];
+  // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
+  // siguiente, y un panel que se mira de noche empezaba a hablar de mañana.
+  var hoy=fechaLocal();
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
-  var ayer=new Date(Date.now()-86400000).toISOString().split("T")[0];
-  var desdeSemana=new Date(Date.now()-6*86400000).toISOString().split("T")[0];
+  var ayer=fechaLocal(new Date(Date.now()-86400000));
+  var desdeSemana=fechaLocal(new Date(Date.now()-6*86400000));
   function enRango(f){
     if(!f)return false;
     var d=String(f).substring(0,10);
@@ -9510,8 +9522,12 @@ function PanelNovedades(p){
   // ningún cierre la trae siquiera, falta el alter table y los retiros se vienen
   // perdiendo en silencio desde siempre.
   var faltaColRetiro=cierres.length>0&&cierres.every(function(c){ return c.retiro_caja===undefined; });
-  var localesConCierre=cierres.filter(function(c){return c.fecha===hoy;}).map(function(c){return c.local;});
-  var faltanCerrar=LOCALES.filter(function(l){return l.id!=="l4"&&localesConCierre.indexOf(l.id)<0;});
+  // El cierre se carga cuando cierra el local, de noche. Preguntar a la mañana por el de hoy
+  // era gritar por algo que todavía no pasó: lo que importa es si anoche alguien no cerró.
+  var cerraronAyer=cierres.filter(function(c){return c.fecha===ayer;}).map(function(c){return c.local;});
+  var faltanCerrar=LOCALES.filter(function(l){
+    return l.id!=="l4"&&abreEseDia(l.id,ayer)&&cerraronAyer.indexOf(l.id)<0;
+  });
 
   var avisos=avisosVencimientos(vencimientos,7);
   var vencidos=avisos.filter(function(a){return a.dias<0;});
@@ -9699,7 +9715,7 @@ function PanelNovedades(p){
       {/* Lo urgente, si lo hay: una sola línea por cosa */}
       {(function(){
         var avisos=[];
-        if(faltanCerrar.length>0)avisos.push({txt:"Falta el cierre de hoy en "+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:false});
+        if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:true});
         enRiesgo.forEach(function(x){
           avisos.push({rojo:x.rg.caido,
             txt:(x.rg.caido?"Se cayó el plan ":"Por caerse el plan ")+(x.v.nro_plan||x.v.concepto)+" de "+grupoDe(x.v.grupo).corto+" — "+x.rg.adeudadas+" cuotas vencidas"+(x.rg.caido?"":", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")});

@@ -1674,6 +1674,25 @@ días. Ahora **el 🩺 se pone ámbar y muestra cuántas faltan** («🩺 2»); 
 y da el `alter table` de cada una, arriba del diagnóstico de siempre. Que no moleste no
 quiere decir que no esté: si el 🩺 está ámbar, hay datos que se descartan al guardar.
 
+### El filtro de adentro de cada rubro
+
+Adentro de un submódulo hay una fila de botones para recortar la lista, y **cada rubro
+ofrece el que lo organiza**:
+
+- **Por CUIT** en AFIP, ARBA, Gremio, Obra Social y Créditos.
+- **Por local** en Municipalidad, Servicios y Otros.
+
+Filtrar AFIP por local no diría nada —su local sale del CUIT, así que caería casi todo en
+Oficina y encima sugeriría que el gasto es de ahí—, por eso en esos rubros ni se ofrece. En
+**Todos los vencimientos** tampoco se ofrece ninguno: ahí conviven las dos cosas y cualquiera
+de los dos filtros escondería la mitad sin decirlo.
+
+Cada botón trae **cuántos hay** de ese local o CUIT en el mes, y los que no tienen ninguno no
+aparecen. Si queda un solo local o un solo CUIT, la fila entera se esconde: un filtro que no
+recorta nada es ruido. Al recortar **se recalculan los totales del mes** —total, pagado,
+falta pagar, vencidos y las cuotas por delante—: si se está mirando Kusama, el total tiene
+que ser el de Kusama. El filtro se limpia solo al cambiar de rubro.
+
 ## 🏥 Obra Social
 
 Submódulo propio, al lado de Gremio. Va **por CUIT** y no por local, como el gremio: los

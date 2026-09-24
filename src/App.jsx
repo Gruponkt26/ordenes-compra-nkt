@@ -8218,6 +8218,18 @@ function planesEnRiesgo(vencimientos){
   }).map(function(v){ return {v:v,rg:riesgoPlan(v)}; })
     .sort(function(a,b){ return b.rg.adeudadas-a.rg.adeudadas; });
 }
+// Las fechas que tiene un vencimiento. Un suelto tiene una sola; la cuota de un plan puede
+// tener tres —el 1º, el 2º y el corrido— y mientras quede una por delante todavía se puede
+// pagar. Decir "en 2 días" escondía justamente eso.
+function fechasDeAviso(a){
+  if(a.cuota){
+    var out=[{et:"", f:a.cuota.vence}];
+    if(a.cuota.vence2)out.push({et:"2º", f:a.cuota.vence2});
+    if(a.cuota.vence3)out.push({et:"corrido", f:a.cuota.vence3});
+    return out.filter(function(x){return x.f;});
+  }
+  return a.fecha?[{et:"", f:a.fecha}]:[];
+}
 function avisosVencimientos(vencimientos, diasAviso){
   var dias=diasAviso===undefined?7:diasAviso;
   var hoy=new Date().toISOString().split("T")[0];
@@ -9709,7 +9721,7 @@ function PanelNovedades(p){
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0},
-          {t:"Vence en 7 días",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer"},
+          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
           <div key={x.t} style={{background:"#0C0C0C",padding:"13px 15px"}}>
@@ -9817,7 +9829,16 @@ function PanelNovedades(p){
                 return <Fila key={i} primera={i===0}
                   izq={<span><span style={{color:"#5A5A5A"}}>{g.corto}</span>{duenio?<span style={{color:"#5A5A5A"}}> · {duenio}</span>:null} · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
                   onClick={function(){p.irVencimientos(g.id);}}
-                  der={fmtDate(a.fecha)+" · "+(a.dias===0?"hoy":"en "+a.dias+"d")+" · "+fmt(a.monto)}
+                  der={<span>
+                    {fechasDeAviso(a).map(function(x,j){
+                      var pasada=x.f<hoy;
+                      return <span key={j} style={{color:pasada?"#3F3F3F":"inherit",textDecoration:pasada?"line-through":"none",marginRight:5}}>
+                        {x.et?x.et+" ":""}{fmtDate(x.f)}
+                      </span>;
+                    })}
+                    {a.dias===0?<span style={{color:"#D4A017"}}>hoy </span>:null}
+                    {fmt(a.monto)}
+                  </span>}
                   color={a.dias===0?"#D4A017":(a.dias<=7?"#B8963A":"#7A7A7A")}/>;
               })}
               <Mas id="venc" n={expandido.venc?0:porVencer.length-6}/>
@@ -10565,7 +10586,7 @@ function PanelVencimientos(p){
         return(
           <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:11,color:color,fontWeight:700,marginBottom:7}}>
-              🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):""}{vencidos.length>0&&av.length>vencidos.length?" · ":""}{av.length>vencidos.length?(av.length-vencidos.length)+" vence"+(av.length-vencidos.length===1?"":"n")+" en los próximos 7 días":""}
+              🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):""}{vencidos.length>0&&av.length>vencidos.length?" · ":""}{av.length>vencidos.length?(av.length-vencidos.length)+" por vencer":""}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {av.slice(0,6).map(function(a,i){
@@ -10577,7 +10598,15 @@ function PanelVencimientos(p){
                       {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita de {etiquetaCuenta(a.v.debito_cuenta)}</span>:null}
                     </span>
                     <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
-                      {a.dias<0?"venció hace "+Math.abs(a.dias)+" día"+(Math.abs(a.dias)===1?"":"s"):(a.dias===0?"vence hoy":"en "+a.dias+" día"+(a.dias===1?"":"s"))} · {fmt(a.monto)}
+                      {fechasDeAviso(a).map(function(x,j){
+                        var pasada=x.f<hoy;
+                        return <span key={j} style={{color:pasada?"#4A4A4A":(x.f===hoy?"#D4A017":"inherit"),
+                          textDecoration:pasada?"line-through":"none",marginRight:6}}>
+                          {x.et?x.et+" ":""}{fmtDate(x.f)}
+                        </span>;
+                      })}
+                      {a.dias<0?<span style={{color:"#C1440E"}}>vencido</span>:(a.dias===0?<span style={{color:"#D4A017"}}>hoy</span>:null)}
+                      {" · "}{fmt(a.monto)}
                     </span>
                   </div>
                 );

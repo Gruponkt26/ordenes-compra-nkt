@@ -8726,9 +8726,14 @@ function PanelFichar(p){
       {soyYo&&(
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#1A8A7B"}}>📱 Este celular es de <strong>{soyYo.nombre}</strong></span>
-          <button onClick={function(){
-            if(window.confirm("¿Este celular deja de ser de "+soyYo.nombre+"?\n\nVuelve a mostrar la lista del local y para volver a atarlo hay que poner el PIN de nuevo."))guardarMiEmp("");
-          }} style={{...GH,padding:"5px 10px",fontSize:11,marginLeft:"auto"}}>No soy yo</button>
+          {/* Soltarlo es de administración y de nadie más: si el empleado puede desatarlo
+              cuando quiere, el atado no sirve de nada —se suelta, ficha por otro y lo vuelve
+              a atar—. Para cambiarlo, que lo haga Sofía desde su usuario. */}
+          {p.esAdmin&&(
+            <button onClick={function(){
+              if(window.confirm("¿Este celular deja de ser de "+soyYo.nombre+"?\n\nVuelve a mostrar la lista del local y para volver a atarlo hay que poner el PIN de nuevo."))guardarMiEmp("");
+            }} style={{...GH,padding:"5px 10px",fontSize:11,marginLeft:"auto"}}>Desvincular</button>
+          )}
         </div>
       )}
       {(embebido||permCam==="denied"||permCam==="prompt"||permCam==="sin_soporte")&&(
@@ -8814,6 +8819,7 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#2A5A52",lineHeight:1.5}}>
             Tocá tu nombre y poné tu PIN. Desde entonces esta pantalla te muestra sólo a vos, y nadie
             puede fichar por otro desde acá.
+            <div style={{marginTop:6,color:"#D4A017"}}>Se configura una sola vez: después sólo administración puede cambiarlo.</div>
           </div>
           <button onClick={function(){setVinculando(false);}} style={{...GH,padding:"5px 10px",fontSize:11,marginTop:9}}>Cancelar</button>
         </div>
@@ -19188,7 +19194,7 @@ export default function App() {
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   localSugerido={cu.local} onFichar={guardarFichaje}/>}
+                   localSugerido={cu.local} esAdmin={esAdmin} onFichar={guardarFichaje}/>}
             </div>
           )}
 
@@ -19617,7 +19623,7 @@ export default function App() {
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-              localSugerido={cu.local} onFichar={guardarFichaje}/>
+              localSugerido={cu.local} esAdmin={esAdmin} onFichar={guardarFichaje}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(

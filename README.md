@@ -1494,8 +1494,11 @@ PIN sólo sube el costo de intentarlo.
   **🕐 Fichar** en su pantalla de inicio. Ahí conviene tocar **📱 Este celular es mío**: se
   elige el nombre, se pone el PIN una vez y **el aparato queda atado a esa persona**. Desde
   entonces la pantalla muestra **sólo su nombre**, así que nadie puede fichar por un
-  compañero desde ese celular. Se suelta con **No soy yo**, y volver a atarlo pide el PIN de
-  nuevo. La tablet del local no se ata: ahí marcan todos. Las marcas hechas desde un celular quedan con
+  compañero desde ese celular. **Se configura una sola vez**: el empleado
+  no puede soltarlo. Si pudiera, el atado no serviría de nada —se suelta, ficha por otro y lo
+  vuelve a atar—. El botón **Desvincular** aparece sólo para administración, así que para
+  cambiar de dueño hay que entrar con el usuario de Sofía en ese aparato. La tablet del local
+  no se ata: ahí marcan todos. Las marcas hechas desde un celular quedan con
   `aparato = celular` y, si el que ficha da permiso, con la ubicación: en el registro
   aparece un **📍 dónde** que abre el mapa. Si no da permiso, se guarda igual sin ubicación.
 

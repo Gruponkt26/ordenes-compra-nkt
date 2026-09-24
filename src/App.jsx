@@ -9545,6 +9545,12 @@ function PanelVencimientos(p){
   // abre directo ahí: el que hizo clic en "Servicios" ya dijo a dónde quería ir. El panel
   // se re-monta al cambiar de módulo, así que alcanza con tomarlo del arranque.
   var [grupoFiltro,setGrupoFiltro]=useState(p.grupoInicial||null);
+  // Cada rubro se recorta por lo que lo organiza: los que van por CUIT, por CUIT; los que
+  // van por local, por local. Filtrar AFIP por local no diría nada —su local sale del CUIT
+  // y caería todo en Oficina—, así que ahí ni se ofrece.
+  var [localFiltro,setLocalFiltro]=useState("all");
+  var [cuitFiltro,setCuitFiltro]=useState("all");
+  function verGrupo(id){ setGrupoFiltro(id); setLocalFiltro("all"); setCuitFiltro("all"); }
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
@@ -9748,7 +9754,15 @@ function PanelVencimientos(p){
   }).concat(planesDelMes).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
 
   var delMesTodos=delMes;
-  var delMes2=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
+  var delMesGrupo=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
+  // El recorte por local o por CUIT. Vale para la lista y también para los totales del mes:
+  // si se está mirando Kusama, el total tiene que ser el de Kusama.
+  function pasaFiltro(v){
+    if(!grupoFiltro||grupoFiltro==="all")return true;
+    if(porCuit(grupoIdDe(v)))return cuitFiltro==="all"||cuitIdDe(v)===cuitFiltro;
+    return localFiltro==="all"||v.local===localFiltro;
+  }
+  var delMes2=delMesGrupo.filter(function(x){ return pasaFiltro(x.v); });
   // Las cuotas de un plan se pagan adentro de su planilla, así que no se repiten abajo como
   // una fila suelta: el listado de abajo es lo que no es un plan. Los totales del mes siguen
   // contando todo, planes incluidos.
@@ -9760,7 +9774,7 @@ function PanelVencimientos(p){
   var vencidos=delMes2.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;});
   // La deuda que queda por delante en los planes de cuotas: no es de este mes, pero saber
   // que hay 8 cuotas de $200.000 por pagar cambia cómo se mira el resto.
-  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(!grupoFiltro||grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);}).reduce(function(a,v){
+  var deudaCuotas=vencimientos.filter(function(v){return v.activo!==false&&(!grupoFiltro||grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro)&&pasaFiltro(v);}).reduce(function(a,v){
     if(tieneCuotas(v)){ var rp=resumenPlan(v); return a+(rp.completo?0:rp.resta); }
     var cu=cuotasDe(v);
     if(!cu||cu.completo)return a;
@@ -10088,7 +10102,7 @@ function PanelVencimientos(p){
             </div>
           ):grupoFiltro?(
             <div>
-              <button onClick={function(){setGrupoFiltro(null);setShowForm(false);setPagando(null);}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
+              <button onClick={function(){verGrupo(null);setShowForm(false);setPagando(null);}} style={{background:"none",border:"none",color:"#666",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:grupoFiltro==="all"?"#F0EDE8":grupoDe(grupoFiltro).color}}>
                 {grupoFiltro==="all"?"📅 Todos los vencimientos":grupoDe(grupoFiltro).label}
               </div>
@@ -10152,6 +10166,39 @@ function PanelVencimientos(p){
         </div>
       </div>
 
+      {/* El recorte de adentro del rubro. Cada uno ofrece el que lo organiza: por CUIT en
+          AFIP, ARBA, Gremio, Obra Social y Créditos; por local en los demás. En "Todos" no
+          se ofrece ninguno, porque ahí conviven las dos cosas y cualquiera de los dos
+          filtros escondería la mitad sin decirlo. */}
+      {grupoFiltro&&grupoFiltro!=="all"&&!verTodos&&(function(){
+        var porC=porCuit(grupoFiltro);
+        var opciones=porC
+          ? [{id:"all",txt:"Todos",color:"#888"}].concat(CUITS_VENC.map(function(c){ return {id:c.id,txt:c.corto,color:c.color,extra:c.cubre}; }))
+          : [{id:"all",txt:"Todos",color:"#888"}].concat(LOCALES.map(function(l){ return {id:l.id,txt:l.emoji+" "+l.nombre,color:l.color}; }));
+        var actual=porC?cuitFiltro:localFiltro;
+        function poner(id){ if(porC)setCuitFiltro(id); else setLocalFiltro(id); }
+        // Cuántos hay de cada uno en el mes, para no mandar a nadie a una lista vacía.
+        function cuantos(id){
+          if(id==="all")return delMesGrupo.length;
+          return delMesGrupo.filter(function(x){ return porC?cuitIdDe(x.v)===id:x.v.local===id; }).length;
+        }
+        var conAlgo=opciones.filter(function(o){ return o.id==="all"||cuantos(o.id)>0; });
+        if(conAlgo.length<=2)return null;  // un solo local o CUIT: el filtro no recorta nada
+        return(
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+            <span style={{fontSize:9.5,color:"#3F3F3F",textTransform:"uppercase",letterSpacing:1,marginRight:2}}>{porC?"CUIT":"Local"}</span>
+            {conAlgo.map(function(o){
+              var act=actual===o.id;
+              return <button key={o.id} onClick={function(){poner(o.id);}} title={o.extra||""}
+                style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+(act?o.color:"#1E1E1E"),background:act?o.color+"22":"#111",
+                  color:act?o.color:"#555",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
+                {o.txt}<span style={{color:act?o.color+"AA":"#3A3A3A",marginLeft:5,fontWeight:400}}>{cuantos(o.id)}</span>
+              </button>;
+            })}
+          </div>
+        );
+      })()}
+
       {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
           —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
       {!grupoFiltro&&!verTodos&&(function(){
@@ -10165,7 +10212,7 @@ function PanelVencimientos(p){
             {enRiesgo.map(function(x,i){
               var g=grupoDe(x.v.grupo);
               return(
-                <div key={i} onClick={function(){setGrupoFiltro(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
+                <div key={i} onClick={function(){verGrupo(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
                   <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
                     {x.rg.caido
                       ? x.rg.adeudadas+" cuotas vencidas: se cayó"
@@ -10192,7 +10239,7 @@ function PanelVencimientos(p){
               {av.slice(0,6).map(function(a,i){
                 var g=grupoDe(a.v.grupo);
                 return(
-                  <div key={i} onClick={function(){setGrupoFiltro(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
+                  <div key={i} onClick={function(){verGrupo(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
                     <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
                       {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita de {etiquetaCuenta(a.v.debito_cuenta)}</span>:null}
@@ -10218,7 +10265,7 @@ function PanelVencimientos(p){
               var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
               var prox=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias>=0;}).sort(function(a,b){return a.dias-b.dias;})[0];
               return(
-                <button key={g.id} onClick={function(){setGrupoFiltro(g.id);}} style={{
+                <button key={g.id} onClick={function(){verGrupo(g.id);}} style={{
                   textAlign:"left",cursor:"pointer",fontFamily:"'Inter',sans-serif",
                   background:"#111",border:"1px solid "+(venc>0?"#C1440E55":g.color+"33"),borderRadius:12,padding:"14px 16px"}}>
                   <div style={{fontSize:14,fontWeight:700,color:g.color}}>{g.label}</div>
@@ -10236,7 +10283,7 @@ function PanelVencimientos(p){
             })}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:8}}>
-            <button onClick={function(){setGrupoFiltro("all");}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            <button onClick={function(){verGrupo("all");}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
               📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))} a pagar en {mesFiltro}
             </button>
             <button onClick={function(){setVerTodos(true);}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
@@ -10737,7 +10784,7 @@ function PanelVencimientos(p){
       {/* La planilla del plan: una fila por cuota, con su monto y su fecha editables */}
       {grupoFiltro&&!verTodos&&(function(){
         var planes=vencimientos.filter(function(v){
-          return v.activo!==false&&tieneCuotas(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro);
+          return v.activo!==false&&tieneCuotas(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro)&&pasaFiltro(v);
         });
         if(planes.length===0)return null;
         return(
@@ -11117,9 +11164,9 @@ function PanelVencimientos(p){
                             </div>
                             <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:6}}>
                               {px!=="9999-99-99"&&(
-                                <button onClick={function(){ setVerTodos(false); setGrupoFiltro(g.id); setMesFiltro(px.substring(0,7)); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>Ir a su mes →</button>
+                                <button onClick={function(){ setVerTodos(false); verGrupo(g.id); setMesFiltro(px.substring(0,7)); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>Ir a su mes →</button>
                               )}
-                              {!tieneCuotas(v)&&<button onClick={function(){ setVerTodos(false); setGrupoFiltro(g.id); if(!v.recurrente&&v.fecha)setMesFiltro(periodoDe(v.fecha)); abrirEditar(v); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px"}}>✏️</button>}
+                              {!tieneCuotas(v)&&<button onClick={function(){ setVerTodos(false); verGrupo(g.id); if(!v.recurrente&&v.fecha)setMesFiltro(periodoDe(v.fecha)); abrirEditar(v); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#666",fontSize:10,cursor:"pointer",padding:"4px 9px"}}>✏️</button>}
                               <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"4px 9px"}}>🗑️</button>
                             </div>
                           </div>

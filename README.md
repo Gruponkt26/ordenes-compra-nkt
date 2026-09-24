@@ -1674,6 +1674,28 @@ días. Ahora **el 🩺 se pone ámbar y muestra cuántas faltan** («🩺 2»); 
 y da el `alter table` de cada una, arriba del diagnóstico de siempre. Que no moleste no
 quiere decir que no esté: si el 🩺 está ámbar, hay datos que se descartan al guardar.
 
+### Las tres vistas, como tabs
+
+Arriba de Vencimientos hay tres pestañas:
+
+- **📅 Por rubro** — las 8 tarjetas con el estado de cada organismo y su total. Es la de
+  entrada.
+- **📋 Todos juntos** — todo el mes en una sola lista, con cuánto falta pagar.
+- **🗂️ Todo lo cargado** — todos los vencimientos, sin filtro de mes.
+
+Antes las dos últimas eran botones **abajo** de las tarjetas: había que bajar para
+encontrarlos y no parecían pantallas, parecían acciones sueltas. Cada tab muestra su propio
+resumen debajo del nombre, así se sabe qué hay del otro lado antes de tocar.
+
+**Las alertas van arriba de los tabs**, no adentro de uno: un plan que se cae o un
+vencimiento pasado no puede depender de en qué pestaña estés parado. Adentro de un rubro no
+aparecen, porque ahí ya está el detalle de ese rubro; ahí se vuelve con **← Vencimientos**.
+
+Al entrar al módulo **no se pusieron los 8 rubros bajo un nombre como «carga de
+vencimientos»**: esas tarjetas no son un formulario, son el tablero —dicen «AFIP $639.683
+con 3 vencidos», «ARBA al día»— y llamarlas «carga» escondería la información más útil de la
+pantalla detrás de un nombre de data entry.
+
 ### El filtro «De quién»
 
 Cada vencimiento es **de un CUIT o de un local**, nunca de los dos: de un CUIT si su rubro va

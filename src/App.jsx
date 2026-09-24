@@ -9551,6 +9551,8 @@ function PanelVencimientos(p){
   var [dueno,setDueno]=useState("all");
   function verGrupo(id){ setGrupoFiltro(id); setDueno("all"); }
   function duenoDe(v){ return porCuit(grupoIdDe(v))?cuitIdDe(v):v.local; }
+  // Adentro de un rubro concreto: ni la portada, ni "todos juntos", ni "todo lo cargado".
+  var enRubro=!!grupoFiltro&&grupoFiltro!=="all"&&!verTodos;
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
   var [pagando,setPagando]=useState(null); // vencimiento que se está marcando pagado
@@ -10162,6 +10164,93 @@ function PanelVencimientos(p){
         </div>
       </div>
 
+      {/* Las dos alertas van arriba de los tabs y se ven en las tres vistas: un plan que se
+          cae o un vencimiento pasado no puede depender de en qué pestaña estés parado.
+          Adentro de un rubro no van: ahí ya está el detalle de ese rubro. */}
+      {!enRubro&&(function(){
+        var enRiesgo=planesEnRiesgo(vencimientos);
+        if(enRiesgo.length===0)return null;
+        var hayCaidos=enRiesgo.some(function(x){return x.rg.caido;});
+        var color=hayCaidos?"#C1440E":"#D4A017";
+        return(
+          <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,color:color,fontWeight:800,marginBottom:6}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
+            {enRiesgo.map(function(x,i){
+              var g=grupoDe(x.v.grupo);
+              return(
+                <div key={i} onClick={function(){verGrupo(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
+                  <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
+                    {x.rg.caido
+                      ? x.rg.adeudadas+" cuotas vencidas: se cayó"
+                      : x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {!enRubro&&(function(){
+        var av=avisosVencimientos(vencimientos,7);
+        if(av.length===0)return null;
+        var vencidos=av.filter(function(a){return a.dias<0;});
+        var color=vencidos.length>0?"#C1440E":"#D4A017";
+        return(
+          <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,color:color,fontWeight:700,marginBottom:7}}>
+              🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):""}{vencidos.length>0&&av.length>vencidos.length?" · ":""}{av.length>vencidos.length?(av.length-vencidos.length)+" vence"+(av.length-vencidos.length===1?"":"n")+" en los próximos 7 días":""}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {av.slice(0,6).map(function(a,i){
+                var g=grupoDe(a.v.grupo);
+                return(
+                  <div key={i} onClick={function(){verGrupo(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
+                    <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
+                      {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita de {etiquetaCuenta(a.v.debito_cuenta)}</span>:null}
+                    </span>
+                    <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
+                      {a.dias<0?"venció hace "+Math.abs(a.dias)+" día"+(Math.abs(a.dias)===1?"":"s"):(a.dias===0?"vence hoy":"en "+a.dias+" día"+(a.dias===1?"":"s"))} · {fmt(a.monto)}
+                    </span>
+                  </div>
+                );
+              })}
+              {av.length>6&&<div style={{fontSize:10,color:"#555",marginTop:2}}>y {av.length-6} más…</div>}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Las tres vistas de arriba, como tabs. Antes "Ver todos juntos" y "Todo lo cargado"
+          eran dos botones abajo de las tarjetas: había que bajar para encontrarlos y no
+          parecían pantallas, parecían acciones sueltas. */}
+      {!enRubro&&(
+        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+          {[
+            {id:"rubros", txt:"📅 Por rubro",     color:"#D4A017", act:!grupoFiltro&&!verTodos,
+             sub:GRUPOS_VENC.length+" rubros",
+             ir:function(){ setVerTodos(false); verGrupo(null); }},
+            {id:"juntos", txt:"📋 Todos juntos",  color:"#1A6B8A", act:grupoFiltro==="all"&&!verTodos,
+             sub:fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))+" en "+mesFiltro,
+             ir:function(){ setVerTodos(false); verGrupo("all"); }},
+            {id:"cargado",txt:"🗂️ Todo lo cargado",color:"#8B2FC9", act:verTodos,
+             sub:vencimientos.filter(function(v){return v.activo!==false;}).length+" cargados, sin filtro de mes",
+             ir:function(){ setVerTodos(true); }},
+          ].map(function(t){
+            return (
+              <button key={t.id} onClick={t.ir}
+                style={{flex:"1 1 180px",textAlign:"left",padding:"10px 14px",borderRadius:10,
+                  border:"1px solid "+(t.act?t.color:"#1A1A1A"),background:t.act?t.color+"18":"#0D0D0D",
+                  color:t.act?t.color:"#666",fontFamily:"'Inter',sans-serif",cursor:"pointer"}}>
+                <div style={{fontSize:12.5,fontWeight:800}}>{t.txt}</div>
+                <div style={{fontSize:10,color:t.act?t.color+"AA":"#3F3F3F",marginTop:2}}>{t.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* El recorte por dueño. En un rubro se ofrece sólo lo que lo organiza —CUIT en AFIP,
           ARBA, Gremio, Obra Social y Créditos; local en los demás—, y en "Todos" se ofrecen
           las dos cosas juntas, que es donde conviven. Cada vencimiento cae en un solo
@@ -10193,63 +10282,6 @@ function PanelVencimientos(p){
         );
       })()}
 
-      {/* Portada: cada organismo es su propio submódulo. Se entra a uno y adentro pasa todo
-          —el listado, los totales, el alta y el pago—, siempre de ese rubro. */}
-      {!grupoFiltro&&!verTodos&&(function(){
-        var enRiesgo=planesEnRiesgo(vencimientos);
-        if(enRiesgo.length===0)return null;
-        var hayCaidos=enRiesgo.some(function(x){return x.rg.caido;});
-        var color=hayCaidos?"#C1440E":"#D4A017";
-        return(
-          <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-            <div style={{fontSize:11,color:color,fontWeight:800,marginBottom:6}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
-            {enRiesgo.map(function(x,i){
-              var g=grupoDe(x.v.grupo);
-              return(
-                <div key={i} onClick={function(){verGrupo(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
-                  <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
-                    {x.rg.caido
-                      ? x.rg.adeudadas+" cuotas vencidas: se cayó"
-                      : x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
-
-      {!grupoFiltro&&!verTodos&&(function(){
-        var av=avisosVencimientos(vencimientos,7);
-        if(av.length===0)return null;
-        var vencidos=av.filter(function(a){return a.dias<0;});
-        var color=vencidos.length>0?"#C1440E":"#D4A017";
-        return(
-          <div style={{background:vencidos.length>0?"#1A0808":"#14100A",border:"1px solid "+color+"55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-            <div style={{fontSize:11,color:color,fontWeight:700,marginBottom:7}}>
-              🔔 {vencidos.length>0?vencidos.length+" vencido"+(vencidos.length===1?"":"s"):""}{vencidos.length>0&&av.length>vencidos.length?" · ":""}{av.length>vencidos.length?(av.length-vencidos.length)+" vence"+(av.length-vencidos.length===1?"":"n")+" en los próximos 7 días":""}
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {av.slice(0,6).map(function(a,i){
-                var g=grupoDe(a.v.grupo);
-                return(
-                  <div key={i} onClick={function(){verGrupo(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
-                    <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      <span style={{color:g.color}}>{g.corto}</span> · {a.v.concepto}{a.cuota?" — "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}
-                      {a.v.debito_cuenta?<span style={{color:"#1A6B8A"}}> · 🔁 se debita de {etiquetaCuenta(a.v.debito_cuenta)}</span>:null}
-                    </span>
-                    <span style={{whiteSpace:"nowrap",color:a.dias<0?"#C1440E":(a.dias===0?"#D4A017":"#666")}}>
-                      {a.dias<0?"venció hace "+Math.abs(a.dias)+" día"+(Math.abs(a.dias)===1?"":"s"):(a.dias===0?"vence hoy":"en "+a.dias+" día"+(a.dias===1?"":"s"))} · {fmt(a.monto)}
-                    </span>
-                  </div>
-                );
-              })}
-              {av.length>6&&<div style={{fontSize:10,color:"#555",marginTop:2}}>y {av.length-6} más…</div>}
-            </div>
-          </div>
-        );
-      })()}
-
       {!grupoFiltro&&!verTodos&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
@@ -10277,12 +10309,7 @@ function PanelVencimientos(p){
             })}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:8}}>
-            <button onClick={function(){verGrupo("all");}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
-              📅 Ver todos juntos · {fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))} a pagar en {mesFiltro}
-            </button>
-            <button onClick={function(){setVerTodos(true);}} style={{background:"#0D0D0D",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
-              🗂️ Todo lo cargado · {vencimientos.filter(function(v){return v.activo!==false;}).length} vencimiento{vencimientos.filter(function(v){return v.activo!==false;}).length===1?"":"s"}, sin filtro de mes
-            </button>
+
           </div>
         </div>
       )}

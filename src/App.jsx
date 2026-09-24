@@ -9584,7 +9584,12 @@ function PanelNovedades(p){
     }).join(" · ");
   }
   var deudaRubros=GRUPOS_VENC.map(function(g){
-    var vencido=0, comprometido=0, cuantos=0, quien={};
+    var vencido=0, comprometido=0, cuantos=0, quien={}, items=[];
+    // De quién es cada deuda, con el mismo criterio que el total: CUIT en los rubros que
+    // van por CUIT, local en los demás.
+    function duenioTxt(v){
+      return porCuit(g.id)?cuitVenc(cuitIdDe(v)).corto:((getLocal(v.local)||{}).nombre||"");
+    }
     vencimientos.forEach(function(v){
       if(v.activo===false||grupoIdDe(v)!==g.id)return;
       if(tieneCuotas(v)){
@@ -9595,7 +9600,11 @@ function PanelNovedades(p){
           // vencimiento quedó atrás pero el segundo o el corrido todavía no llegaron, se
           // puede pagar: no es deuda.
           // La deuda se muestra entera, venga del mes que venga: lo que se debe se debe.
-          if(estaVencida(c,hoy)){vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);}
+          if(estaVencida(c,hoy)){
+            vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);
+            items.push({txt:v.concepto+(c.nro===0?" · anticipo":" · cuota "+c.nro),
+              duenio:duenioTxt(v), fecha:venceFinal(c), monto:m});
+          }
           else{comprometido+=m;}
         });
         return;
@@ -9612,9 +9621,12 @@ function PanelNovedades(p){
         vencido+=mv;
         cuantos++;
         sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,mv);
+        items.push({txt:v.concepto, duenio:duenioTxt(v), fecha:f, monto:mv});
       }
     });
-    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos, detalle:detalleRubro(g,quien)};
+    // Lo más viejo primero: es lo que más urge y lo que primero pregunta el organismo.
+    items.sort(function(a,b){return String(a.fecha||"").localeCompare(String(b.fecha||""));});
+    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos, detalle:detalleRubro(g,quien), items:items};
   }).filter(function(x){ return x.vencido>0; });
   // Lo que todavía no venció, por si interesa el compromiso por delante de los planes.
   var porDelante=GRUPOS_VENC.reduce(function(a,g){
@@ -9675,7 +9687,7 @@ function PanelNovedades(p){
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline"}}>
           <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
           <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
-            {props.der}{clic?<span style={{color:"#3A3A3A",marginLeft:5}}>›</span>:null}
+            {props.der}{clic&&props.flecha!==false?<span style={{color:"#3A3A3A",marginLeft:5}}>›</span>:null}
           </div>
         </div>
         {props.detalle&&<div style={{fontSize:10,color:"#4A4A4A",marginTop:2,fontVariantNumeric:"tabular-nums"}}>{props.detalle}</div>}
@@ -9758,11 +9770,39 @@ function PanelNovedades(p){
             <div>
               {deudaRubros.length>0&&<Sub primera={true}>Vencido sin pagar</Sub>}
               {deudaRubros.map(function(x,i){
-                return <Fila key={x.g.id} primera={i===0}
-                  izq={<span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
-                  detalle={x.detalle}
-                  onClick={function(){p.irVencimientos(x.g.id);}}
-                  der={fmt(x.vencido)} color="#E0714A"/>;
+                // El clic abre el detalle acá mismo: "¿de qué es esa deuda?" se contesta
+                // sin salir de la pantalla. Para ir al rubro está el link de abajo.
+                var ab=!!expandido["deuda_"+x.g.id];
+                return (
+                  <div key={x.g.id}>
+                    <Fila primera={i===0}
+                      izq={<span><span style={{color:"#454545",marginRight:4}}>{ab?"▾":"▸"}</span>{x.g.label}<span style={{color:"#454545"}}> · {x.cuantos} sin pagar</span></span>}
+                      detalle={ab?null:x.detalle}
+                      onClick={function(){setExpandido(function(e){var n={...e};n["deuda_"+x.g.id]=!n["deuda_"+x.g.id];return n;});}}
+                      flecha={false}
+                      der={fmt(x.vencido)} color="#E0714A"/>
+                    {ab&&(
+                      <div style={{padding:"2px 0 8px 14px",borderLeft:"1px solid #1E1E1E",marginLeft:4}}>
+                        {x.items.map(function(it,j){
+                          return (
+                            <div key={j} style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline",padding:"4px 0 4px 8px"}}>
+                              <span style={{fontSize:11.5,color:"#9A9A9A",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {it.txt}{it.duenio?<span style={{color:"#4A4A4A"}}> · {it.duenio}</span>:null}
+                              </span>
+                              <span style={{fontSize:11.5,color:"#8A8A8A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
+                                {it.fecha?<span style={{color:"#4A4A4A"}}>{fmtDate(it.fecha)} · </span>:null}{fmt(it.monto)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        <button onClick={function(){p.irVencimientos(x.g.id);}}
+                          style={{background:"none",border:"none",color:x.g.color,fontFamily:"'Inter',sans-serif",fontSize:10.5,fontWeight:700,cursor:"pointer",padding:"6px 0 0 8px"}}>
+                          Ver en {x.g.corto} →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
               })}
               {deudaProv.length>0&&<Sub primera={deudaRubros.length===0}>Saldo con proveedores</Sub>}
               {(expandido.prov?deudaProv:deudaProv.slice(0,5)).map(function(x,i){

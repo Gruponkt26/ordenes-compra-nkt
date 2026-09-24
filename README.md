@@ -1839,8 +1839,18 @@ no puede decir algo distinto.
 
 La pantalla está armada para leerse de un vistazo, de arriba abajo:
 
-1. **Lo urgente**, si lo hay: una línea por cosa —el cierre que falta, un plan por caerse o
-   caído, lo vencido sin pagar—. Si no hay nada, la franja no aparece.
+1. **Lo urgente**, si lo hay: una línea por cosa —un cierre que no se hizo, un plan por
+   caerse o caído, lo vencido sin pagar—. Si no hay nada, la franja no aparece.
+
+   El aviso de cierres mira **la noche anterior**, no el día de hoy: el cierre se carga
+   cuando cierra el local, así que preguntar a la mañana por el de hoy era gritar por algo
+   que todavía no pasó. Dice «Anoche no cerró Kusama», y sólo cuando falta de verdad. Los
+   días en que un local no abre no se reclaman —**Kusama no abre los lunes**, así que los
+   martes no aparece—; se configura en `DIAS_CERRADO`.
+
+   Las fechas del panel son **locales, no UTC**: pasadas las 21 en Argentina
+   `toISOString()` ya devuelve el día siguiente, y un panel que se mira de noche empezaba a
+   hablar de mañana.
 2. **Cuatro números**: ventas del período, deuda (con cuánto está vencido), lo que vence en
    7 días y el neto de socios.
 3. **Cinco tarjetas**, en dos columnas cuando la pantalla da:

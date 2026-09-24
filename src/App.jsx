@@ -8291,6 +8291,56 @@ function fmtDistancia(m){
 // fácil un par de cuadras, así que apretar más sería marcar de dudosa media planilla.
 var RADIO_LOCAL=300;
 
+// Una web no puede darse permiso de cámara a sí misma: sólo puede pedirlo y, si ya se lo
+// negaron, explicar dónde se destraba. Esto es lo que hace falta para eso.
+function esIPhone(){
+  try{
+    var ua=navigator.userAgent||"";
+    return /iPad|iPhone|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  }catch(e){ return false; }
+}
+// El navegador de adentro de WhatsApp o Instagram no da cámara por más permisos que se le
+// den. Es la causa número uno de "no me anda", porque el link se manda justamente por ahí.
+function navegadorEmbebido(){
+  try{
+    var ua=navigator.userAgent||"";
+    if(/FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|WhatsApp/i.test(ua))return true;
+    // Android marca los webviews con "wv"; Chrome de verdad no lo trae.
+    if(/Android/.test(ua)&&/\bwv\b/.test(ua))return true;
+    return false;
+  }catch(e){ return false; }
+}
+async function estadoCamara(){
+  try{
+    if(typeof navigator==="undefined"||!navigator.mediaDevices)return "sin_soporte";
+    if(!navigator.permissions||!navigator.permissions.query)return "desconocido";
+    var st=await navigator.permissions.query({name:"camera"});
+    return st.state||"desconocido";   // granted | denied | prompt
+  }catch(e){ return "desconocido"; }  // Safari no lo soporta y tira: no se sabe hasta pedir
+}
+// Pide el permiso y suelta la cámara enseguida: acá sólo interesa que salga el cartel del
+// navegador, no filmar a nadie.
+async function pedirCamara(){
+  try{
+    var st=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
+    st.getTracks().forEach(function(t){t.stop();});
+    return {ok:true};
+  }catch(e){
+    return {ok:false, negado:(e&&e.name==="NotAllowedError"), error:(e&&e.message)||String(e)};
+  }
+}
+function pasosCamara(){
+  return esIPhone()
+    ? ["Tocá aA a la izquierda de la dirección, arriba de todo.",
+       "Entrá en «Ajustes del sitio web».",
+       "En «Cámara» elegí «Permitir».",
+       "Recargá la página."]
+    : ["Tocá el candado 🔒 a la izquierda de la dirección, arriba de todo.",
+       "Entrá en «Permisos» (o «Configuración del sitio»).",
+       "En «Cámara» elegí «Permitir».",
+       "Recargá la página."];
+}
+
 function ubicacionAhora(){
   return new Promise(function(res){
     if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
@@ -8382,6 +8432,17 @@ function PanelFichar(p){
     try{ return window.localStorage.getItem("nkt_fichaje_empleado")||""; }catch(e){ return ""; }
   });
   var [vinculando,setVinculando]=useState(false);
+  var [permCam,setPermCam]=useState("");     // granted | denied | prompt | desconocido | sin_soporte
+  var [pidiendoCam,setPidiendoCam]=useState(false);
+  var embebido=navegadorEmbebido();
+  useEffect(function(){ var vivo=true; estadoCamara().then(function(e){ if(vivo)setPermCam(e); }); return function(){vivo=false;}; },[]);
+  async function habilitarCamara(){
+    setPidiendoCam(true);
+    var r=await pedirCamara();
+    setPidiendoCam(false);
+    setPermCam(r.ok?"granted":(r.negado?"denied":"desconocido"));
+    if(!r.ok&&!r.negado)alert("No se pudo abrir la cámara: "+r.error);
+  }
   var [pinMal,setPinMal]=useState(false);
   var [cara,setCara]=useState(null);      // true/false si el navegador sabe mirar, null si no
   var [errCam,setErrCam]=useState("");
@@ -8596,7 +8657,12 @@ function PanelFichar(p){
             )}
           </div>
           {errCam
-            ?<div style={{fontSize:12,color:"#C1440E",marginTop:10,lineHeight:1.5}}>{errCam}</div>
+            ?<div style={{fontSize:12,color:"#C1440E",marginTop:10,lineHeight:1.5,textAlign:"left"}}>
+               {errCam}
+               <ol style={{margin:"7px 0 0 16px",padding:0,fontSize:11,color:"#8A8A8A",lineHeight:1.8}}>
+                 {pasosCamara().map(function(t,i){ return <li key={i}>{t}</li>; })}
+               </ol>
+             </div>
             :<div style={{fontSize:12,marginTop:10,color:cara===true?"#3A7D44":cara===false?"#D4A017":"#555"}}>
               {cara===true?"✅ Te veo bien":cara===false?"⚠️ No veo ninguna cara — acomodate frente a la cámara":"📷 Mirá a la cámara"}
             </div>}
@@ -8629,6 +8695,59 @@ function PanelFichar(p){
           }} style={{...GH,padding:"5px 10px",fontSize:11,marginLeft:"auto"}}>No soy yo</button>
         </div>
       )}
+      {(embebido||permCam==="denied"||permCam==="prompt"||permCam==="sin_soporte")&&(
+        <div style={{background:embebido||permCam==="denied"?"#14100A":"#08120F",
+          border:"1px solid "+(embebido||permCam==="denied"?"#D4A01755":"#1A8A7B55"),borderRadius:12,padding:"13px 15px",marginBottom:12}}>
+          {embebido?(
+            <div>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>⚠️ Abrilo en Chrome o Safari</div>
+              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65}}>
+                Parece que estás adentro de WhatsApp (o de otra app). Ese navegador <strong>no da acceso a la
+                cámara</strong>, por más permisos que le des, así que desde acá no vas a poder fichar.
+                <div style={{marginTop:7,color:"#666"}}>
+                  Tocá los <strong>⋮ tres puntitos</strong> arriba a la derecha y elegí <strong>«Abrir en Chrome»</strong>
+                  {esIPhone()?" o «Abrir en Safari»":""}. Después agregalo a la pantalla de inicio y entrás siempre directo.
+                </div>
+              </div>
+            </div>
+          ):permCam==="sin_soporte"?(
+            <div>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>⚠️ Este navegador no da cámara</div>
+              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65}}>
+                Probá abrir la página en Chrome{esIPhone()?" o Safari":""}. Si entraste por una dirección que
+                no empieza con <strong>https</strong>, el navegador no habilita la cámara nunca.
+              </div>
+            </div>
+          ):permCam==="denied"?(
+            <div>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>📷 La cámara está bloqueada</div>
+              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65,marginBottom:4}}>
+                Alguien le dio «Bloquear» en este celular. El navegador no vuelve a preguntar solo, así que hay
+                que destrabarlo a mano:
+              </div>
+              <ol style={{margin:"0 0 0 16px",padding:0,fontSize:11.5,color:"#888",lineHeight:1.8}}>
+                {pasosCamara().map(function(t,i){ return <li key={i}>{t}</li>; })}
+              </ol>
+            </div>
+          ):(
+            <div>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#1A8A7B",marginBottom:4}}>📷 Habilitá la cámara</div>
+              <div style={{fontSize:11.5,color:"#666",lineHeight:1.6,marginBottom:10}}>
+                Para fichar hace falta una foto. Tocá el botón y el celular te va a preguntar si la dejás usar:
+                decile que <strong style={{color:"#888"}}>sí</strong>. Se pregunta una sola vez.
+              </div>
+              <button onClick={habilitarCamara} disabled={pidiendoCam}
+                style={{...BS("#1A8A7B"),padding:"11px 18px",fontSize:13,width:"100%"}}>
+                {pidiendoCam?"Esperando…":"📷 Habilitar la cámara"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {permCam==="granted"&&!embebido&&(
+        <div style={{fontSize:10.5,color:"#3A7D44",marginBottom:10}}>✅ Cámara lista en este celular</div>
+      )}
+
       {vinculando&&(
         <div style={{background:"#08120F",border:"1px solid #1A8A7B55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:800,color:"#1A8A7B",marginBottom:3}}>📱 ¿De quién es este celular?</div>

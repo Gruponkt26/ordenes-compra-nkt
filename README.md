@@ -1886,6 +1886,18 @@ marcan con un `›` al final, porque un renglón que se puede tocar y no lo pare
 nadie. El botón «Vencimientos →» del encabezado sigue abriendo la portada con todos los
 submódulos.
 
+**Las fechas, no los días que faltan.** Un vencimiento suelto tiene una sola fecha, pero la
+cuota de un plan puede tener **tres** —el 1º vencimiento, el 2º y el corrido— y mientras
+quede una por delante todavía se puede pagar. Decir «en 2 días» escondía justamente eso, y
+encima chocaba con el encabezado «3 vencen en los próximos 7 días», donde el 7 era el tamaño
+de la ventana y no una fecha. Ahora se muestran todas las fechas que tiene cada uno, con las
+que ya pasaron tachadas:
+
+```
+AFIP · SRL · Plan T · cuota 3     2̶0̶/̶0̶9̶  2º 26/09  corrido 12/10   $100.000
+Servicios · Kusama · Luz          26/09                              $60.000
+```
+
 **Deuda y vencimiento no son lo mismo**, y el panel los separa. **Deuda** es lo que ya se
 debería haber pagado: un vencimiento cuya fecha ya pasó y sigue impago, y el saldo que se le
 debe a un proveedor. **Vencimiento** es lo que todavía no venció —la luz de este mes, la

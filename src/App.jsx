@@ -9531,6 +9531,9 @@ function PanelNovedades(p){
 
   var avisos=avisosVencimientos(vencimientos,7);
   var vencidos=avisos.filter(function(a){return a.dias<0;});
+  // Lo que se viene encima: vence hoy, mañana o pasado. Esto es lo que va en la alerta de
+  // arriba — el resto de lo por vencer del mes vive en su propia tarjeta, más abajo.
+  var vencenPronto=avisos.filter(function(a){return a.dias>=0&&a.dias<=3;});
   // La tarjeta de vencimientos muestra lo que viene en el mes en curso, no lo que ya se
   // debe —eso está en Deudas, entero—.
   var porVencer=avisosVencimientos(vencimientos,70).filter(function(a){
@@ -9733,6 +9736,12 @@ function PanelNovedades(p){
             txt:(x.rg.caido?"Se cayó el plan ":"Por caerse el plan ")+(x.v.nro_plan||x.v.concepto)+" de "+grupoDe(x.v.grupo).corto+" — "+x.rg.adeudadas+" cuotas vencidas"+(x.rg.caido?"":", con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")});
         });
         if(vencidos.length>0)avisos.push({rojo:true,txt:vencidos.length+" vencimiento"+(vencidos.length===1?"":"s")+" sin pagar · "+fmt(vencidos.reduce(function(a,x){return a+x.monto;},0))});
+        // Uno por uno, no un total: acá lo que importa es saber cuál es, no cuántos hay.
+        vencenPronto.forEach(function(a){
+          var g=grupoDe(a.v.grupo);
+          var cuando=a.dias===0?"hoy":(a.dias===1?"mañana":"en "+a.dias+" días");
+          avisos.push({rojo:false,txt:g.corto+" · "+a.v.concepto+(a.cuota?(a.cuota.nro===0?" · anticipo":" · cuota "+a.cuota.nro):"")+" vence "+cuando+" — "+fmt(a.monto)});
+        });
         if(avisos.length===0)return null;
         var hayRojo=avisos.some(function(a){return a.rojo;});
         return(

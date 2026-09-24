@@ -1621,9 +1621,21 @@ dejar abrir la cámara. Se entra al link de siempre desde el celular y anda.
 
 Dos cosas que hay que tener en cuenta:
 
-- **El permiso de cámara se pide una vez por aparato.** Si se rechaza sin querer, no vuelve
-  a preguntar solo: hay que tocar el candado en la barra de direcciones y habilitarlo a
-  mano. La app avisa con ese texto cuando pasa.
+### El permiso de cámara, explicado en la pantalla
+
+Una web **no puede darse permiso de cámara a sí misma**: sólo puede pedirlo y, si ya se lo
+negaron, explicar dónde se destraba. La pantalla de Fichar mira en qué estado está y muestra
+lo que corresponde:
+
+- **Sin pedir todavía** → un botón **📷 Habilitar la cámara**. Se toca, el celular pregunta,
+  se dice que sí y queda listo. Se pregunta una sola vez por aparato.
+- **Bloqueada** → los pasos exactos para destrabarla, distintos en iPhone («aA» → Ajustes del
+  sitio web) y en Android (el candado → Permisos). Los mismos pasos aparecen si la cámara
+  falla ya estando en la pantalla de marcar.
+- **Adentro de WhatsApp o Instagram** → avisa que ese navegador **no da cámara por más
+  permisos que se le den**, y cómo abrirlo en Chrome o Safari. Es la causa número uno de «no
+  me anda», justamente porque el link se manda por ahí.
+- **Lista** → una línea chica, «✅ Cámara lista en este celular», y nada más.
 - **Desde `localhost` o una IP de la red local (`http://192.168...`) la cámara no abre.** No
   es la app: los navegadores sólo dan cámara en HTTPS o en `localhost`. Probar siempre por
   el link de Vercel.

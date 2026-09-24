@@ -6601,10 +6601,10 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Administrativo","Marketing","Obras","Retiros","Aportes"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
-  "Servicios":"#8B2FC9","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
+  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
   "Retiros":"#8B4513",
   "Aportes":"#3A7D44",
   "F.931":"#4CAF50"
@@ -6668,14 +6668,22 @@ var CONCEPTOS_POR_AREA={
     ]
   },
   "Servicios":{
-    grupos:["Energía","Comunicaciones","Suscripciones","Alquiler","Seguros","Otros"],
+    grupos:["Energía","Comunicaciones","Suscripciones","Seguros","Otros"],
     items:[
       {nombre:"Luz",sub:"Energía"},{nombre:"Gas",sub:"Energía"},{nombre:"Agua",sub:"Energía"},
       {nombre:"Teléfono",sub:"Comunicaciones"},{nombre:"Internet",sub:"Comunicaciones"},
       {nombre:"Punta Online",sub:"Suscripciones"},{nombre:"Naaloo",sub:"Suscripciones"},
       {nombre:"Maxirest",sub:"Suscripciones"},{nombre:"Flow",sub:"Suscripciones"},
       {nombre:"Spotify",sub:"Suscripciones"},{nombre:"PAD",sub:"Suscripciones"},
-      {nombre:"Alquiler",sub:"Alquiler"},{nombre:"Seguro",sub:"Seguros"},
+      {nombre:"Seguro",sub:"Seguros"},
+    ]
+  },
+  "Alquileres":{
+    grupos:["Alquiler","Expensas","Modificaciones","Otros"],
+    items:[
+      {nombre:"Alquiler",sub:"Alquiler"},
+      {nombre:"Expensas",sub:"Expensas"},
+      {nombre:"Modificaciones",sub:"Modificaciones"},
     ]
   },
   "Administrativo":{

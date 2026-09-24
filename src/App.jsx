@@ -8273,6 +8273,24 @@ function detectorDeCaras(){
   try{ return (typeof window!=="undefined"&&window.FaceDetector)?new window.FaceDetector({fastMode:true,maxDetectedFaces:1}):null; }
   catch(e){ return null; }
 }
+// Cuánto hay entre dos puntos, en metros. Haversine: para las distancias que importan acá
+// —¿está en el local o está en la casa?— alcanza y sobra.
+function distanciaMetros(a, b){
+  if(!a||!b||a.lat==null||a.lng==null||b.lat==null||b.lng==null)return null;
+  var R=6371000, rad=Math.PI/180;
+  var dLat=(b.lat-a.lat)*rad, dLng=(b.lng-a.lng)*rad;
+  var la1=a.lat*rad, la2=b.lat*rad;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return Math.round(2*R*Math.asin(Math.min(1,Math.sqrt(h))));
+}
+function fmtDistancia(m){
+  if(m==null)return "";
+  return m<1000?(m+" m"):((m/1000).toFixed(1).replace(".",",")+" km");
+}
+// Hasta acá se considera "en el local". El GPS de un celular adentro de una cocina se va
+// fácil un par de cuadras, así que apretar más sería marcar de dudosa media planilla.
+var RADIO_LOCAL=300;
+
 function ubicacionAhora(){
   return new Promise(function(res){
     if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
@@ -8850,6 +8868,28 @@ function PanelFichajes(p){
   var [foto,setFoto]=useState(null);
   var [showManual,setShowManual]=useState(false);
   var [manual,setManual]=useState({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
+  var [showUbic,setShowUbic]=useState(false);
+  var [tomando,setTomando]=useState("");
+  var localesDatos=p.localesDatos||{};
+
+  // La ubicación del local se toma parado ahí: es lo único que no necesita ni direcciones
+  // ni un servicio de mapas, y es exacto porque sale del mismo GPS que después compara.
+  async function tomarUbicacion(l){
+    setTomando(l.id);
+    var pos=await ubicacionAhora();
+    setTomando("");
+    if(!pos){ alert("No se pudo leer la ubicación. Dale permiso al navegador y probá de nuevo, parado en "+l.nombre+"."); return; }
+    var previo=localesDatos[l.id]||{};
+    var d=distanciaMetros(previo,pos);
+    if(previo.lat!=null&&d!=null&&!window.confirm(l.nombre+" ya tenía una ubicación cargada, a "+fmtDistancia(d)+" de donde estás ahora.\n\n¿La reemplazo por esta?"))return;
+    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, local:l.id, lat:pos.lat, lng:pos.lng});
+  }
+  // La distancia de una marca a su local, cuando se saben las dos puntas.
+  function lejosDe(f){
+    if(!f||f.lat==null)return null;
+    var d=distanciaMetros(localesDatos[f.local],{lat:f.lat,lng:f.lng});
+    return (d==null||d<=RADIO_LOCAL)?null:d;
+  }
 
   function fmtMes(m){ var pr=String(m).split("-"); return ["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pr[1],10)]+" "+pr[0]; }
   var meses=[...new Set(fichajes.map(function(f){return String(f.fecha||"").substring(0,7);}).filter(Boolean))].sort().reverse();
@@ -8921,6 +8961,9 @@ function PanelFichajes(p){
           :<span style={{width:26,height:26,borderRadius:6,background:"#141414",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#444"}}>{f.manual?"✎":"—"}</span>}
         <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
         {f.cara===false&&<span title="El navegador no vio una cara" style={{fontSize:10}}>⚠️</span>}
+        {(function(){ var d=lejosDe(f); return d==null?null:(
+          <span title={"Marcó a "+fmtDistancia(d)+" del local"} style={{fontSize:9.5,color:"#C1440E",fontWeight:700}}>📍{fmtDistancia(d)}</span>
+        ); })()}
         {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
           style={{background:"none",border:"none",color:"#333",cursor:"pointer",fontSize:11,padding:"0 2px"}} title="Borrar">🗑</button>}
       </span>
@@ -8937,8 +8980,44 @@ function PanelFichajes(p){
           <option value="all">Todos los locales</option>
           {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
         </select>
-        {puedeEditar&&<button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12,marginLeft:"auto"}}>✎ Marca manual</button>}
+        {puedeEditar&&<button onClick={function(){setShowUbic(!showUbic);}} style={{...GH,padding:"7px 12px",fontSize:12,marginLeft:"auto"}}>
+          📍 Locales {(function(){ var n=LOCALES.filter(function(l){return (localesDatos[l.id]||{}).lat!=null;}).length; return n+"/"+LOCALES.length; })()}
+        </button>}
+        {puedeEditar&&<button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12}}>✎ Marca manual</button>}
       </div>
+
+      {showUbic&&puedeEditar&&(
+        <div style={{...CAJA,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📍 Ubicación de los locales</div>
+          <div style={{fontSize:11,color:"#666",lineHeight:1.6,marginBottom:11}}>
+            Se toma <strong style={{color:"#888"}}>parado en el local</strong>: tocás «Tomar acá» y queda guardada la posición de ese
+            aparato. Con eso, las marcas que se hagan a más de {RADIO_LOCAL} m aparecen con la distancia en rojo.
+            No bloquea nada —el GPS de un celular adentro de una cocina se va fácil un par de cuadras—, sólo avisa.
+          </div>
+          {LOCALES.map(function(l,i){
+            var d=localesDatos[l.id]||{};
+            var tiene=d.lat!=null&&d.lng!=null;
+            return (
+              <div key={l.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:i===0?"none":"1px solid #141414",flexWrap:"wrap"}}>
+                <span style={{flex:1,minWidth:130}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{l.emoji} {l.nombre}</div>
+                  <div style={{fontSize:10,color:tiene?"#3A7D44":"#D4A017",marginTop:2}}>
+                    {tiene
+                      ? <a href={"https://maps.google.com/?q="+d.lat+","+d.lng} target="_blank" rel="noreferrer" style={{color:"#3A7D44"}}>
+                          {Number(d.lat).toFixed(5)}, {Number(d.lng).toFixed(5)} · ver en el mapa
+                        </a>
+                      : "Sin ubicación — de este local no se puede comparar nada"}
+                  </div>
+                </span>
+                <button onClick={function(){tomarUbicacion(l);}} disabled={tomando===l.id}
+                  style={{...BS(tiene?"#222":"#1A6B8A"),padding:"7px 13px",fontSize:11.5,color:tiene?"#888":"#fff"}}>
+                  {tomando===l.id?"Leyendo…":(tiene?"Tomar de nuevo":"Tomar acá")}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{...CAJA,marginBottom:12,display:"flex",gap:20,flexWrap:"wrap"}}>
         <div><div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>Horas del mes</div>
@@ -9026,6 +9105,12 @@ function PanelFichajes(p){
             <div style={{fontSize:11,color:"#555",marginTop:3}}>
               {fmtDate(foto.fecha)} · {(getLocal(foto.local)||{}).nombre||foto.local} · {foto.aparato||"—"}
               {foto.lat?<a href={"https://maps.google.com/?q="+foto.lat+","+foto.lng} target="_blank" rel="noreferrer" style={{color:"#1A6B8A",marginLeft:8}}>📍 dónde</a>:null}
+              {(function(){
+                if(!foto.lat)return null;
+                var d=distanciaMetros(localesDatos[foto.local],{lat:foto.lat,lng:foto.lng});
+                if(d==null)return <span style={{color:"#3F3F3F",marginLeft:8}}>· sin ubicación del local para comparar</span>;
+                return <span style={{color:d>RADIO_LOCAL?"#C1440E":"#3A7D44",marginLeft:8}}>· a {fmtDistancia(d)} del local</span>;
+              })()}
             </div>
           </div>
         </div>
@@ -18854,7 +18939,12 @@ export default function App() {
               </div>
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje}/>
+                   puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje}
+                   localesDatos={localesDatos}
+                   onSaveLocalDatos={async function(d){
+                     setLocalesDatos(function(prev){var n={...prev};n[d.local]={...(prev[d.local]||{}),...d};return n;});
+                     await sbSaveLocalDatos(d);
+                   }}/>
                 :vista==="fichajes_jornadas"
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"

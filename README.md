@@ -1518,6 +1518,24 @@ contra lo que les tocaba**:
 Al que **no tiene jornada cargada no se le compara nada** —no se sabe qué le tocaba— y el
 renglón lo dice. La pestaña avisa cuántos faltan.
 
+### La geolocalización
+
+**Dónde queda registrada:** en la tabla `fichajes`, columnas `lat` y `lng`, **una por marca**.
+Cada vez que alguien ficha desde el celular la app le pide la ubicación y la guarda con esa
+marca. Si no da permiso, se guarda igual sin ubicación: nunca le traba el fichaje por eso.
+
+Para poder **comparar** hace falta la ubicación de cada local. Se carga en 📋 Registro →
+**📍 Locales**, y se toma **parado en el local**: se toca «Tomar acá» y queda guardada la
+posición de ese aparato. No hace falta ni la dirección ni un servicio de mapas, y es exacto
+porque sale del mismo GPS que después compara. Queda en `locales_datos`, al lado del resto de
+los datos del local. El botón muestra cuántos locales la tienen cargada («📍 Locales 2/4»).
+
+Con las dos puntas, una marca hecha a más de **300 m** del local aparece con su distancia en
+rojo —«📍 4,9 km»— en el renglón, y al abrir la foto dice «a 4,9 km del local» en rojo o en
+verde. **No bloquea nada**: el GPS de un celular adentro de una cocina se va fácil un par de
+cuadras, y dejar a alguien sin poder fichar es peor que una marca señalada para mirar. Del
+local sin ubicación cargada no se compara nada, y la foto lo aclara en vez de callarse.
+
 ### El registro
 
 En 🕐 Fichaje → **Registro** está el parte del mes: horas totales, cuánta gente marcó y
@@ -1573,6 +1591,13 @@ Y la columna del PIN en la tabla de empleados:
 ```sql
 alter table empleados add column if not exists pin text;
 alter table empleados add column if not exists jornada jsonb;
+```
+
+Y para la geolocalización, la ubicación de cada local:
+
+```sql
+alter table locales_datos add column if not exists lat double precision;
+alter table locales_datos add column if not exists lng double precision;
 ```
 
 La jornada va en una sola columna del empleado, no en una tabla aparte: es un dato de la

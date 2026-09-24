@@ -1464,6 +1464,26 @@ apuntando al techo o con el dedo sobre la cámara. Esto anda en Chrome de Androi
 el navegador no lo trae, así que ahí la foto se saca igual y la marca queda con `cara` en
 blanco. Nunca bloquea el fichaje por no poder mirar.
 
+### Un usuario por empleado
+
+En 👤 Usuarios, cada usuario tiene un campo **«🕐 Es el empleado»**: se lo elige de la lista y
+queda atado a esa ficha. Con eso, al entrar a Fichar **la app ya sabe quién es**: le muestra
+su nombre y nada más, sin que haya que configurar nada en el celular. La pantalla lo dice
+—«👤 Estás como Magali Ruiz»— y no ofrece ni atar ni desvincular, porque la identidad viene
+del login.
+
+Esto vive **en la base, no en el navegador**: no se pierde si alguien borra los datos del
+celular, funciona en cualquier aparato donde entre, y se puede **controlar desde acá quién
+está configurado**. La pestaña 🔑 PINs lo muestra en cada renglón («👤 magali» o «sin
+usuario») y avisa arriba cuántos faltan.
+
+El atado por celular sigue existiendo para el que **no** tenga usuario propio: sirve para un
+usuario compartido del local. Si el usuario está atado a una ficha, ese camino ni aparece.
+
+```sql
+alter table usuarios add column if not exists empleado_id text;
+```
+
 ### El PIN
 
 Cada uno tiene **cuatro números propios**. Al tocar su nombre aparece un teclado, y recién

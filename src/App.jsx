@@ -1661,6 +1661,19 @@ function GestUsuarios(p) {
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setNuevo(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"7px 3px",borderRadius:8,border:"2px solid "+(nuevo.local===l.id?l.color:"#222"),background:nuevo.local===l.id?l.color+"22":"#111",color:nuevo.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Sección</label><select value={nuevo.seccion||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#3A3A3A",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
               {nuevo.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!nuevo.puedeCompras} onChange={function(e){var v=e.target.checked;setNuevo(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
+              {/* Atar el usuario a su ficha de empleado: con esto, al entrar a Fichar la app
+                  ya sabe quién es y le muestra su nombre y nada más. Queda del lado de la
+                  base, así que se puede controlar desde acá quién está configurado. */}
+              <div style={{marginBottom:9}}>
+                <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>🕐 Es el empleado</label>
+                <select value={nuevo.empleado_id||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,empleado_id:v};});}} style={INP}>
+                  <option value="">— Ninguno (no ficha desde este usuario) —</option>
+                  {(p.empleados||[]).filter(function(e){return e.activo!==false;})
+                    .sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));})
+                    .map(function(e){ return <option key={e.id} value={e.id}>{e.nombre}</option>; })}
+                </select>
+                <div style={{fontSize:9,color:"#3A3A3A",marginTop:4}}>Si lo elegís, al fichar ve sólo su nombre y no hay que configurar nada en el celular.</div>
+              </div>
               {err&&<div style={{fontSize:12,color:"#C1440E",marginBottom:7}}>⚠️ {err}</div>}
               <div style={{display:"flex",gap:7}}><button onClick={doAdd} style={{...BS("#C1440E"),flex:1}}>Crear</button><button onClick={function(){setShowAdd(false);setErr("");}} style={{...GH,flex:1}}>Cancelar</button></div>
             </div>
@@ -1679,6 +1692,15 @@ function GestUsuarios(p) {
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setEditando(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"6px 3px",borderRadius:8,border:"2px solid "+(editando.local===l.id?l.color:"#222"),background:editando.local===l.id?l.color+"22":"#111",color:editando.local===l.id?l.color:"#555",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>Sección</label><select value={editando.seccion||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#3A3A3A",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
                   {editando.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!(editando.puedeCompras||editando.puedecompras)} onChange={function(e){var v=e.target.checked;setEditando(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
+                  <div style={{marginBottom:9}}>
+                    <label style={{fontSize:10,color:"#555",display:"block",marginBottom:4}}>🕐 Es el empleado</label>
+                    <select value={editando.empleado_id||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,empleado_id:v};});}} style={INP}>
+                      <option value="">— Ninguno (no ficha desde este usuario) —</option>
+                      {(p.empleados||[]).filter(function(e){return e.activo!==false||e.id===editando.empleado_id;})
+                        .sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));})
+                        .map(function(e){ return <option key={e.id} value={e.id}>{e.nombre}</option>; })}
+                    </select>
+                  </div>
                   <div style={{display:"flex",gap:7}}><button onClick={doEdit} style={{...BS("#3A7D44"),flex:1,padding:"8px"}}>Guardar</button><button onClick={function(){setEditando(null);}} style={{...GH,flex:1,padding:"8px"}}>Cancelar</button></div>
                 </div>
               );
@@ -8497,7 +8519,12 @@ function PanelFichar(p){
   function guardarLocal(v){ setLocalElegido(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
   function guardarKiosco(v){ setKiosco(v); try{ window.localStorage.setItem("nkt_fichaje_kiosco",v?"1":"0"); }catch(e){} }
 
-  var soyYo=miEmp?empleados.find(function(e){return e.id===miEmp;}):null;
+  // Quién es el que está mirando la pantalla. Primero el vínculo del usuario, que vive en
+  // la base y lo configura administración; si no lo tiene, el atado de este aparato. Lo
+  // primero es más firme: no se pierde si alguien borra los datos del navegador, y desde
+  // Usuarios se ve quién está configurado y quién no.
+  var porUsuario=p.empleadoId?empleados.find(function(e){return e.id===p.empleadoId;}):null;
+  var soyYo=porUsuario||(miEmp?empleados.find(function(e){return e.id===miEmp;}):null);
   // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
   // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
   var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});
@@ -8725,11 +8752,14 @@ function PanelFichar(p){
     <div style={{fontFamily:"'Inter',sans-serif",maxWidth:640,margin:"0 auto"}}>
       {soyYo&&(
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
-          <span style={{fontSize:11,color:"#1A8A7B"}}>📱 Este celular es de <strong>{soyYo.nombre}</strong></span>
+          <span style={{fontSize:11,color:"#1A8A7B"}}>
+            {porUsuario?<span>👤 Estás como <strong>{soyYo.nombre}</strong></span>
+                       :<span>📱 Este celular es de <strong>{soyYo.nombre}</strong></span>}
+          </span>
           {/* Soltarlo es de administración y de nadie más: si el empleado puede desatarlo
               cuando quiere, el atado no sirve de nada —se suelta, ficha por otro y lo vuelve
               a atar—. Para cambiarlo, que lo haga Sofía desde su usuario. */}
-          {p.esAdmin&&(
+          {p.esAdmin&&!porUsuario&&(
             <button onClick={function(){
               if(window.confirm("¿Este celular deja de ser de "+soyYo.nombre+"?\n\nVuelve a mostrar la lista del local y para volver a atarlo hay que poner el PIN de nuevo."))guardarMiEmp("");
             }} style={{...GH,padding:"5px 10px",fontSize:11,marginLeft:"auto"}}>Desvincular</button>
@@ -8838,7 +8868,7 @@ function PanelFichar(p){
         </label>
       </div>
       )}
-      {!soyYo&&!vinculando&&!kiosco&&(
+      {!soyYo&&!vinculando&&!kiosco&&!p.empleadoId&&(
         <button onClick={function(){setVinculando(true);}}
           style={{background:"none",border:"1px solid #1A8A7B55",borderRadius:9,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",
             fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:12,width:"100%"}}>
@@ -8914,6 +8944,14 @@ function PanelPines(p){
         abre la cámara. <strong style={{color:"#888"}}>Al que no tenga PIN se lo deja marcar igual</strong>, para que
         nadie se quede sin fichar mientras los cargás.
         {sinPin>0&&<div style={{color:"#D4A017",marginTop:6}}>⚠️ {sinPin} sin PIN todavía.</div>}
+        {(function(){
+          var sinU=lista.filter(function(e){ return !(p.usuarios||[]).some(function(u){return u.empleado_id===e.id;}); });
+          if(sinU.length===0)return <div style={{color:"#3A7D44",marginTop:6}}>✅ Todos tienen su usuario para fichar.</div>;
+          return <div style={{color:"#D4A017",marginTop:6}}>
+            ⚠️ {sinU.length} sin usuario propio: {sinU.slice(0,6).map(function(e){return e.nombre;}).join(", ")}{sinU.length>6?" y "+(sinU.length-6)+" más":""}.
+            <div style={{color:"#555",marginTop:3}}>Se les crea en 👤 Usuarios, eligiéndolos en «🕐 Es el empleado».</div>
+          </div>;
+        })()}
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
         <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
@@ -8930,7 +8968,14 @@ function PanelPines(p){
           <div key={e.id} style={{...CAJA,marginBottom:7,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <span style={{flex:1,minWidth:130}}>
               <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{e.nombre}</div>
-              <div style={{fontSize:10.5,color:"#444"}}>{l.emoji} {l.nombre}</div>
+              <div style={{fontSize:10.5,color:"#444"}}>
+                {l.emoji} {l.nombre}
+                {(function(){
+                  var u=(p.usuarios||[]).find(function(x){return x.empleado_id===e.id;});
+                  return u?<span style={{color:"#3A7D44"}}> · 👤 {u.usuario}</span>
+                          :<span style={{color:"#D4A017"}}> · sin usuario</span>;
+                })()}
+              </div>
             </span>
             <input value={verPin[e.id]?v:(v?"••••".slice(0,v.length):"")}
               onChange={function(ev){escribir(e,ev.target.value);}}
@@ -19192,9 +19237,9 @@ export default function App() {
                 :vista==="fichajes_jornadas"
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"
-                ?<PanelPines empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
+                ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   localSugerido={cu.local} esAdmin={esAdmin} onFichar={guardarFichaje}/>}
+                   localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}/>}
             </div>
           )}
 
@@ -19205,7 +19250,7 @@ export default function App() {
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
               </div>
-              <GestUsuarios users={users} onClose={function(){setModulo(null);}}
+              <GestUsuarios users={users} empleados={empleados} onClose={function(){setModulo(null);}}
                 onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
                 onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
             </div>
@@ -19623,7 +19668,7 @@ export default function App() {
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-              localSugerido={cu.local} esAdmin={esAdmin} onFichar={guardarFichaje}/>
+              localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(
@@ -19746,7 +19791,7 @@ export default function App() {
         });
         setPrecios(prs);setShowPrecios(false);
       }}/>}
-      {showUsers&&<GestUsuarios users={users} onClose={function(){setShowUsers(false);}}
+      {showUsers&&<GestUsuarios users={users} empleados={empleados} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
     </div>

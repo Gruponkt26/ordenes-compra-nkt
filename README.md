@@ -1889,12 +1889,16 @@ La pantalla está armada para leerse de un vistazo, de arriba abajo:
      próximos dos meses.
    - **🤝 Socios**: los aportes y retiros del período.
 
-**Cada renglón lleva a donde está el dato.** En 💳 Deudas por título y en 📅 Vencimientos
-del mes, tocar un rubro —Servicios, AFIP, Municipalidad…— abre **ese submódulo** de
-Vencimientos, no la portada: el que hizo clic en «Servicios» ya dijo a dónde quería ir. Se
-marcan con un `›` al final, porque un renglón que se puede tocar y no lo parece no lo toca
-nadie. El botón «Vencimientos →» del encabezado sigue abriendo la portada con todos los
-submódulos.
+**Cada renglón se toca.** En 💳 **Deudas por título**, tocar un rubro lo **despliega ahí
+mismo** y muestra de qué está hecha esa deuda: cada plan con su cuota, de quién es, hasta
+cuándo se podía pagar y cuánto, lo más viejo primero. «¿De qué son esos $617.656 de AFIP?»
+se contesta sin salir de la pantalla. Adentro del desplegado hay un «Ver en AFIP →» para ir
+al rubro.
+
+En 📅 **Vencimientos del mes**, en cambio, tocar un renglón **lleva al submódulo** de ese
+rubro: ahí el detalle ya está a la vista, lo que falta es ir a pagarlo. Esos se marcan con un
+`›` al final; los que despliegan llevan un `▸` adelante, para que se note qué hace cada uno.
+El botón «Vencimientos →» del encabezado sigue abriendo la portada.
 
 **Las fechas, no los días que faltan.** Un vencimiento suelto tiene una sola fecha, pero la
 cuota de un plan puede tener **tres** —el 1º vencimiento, el 2º y el corrido— y mientras

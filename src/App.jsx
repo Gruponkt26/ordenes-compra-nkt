@@ -8362,15 +8362,26 @@ function diasDelMesHasta(mes, hoy){
 function PanelFichar(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var fichajes=p.fichajes||[];
-  var [local,setLocal]=useState(function(){
-    try{ return window.localStorage.getItem("nkt_fichaje_local")||p.localSugerido||"l1"; }catch(e){ return p.localSugerido||"l1"; }
+  // El local se sigue del usuario mientras nadie elija otro a mano. Congelarlo al montar
+  // dejaba a todos en el primer local: cu llega del login después del primer render, así
+  // que en ese momento todavía no se sabe de qué local es el que entró.
+  var [localElegido,setLocalElegido]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_local")||""; }catch(e){ return ""; }
   });
+  var local=localElegido||p.localSugerido||"l1";
   var [kiosco,setKiosco]=useState(function(){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
   });
   var [elegido,setElegido]=useState(null);
   var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
   var [pin,setPin]=useState("");          // lo que va tecleando
+  // De quién es este celular. En la tablet del local no se usa —ahí marcan todos—, pero en
+  // el celular de cada uno sí: si la pantalla muestra la lista entera, cualquiera puede
+  // fichar por cualquiera. Atado el aparato, ve su nombre y nada más.
+  var [miEmp,setMiEmp]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_empleado")||""; }catch(e){ return ""; }
+  });
+  var [vinculando,setVinculando]=useState(false);
   var [pinMal,setPinMal]=useState(false);
   var [cara,setCara]=useState(null);      // true/false si el navegador sabe mirar, null si no
   var [errCam,setErrCam]=useState("");
@@ -8386,10 +8397,17 @@ function PanelFichar(p){
   // puede pasar acá.
   useEffect(function(){ if(!elegido&&camaraOn)setFase("lista"); },[elegido,camaraOn]);
 
-  function guardarLocal(v){ setLocal(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
+  function guardarLocal(v){ setLocalElegido(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
   function guardarKiosco(v){ setKiosco(v); try{ window.localStorage.setItem("nkt_fichaje_kiosco",v?"1":"0"); }catch(e){} }
 
-  var delLocal=empleados.filter(function(e){return e.local===local;});
+  var soyYo=miEmp?empleados.find(function(e){return e.id===miEmp;}):null;
+  // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
+  // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
+  var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});
+  function guardarMiEmp(id){
+    setMiEmp(id);
+    try{ if(id)window.localStorage.setItem("nkt_fichaje_empleado",id); else window.localStorage.removeItem("nkt_fichaje_empleado"); }catch(e){}
+  }
 
   // Adentro o afuera se decide por la última marca de las últimas 18 horas, no por la del
   // día: el que entró a las 20 y sale a la 1 sigue adentro aunque haya cambiado la fecha.
@@ -8443,7 +8461,9 @@ function PanelFichar(p){
   function elegir(emp){
     cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
     setPin(""); setPinMal(false);
-    setFase(pinDe(emp)?"pin":"camara");
+    // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
+    if(!pinDe(emp)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } setFase("camara"); return; }
+    setFase("pin");
   }
   function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); }
   // Se comprueba solo al cuarto dígito: nadie tiene que buscar un botón de "aceptar".
@@ -8453,7 +8473,11 @@ function PanelFichar(p){
     var v=(pin+String(d)).slice(0,4);
     setPin(v);
     if(v.length===4){
-      if(v===pinDe(elegido)){ setPin(""); setFase("camara"); }
+      if(v===pinDe(elegido)){
+        setPin("");
+        if(vinculando){ guardarMiEmp(elegido.id); setVinculando(false); setElegido(null); setFase("lista"); return; }
+        setFase("camara");
+      }
       else { setPinMal(true); setTimeout(function(){ setPin(""); },450); }
     }
   }
@@ -8597,6 +8621,25 @@ function PanelFichar(p){
   // ── La lista de los chicos ──
   return (
     <div style={{fontFamily:"'Inter',sans-serif",maxWidth:640,margin:"0 auto"}}>
+      {soyYo&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:"#1A8A7B"}}>📱 Este celular es de <strong>{soyYo.nombre}</strong></span>
+          <button onClick={function(){
+            if(window.confirm("¿Este celular deja de ser de "+soyYo.nombre+"?\n\nVuelve a mostrar la lista del local y para volver a atarlo hay que poner el PIN de nuevo."))guardarMiEmp("");
+          }} style={{...GH,padding:"5px 10px",fontSize:11,marginLeft:"auto"}}>No soy yo</button>
+        </div>
+      )}
+      {vinculando&&(
+        <div style={{background:"#08120F",border:"1px solid #1A8A7B55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#1A8A7B",marginBottom:3}}>📱 ¿De quién es este celular?</div>
+          <div style={{fontSize:11,color:"#2A5A52",lineHeight:1.5}}>
+            Tocá tu nombre y poné tu PIN. Desde entonces esta pantalla te muestra sólo a vos, y nadie
+            puede fichar por otro desde acá.
+          </div>
+          <button onClick={function(){setVinculando(false);}} style={{...GH,padding:"5px 10px",fontSize:11,marginTop:9}}>Cancelar</button>
+        </div>
+      )}
+      {!soyYo&&(
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
         {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
           var act=local===l.id;
@@ -8609,6 +8652,14 @@ function PanelFichar(p){
           Tablet del local
         </label>
       </div>
+      )}
+      {!soyYo&&!vinculando&&!kiosco&&(
+        <button onClick={function(){setVinculando(true);}}
+          style={{background:"none",border:"1px solid #1A8A7B55",borderRadius:9,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",
+            fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:12,width:"100%"}}>
+          📱 Este celular es mío — mostrame sólo a mí
+        </button>
+      )}
       <div style={{fontSize:11,color:"#444",marginBottom:10}}>
         {fmtDate(fechaLocal())} · Tocá tu nombre para marcar
       </div>
@@ -18252,7 +18303,12 @@ export default function App() {
   var [loading,setLoading]=useState(false);
   var [modulo,setModulo]=useState(null); // null | compras | admin
   var [entradaMod,setEntradaMod]=useState(0); // sube cada vez que se entra a un módulo: limpia los tabs
-  var [subCompras,setSubCompras]=useState(null); // dentro de Compras: null (elección) | "ordenes" | "stock"
+  // dentro de Compras: null (elección) | "ordenes" | "stock" | "fichar"
+  // La tablet marcada como reloj del local abre directo en Fichar: nadie va a pasar por la
+  // pantalla de tarjetas cincuenta veces por día para marcar la entrada.
+  var [subComprasEstado,setSubCompras]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"?"fichar":null; }catch(e){ return null; }
+  });
   // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
@@ -18396,6 +18452,9 @@ export default function App() {
   var esAdmin=cu.rol==="admin";
   var esSofia=cu.usuario==="sofia";
   var esCajero=cu.rol==="cajero";
+  // El tilde de "tablet del local" puede haber quedado en el navegador de Sofía de una
+  // prueba: ella navega por módulos, así que ahí ese arranque no vale y se ignora.
+  var subCompras=(esSofia&&subComprasEstado==="fichar")?null:subComprasEstado;
   // El permiso de compras del cajero puede venir de Supabase con la columna en
   // minúsculas, según cómo se haya creado; se aceptan las dos formas.
   var cajeroCompras=!!(cu.puedeCompras||cu.puedecompras);

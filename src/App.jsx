@@ -8293,6 +8293,19 @@ var RADIO_LOCAL=300;
 
 // Una web no puede darse permiso de cámara a sí misma: sólo puede pedirlo y, si ya se lo
 // negaron, explicar dónde se destraba. Esto es lo que hace falta para eso.
+// Agregar la app a la pantalla de inicio es lo que saca del medio al navegador de WhatsApp
+// para siempre: se entra por el ícono y nunca más por el link. Android avisa cuándo se
+// puede ofrecer; iPhone no tiene API y hay que explicar los pasos.
+var promptInstalar=null;
+if(typeof window!=="undefined"){
+  window.addEventListener("beforeinstallprompt",function(e){ e.preventDefault(); promptInstalar=e; });
+}
+function yaInstalada(){
+  try{
+    if(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)return true;
+    return !!window.navigator.standalone;
+  }catch(e){ return false; }
+}
 function esIPhone(){
   try{
     var ua=navigator.userAgent||"";
@@ -8435,6 +8448,29 @@ function PanelFichar(p){
   var [permCam,setPermCam]=useState("");     // granted | denied | prompt | desconocido | sin_soporte
   var [pidiendoCam,setPidiendoCam]=useState(false);
   var embebido=navegadorEmbebido();
+  var [puedeInstalar,setPuedeInstalar]=useState(!!promptInstalar);
+  var [ocultarInstalar,setOcultarInstalar]=useState(function(){
+    try{ return window.localStorage.getItem("nkt_fichaje_sin_instalar")==="1"; }catch(e){ return false; }
+  });
+  useEffect(function(){
+    function onBip(e){ e.preventDefault(); promptInstalar=e; setPuedeInstalar(true); }
+    function onInstalada(){ setPuedeInstalar(false); }
+    window.addEventListener("beforeinstallprompt",onBip);
+    window.addEventListener("appinstalled",onInstalada);
+    return function(){ window.removeEventListener("beforeinstallprompt",onBip); window.removeEventListener("appinstalled",onInstalada); };
+  },[]);
+  async function instalar(){
+    if(!promptInstalar)return;
+    promptInstalar.prompt();
+    try{ await promptInstalar.userChoice; }catch(e){}
+    promptInstalar=null; setPuedeInstalar(false);
+  }
+  function noMostrarInstalar(){
+    setOcultarInstalar(true);
+    try{ window.localStorage.setItem("nkt_fichaje_sin_instalar","1"); }catch(e){}
+  }
+  // Se ofrece cuando hace falta: instalada no, y en iPhone —que no avisa— se explica igual.
+  var ofrecerInstalar=!yaInstalada()&&!ocultarInstalar&&!kiosco&&(puedeInstalar||esIPhone());
   useEffect(function(){ var vivo=true; estadoCamara().then(function(e){ if(vivo)setPermCam(e); }); return function(){vivo=false;}; },[]);
   async function habilitarCamara(){
     setPidiendoCam(true);
@@ -8746,6 +8782,30 @@ function PanelFichar(p){
       )}
       {permCam==="granted"&&!embebido&&(
         <div style={{fontSize:10.5,color:"#3A7D44",marginBottom:10}}>✅ Cámara lista en este celular</div>
+      )}
+
+      {ofrecerInstalar&&(
+        <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 15px",marginBottom:12}}>
+          <div style={{fontSize:12.5,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📲 Sumalo a tu pantalla de inicio</div>
+          <div style={{fontSize:11.5,color:"#666",lineHeight:1.6,marginBottom:10}}>
+            Queda como un ícono más en el celular y abrís directo para fichar. Además te saca del navegador
+            de WhatsApp, que es donde la cámara no funciona.
+          </div>
+          {puedeInstalar?(
+            <button onClick={instalar} style={{...BS("#1A6B8A"),padding:"11px 18px",fontSize:13,width:"100%"}}>
+              📲 Agregar a la pantalla de inicio
+            </button>
+          ):(
+            <ol style={{margin:"0 0 0 16px",padding:0,fontSize:11.5,color:"#888",lineHeight:1.8}}>
+              <li>Tocá el botón de compartir <strong>􀈂</strong>, abajo en el medio.</li>
+              <li>Bajá hasta <strong>«Agregar a inicio»</strong>.</li>
+              <li>Tocá <strong>«Agregar»</strong> arriba a la derecha.</li>
+            </ol>
+          )}
+          <button onClick={noMostrarInstalar} style={{background:"none",border:"none",color:"#3A3A3A",fontSize:10.5,cursor:"pointer",padding:"8px 0 0",fontFamily:"'Inter',sans-serif"}}>
+            No mostrar más
+          </button>
+        </div>
       )}
 
       {vinculando&&(

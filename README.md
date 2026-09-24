@@ -1636,6 +1636,13 @@ lo que corresponde:
   permisos que se le den**, y cómo abrirlo en Chrome o Safari. Es la causa número uno de «no
   me anda», justamente porque el link se manda por ahí.
 - **Lista** → una línea chica, «✅ Cámara lista en este celular», y nada más.
+
+Y abajo, un aviso para **sumar la app a la pantalla de inicio**: queda como un ícono más en
+el celular y se entra directo, que es lo que saca del medio al navegador de WhatsApp para
+siempre. En Android el navegador avisa cuándo se puede ofrecer y hay un botón que lo instala;
+en iPhone no existe esa API, así que van los tres pasos (compartir → «Agregar a inicio» →
+«Agregar»). No aparece si ya está instalada, si es la tablet del local, o si tocaron
+«No mostrar más».
 - **Desde `localhost` o una IP de la red local (`http://192.168...`) la cámara no abre.** No
   es la app: los navegadores sólo dan cámara en HTTPS o en `localhost`. Probar siempre por
   el link de Vercel.

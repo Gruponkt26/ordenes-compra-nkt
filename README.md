@@ -1486,10 +1486,16 @@ PIN sólo sube el costo de intentarlo.
 ### Dónde se ficha
 
 - **La tablet del local**: se entra a 🕐 Fichaje → Fichar, se elige el local una vez y se
-  tilda **«Tablet del local»**. Queda guardado en ese aparato, así que la pantalla abre
+  tilda **«Tablet del local»**. Ese tilde además hace que la app **abra directo en Fichar**
+  al entrar, sin pasar por la pantalla de tarjetas: nadie va a dar dos pasos cincuenta veces
+  por día para marcar la entrada. Queda guardado en ese aparato, así que la pantalla abre
   siempre igual. Después de cada marca vuelve sola a la lista a los 6 segundos.
 - **El celular de cada uno**: los usuarios que no son administración ven una tarjeta
-  **🕐 Fichar** en su pantalla de inicio. Las marcas hechas desde un celular quedan con
+  **🕐 Fichar** en su pantalla de inicio. Ahí conviene tocar **📱 Este celular es mío**: se
+  elige el nombre, se pone el PIN una vez y **el aparato queda atado a esa persona**. Desde
+  entonces la pantalla muestra **sólo su nombre**, así que nadie puede fichar por un
+  compañero desde ese celular. Se suelta con **No soy yo**, y volver a atarlo pide el PIN de
+  nuevo. La tablet del local no se ata: ahí marcan todos. Las marcas hechas desde un celular quedan con
   `aparato = celular` y, si el que ficha da permiso, con la ubicación: en el registro
   aparece un **📍 dónde** que abre el mapa. Si no da permiso, se guarda igual sin ubicación.
 

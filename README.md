@@ -1674,18 +1674,19 @@ días. Ahora **el 🩺 se pone ámbar y muestra cuántas faltan** («🩺 2»); 
 y da el `alter table` de cada una, arriba del diagnóstico de siempre. Que no moleste no
 quiere decir que no esté: si el 🩺 está ámbar, hay datos que se descartan al guardar.
 
-### El filtro de adentro de cada rubro
+### El filtro «De quién»
 
-Adentro de un submódulo hay una fila de botones para recortar la lista, y **cada rubro
-ofrece el que lo organiza**:
+Cada vencimiento es **de un CUIT o de un local**, nunca de los dos: de un CUIT si su rubro va
+por CUIT —AFIP, ARBA, Gremio, Obra Social, Créditos— y de un local si va por local
+—Municipalidad, Servicios, Otros—. Como cae en uno solo, un único filtro parte la lista sin
+superponer nada.
 
-- **Por CUIT** en AFIP, ARBA, Gremio, Obra Social y Créditos.
-- **Por local** en Municipalidad, Servicios y Otros.
-
-Filtrar AFIP por local no diría nada —su local sale del CUIT, así que caería casi todo en
-Oficina y encima sugeriría que el gasto es de ahí—, por eso en esos rubros ni se ofrece. En
-**Todos los vencimientos** tampoco se ofrece ninguno: ahí conviven las dos cosas y cualquiera
-de los dos filtros escondería la mitad sin decirlo.
+- Adentro de un rubro se ofrece **sólo el criterio que lo organiza**. Filtrar AFIP por local
+  no diría nada —su local sale del CUIT, así que caería casi todo en Oficina y encima
+  sugeriría que el gasto es de ahí—, por eso ahí ni aparece.
+- En **Todos los vencimientos** se ofrecen **los dos juntos** —los dos CUIT y los tres
+  locales—, que es donde conviven. Es la pantalla que más se mira, así que era justo la que
+  no podía quedarse sin filtro.
 
 Cada botón trae **cuántos hay** de ese local o CUIT en el mes, y los que no tienen ninguno no
 aparecen. Si queda un solo local o un solo CUIT, la fila entera se esconde: un filtro que no

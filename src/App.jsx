@@ -12742,14 +12742,15 @@ function PanelCierre(p) {
 
   var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
-  // El día más viejo que le falta cerrar, mirando para atrás desde ayer. No se pide
-  // remontar toda la vida del local: se mira como mucho un mes, y nunca antes del primer
-  // cierre que tenga cargado —si recién empieza, no hay nada de qué ponerse al día—.
+  // El día más viejo que le falta cerrar, mirando para atrás desde ayer, pero sin salir
+  // del mes en curso: lo de meses anteriores ya quedó atrás y se arregla con el traspaso
+  // de Resultados, no reclamándoselo al cajero de hoy. Tampoco se pide antes del primer
+  // cierre que el local tenga cargado —si recién empieza, no hay de qué ponerse al día—.
   var diaFaltante=(function(){
     if(cierresLocal.length===0)return null;
     var masViejo=cierresLocal[cierresLocal.length-1].fecha;
-    var limite=fechaLocal(new Date(Date.now()-30*86400000));
-    var desde=masViejo>limite?masViejo:limite;
+    var inicioMes=hoy.substring(0,7)+"-01";
+    var desde=masViejo>inicioMes?masViejo:inicioMes;
     var d=new Date(hoy+"T00:00:00");
     var faltante=null;
     for(var i=0;i<31;i++){

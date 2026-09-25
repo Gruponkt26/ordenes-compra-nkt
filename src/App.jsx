@@ -466,6 +466,29 @@ async function sbDeletePauta(id) {
   } catch(e) {}
 }
 
+// ─── INFO PARA CAJEROS ──────────────────────────────────────────────────────
+// El instructivo del día a día: Sofía lo carga y edita, los cajeros sólo lo leen.
+async function sbLoadInfoCajero() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/info_cajero?order=orden.asc,created_at.asc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveInfoCajero(item) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/info_cajero",{method:"POST",headers:h,body:JSON.stringify(item)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveInfoCajero error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSaveInfoCajero catch:",e); return String((e&&e.message)||e); }
+}
+async function sbDeleteInfoCajero(id) {
+  try {
+    await fetch(SURL+"/rest/v1/info_cajero?id=eq."+id,{method:"DELETE",headers:SH});
+  } catch(e) {}
+}
+
 // ─── DEPORTES ─────────────────────────────────────────────────────────────────
 // Una sola tabla para los tres sub-módulos (tenis, pádel y galpón). Cada fila
 // dice de qué disciplina es y qué se anotó (clase, turno, profe o artículo).
@@ -2733,6 +2756,111 @@ function PanelPautas(p){
                     <button onClick={function(){if(window.confirm("¿Eliminar esta pauta?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
                   </div>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── INFO PARA CAJEROS ──────────────────────────────────────────────────────
+// El instructivo del día a día: Sofía lo carga acá, con un orden fijo (paso 1,
+// paso 2...), y los cajeros lo ven de sólo lectura desde su propia pantalla.
+function PanelInfoCajero(p){
+  var info=(p.info||[]).slice().sort(function(a,b){return (a.orden||0)-(b.orden||0);});
+  var puedeEditar=!!p.puedeEditar;
+  var [titulo,setTitulo]=useState("");
+  var [texto,setTexto]=useState("");
+  var [editId,setEditId]=useState(null);
+  var [editTitulo,setEditTitulo]=useState("");
+  var [editTexto,setEditTexto]=useState("");
+  var INP={padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical"};
+
+  function agregar(){
+    if(!texto.trim())return;
+    var maxOrden=info.reduce(function(a,x){return Math.max(a,x.orden||0);},0);
+    p.onSave({
+      id:"info_"+Date.now(),
+      titulo:titulo.trim(),
+      texto:texto.trim(),
+      orden:maxOrden+1,
+      usuario:p.usuario||"",
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+    });
+    setTitulo("");setTexto("");
+  }
+  function guardarEdicion(x){
+    if(!editTexto.trim())return;
+    p.onSave({...x,titulo:editTitulo.trim(),texto:editTexto.trim(),updated_at:new Date().toISOString()});
+    setEditId(null);setEditTitulo("");setEditTexto("");
+  }
+  // Subir/bajar intercambia el orden con el vecino: no hace falta renumerar la lista
+  // entera, alcanza con que esos dos cambien de lugar.
+  function mover(x,dir){
+    var idx=info.indexOf(x);
+    var otro=info[idx+dir];
+    if(!otro)return;
+    p.onSave({...x,orden:otro.orden||0});
+    p.onSave({...otro,orden:x.orden||0});
+  }
+
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>{puedeEditar?"Módulo":"Compras"}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>ℹ️ Info{puedeEditar?" para cajeros":""}</div>
+        {!puedeEditar&&<div style={{fontSize:11,color:"#555",marginTop:4}}>Instructivo y guías para el día a día.</div>}
+      </div>
+
+      {puedeEditar&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"13px",marginBottom:14}}>
+          <label style={{display:"block",fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Nuevo instructivo</label>
+          <input value={titulo} onChange={function(e){setTitulo(e.target.value);}} placeholder="Título — ej: Cómo cerrar la caja" style={{...INP,marginBottom:8}}/>
+          <textarea value={texto} onChange={function(e){setTexto(e.target.value);}} rows={3} placeholder="El paso a paso, en el orden en que hay que hacerlo..." style={{...INP,marginBottom:8}}/>
+          <button onClick={agregar} disabled={!texto.trim()}
+            style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:texto.trim()?"#1A6B8A":"#1A1A1A",color:texto.trim()?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:texto.trim()?"pointer":"not-allowed"}}>
+            + Agregar
+          </button>
+        </div>
+      )}
+
+      {info.length===0?(
+        <div style={{textAlign:"center",padding:"34px 0",color:"#333"}}>
+          <div style={{fontSize:30,marginBottom:8}}>ℹ️</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#2E2E2E"}}>{puedeEditar?"Todavía no cargaste ningún instructivo":"Todavía no hay info cargada"}</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:9}}>
+          {info.map(function(x,i){
+            if(puedeEditar&&editId===x.id)return(
+              <div key={x.id} style={{background:"#0F0F0F",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px"}}>
+                <input value={editTitulo} onChange={function(e){setEditTitulo(e.target.value);}} placeholder="Título" style={{...INP,marginBottom:8}}/>
+                <textarea value={editTexto} onChange={function(e){setEditTexto(e.target.value);}} rows={3} style={{...INP,marginBottom:8}}/>
+                <div style={{display:"flex",gap:7}}>
+                  <button onClick={function(){guardarEdicion(x);}} style={{flex:1,padding:"8px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Guardar</button>
+                  <button onClick={function(){setEditId(null);}} style={{padding:"8px 14px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#888",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+                </div>
+              </div>
+            );
+            return(
+              <div key={x.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"13px 15px"}}>
+                {x.titulo&&<div style={{fontSize:14,fontWeight:700,color:"#3A9BC1",marginBottom:5}}>{x.titulo}</div>}
+                <div style={{fontSize:13,color:"#D8D8D8",whiteSpace:"pre-wrap",lineHeight:1.6}}>{x.texto}</div>
+                {puedeEditar&&(
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={function(){mover(x,-1);}} disabled={i===0} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 8px",color:i===0?"#333":"#666",fontSize:11,cursor:i===0?"default":"pointer"}}>↑</button>
+                      <button onClick={function(){mover(x,1);}} disabled={i===info.length-1} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 8px",color:i===info.length-1?"#333":"#666",fontSize:11,cursor:i===info.length-1?"default":"pointer"}}>↓</button>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={function(){setEditId(x.id);setEditTitulo(x.titulo||"");setEditTexto(x.texto||"");}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#666",fontSize:11,cursor:"pointer"}}>✏️</button>
+                      <button onClick={function(){if(window.confirm("¿Eliminar este instructivo?"))p.onDelete(x.id);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 9px",color:"#555",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -18810,6 +18938,7 @@ export default function App() {
   var [localesObras,setLocalesObras]=useState([]);
   var [recetas,setRecetas]=useState([]);
   var [pautas,setPautas]=useState([]);
+  var [infoCajero,setInfoCajero]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [fichajes,setFichajes]=useState([]);
   var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
@@ -18875,6 +19004,7 @@ export default function App() {
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
     sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
     sbLoadPautas().then(function(d){setPautas(d||[]);}).catch(function(){});
+    sbLoadInfoCajero().then(function(d){setInfoCajero(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadFichajes().then(function(d){setFichajes(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
@@ -18900,6 +19030,14 @@ export default function App() {
   function borrarPauta(id){
     sbDeletePauta(id);
     setPautas(function(prev){return prev.filter(function(x){return x.id!==id;});});
+  }
+  function guardarInfoCajero(x){
+    sbSaveInfoCajero(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla info_cajero, hay que crearla en Supabase.");});
+    setInfoCajero(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+  }
+  function borrarInfoCajero(id){
+    sbDeleteInfoCajero(id);
+    setInfoCajero(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
   function guardarIdea(x){
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
@@ -18955,6 +19093,7 @@ export default function App() {
   var enOrdenes=enCompras&&subCompras==="ordenes";
   var enRecetas=esCocina&&enCompras&&subCompras==="recetas";
   var enIdeas=!esSofia&&enCompras&&subCompras==="ideas";
+  var enInfo=!esSofia&&enCompras&&subCompras==="info";
   var enStockCompras=enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
@@ -19161,6 +19300,7 @@ export default function App() {
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
+              {id:"info",emoji:"ℹ️",label:"Info",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
             ].map(function(m){return(
@@ -19194,6 +19334,7 @@ export default function App() {
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
+                  {id:"info",emoji:"ℹ️",label:"Info",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                 ].map(function(m){return(
@@ -19218,7 +19359,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#3A3A3A",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -19250,7 +19391,8 @@ export default function App() {
                 ]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
-                            {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0}]
+                            {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
+                            {id:"info",emoji:"ℹ️",label:"Info",desc:"Instructivo y guías para el día a día",color:"#1A6B8A",badge:0}]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   limpiarTabs();
@@ -19348,6 +19490,12 @@ export default function App() {
           {/* RECETARIO — cocina, sólo lectura */}
           {enRecetas&&(
             <PanelRecetas recetas={recetas} localId={lf} usuario={cu.nombre} puedeEditar={false}
+              onSave={function(){}} onDelete={function(){}}/>
+          )}
+
+          {/* INFO — el cajero la lee, la carga Sofía desde su propio módulo */}
+          {enInfo&&(
+            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false}
               onSave={function(){}} onDelete={function(){}}/>
           )}
 
@@ -19534,6 +19682,12 @@ export default function App() {
           {esSofia&&modulo==="pautas"&&(
             <PanelPautas pautas={pautas} usuario={cu.nombre}
               onSave={guardarPauta} onDelete={borrarPauta}/>
+          )}
+
+          {/* MÓDULO INFO — Sofía lo carga, los cajeros lo ven desde su propia pantalla */}
+          {esSofia&&modulo==="info"&&(
+            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={true}
+              onSave={guardarInfoCajero} onDelete={borrarInfoCajero}/>
           )}
 
           {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}

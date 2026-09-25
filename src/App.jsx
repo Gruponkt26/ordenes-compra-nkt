@@ -12673,7 +12673,10 @@ function PanelCierresSofia(p) {
 
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
-  var hoy=new Date().toISOString().split("T")[0];
+  // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
+  // siguiente, y un cajero que cierra de noche terminaba cargando "hoy" con la fecha de
+  // mañana.
+  var hoy=fechaLocal();
   var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
@@ -12683,6 +12686,25 @@ function PanelCierre(p) {
 
   var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
+  // El día más viejo que le falta cerrar, mirando para atrás desde ayer. No se pide
+  // remontar toda la vida del local: se mira como mucho un mes, y nunca antes del primer
+  // cierre que tenga cargado —si recién empieza, no hay nada de qué ponerse al día—.
+  var diaFaltante=(function(){
+    if(cierresLocal.length===0)return null;
+    var masViejo=cierresLocal[cierresLocal.length-1].fecha;
+    var limite=fechaLocal(new Date(Date.now()-30*86400000));
+    var desde=masViejo>limite?masViejo:limite;
+    var d=new Date(hoy+"T00:00:00");
+    var faltante=null;
+    for(var i=0;i<31;i++){
+      d.setDate(d.getDate()-1);
+      var f=fechaLocal(d);
+      if(f<desde)break;
+      if(!abreEseDia(localId,f))continue;
+      if(!cierresLocal.some(function(c){return c.fecha===f;}))faltante=f;
+    }
+    return faltante;
+  })();
 
   var MESES_NOMBRE=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   function labelMes(m){
@@ -12703,8 +12725,10 @@ function PanelCierre(p) {
     return (parseFloat(f.efectivo)||0)+sumaMedios(f,MEDIOS_ELECTRONICOS);
   }
 
+  // Si hay un día atrasado, "nuevo cierre" abre directo en ese día: no tiene sentido
+  // ofrecer cargar hoy cuando todavía falta uno de antes.
   function abrirNuevo(){
-    setForm(formVacio);
+    setForm(diaFaltante?{...formVacio,fecha:diaFaltante}:formVacio);
     setEditId(null);
     setShowForm(true);
   }
@@ -12726,6 +12750,13 @@ function PanelCierre(p) {
   }
 
   function doSave(){
+    // Un cierre nuevo no puede saltear el día atrasado: si hay uno pendiente, sólo se
+    // guarda si es justo ese día. Editar un cierre que ya existe no cuenta como saltear
+    // nada, así que no se lo bloquea.
+    if(!editId&&diaFaltante&&form.fecha!==diaFaltante){
+      alert("Antes de cargar este día, cerrá el "+fmtDate(diaFaltante)+": está pendiente.");
+      return;
+    }
     var total=calcTotal(form);
     if(total===0){alert("Cargá al menos un medio de pago para guardar el cierre.");return;}
     var cierre={
@@ -12774,9 +12805,20 @@ function PanelCierre(p) {
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:local?local.color:"#F0EDE8"}}>{local?local.emoji:""} {localNombre}</div>
         </div>
         {!showForm&&(
-          <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo cierre</button>
+          <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>{diaFaltante?"⛔ Día pendiente":"+ Nuevo cierre"}</button>
         )}
       </div>
+
+      {/* Mientras haya un día atrasado, no se habla de "hoy": no se puede cargar hoy sin
+          cerrar antes ese día, así que es lo único que importa mostrar acá arriba. */}
+      {diaFaltante&&!showForm&&(
+        <div style={{background:"#1A0808",border:"2px solid #C1440E",borderRadius:16,padding:"22px 20px",marginBottom:16,textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:6}}>⛔</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Falta cerrar el {fmtDate(diaFaltante)}</div>
+          <div style={{fontSize:13,color:"#C88888",marginTop:6}}>No se puede cargar el cierre de hoy hasta cerrar ese día.</div>
+          <button onClick={abrirNuevo} style={{background:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Cerrar el {fmtDate(diaFaltante)}</button>
+        </div>
+      )}
 
       {columnasFaltantes.length>0&&(
         <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:12,padding:"14px",marginBottom:16}}>
@@ -12788,7 +12830,9 @@ function PanelCierre(p) {
         </div>
       )}
 
-      {/* Cierre de hoy */}
+      {/* Cierre de hoy: si hay un día atrasado y hoy todavía no se cargó, ya se dijo todo
+          arriba —mostrar esta caja también sería la misma novedad dos veces—. */}
+      {(hoyData||!diaFaltante)&&(
       <div style={{background:hoyData?"#0A1A0A":"#111",border:"1px solid "+(hoyData?"#3A7D4444":"#1A1A1A"),borderRadius:14,padding:"16px",marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:hoyData?8:0}}>
           <div style={{fontSize:11,color:hoyData?"#3A7D44":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5}}>
@@ -12839,16 +12883,20 @@ function PanelCierre(p) {
           </button>
         )}
       </div>
+      )}
 
       {/* Formulario nuevo/editar */}
       {showForm&&(
         <div style={{background:"#0F0F0F",border:"1px solid "+(local?local.color+"44":"#2A2A2A"),borderRadius:14,padding:"18px",marginBottom:18}}>
           <div style={{fontSize:11,color:local?local.color:"#555",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
-            {editId?"✏️ Editando cierre":"+ Nuevo cierre"}
+            {editId?"✏️ Editando cierre":(diaFaltante?"⛔ Cerrando el día pendiente":"+ Nuevo cierre")}
           </div>
           <div style={{marginBottom:10}}>
             <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
-            <input type="date" value={form.fecha} onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            <input type="date" value={form.fecha} disabled={!editId&&!!diaFaltante}
+              onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}}
+              style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:(!editId&&diaFaltante)?"#0A0A0A":"#0F0F0F",color:(!editId&&diaFaltante)?"#777":"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+            {!editId&&diaFaltante&&<div style={{fontSize:10,color:"#666",marginTop:4}}>Primero hay que cerrar este día. Los demás se habilitan uno por uno.</div>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             {(function(){

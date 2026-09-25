@@ -19050,6 +19050,8 @@ export default function App() {
   var [pautas,setPautas]=useState([]);
   var [infoCajero,setInfoCajero]=useState([]);
   var [avisosCaja,setAvisosCaja]=useState([]);
+  // Retiro de caja menor: null = cerrado; un objeto {local,monto,nota} = el modal abierto.
+  var [retiroMenorForm,setRetiroMenorForm]=useState(null);
   var [vacaciones,setVacaciones]=useState([]);
   var [fichajes,setFichajes]=useState([]);
   var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
@@ -19159,6 +19161,43 @@ export default function App() {
     var x=avisosCaja.find(function(a){return a.id===id;});
     if(!x)return;
     guardarAvisoCaja({...x,resuelto:true});
+  }
+  async function guardarCierre(c){
+    var ok=await sbSaveCierre(c);
+    if(ok)setCierres(function(prev){var filtered=prev.filter(function(x){return x.id!==c.id;});return[c,...filtered];});
+    else alert("No se pudo guardar el cierre. Revisá la conexión.");
+    return ok;
+  }
+  // Un retiro que hace Sofía directo desde Administración, pero que queda anotado en el
+  // cierre del local exactamente igual que si lo hubiese cargado el cajero: mismo campo
+  // retiro_caja, mismo cálculo de "debería haber en caja". Si hoy todavía no hay cierre de
+  // ese local, se crea uno con todo en cero salvo el retiro —el cajero lo completa después
+  // editándolo, sin perder lo que ya se anotó—.
+  function guardarRetiroMenor(){
+    var f=retiroMenorForm;
+    if(!f||!f.local)return;
+    var monto=parseFloat(f.monto)||0;
+    if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
+    var hoyRM=fechaLocal();
+    var existente=cierres.find(function(c){return c.local===f.local&&c.fecha===hoyRM;});
+    var notaNueva="Retiro menor — "+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
+    var nota=existente&&existente.retiro_caja_nota?existente.retiro_caja_nota+" · "+notaNueva:notaNueva;
+    var cierre=existente
+      ? {...existente, retiro_caja:(parseFloat(existente.retiro_caja)||0)+monto, retiro_caja_nota:nota}
+      : {
+          id:f.local+"_"+hoyRM+"_"+String(Date.now()),
+          local:f.local, fecha:hoyRM, total_ventas:0,
+          efectivo:0,transferencia:0,tarjeta_debito:0,tarjeta_credito:0,otros:0,
+          mp_transferencia:0,mp_qr:0,mp_debito:0,mp_credito:0,
+          pat_transferencia:0,pat_qr:0,pat_debito:0,pat_credito:0,
+          retiro_socio:0,egresos_diarios:0,egresos_nota:"",
+          retiro_caja:monto,retiro_caja_nota:nota,
+          notas:"",
+          usuario:cu&&cu.nombre?cu.nombre:"Administración",
+          created_at:new Date().toISOString(),
+        };
+    guardarCierre(cierre);
+    setRetiroMenorForm(null);
   }
   function guardarIdea(x){
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
@@ -19930,6 +19969,13 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Retiro de caja menor: lo carga Sofía acá, pero queda anotado en el
+                    cierre del local como si lo hubiese puesto el cajero. */}
+                <button onClick={function(){setRetiroMenorForm({local:"l1",monto:"",nota:""});}}
+                  style={{width:"100%",padding:"14px",borderRadius:12,border:"1px solid #8B6BB855",background:"#8B6BB811",color:"#8B6BB8",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"center",marginBottom:12}}>
+                  💼 Retiro de caja menor
+                </button>
+
                 {/* Accesos rápidos */}
                 <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Accesos rápidos</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
@@ -19939,6 +19985,54 @@ export default function App() {
                     </button>
                   );})}
                 </div>
+
+                {/* Modal de retiro menor */}
+                {retiroMenorForm&&(function(){
+                  var localesRM=LOCALES.filter(function(l){return l.id!=="l4";});
+                  var lRM=getLocal(retiroMenorForm.local);
+                  var hoyRM=fechaLocal();
+                  var yaHay=cierres.find(function(c){return c.local===retiroMenorForm.local&&c.fecha===hoyRM;});
+                  return(
+                    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                      <div style={{background:"#111",borderRadius:16,padding:"20px",width:"100%",maxWidth:380,border:"1px solid #2A2A2A"}}>
+                        <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>💼 Retiro de caja menor</div>
+                        <div style={{fontSize:11,color:"#666",marginBottom:16,lineHeight:1.5}}>Queda anotado en el cierre de hoy de ese local, igual que si lo hubiese cargado el cajero.</div>
+
+                        <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:6}}>Local</label>
+                        <div style={{display:"flex",gap:6,marginBottom:14}}>
+                          {localesRM.map(function(l){
+                            var act=retiroMenorForm.local===l.id;
+                            return <button key={l.id} onClick={function(){setRetiroMenorForm(function(f){return{...f,local:l.id};});}}
+                              style={{flex:1,padding:"9px 6px",borderRadius:8,border:"1px solid "+(act?l.color:"#2A2A2A"),background:act?l.color+"22":"#0F0F0F",color:act?l.color:"#666",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                              {l.emoji} {l.nombre}
+                            </button>;
+                          })}
+                        </div>
+
+                        <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:6}}>Monto</label>
+                        <input type="number" placeholder="0" value={retiroMenorForm.monto} autoFocus
+                          onChange={function(e){setRetiroMenorForm(function(f){return{...f,monto:e.target.value};});}}
+                          style={{padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:15,width:"100%",boxSizing:"border-box",marginBottom:14}}/>
+
+                        <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:6}}>Detalle (opcional)</label>
+                        <input value={retiroMenorForm.nota} placeholder="Para qué se retiró..."
+                          onChange={function(e){setRetiroMenorForm(function(f){return{...f,nota:e.target.value};});}}
+                          style={{padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:14}}/>
+
+                        {yaHay?(
+                          <div style={{fontSize:10,color:"#555",marginBottom:14}}>Se suma al retiro de caja que {lRM?lRM.nombre:""} ya tiene anotado hoy.</div>
+                        ):(
+                          <div style={{fontSize:10,color:"#555",marginBottom:14}}>{lRM?lRM.nombre:""} todavía no cargó el cierre de hoy: se crea con este retiro anotado, y el resto lo completa el cajero al cerrar.</div>
+                        )}
+
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={guardarRetiroMenor} disabled={!retiroMenorForm.monto} style={{flex:2,padding:"11px",borderRadius:8,border:"none",background:retiroMenorForm.monto?"#8B6BB8":"#1A1A1A",color:retiroMenorForm.monto?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:retiroMenorForm.monto?"pointer":"not-allowed"}}>Guardar</button>
+                          <button onClick={function(){setRetiroMenorForm(null);}} style={{flex:1,padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -20205,7 +20299,7 @@ export default function App() {
           {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
               gastos={gastos} retiros={retiros} aportes={aportes}
-              onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
+              onSave={guardarCierre}
               onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
               onAvisoCaja={guardarAvisoCaja}
             />

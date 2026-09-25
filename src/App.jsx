@@ -12901,6 +12901,10 @@ function PanelCierre(p) {
   // A la hora de abrir, el cartel avisa cuánto debería tener la caja arrancando: lo que
   // quedó hasta ayer, porque la venta de hoy todavía no pasó por ningún lado.
   var efectivoAlAbrir=efectivoTeoricoCaja(localId,ayer,datosEfectivo);
+  // El de la puerta de entrada es otro: se puede tocar Caja en cualquier momento del día,
+  // no sólo al abrir, así que mira hasta hoy —sin contar la venta de hoy, que todavía no
+  // se cargó— para reflejar lo que hay que encontrar en la caja en este mismo momento.
+  var efectivoActual=efectivoTeoricoCaja(localId,hoy,datosEfectivo);
   var [bannerApVisto,setBannerApVisto]=useState(false);
   var horaApertura=HORA_APERTURA_CAJA[localId];
   var ahora=new Date();
@@ -13008,8 +13012,12 @@ function PanelCierre(p) {
         <div style={{fontSize:40,marginBottom:8}}>🧮</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>{local?local.emoji+" "+local.nombre:localNombre}</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:local?local.color:"#3A7D44",marginBottom:10}}>Verificá el efectivo antes de entrar</div>
-        <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:18,textAlign:"left"}}>
+        <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
           El efectivo en caja es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales. Contalo antes de seguir.
+        </div>
+        <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:18}}>
+          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Tendría que haber</div>
+          <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#3A7D44"}}>${Math.round(efectivoActual).toLocaleString("es-AR")}</div>
         </div>
         <button onClick={function(){setVerificoCaja(true);}} style={{width:"100%",padding:"12px",borderRadius:8,border:"none",background:local?local.color:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Sí, ya la conté</button>
       </div>

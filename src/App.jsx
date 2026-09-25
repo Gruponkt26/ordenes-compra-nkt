@@ -12035,21 +12035,18 @@ function localDelMedio(medio){
 // Cuánto efectivo debería haber en la caja física de un local, hasta una fecha (inclusive):
 // lo vendido en efectivo más lo que aportaron los socios en esa caja, menos lo que salió de
 // ahí —egresos pagados en efectivo, retiros de socios, y lo que ya se retiró de la caja
-// misma—. No pisa la historia entera del local desde que existe la app: arranca del
-// traspaso manual del mes, el mismo que usa 📊 Resultados y por la misma razón —sumar todo
-// desde el día uno no sería confiable—. Si ese mes no tiene traspaso cargado, arranca de
-// cero y el número puede no incluir lo que había antes del primer cierre del mes.
+// misma—. Siempre por mes, arrancando de cero el día 1: no depende de que se haya cargado
+// el traspaso de Resultados —eso es otra cuenta, la de la disponibilidad general, no la de
+// lo que tiene que contar el cajero en la mano—.
 function efectivoTeoricoCaja(lid, hastaFecha, datos){
   var cierres=datos.cierres||[], gastos=datos.gastos||[];
   var retiros=(datos.retiros||[]).filter(esMovDinero), aportes=(datos.aportes||[]).filter(esMovDinero);
-  var traspasos=datos.traspasos||{};
   var mes=hastaFecha.substring(0,7);
   function cuentaDe(x){ return x.local_cuenta||x.local; }
   function esEfectivo(medio){ return (medio||"").toLowerCase().includes("efectivo"); }
   function delMes(f){ return !!f&&f.substring(0,7)===mes&&f<=hastaFecha; }
 
-  var traspaso=traspasos[lid+"_"+mes];
-  var saldo=traspaso?(parseFloat(traspaso.efectivo)||0):0;
+  var saldo=0;
 
   cierres.filter(function(c){return c.local===lid&&delMes(c.fecha);}).forEach(function(c){
     saldo+=parseFloat(c.efectivo||0)-egresoNeteado(c);
@@ -12496,7 +12493,7 @@ function plataAR(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
 
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
-  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],traspasos:p.traspasos||{}};
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
   var hoy=new Date().toISOString().split("T")[0];
   var CAMPOS_CIERRE={
     "l1":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Provincia"],["tarjeta_debito","💳","Débito Provincia"],["tarjeta_credito","💳","Crédito Provincia"],["otros","📱","QR Provincia"]],
@@ -12896,7 +12893,7 @@ function PanelCierre(p) {
     return faltante;
   })();
 
-  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],traspasos:p.traspasos||{}};
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
   var ayer=fechaLocal(new Date(Date.now()-86400000));
   // A la hora de abrir, el cartel avisa cuánto debería tener la caja arrancando: lo que
   // quedó hasta ayer, porque la venta de hoy todavía no pasó por ningún lado.
@@ -19953,7 +19950,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
-            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes} traspasos={traspasos}/>
+            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
@@ -20112,7 +20109,7 @@ export default function App() {
 
           {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
-              gastos={gastos} retiros={retiros} aportes={aportes} traspasos={traspasos}
+              gastos={gastos} retiros={retiros} aportes={aportes}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
               onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
             />

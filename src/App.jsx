@@ -489,6 +489,25 @@ async function sbDeleteInfoCajero(id) {
   } catch(e) {}
 }
 
+// ─── AVISOS DE CAJA ─────────────────────────────────────────────────────────
+// Cuando el cajero dice que el efectivo NO coincide con lo esperado, queda un aviso acá:
+// lo ve Sofía en 🔔 Novedades, con cuánto se esperaba, cuánto contó y la diferencia.
+async function sbLoadAvisosCaja() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/avisos_caja?order=created_at.desc", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbSaveAvisoCaja(item) {
+  try {
+    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
+    var r = await fetch(SURL+"/rest/v1/avisos_caja",{method:"POST",headers:h,body:JSON.stringify(item)});
+    if(!r.ok){var errText=await r.text();console.error("sbSaveAvisoCaja error:",r.status,errText);return errText||("Error "+r.status);}
+    return null;
+  } catch(e) { console.error("sbSaveAvisoCaja catch:",e); return String((e&&e.message)||e); }
+}
+
 // ─── DEPORTES ─────────────────────────────────────────────────────────────────
 // Una sola tabla para los tres sub-módulos (tenis, pádel y galpón). Cada fila
 // dice de qué disciplina es y qué se anotó (clase, turno, profe o artículo).
@@ -9592,6 +9611,7 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
+  var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
   // siguiente, y un panel que se mira de noche empezaba a hablar de mañana.
   var hoy=fechaLocal();
@@ -9866,6 +9886,12 @@ function PanelNovedades(p){
       {/* Lo urgente, si lo hay: una sola línea por cosa */}
       {(function(){
         var avisos=[];
+        // El cajero dijo que la plata no cierra: es lo primero que hay que mirar.
+        avisosCaja.forEach(function(a){
+          var l=getLocal(a.local);
+          avisos.push({rojo:true, resolverId:a.id,
+            txt:"Caja no coincide en "+(l?l.nombre:a.local)+" ("+fmtDate(a.fecha)+") — contó "+fmt(a.contado)+", se esperaba "+fmt(a.esperado)+" · diferencia "+(a.diferencia>=0?"+":"")+fmt(a.diferencia)});
+        });
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:true});
         function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
         // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
@@ -9890,7 +9916,14 @@ function PanelNovedades(p){
         return(
           <div style={{border:"1px solid "+(hayRojo?"#C1440E44":"#D4A01733"),background:hayRojo?"#140807":"#12100A",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
             {avisos.map(function(a,i){
-              return <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0"}}>{a.rojo?"🚨":"⚠️"} {a.txt}</div>;
+              return (
+                <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+                  <span>{a.rojo?"🚨":"⚠️"} {a.txt}</span>
+                  {a.resolverId&&(
+                    <button onClick={function(){p.onResolverAvisoCaja(a.resolverId);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Resuelto</button>
+                  )}
+                </div>
+              );
             })}
           </div>
         );
@@ -12866,6 +12899,9 @@ function PanelCierre(p) {
   // componente se remonta entero y vuelve a pedirlo —es la puerta de entrada, no un tilde
   // que quede guardado—.
   var [verificoCaja,setVerificoCaja]=useState(false);
+  var [noCoincide,setNoCoincide]=useState(false); // pasó a pedir el monto real, porque tocó "No"
+  var [montoContado,setMontoContado]=useState("");
+  var [avisoEnviado,setAvisoEnviado]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
   var mesActual=hoy.substring(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesActual);
@@ -13001,22 +13037,69 @@ function PanelCierre(p) {
 
   var local=getLocal(localId);
 
+  // Cuando el cajero dice que no coincide, el aviso se manda con lo que ya se sabe —el
+  // esperado— y lo que acaba de tipear —lo que contó—; no hace falta releer nada más.
+  function enviarAvisoCaja(){
+    var contado=parseFloat(montoContado)||0;
+    p.onAvisoCaja({
+      id:"avc_"+localId+"_"+Date.now(),
+      local:localId,
+      fecha:hoy,
+      esperado:Math.round(efectivoActual),
+      contado:contado,
+      diferencia:Math.round(contado-efectivoActual),
+      usuario:usuario,
+      resuelto:false,
+      created_at:new Date().toISOString(),
+    });
+    setAvisoEnviado(true);
+  }
+
   // Apenas se abre Caja, antes de ver ningún dato: el cajero tiene que parar y confirmar
-  // que ya contó el efectivo, no que lo va a contar después de mirar los números en pantalla.
+  // que el efectivo coincide, no asumir que coincide después de mirar los números en
+  // pantalla. Si no coincide, el aviso sale para Novedades ahí mismo, no queda perdido.
   if(!verificoCaja)return(
     <div style={{fontFamily:"'Inter',sans-serif",maxWidth:600,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh",padding:16}}>
       <div style={{background:"#111",borderRadius:16,padding:"26px 22px",width:"100%",maxWidth:380,border:"2px solid "+(local?local.color:"#3A7D44"),textAlign:"center"}}>
         <div style={{fontSize:40,marginBottom:8}}>🧮</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>{local?local.emoji+" "+local.nombre:localNombre}</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:local?local.color:"#3A7D44",marginBottom:10}}>Verificá el efectivo antes de entrar</div>
-        <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
-          El efectivo en caja es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales. Contalo antes de seguir.
-        </div>
-        <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:18}}>
-          <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Tendría que haber</div>
-          <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#3A7D44"}}>${Math.round(efectivoActual).toLocaleString("es-AR")}</div>
-        </div>
-        <button onClick={function(){setVerificoCaja(true);}} style={{width:"100%",padding:"12px",borderRadius:8,border:"none",background:local?local.color:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Sí, ya la conté</button>
+        {!noCoincide?(
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:local?local.color:"#3A7D44",marginBottom:10}}>Verificá el efectivo antes de entrar</div>
+            <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
+              El efectivo en caja es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales. Contalo antes de seguir.
+            </div>
+            <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:18}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Tendría que haber</div>
+              <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#3A7D44"}}>${Math.round(efectivoActual).toLocaleString("es-AR")}</div>
+            </div>
+            <div style={{fontSize:12,color:"#888",marginBottom:10}}>¿Coincide esta cantidad con la que hay en la caja?</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setVerificoCaja(true);}} style={{flex:1,padding:"12px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Sí</button>
+              <button onClick={function(){setNoCoincide(true);}} style={{flex:1,padding:"12px",borderRadius:8,border:"none",background:"#C1440E",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>No</button>
+            </div>
+          </div>
+        ):avisoEnviado?(
+          <div>
+            <div style={{fontSize:36,marginBottom:8}}>📨</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800,color:"#3A7D44",marginBottom:10}}>Aviso enviado</div>
+            <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:18}}>Ya le queda anotada la diferencia a Sofía, en 🔔 Novedades. Podés seguir.</div>
+            <button onClick={function(){setVerificoCaja(true);}} style={{width:"100%",padding:"12px",borderRadius:8,border:"none",background:local?local.color:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Entrar a Caja</button>
+          </div>
+        ):(
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#C1440E",marginBottom:10}}>¿Cuánto hay en la caja?</div>
+            <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
+              Anotá lo que contaste. Se lo avisamos a Sofía junto con lo que se esperaba (${Math.round(efectivoActual).toLocaleString("es-AR")}), para que quede en 🔔 Novedades.
+            </div>
+            <input type="number" placeholder="0" value={montoContado} onChange={function(e){setMontoContado(e.target.value);}} autoFocus
+              style={{padding:"11px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:16,width:"100%",boxSizing:"border-box",marginBottom:14,textAlign:"center"}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={enviarAvisoCaja} disabled={!montoContado} style={{flex:2,padding:"12px",borderRadius:8,border:"none",background:montoContado?"#C1440E":"#1A1A1A",color:montoContado?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:montoContado?"pointer":"not-allowed"}}>Avisar a Sofía</button>
+              <button onClick={function(){setNoCoincide(false);setMontoContado("");}} style={{flex:1,padding:"12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer"}}>Volver</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -18966,6 +19049,7 @@ export default function App() {
   var [recetas,setRecetas]=useState([]);
   var [pautas,setPautas]=useState([]);
   var [infoCajero,setInfoCajero]=useState([]);
+  var [avisosCaja,setAvisosCaja]=useState([]);
   var [vacaciones,setVacaciones]=useState([]);
   var [fichajes,setFichajes]=useState([]);
   var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
@@ -19032,6 +19116,7 @@ export default function App() {
     sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
     sbLoadPautas().then(function(d){setPautas(d||[]);}).catch(function(){});
     sbLoadInfoCajero().then(function(d){setInfoCajero(d||[]);}).catch(function(){});
+    sbLoadAvisosCaja().then(function(d){setAvisosCaja(d||[]);}).catch(function(){});
     sbLoadVacaciones().then(function(d){setVacaciones(d||[]);}).catch(function(){});
     sbLoadFichajes().then(function(d){setFichajes(d||[]);}).catch(function(){});
     sbLoadPlanillaSueldos().then(function(d){setPlanillaSueldos(d||[]);}).catch(function(){});
@@ -19065,6 +19150,15 @@ export default function App() {
   function borrarInfoCajero(id){
     sbDeleteInfoCajero(id);
     setInfoCajero(function(prev){return prev.filter(function(x){return x.id!==id;});});
+  }
+  function guardarAvisoCaja(x){
+    sbSaveAvisoCaja(x).then(function(err){if(err)alert("No se pudo avisar a la base:\n\n"+err+"\n\nSi el error menciona la tabla avisos_caja, hay que crearla en Supabase.");});
+    setAvisosCaja(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+  }
+  function resolverAvisoCaja(id){
+    var x=avisosCaja.find(function(a){return a.id===id;});
+    if(!x)return;
+    guardarAvisoCaja({...x,resuelto:true});
   }
   function guardarIdea(x){
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
@@ -19734,6 +19828,7 @@ export default function App() {
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
+              avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
@@ -20112,6 +20207,7 @@ export default function App() {
               gastos={gastos} retiros={retiros} aportes={aportes}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
               onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
+              onAvisoCaja={guardarAvisoCaja}
             />
           )}
 

@@ -11860,6 +11860,9 @@ function PanelVencimientos(p){
 }
 
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
+// A qué hora abre cada local, para el cartel que recuerda controlar la caja apenas
+// arranca el turno.
+var HORA_APERTURA_CAJA={l1:{h:20,m:0},l2:{h:19,m:30},l3:{h:19,m:30}};
 var MEDIOS_POR_LOCAL={
   "l1":[
     "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón",
@@ -11899,6 +11902,52 @@ function localDelMedio(medio){
   return Object.keys(MEDIOS_POR_LOCAL).find(function(lid){
     return MEDIOS_POR_LOCAL[lid].some(function(m){return (medio||"").startsWith(m)&&m!=="Efectivo";});
   })||null;
+}
+
+// Cuánto efectivo debería haber en la caja física de un local, hasta una fecha (inclusive):
+// lo vendido en efectivo más lo que aportaron los socios en esa caja, menos lo que salió de
+// ahí —egresos pagados en efectivo, retiros de socios, y lo que ya se retiró de la caja
+// misma—. No pisa la historia entera del local desde que existe la app: arranca del
+// traspaso manual del mes, el mismo que usa 📊 Resultados y por la misma razón —sumar todo
+// desde el día uno no sería confiable—. Si ese mes no tiene traspaso cargado, arranca de
+// cero y el número puede no incluir lo que había antes del primer cierre del mes.
+function efectivoTeoricoCaja(lid, hastaFecha, datos){
+  var cierres=datos.cierres||[], gastos=datos.gastos||[];
+  var retiros=(datos.retiros||[]).filter(esMovDinero), aportes=(datos.aportes||[]).filter(esMovDinero);
+  var traspasos=datos.traspasos||{};
+  var mes=hastaFecha.substring(0,7);
+  function cuentaDe(x){ return x.local_cuenta||x.local; }
+  function esEfectivo(medio){ return (medio||"").toLowerCase().includes("efectivo"); }
+  function delMes(f){ return !!f&&f.substring(0,7)===mes&&f<=hastaFecha; }
+
+  var traspaso=traspasos[lid+"_"+mes];
+  var saldo=traspaso?(parseFloat(traspaso.efectivo)||0):0;
+
+  cierres.filter(function(c){return c.local===lid&&delMes(c.fecha);}).forEach(function(c){
+    saldo+=parseFloat(c.efectivo||0)-egresoNeteado(c);
+    saldo-=parseFloat(c.retiro_socio||0); // retiro de socio cargado desde el cierre (legacy)
+    saldo-=parseFloat(c.retiro_caja||0);  // ya se lo llevaron de la caja física
+  });
+
+  gastos.forEach(function(g){
+    if(!delMes(g.fecha))return;
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
+    pagos.forEach(function(pg){
+      var medio=pg.medio||pg.tipo||g.forma_pago||"";
+      if(!esEfectivo(medio))return;
+      var pagoLocal=pg.local||localDelMedio(medio)||g.local;
+      if(pagoLocal!==lid)return;
+      saldo-=parseFloat(pg.monto||0);
+    });
+  });
+
+  retiros.filter(function(r){return cuentaDe(r)===lid&&delMes(r.fecha)&&esEfectivo(r.tipo_retiro);})
+    .forEach(function(r){saldo-=parseFloat(r.monto||0);});
+
+  aportes.filter(function(a){return cuentaDe(a)===lid&&delMes(a.fecha)&&esEfectivo(a.tipo_aporte);})
+    .forEach(function(a){saldo+=parseFloat(a.monto||0);});
+
+  return saldo;
 }
 
 function PanelCruzados(p){
@@ -12319,6 +12368,7 @@ function plataAR(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
 
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],traspasos:p.traspasos||{}};
   var hoy=new Date().toISOString().split("T")[0];
   var CAMPOS_CIERRE={
     "l1":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Provincia"],["tarjeta_debito","💳","Débito Provincia"],["tarjeta_credito","💳","Crédito Provincia"],["otros","📱","QR Provincia"]],
@@ -12432,6 +12482,9 @@ function PanelCierresSofia(p) {
                                   💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
                                 </div>
                               )}
+                              <div style={{fontSize:9,color:"#3A7D44",marginTop:4,paddingTop:4,borderTop:"1px solid #1A1A1A"}}>
+                                💵 Debería haber en caja: ${Math.round(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
+                              </div>
                               {c.notas&&<div style={{fontSize:9,color:"#333",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                               <div style={{fontSize:10,color:"#333",marginTop:4}}>{c.usuario}</div>
                             </div>
@@ -12656,6 +12709,9 @@ function PanelCierresSofia(p) {
                               <span style={{color:"#3A3A3A"}}> · {Math.round(ALICUOTA_IIBB*1000)/10}% de lo electrónico, ya descontado al acreditarse</span>
                             </div>
                           )}
+                          <div style={{gridColumn:"1/-1",fontSize:11,color:"#3A7D44",borderTop:"1px solid #1A1A1A",marginTop:5,paddingTop:5}}>
+                            💵 Debería haber en caja: <b>{plataAR(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo))}</b>
+                          </div>
                           {c.notas&&<div style={{gridColumn:"1/-1",fontSize:10,color:"#444",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                         </div>
                       )}
@@ -12705,6 +12761,19 @@ function PanelCierre(p) {
     }
     return faltante;
   })();
+
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],traspasos:p.traspasos||{}};
+  var ayer=fechaLocal(new Date(Date.now()-86400000));
+  // A la hora de abrir, el cartel avisa cuánto debería tener la caja arrancando: lo que
+  // quedó hasta ayer, porque la venta de hoy todavía no pasó por ningún lado.
+  var efectivoAlAbrir=efectivoTeoricoCaja(localId,ayer,datosEfectivo);
+  var [bannerApVisto,setBannerApVisto]=useState(false);
+  var horaApertura=HORA_APERTURA_CAJA[localId];
+  var ahora=new Date();
+  var yaEsHoraDeAbrir=horaApertura&&(ahora.getHours()>horaApertura.h||(ahora.getHours()===horaApertura.h&&ahora.getMinutes()>=horaApertura.m));
+  // No tiene sentido pedir que controlen la caja si todavía falta cerrar un día de antes
+  // —ese cartel ya está diciendo lo más urgente— ni después de que hoy ya se cargó.
+  var mostrarCartelApertura=!!horaApertura&&yaEsHoraDeAbrir&&!diaFaltante&&!hoyData&&!bannerApVisto&&abreEseDia(localId,hoy);
 
   var MESES_NOMBRE=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   function labelMes(m){
@@ -12820,6 +12889,20 @@ function PanelCierre(p) {
         </div>
       )}
 
+      {/* Apenas arranca el turno, antes de que entre la primera venta del día: lo único
+          que puede haber en la caja es lo que quedó de antes. Es el momento de controlarlo,
+          no a la noche cuando ya se mezcló con lo de hoy. */}
+      {mostrarCartelApertura&&(
+        <div style={{background:"#0A140A",border:"2px solid #3A7D44",borderRadius:16,padding:"22px 20px",marginBottom:16,textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:6}}>💵</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#3A7D44",lineHeight:1.3}}>
+            Controlá que en la caja haya ${Math.round(efectivoAlAbrir).toLocaleString("es-AR")}
+          </div>
+          <div style={{fontSize:13,color:"#6A9A72",marginTop:6}}>Es lo que debería haber quedado, antes de la venta de hoy.</div>
+          <button onClick={function(){setBannerApVisto(true);}} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Ya la controlé</button>
+        </div>
+      )}
+
       {columnasFaltantes.length>0&&(
         <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:12,padding:"14px",marginBottom:16}}>
           <div style={{fontSize:11,color:"#C1440E",fontWeight:700,marginBottom:6}}>⚠️ Hay datos del cierre que no se están guardando</div>
@@ -12876,6 +12959,9 @@ function PanelCierre(p) {
               </div>
             )}
             {hoyData.notas&&<div style={{fontSize:11,color:"#555",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
+            <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #1A1A1A",fontSize:11,color:"#3A7D44"}}>
+              💵 Debería haber en caja: <b>${Math.round(efectivoTeoricoCaja(localId,hoyData.fecha,datosEfectivo)).toLocaleString("es-AR")}</b>
+            </div>
           </div>
         ):(
           <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",width:"100%",marginTop:4}}>
@@ -13036,6 +13122,9 @@ function PanelCierre(p) {
                           💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
                         </div>
                       )}
+                      <div style={{fontSize:10,color:"#3A7D44",marginTop:2}}>
+                        💵 Debería haber: ${Math.round(efectivoTeoricoCaja(localId,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
+                      </div>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                       <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${parseFloat(c.total_ventas).toLocaleString("es-AR")}</div>
@@ -19679,7 +19768,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
-            <PanelCierresSofia cierres={cierres}/>
+            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes} traspasos={traspasos}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
@@ -19838,6 +19927,7 @@ export default function App() {
 
           {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
+              gastos={gastos} retiros={retiros} aportes={aportes} traspasos={traspasos}
               onSave={async function(c){var ok=await sbSaveCierre(c);if(ok){setCierres(function(p){var filtered=p.filter(function(x){return x.id!==c.id;});return[c,...filtered];});}else{alert("No se pudo guardar el cierre. Revisá la conexión.");}}}
               onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
             />

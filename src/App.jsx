@@ -19085,6 +19085,22 @@ export default function App() {
             </div>
           )}
 
+          {/* Cartel grande, imposible de no ver: si anoche tocaba cerrar y no quedó
+              cargado el cierre, se lo decimos acá, en la puerta de entrada del cajero
+              —antes de que elija qué hacer— y no en un rincón del panel de Sofía. */}
+          {enCompras&&!subCompras&&esCajero&&lf&&(function(){
+            var ayer=fechaLocal(new Date(Date.now()-86400000));
+            var faltoAyer=abreEseDia(lf,ayer)&&!cierres.some(function(c){return c.local===lf&&c.fecha===ayer;});
+            if(!faltoAyer)return null;
+            return(
+              <div style={{background:"#1A0808",border:"2px solid #C1440E",borderRadius:16,padding:"22px 20px",marginBottom:14,textAlign:"center"}}>
+                <div style={{fontSize:36,marginBottom:6}}>🚨</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:23,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Por favor cerrar la caja</div>
+                <div style={{fontSize:13,color:"#C88888",marginTop:6}}>Anoche no quedó cargado el cierre de {la?la.nombre:lf} ({fmtDate(ayer)}).</div>
+              </div>
+            );
+          })()}
+
           {/* PANTALLA DE COMPRAS — elección de sub-módulo */}
           {enCompras&&!subCompras&&(
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>

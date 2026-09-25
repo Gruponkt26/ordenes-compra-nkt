@@ -19300,7 +19300,7 @@ export default function App() {
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
-              {id:"info",emoji:"ℹ️",label:"Info",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
+              {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
             ].map(function(m){return(
@@ -19334,7 +19334,7 @@ export default function App() {
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
-                  {id:"info",emoji:"ℹ️",label:"Info",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
+                  {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                 ].map(function(m){return(

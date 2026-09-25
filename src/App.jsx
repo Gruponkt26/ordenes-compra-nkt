@@ -12864,6 +12864,7 @@ function PanelCierre(p) {
   var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
+  var [showVerificar,setShowVerificar]=useState(false); // cartel de "¿revisaste la caja?" antes de guardar
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
   var mesActual=hoy.substring(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesActual);
@@ -13205,8 +13206,30 @@ function PanelCierre(p) {
             <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Observaciones..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={doSave} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
+            <button onClick={function(){setShowVerificar(true);}} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
             <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Antes de guardar, un cartel que hace parar y contar: no alcanza con tipear los
+          números del sistema, hay que haber mirado la plata de verdad. */}
+      {showVerificar&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:16,padding:"22px 20px",width:"100%",maxWidth:380,border:"2px solid "+(local?local.color:"#3A7D44"),textAlign:"center"}}>
+            <div style={{fontSize:36,marginBottom:8}}>🧮</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:"#F0EDE8",marginBottom:10}}>Verificá el cierre de caja</div>
+            <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
+              El efectivo en caja es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales.
+            </div>
+            <div style={{background:"#0A0A0A",borderRadius:10,padding:"10px 12px",marginBottom:16}}>
+              <div style={{fontSize:9,color:"#555",textTransform:"uppercase",letterSpacing:1}}>Contaste esto en efectivo</div>
+              <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${(parseFloat(form.efectivo)||0).toLocaleString("es-AR")}</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setShowVerificar(false);doSave();}} style={{flex:2,padding:"11px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Sí, es correcto</button>
+              <button onClick={function(){setShowVerificar(false);}} style={{flex:1,padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer"}}>Revisar</button>
+            </div>
           </div>
         </div>
       )}

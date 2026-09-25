@@ -19480,8 +19480,6 @@ export default function App() {
             var mesCurrent=new Date().toISOString().slice(0,7);
             var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
             var cierresToday=cierres.filter(function(c){return c.fecha===hoy;});
-            var localesConCierre=cierresToday.map(function(c){return c.local;});
-            var localesSinCierre=LOCALES.filter(function(l){return l.id!=="l4"&&!localesConCierre.includes(l.id);});
             var ventasHoy=cierresToday.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
             var gastosMes=gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             var ventasMes=cierres.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
@@ -19492,15 +19490,9 @@ export default function App() {
                   <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📊 Dashboard</div>
                 </div>
 
-                {/* Los avisos de vencimientos y de planes por caerse viven en 🔔 Novedades
-                    del día, que es el módulo que los junta. El cierre que falta se queda
-                    también acá: es de hoy y es de este panel. */}
-                {localesSinCierre.length>0&&(
-                  <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
-                    <div style={{fontSize:11,color:"#C1440E",fontWeight:700}}>⚠️ Cierres faltantes hoy</div>
-                    <div style={{fontSize:10,color:"#888",marginTop:4}}>{localesSinCierre.map(function(l){return l.emoji+" "+l.nombre;}).join(" · ")}</div>
-                  </div>
-                )}
+                {/* Los avisos de cierres faltantes y de vencimientos viven en 🔔 Novedades,
+                    que es el módulo que los junta: repetirlos acá era la misma novedad dos
+                    veces, en dos lugares distintos. */}
 
                 {/* Cards resumen */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>

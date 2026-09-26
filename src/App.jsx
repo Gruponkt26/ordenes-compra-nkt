@@ -12902,12 +12902,20 @@ function PanelCierre(p) {
   var [noCoincide,setNoCoincide]=useState(false); // pasó a pedir el monto real, porque tocó "No"
   var [montoContado,setMontoContado]=useState("");
   var [avisoEnviado,setAvisoEnviado]=useState(false);
+  var [enviandoAviso,setEnviandoAviso]=useState(false);
   var [editId,setEditId]=useState(null); // id del cierre que estamos editando
   var mesActual=hoy.substring(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesActual);
 
   var cierresLocal=cierres.filter(function(c){return c.local===localId;}).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
-  var hoyData=cierresLocal.find(function(c){return c.fecha===hoy;});
+  // Un retiro de caja menor cargado antes de que el cajero cierre deja una fila con el
+  // retiro anotado pero sin ninguna venta. Esa fila no cuenta como "cierre cargado" para
+  // nada de lo que sigue —ni para la pantalla de hoy, ni para el día atrasado—: si contara,
+  // el cajero vería "ya está cargado" con $0 y ese día podría quedar sin cerrar para siempre.
+  function esCierreReal(c){ return c&&parseFloat(c.total_ventas||0)>0; }
+  var hoyDataCruda=cierresLocal.find(function(c){return c.fecha===hoy;});
+  var hoyEsSoloRetiro=!!hoyDataCruda&&!esCierreReal(hoyDataCruda);
+  var hoyData=hoyEsSoloRetiro?null:hoyDataCruda;
   // El día más viejo que le falta cerrar, mirando para atrás desde ayer, pero sin salir
   // del mes en curso: lo de meses anteriores ya quedó atrás y se arregla con el traspaso
   // de Resultados, no reclamándoselo al cajero de hoy. Tampoco se pide antes del primer
@@ -12924,7 +12932,7 @@ function PanelCierre(p) {
       var f=fechaLocal(d);
       if(f<desde)break;
       if(!abreEseDia(localId,f))continue;
-      if(!cierresLocal.some(function(c){return c.fecha===f;}))faltante=f;
+      if(!cierresLocal.some(function(c){return c.fecha===f&&esCierreReal(c);}))faltante=f;
     }
     return faltante;
   })();
@@ -12966,10 +12974,20 @@ function PanelCierre(p) {
   }
 
   // Si hay un día atrasado, "nuevo cierre" abre directo en ese día: no tiene sentido
-  // ofrecer cargar hoy cuando todavía falta uno de antes.
+  // ofrecer cargar hoy cuando todavía falta uno de antes. Si lo único que hay de hoy es un
+  // retiro menor sin ventas, "nuevo cierre" completa ESA fila —abre en modo edición, sin que
+  // se note— para no perder el retiro ni crear una segunda fila del mismo día.
   function abrirNuevo(){
-    setForm(diaFaltante?{...formVacio,fecha:diaFaltante}:formVacio);
-    setEditId(null);
+    if(diaFaltante){
+      setForm({...formVacio,fecha:diaFaltante});
+      setEditId(null);
+    } else if(hoyEsSoloRetiro){
+      setForm({...formVacio,retiro_caja:String(hoyDataCruda.retiro_caja||""),retiro_caja_nota:hoyDataCruda.retiro_caja_nota||""});
+      setEditId(hoyDataCruda.id);
+    } else {
+      setForm(formVacio);
+      setEditId(null);
+    }
     setShowForm(true);
   }
 
@@ -13039,9 +13057,13 @@ function PanelCierre(p) {
 
   // Cuando el cajero dice que no coincide, el aviso se manda con lo que ya se sabe —el
   // esperado— y lo que acaba de tipear —lo que contó—; no hace falta releer nada más.
-  function enviarAvisoCaja(){
+  // Espera la respuesta antes de decir "enviado": si se cae el guardado (por ejemplo,
+  // falta la tabla en Supabase), no tiene sentido dejarlo seguir pensando que ya avisó.
+  async function enviarAvisoCaja(){
+    if(enviandoAviso)return;
+    setEnviandoAviso(true);
     var contado=parseFloat(montoContado)||0;
-    p.onAvisoCaja({
+    var ok=await p.onAvisoCaja({
       id:"avc_"+localId+"_"+Date.now(),
       local:localId,
       fecha:hoy,
@@ -13052,7 +13074,8 @@ function PanelCierre(p) {
       resuelto:false,
       created_at:new Date().toISOString(),
     });
-    setAvisoEnviado(true);
+    setEnviandoAviso(false);
+    if(ok)setAvisoEnviado(true);
   }
 
   // Apenas se abre Caja, antes de ver ningún dato: el cajero tiene que parar y confirmar
@@ -13095,7 +13118,7 @@ function PanelCierre(p) {
             <input type="number" placeholder="0" value={montoContado} onChange={function(e){setMontoContado(e.target.value);}} autoFocus
               style={{padding:"11px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:16,width:"100%",boxSizing:"border-box",marginBottom:14,textAlign:"center"}}/>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={enviarAvisoCaja} disabled={!montoContado} style={{flex:2,padding:"12px",borderRadius:8,border:"none",background:montoContado?"#C1440E":"#1A1A1A",color:montoContado?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:montoContado?"pointer":"not-allowed"}}>Avisar a Sofía</button>
+              <button onClick={enviarAvisoCaja} disabled={!montoContado||enviandoAviso} style={{flex:2,padding:"12px",borderRadius:8,border:"none",background:(montoContado&&!enviandoAviso)?"#C1440E":"#1A1A1A",color:(montoContado&&!enviandoAviso)?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:(montoContado&&!enviandoAviso)?"pointer":"not-allowed"}}>{enviandoAviso?"Avisando...":"Avisar a Sofía"}</button>
               <button onClick={function(){setNoCoincide(false);setMontoContado("");}} style={{flex:1,padding:"12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer"}}>Volver</button>
             </div>
           </div>
@@ -19153,9 +19176,13 @@ export default function App() {
     sbDeleteInfoCajero(id);
     setInfoCajero(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
-  function guardarAvisoCaja(x){
-    sbSaveAvisoCaja(x).then(function(err){if(err)alert("No se pudo avisar a la base:\n\n"+err+"\n\nSi el error menciona la tabla avisos_caja, hay que crearla en Supabase.");});
+  // Devuelve si se guardó o no: el cartel que le muestra al cajero "avisado" depende de
+  // esto, no puede decir que se avisó cuando en realidad se cayó el guardado.
+  async function guardarAvisoCaja(x){
+    var err=await sbSaveAvisoCaja(x);
+    if(err){alert("No se pudo avisar a la base:\n\n"+err+"\n\nSi el error menciona la tabla avisos_caja, hay que crearla en Supabase.");return false;}
     setAvisosCaja(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+    return true;
   }
   function resolverAvisoCaja(id){
     var x=avisosCaja.find(function(a){return a.id===id;});

@@ -19173,11 +19173,20 @@ export default function App() {
   // retiro_caja, mismo cálculo de "debería haber en caja". Si hoy todavía no hay cierre de
   // ese local, se crea uno con todo en cero salvo el retiro —el cajero lo completa después
   // editándolo, sin perder lo que ya se anotó—.
-  function guardarRetiroMenor(){
+  //
+  // Dos cosas para que un doble click no duplique el retiro (pasó una vez y descuadró la
+  // caja $56.000: dos filas del mismo día, cada una restando el suyo):
+  //  · el botón se deshabilita mientras guarda, así un segundo click no dispara nada.
+  //  · si hace falta crear la fila (todavía no hay cierre hoy), el id es fijo por
+  //    local+fecha —no lleva el timestamp—, así dos guardados que se pisaran en el tiempo
+  //    caen en la MISMA fila en vez de crear una segunda.
+  var [guardandoRetiroMenor,setGuardandoRetiroMenor]=useState(false);
+  async function guardarRetiroMenor(){
     var f=retiroMenorForm;
-    if(!f||!f.local)return;
+    if(!f||!f.local||guardandoRetiroMenor)return;
     var monto=parseFloat(f.monto)||0;
     if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
+    setGuardandoRetiroMenor(true);
     var hoyRM=fechaLocal();
     var existente=cierres.find(function(c){return c.local===f.local&&c.fecha===hoyRM;});
     var notaNueva="Retiro menor — "+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
@@ -19185,7 +19194,7 @@ export default function App() {
     var cierre=existente
       ? {...existente, retiro_caja:(parseFloat(existente.retiro_caja)||0)+monto, retiro_caja_nota:nota}
       : {
-          id:f.local+"_"+hoyRM+"_"+String(Date.now()),
+          id:"retmenor_"+f.local+"_"+hoyRM,
           local:f.local, fecha:hoyRM, total_ventas:0,
           efectivo:0,transferencia:0,tarjeta_debito:0,tarjeta_credito:0,otros:0,
           mp_transferencia:0,mp_qr:0,mp_debito:0,mp_credito:0,
@@ -19196,7 +19205,8 @@ export default function App() {
           usuario:cu&&cu.nombre?cu.nombre:"Administración",
           created_at:new Date().toISOString(),
         };
-    guardarCierre(cierre);
+    await guardarCierre(cierre);
+    setGuardandoRetiroMenor(false);
     setRetiroMenorForm(null);
   }
   function guardarIdea(x){
@@ -20026,7 +20036,7 @@ export default function App() {
                         )}
 
                         <div style={{display:"flex",gap:8}}>
-                          <button onClick={guardarRetiroMenor} disabled={!retiroMenorForm.monto} style={{flex:2,padding:"11px",borderRadius:8,border:"none",background:retiroMenorForm.monto?"#8B6BB8":"#1A1A1A",color:retiroMenorForm.monto?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:retiroMenorForm.monto?"pointer":"not-allowed"}}>Guardar</button>
+                          <button onClick={guardarRetiroMenor} disabled={!retiroMenorForm.monto||guardandoRetiroMenor} style={{flex:2,padding:"11px",borderRadius:8,border:"none",background:(retiroMenorForm.monto&&!guardandoRetiroMenor)?"#8B6BB8":"#1A1A1A",color:(retiroMenorForm.monto&&!guardandoRetiroMenor)?"#fff":"#444",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:(retiroMenorForm.monto&&!guardandoRetiroMenor)?"pointer":"not-allowed"}}>{guardandoRetiroMenor?"Guardando...":"Guardar"}</button>
                           <button onClick={function(){setRetiroMenorForm(null);}} style={{flex:1,padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer"}}>Cancelar</button>
                         </div>
                       </div>

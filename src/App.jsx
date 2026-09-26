@@ -12543,6 +12543,8 @@ function PanelCierresSofia(p) {
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [vistaGrid,setVistaGrid]=useState(false);
   var [expandidoGrid,setExpandidoGrid]=useState(null);
+  var [vistaVerif,setVistaVerif]=useState(false);
+  var avisosCaja=p.avisosCaja||[];
 
   var localesFiltro=LOCALES.filter(function(l){return l.id!=="l4";});
 
@@ -12695,6 +12697,63 @@ function PanelCierresSofia(p) {
     );
   }
 
+  // ── VISTA VERIFICACIONES (el historial de "¿coincidía la caja?") ──
+  if(vistaVerif){
+    var avisosMes=avisosCaja.filter(function(a){return a.fecha&&a.fecha.substring(0,7)===mesFiltro;})
+      .sort(function(a,b){return String(b.created_at||b.fecha||"").localeCompare(String(a.created_at||a.fecha||""));});
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif",position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>✅ Verificaciones de caja</div>
+            <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
+              {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+            </select>
+          </div>
+          <button onClick={function(){setVistaVerif(false);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#F0EDE8",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✕ Cerrar</button>
+        </div>
+        <div style={{fontSize:10,color:"#444",marginBottom:14,lineHeight:1.6}}>
+          Cada vez que un cajero abre 🧾 Caja y responde si el efectivo coincide, queda una línea acá —diga que sí o que no—. Un día sin ninguna línea es un día que nadie controló.
+        </div>
+        {avisosMes.length===0?(
+          <div style={{fontSize:12,color:"#333",textAlign:"center",padding:"30px 0"}}>Sin verificaciones en {mesFiltro}.</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {avisosMes.map(function(a){
+              var l=getLocal(a.local);
+              var coincide=Math.round(parseFloat(a.diferencia||0))===0;
+              return(
+                <div key={a.id} style={{background:"#111",border:"1px solid "+(coincide?"#3A7D4433":(a.resuelto?"#1A1A1A":"#C1440E44")),borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:700,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:a.local} · {fmtDate(a.fecha)}</div>
+                    <div style={{fontSize:10,color:"#555",marginTop:2}}>
+                      {coincide?"Coincidió":"Contó "+plataAR(a.contado)+" · esperado "+plataAR(a.esperado)}
+                      {a.usuario?" · "+a.usuario:""}
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    {coincide?(
+                      <span style={{fontSize:16}}>✅</span>
+                    ):(
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                        <span style={{fontSize:13,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#E0714A"}}>{a.diferencia>=0?"+":""}{plataAR(a.diferencia)}</span>
+                        {a.resuelto?(
+                          <span style={{fontSize:9,color:"#3A7D44"}}>resuelto</span>
+                        ):(
+                          <button onClick={function(){p.onResolverAvisoCaja(a.id);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:9,fontWeight:700,cursor:"pointer",padding:"2px 8px"}}>Marcar resuelto</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5,marginBottom:14}}>Cierres de caja</div>
@@ -12708,6 +12767,7 @@ function PanelCierresSofia(p) {
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalActivo(l.id);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo===l.id?l.color:"#1A1A1A"),background:localActivo===l.id?l.color+"22":"none",color:localActivo===l.id?l.color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{l.emoji}</button>
         );})}
+        <button onClick={function(){setVistaVerif(true);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4444",background:"#3A7D4411",color:"#3A7D44",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✅ Verificaciones</button>
         <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"6px 12px",borderRadius:8,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>📊 Vista mensual</button>
       </div>
 
@@ -13078,6 +13138,25 @@ function PanelCierre(p) {
     if(ok)setAvisoEnviado(true);
   }
 
+  // Que coincida también queda anotado —con la misma diferencia en $0—, no sólo cuando no
+  // coincide: si no, no hay forma de saber después si un día se controló la caja o
+  // directamente nadie miró. No hace falta esperar la respuesta para entrar: es un
+  // registro de control, no algo que tenga que trabar el paso a Caja.
+  function confirmarCoincide(){
+    p.onAvisoCaja({
+      id:"avc_"+localId+"_"+Date.now(),
+      local:localId,
+      fecha:hoy,
+      esperado:Math.round(efectivoActual),
+      contado:Math.round(efectivoActual),
+      diferencia:0,
+      usuario:usuario,
+      resuelto:true,
+      created_at:new Date().toISOString(),
+    });
+    setVerificoCaja(true);
+  }
+
   // Apenas se abre Caja, antes de ver ningún dato: el cajero tiene que parar y confirmar
   // que el efectivo coincide, no asumir que coincide después de mirar los números en
   // pantalla. Si no coincide, el aviso sale para Novedades ahí mismo, no queda perdido.
@@ -13098,7 +13177,7 @@ function PanelCierre(p) {
             </div>
             <div style={{fontSize:12,color:"#888",marginBottom:10}}>¿Coincide esta cantidad con la que hay en la caja?</div>
             <div style={{display:"flex",gap:8}}>
-              <button onClick={function(){setVerificoCaja(true);}} style={{flex:1,padding:"12px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Sí</button>
+              <button onClick={confirmarCoincide} style={{flex:1,padding:"12px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>Sí</button>
               <button onClick={function(){setNoCoincide(true);}} style={{flex:1,padding:"12px",borderRadius:8,border:"none",background:"#C1440E",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:700,cursor:"pointer"}}>No</button>
             </div>
           </div>
@@ -20176,7 +20255,8 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
-            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes}/>
+            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes}
+              avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(

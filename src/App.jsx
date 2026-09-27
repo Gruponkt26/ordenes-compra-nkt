@@ -20113,8 +20113,11 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="dashboard"&&(function(){
-            var hoy=new Date().toISOString().split("T")[0];
-            var mesCurrent=new Date().toISOString().slice(0,7);
+            // Día de negocio, no UTC: los locales abren de noche y cierran pasada la
+            // medianoche, así que "hoy" tiene que ser el mismo día que ve el cajero en
+            // 🧾 Caja, no el que ya cambió en el reloj.
+            var hoy=diaDeNegocio();
+            var mesCurrent=hoy.substring(0,7);
             var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
             var cierresToday=cierres.filter(function(c){return c.fecha===hoy;});
             var ventasHoy=cierresToday.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
@@ -20122,9 +20125,12 @@ export default function App() {
             var ventasMes=cierres.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
             return(
               <div style={{fontFamily:"'Inter',sans-serif"}}>
-                <div style={{marginBottom:16}}>
-                  <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📊 Dashboard</div>
+                <div style={{marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>📊 Dashboard</div>
+                  </div>
+                  <div style={{display:"inline-block",fontSize:12,fontWeight:800,letterSpacing:0.5,textTransform:"uppercase",color:"#D4A017",background:"#D4A01722",border:"1px solid #D4A01755",borderRadius:20,padding:"5px 14px"}}>Hoy: {fmtDate(hoy)}</div>
                 </div>
 
                 {/* Los avisos de cierres faltantes y de vencimientos viven en 🔔 Novedades,
@@ -20180,7 +20186,8 @@ export default function App() {
                     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
                       <div style={{background:"#111",borderRadius:16,padding:"20px",width:"100%",maxWidth:380,border:"1px solid #2A2A2A"}}>
                         <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>💼 Retiro de caja menor</div>
-                        <div style={{fontSize:11,color:"#666",marginBottom:16,lineHeight:1.5}}>Queda anotado en el cierre de hoy de ese local, igual que si lo hubiese cargado el cajero.</div>
+                        <div style={{display:"inline-block",fontSize:11,fontWeight:800,letterSpacing:0.5,textTransform:"uppercase",color:"#8B6BB8",background:"#8B6BB822",border:"1px solid #8B6BB855",borderRadius:20,padding:"4px 12px",marginBottom:10}}>Cierre del {fmtDate(hoyRM)}</div>
+                        <div style={{fontSize:11,color:"#666",marginBottom:16,lineHeight:1.5}}>Queda anotado en el cierre de ese día de ese local, igual que si lo hubiese cargado el cajero.</div>
 
                         <label style={{display:"block",fontSize:10,color:"#555",textTransform:"uppercase",marginBottom:6}}>Local</label>
                         <div style={{display:"flex",gap:6,marginBottom:14}}>

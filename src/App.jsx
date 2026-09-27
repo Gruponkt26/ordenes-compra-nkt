@@ -13228,7 +13228,7 @@ function PanelCierre(p) {
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>{local?local.emoji+" "+local.nombre:localNombre}</div>
         {/* Día de negocio de esta caja, no la fecha del reloj: si son las 00:45 y todavía
             no pasó el corte, sigue siendo el cierre de ayer a la noche. */}
-        <div style={{fontSize:11,color:"#666",marginBottom:12}}>Caja del {fmtDate(hoy)}</div>
+        <div style={{display:"inline-block",fontSize:13,fontWeight:800,letterSpacing:0.5,textTransform:"uppercase",color:local?local.color:"#E0714A",background:(local?local.color:"#E0714A")+"22",border:"1px solid "+(local?local.color:"#E0714A")+"55",borderRadius:20,padding:"5px 14px",marginBottom:14}}>Caja del {fmtDate(hoy)}</div>
         {!noCoincide?(
           <div>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:local?local.color:"#3A7D44",marginBottom:10}}>Verificá el efectivo antes de entrar</div>

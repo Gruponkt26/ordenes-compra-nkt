@@ -8440,6 +8440,15 @@ function fechaLocal(d){
   var x=d||new Date();
   return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0");
 }
+// Los locales abren de noche (19:30/20 hs) y el cajero puede cerrar recién pasada la
+// medianoche: para la caja, esa madrugada sigue siendo el mismo día de negocio en que
+// abrieron, no el día calendario nuevo. Antes de las 6 de la mañana, "hoy" es todavía ayer.
+var HORA_CORTE_DIA_NEGOCIO=6;
+function diaDeNegocio(d){
+  var x=d||new Date();
+  if(x.getHours()<HORA_CORTE_DIA_NEGOCIO)x=new Date(x.getTime()-86400000);
+  return fechaLocal(x);
+}
 function horaLocal(d){
   var x=d||new Date();
   return String(x.getHours()).padStart(2,"0")+":"+String(x.getMinutes()).padStart(2,"0");
@@ -9612,9 +9621,9 @@ function PanelNovedades(p){
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
-  // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
-  // siguiente, y un panel que se mira de noche empezaba a hablar de mañana.
-  var hoy=fechaLocal();
+  // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
+  // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
+  var hoy=diaDeNegocio();
   // El efectivo que cada local debería tener en la caja física ahora mismo, para verlo de
   // un vistazo sin entrar local por local a 🧾 Caja.
   var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:retiros,aportes:aportes};
@@ -9625,7 +9634,7 @@ function PanelNovedades(p){
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
-  var ayer=fechaLocal(new Date(Date.now()-86400000));
+  var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
   var desdeSemana=fechaLocal(new Date(Date.now()-6*86400000));
   function enRango(f){
     if(!f)return false;
@@ -12998,10 +13007,9 @@ function PanelCierresSofia(p) {
 
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
-  // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
-  // siguiente, y un cajero que cierra de noche terminaba cargando "hoy" con la fecha de
-  // mañana.
-  var hoy=fechaLocal();
+  // Día de negocio, no calendario: un cajero que abre a la noche y cierra pasada la
+  // medianoche sigue cargando el cierre de ESE mismo día, no del día siguiente.
+  var hoy=diaDeNegocio();
   var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
@@ -13049,7 +13057,9 @@ function PanelCierre(p) {
   })();
 
   var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
-  var ayer=fechaLocal(new Date(Date.now()-86400000));
+  // Un día antes del día de NEGOCIO (no de la fecha real): si son las 00:45 y "hoy" para
+  // la caja sigue siendo ayer, "el día anterior" tiene que ser antes de ayer.
+  var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
   // A la hora de abrir, el cartel avisa cuánto debería tener la caja arrancando: lo que
   // quedó hasta ayer, porque la venta de hoy todavía no pasó por ningún lado.
   var efectivoAlAbrir=efectivoTeoricoCaja(localId,ayer,datosEfectivo);
@@ -19346,7 +19356,9 @@ export default function App() {
     var monto=parseFloat(f.monto)||0;
     if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
     setGuardandoRetiroMenor(true);
-    var hoyRM=fechaLocal();
+    // Día de negocio: si Sofía carga esto de madrugada, tiene que caer en el cierre que el
+    // cajero todavía tiene abierto de la noche anterior, no en uno nuevo del día siguiente.
+    var hoyRM=diaDeNegocio();
     var existente=cierres.find(function(c){return c.local===f.local&&c.fecha===hoyRM;});
     var notaNueva="Retiro menor — "+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
     var nota=existente&&existente.retiro_caja_nota?existente.retiro_caja_nota+" · "+notaNueva:notaNueva;
@@ -20159,7 +20171,7 @@ export default function App() {
                 {retiroMenorForm&&(function(){
                   var localesRM=LOCALES.filter(function(l){return l.id!=="l4";});
                   var lRM=getLocal(retiroMenorForm.local);
-                  var hoyRM=fechaLocal();
+                  var hoyRM=diaDeNegocio();
                   var yaHay=cierres.find(function(c){return c.local===retiroMenorForm.local&&c.fecha===hoyRM;});
                   return(
                     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>

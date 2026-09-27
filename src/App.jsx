@@ -9615,6 +9615,12 @@ function PanelNovedades(p){
   // Fecha local, no UTC: pasadas las 21 en Argentina toISOString() ya devuelve el día
   // siguiente, y un panel que se mira de noche empezaba a hablar de mañana.
   var hoy=fechaLocal();
+  // El efectivo que cada local debería tener en la caja física ahora mismo, para verlo de
+  // un vistazo sin entrar local por local a 🧾 Caja.
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:retiros,aportes:aportes};
+  var efectivoPorLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+    return {local:l, monto:efectivoTeoricoCaja(l.id,hoy,datosEfectivo)};
+  });
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
@@ -9881,6 +9887,19 @@ function PanelNovedades(p){
             return <button key={t[0]} onClick={function(){setRango(t[0]);}} style={{padding:"6px 13px",borderRadius:7,border:"none",background:act?"#1C1C1C":"transparent",color:act?"#E8E8E8":"#4A4A4A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:600,cursor:"pointer"}}>{t[1]}</button>;
           })}
         </div>
+      </div>
+
+      {/* Efectivo en caja, local por local, de un vistazo */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
+        {efectivoPorLocal.map(function(x){
+          return(
+            <div key={x.local.id} style={{background:"#0C0C0C",padding:"13px 15px"}}>
+              <div style={{fontSize:9.5,color:"#4A4A4A",textTransform:"uppercase",letterSpacing:1}}>{x.local.emoji} {x.local.nombre}</div>
+              <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.monto<0?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmt(x.monto)}</div>
+              <div style={{fontSize:10,color:"#3F3F3F",marginTop:2}}>efectivo en caja</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Lo urgente, si lo hay: una sola línea por cosa */}
@@ -20015,7 +20034,7 @@ export default function App() {
           {esSofia&&modulo==="novedades"&&(
             <PanelNovedades
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
-              vacaciones={vacaciones} empleados={empleados}
+              vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
               irCierres={function(){abrirModulo("admin","cierres");}}

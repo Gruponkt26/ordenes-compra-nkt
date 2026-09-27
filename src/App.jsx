@@ -12701,6 +12701,27 @@ function PanelCierresSofia(p) {
   if(vistaVerif){
     var avisosMes=avisosCaja.filter(function(a){return a.fecha&&a.fecha.substring(0,7)===mesFiltro;})
       .sort(function(a,b){return String(b.created_at||b.fecha||"").localeCompare(String(a.created_at||a.fecha||""));});
+    // Los días sin ninguna línea no se notan solos en una lista que sólo muestra lo que sí
+    // pasó: hay que salir a buscarlos. Nunca se reclama hoy —el día todavía no terminó—, un
+    // día que el local no abre, ni un mes anterior a que existiera este control: ahí faltaría
+    // TODO, porque nadie llenaba esto todavía, y no es una novedad accionable.
+    var hoyReal=fechaLocal();
+    var diasSinControlar=(function(){
+      if(mesFiltro!==mesCurrent)return [];
+      var out=[];
+      localesFiltro.forEach(function(l){
+        var fechasConLinea={};
+        avisosCaja.forEach(function(a){if(a.local===l.id)fechasConLinea[a.fecha]=true;});
+        var d=new Date(mesFiltro+"-01T00:00:00");
+        while(fechaLocal(d).substring(0,7)===mesFiltro){
+          var f=fechaLocal(d);
+          if(f>=hoyReal)break;
+          if(abreEseDia(l.id,f)&&!fechasConLinea[f])out.push({local:l,fecha:f});
+          d.setDate(d.getDate()+1);
+        }
+      });
+      return out.sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+    })();
     return(
       <div style={{fontFamily:"'Inter',sans-serif",position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -12715,6 +12736,18 @@ function PanelCierresSofia(p) {
         <div style={{fontSize:10,color:"#444",marginBottom:14,lineHeight:1.6}}>
           Cada vez que un cajero abre 🧾 Caja y responde si el efectivo coincide, queda una línea acá —diga que sí o que no—. Un día sin ninguna línea es un día que nadie controló.
         </div>
+
+        {diasSinControlar.length>0&&(
+          <div style={{background:"#1A0808",border:"1px solid #C1440E44",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+            <div style={{fontSize:11,color:"#C1440E",fontWeight:700,marginBottom:8}}>⚠️ {diasSinControlar.length} día{diasSinControlar.length===1?"":"s"} sin controlar</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {diasSinControlar.map(function(x,i){
+                return <div key={i} style={{fontSize:11,color:"#E0714A"}}>{x.local.emoji} {x.local.nombre} · {fmtDate(x.fecha)}</div>;
+              })}
+            </div>
+          </div>
+        )}
+
         {avisosMes.length===0?(
           <div style={{fontSize:12,color:"#333",textAlign:"center",padding:"30px 0"}}>Sin verificaciones en {mesFiltro}.</div>
         ):(
@@ -12737,11 +12770,10 @@ function PanelCierresSofia(p) {
                     ):(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                         <span style={{fontSize:13,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#E0714A"}}>{a.diferencia>=0?"+":""}{plataAR(a.diferencia)}</span>
-                        {a.resuelto?(
-                          <span style={{fontSize:9,color:"#3A7D44"}}>resuelto</span>
-                        ):(
-                          <button onClick={function(){p.onResolverAvisoCaja(a.id);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:9,fontWeight:700,cursor:"pointer",padding:"2px 8px"}}>Marcar resuelto</button>
-                        )}
+                        <button onClick={function(){p.onResolverAvisoCaja(a.id);}}
+                          style={{background:"none",border:"1px solid "+(a.resuelto?"#3A7D4444":"#E0714A44"),borderRadius:6,color:a.resuelto?"#3A7D44":"#E0714A",fontSize:9,fontWeight:700,cursor:"pointer",padding:"2px 8px"}}>
+                          {a.resuelto?"✓ Resuelto":"Marcar resuelto"}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -19263,10 +19295,12 @@ export default function App() {
     setAvisosCaja(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
     return true;
   }
+  // Alterna resuelto/pendiente: si se marcó por error, se puede volver atrás sin quedar
+  // trabado en un solo sentido.
   function resolverAvisoCaja(id){
     var x=avisosCaja.find(function(a){return a.id===id;});
     if(!x)return;
-    guardarAvisoCaja({...x,resuelto:true});
+    guardarAvisoCaja({...x,resuelto:!x.resuelto});
   }
   async function guardarCierre(c){
     var ok=await sbSaveCierre(c);

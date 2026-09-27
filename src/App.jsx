@@ -722,6 +722,23 @@ function cleanPhone(s) { return s.replace(/\D/g,""); }
 
 
 function Badge(p) { return <span style={{ background:p.color+"22", color:p.color, border:"1px solid "+p.color+"44", borderRadius:4, padding:"2px 10px", fontSize:11, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>{p.children}</span>; }
+// Reloj del encabezado: se actualiza solo cada segundo, para que cualquiera —cajero o
+// Administración— tenga la fecha y hora reales a la vista sin depender del reloj del celular.
+var DIAS_SEMANA=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+function RelojEncabezado(){
+  var [ahora,setAhora]=useState(new Date());
+  useEffect(function(){
+    var t=setInterval(function(){setAhora(new Date());},1000);
+    return function(){clearInterval(t);};
+  },[]);
+  var pad=function(n){return String(n).padStart(2,"0");};
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",lineHeight:1.35}}>
+      <div style={{fontSize:10,color:"#666",textTransform:"capitalize",whiteSpace:"nowrap"}}>{DIAS_SEMANA[ahora.getDay()]} {fmtDate(fechaLocal(ahora))}</div>
+      <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{pad(ahora.getHours())}:{pad(ahora.getMinutes())}:{pad(ahora.getSeconds())}</div>
+    </div>
+  );
+}
 function SBadge(p) {
   var M = { borrador:["Borrador","#888"], pendiente:["Pendiente","#D4A017"], enviada:["Enviada","#1A6B8A"], confirmada:["Confirmada","#3A7D44"], cancelada:["Cancelada","#C1440E"] };
   var e = M[p.status]||M.borrador; return <Badge color={e[1]}>{e[0]}</Badge>;
@@ -19618,7 +19635,8 @@ export default function App() {
             {esAdmin&&<Badge color="#C1440E">👑 Admin</Badge>}
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:11,color:"#444",borderRight:"1px solid #222",paddingRight:9,marginRight:2}}>👤 {cu.nombre}</span>
+            <RelojEncabezado/>
+            <span style={{fontSize:11,color:"#444",borderLeft:"1px solid #222",borderRight:"1px solid #222",padding:"0 9px",marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
             {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#555"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>

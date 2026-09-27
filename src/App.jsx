@@ -9642,10 +9642,15 @@ function PanelNovedades(p){
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
   var hoy=diaDeNegocio();
   // El efectivo que cada local debería tener en la caja física ahora mismo, para verlo de
-  // un vistazo sin entrar local por local a 🧾 Caja.
+  // un vistazo sin entrar local por local a 🧾 Caja. Ojo: esto va SIEMPRE hasta la fecha
+  // calendario real, no el día de negocio — de madrugada "hoy" (negocio) retrocede a ayer,
+  // y si ya hay un cierre cargado con la fecha real de hoy, usar el día de negocio como
+  // corte lo dejaría afuera de la suma y el efectivo mostrado quedaría incompleto (o
+  // negativo) hasta que amanezca.
+  var hoyReal=fechaLocal();
   var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:retiros,aportes:aportes};
   var efectivoPorLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-    return {local:l, monto:efectivoTeoricoCaja(l.id,hoy,datosEfectivo)};
+    return {local:l, monto:efectivoTeoricoCaja(l.id,hoyReal,datosEfectivo)};
   });
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
@@ -13083,7 +13088,11 @@ function PanelCierre(p) {
   // El de la puerta de entrada es otro: se puede tocar Caja en cualquier momento del día,
   // no sólo al abrir, así que mira hasta hoy —sin contar la venta de hoy, que todavía no
   // se cargó— para reflejar lo que hay que encontrar en la caja en este mismo momento.
-  var efectivoActual=efectivoTeoricoCaja(localId,hoy,datosEfectivo);
+  // Usa la fecha REAL, no el día de negocio: de madrugada el día de negocio retrocede a
+  // ayer, y si ya hay un cierre cargado con la fecha real de hoy, cortar en el día de
+  // negocio lo dejaría afuera de la cuenta —el efectivo mostrado se vería incompleto o
+  // negativo hasta que amanezca, aunque esa plata ya esté anotada—.
+  var efectivoActual=efectivoTeoricoCaja(localId,fechaLocal(),datosEfectivo);
   var [bannerApVisto,setBannerApVisto]=useState(false);
   var horaApertura=HORA_APERTURA_CAJA[localId];
   var ahora=new Date();

@@ -9920,14 +9920,14 @@ function PanelNovedades(p){
         </div>
       </div>
 
-      {/* Efectivo en caja, local por local, de un vistazo */}
+      {/* Caja menor de cada local, de un vistazo */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {efectivoPorLocal.map(function(x){
           return(
             <div key={x.local.id} style={{background:"#0C0C0C",padding:"13px 15px"}}>
               <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.local.emoji} {x.local.nombre}</div>
               <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.monto<0?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmt(x.monto)}</div>
-              <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>efectivo en caja</div>
+              <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>caja menor</div>
             </div>
           );
         })}
@@ -12693,7 +12693,7 @@ function PanelCierresSofia(p) {
                                 </div>
                               )}
                               <div style={{fontSize:9,color:"#3A7D44",marginTop:4,paddingTop:4,borderTop:"1px solid #1A1A1A"}}>
-                                💵 Debería haber en caja: ${Math.round(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
+                                💵 Debería haber en caja menor: ${Math.round(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
                               </div>
                               {c.notas&&<div style={{fontSize:9,color:"#6E6E6E",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                               <div style={{fontSize:10,color:"#6E6E6E",marginTop:4}}>{c.usuario}</div>
@@ -13010,7 +13010,7 @@ function PanelCierresSofia(p) {
                             </div>
                           )}
                           <div style={{gridColumn:"1/-1",fontSize:11,color:"#3A7D44",borderTop:"1px solid #1A1A1A",marginTop:5,paddingTop:5}}>
-                            💵 Debería haber en caja: <b>{plataAR(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo))}</b>
+                            💵 Debería haber en caja menor: <b>{plataAR(efectivoTeoricoCaja(c.local,c.fecha,datosEfectivo))}</b>
                           </div>
                           {c.notas&&<div style={{gridColumn:"1/-1",fontSize:10,color:"#7E7E7E",fontStyle:"italic",marginTop:4}}>📝 {c.notas}</div>}
                         </div>
@@ -13259,10 +13259,10 @@ function PanelCierre(p) {
           <div>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:local?local.color:"#3A7D44",marginBottom:10}}>Verificá el efectivo antes de entrar</div>
             <div style={{fontSize:13,color:"#AAA",lineHeight:1.6,marginBottom:14,textAlign:"left"}}>
-              El efectivo en caja es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales. Contalo antes de seguir.
+              El efectivo de la caja menor es la suma de todo lo que ingresó en efectivo, menos los retiros de socios y los egresos eventuales. Contalo antes de seguir.
             </div>
             <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px",marginBottom:18}}>
-              <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Tendría que haber</div>
+              <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Tendría que haber en caja menor</div>
               <div style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#3A7D44"}}>${Math.round(efectivoActual).toLocaleString("es-AR")}</div>
             </div>
             <div style={{fontSize:12,color:"#888",marginBottom:10}}>¿Coincide esta cantidad con la que hay en la caja?</div>
@@ -13326,7 +13326,7 @@ function PanelCierre(p) {
         <div style={{background:"#0A140A",border:"2px solid #3A7D44",borderRadius:16,padding:"22px 20px",marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:6}}>💵</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#3A7D44",lineHeight:1.3}}>
-            Controlá que en la caja haya ${Math.round(efectivoAlAbrir).toLocaleString("es-AR")}
+            Controlá que en la caja menor haya ${Math.round(efectivoAlAbrir).toLocaleString("es-AR")}
           </div>
           <div style={{fontSize:13,color:"#6A9A72",marginTop:6}}>Es lo que debería haber quedado, antes de la venta de hoy.</div>
           <button onClick={function(){setBannerApVisto(true);}} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Ya la controlé</button>
@@ -13390,7 +13390,7 @@ function PanelCierre(p) {
             )}
             {hoyData.notas&&<div style={{fontSize:11,color:"#8C8C8C",marginTop:8,fontStyle:"italic"}}>📝 {hoyData.notas}</div>}
             <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #1A1A1A",fontSize:11,color:"#3A7D44"}}>
-              💵 Debería haber en caja: <b>${Math.round(efectivoTeoricoCaja(localId,hoyData.fecha,datosEfectivo)).toLocaleString("es-AR")}</b>
+              💵 Debería haber en caja menor: <b>${Math.round(efectivoTeoricoCaja(localId,hoyData.fecha,datosEfectivo)).toLocaleString("es-AR")}</b>
             </div>
           </div>
         ):(
@@ -13554,7 +13554,7 @@ function PanelCierre(p) {
                         </div>
                       )}
                       <div style={{fontSize:10,color:"#3A7D44",marginTop:2}}>
-                        💵 Debería haber: ${Math.round(efectivoTeoricoCaja(localId,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
+                        💵 Debería haber en caja menor: ${Math.round(efectivoTeoricoCaja(localId,c.fecha,datosEfectivo)).toLocaleString("es-AR")}
                       </div>
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
@@ -15517,6 +15517,11 @@ function PanelResultados(p){
                     </tr>
                   );
                 })()}
+                {/* Caja mayor: la disponibilidad general del negocio, distinta de la caja
+                    menor de cada local — ésta arrastra el traspaso mes a mes. */}
+                <tr style={{background:"#0A0A0A"}}>
+                  <td colSpan={localesFiltro.length+2} style={{padding:"6px 8px",color:"#8C8C8C",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>🏦 Caja mayor — disponibilidad general del negocio</td>
+                </tr>
                 {/* Disponibilidad efectivo */}
                 <tr style={{background:"#0A0F0A"}}>
                   <td style={{padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💵 Disponible efectivo</td>
@@ -15539,7 +15544,7 @@ function PanelResultados(p){
                 </tr>
                 {/* Total disponible */}
                 <tr style={{background:"#111",borderTop:"2px solid #1A1A1A"}}>
-                  <td style={{padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>💰 Total disponible</td>
+                  <td style={{padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>💰 Total caja mayor</td>
                   {localesFiltro.map(function(l){
                     var d=datos[l.id];
                     var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);
@@ -15560,7 +15565,7 @@ function PanelResultados(p){
                 )}
                 {/* Total disponible HOY (real, sin débito en tránsito) */}
                 <tr style={{background:"#0D0D0D",borderTop:"1px solid #1A1A1A"}}>
-                  <td style={{padding:"8px",color:"#888",fontWeight:700,fontSize:11}}>📅 Disponible HOY (real)</td>
+                  <td style={{padding:"8px",color:"#888",fontWeight:700,fontSize:11}}>📅 Caja mayor HOY (real)</td>
                   {localesFiltro.map(function(l){
                     var d=datos[l.id];
                     var totHoy=(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);
@@ -15712,7 +15717,7 @@ function PanelResultados(p){
 
               {/* Estado de disponibilidad */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
-                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Disponibilidad estimada</div>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏦 Caja mayor estimada</div>
                 
                 {/* Efectivo */}
                 {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo)&&(

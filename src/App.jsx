@@ -18664,8 +18664,25 @@ async function sbLoadGastos() {
   } catch(e) { return []; }
 }
 
+// "Efectivo - Oficina" no es una caja propia: es un reparto fijo entre las tres cajas de
+// los locales (50% Bodegón, 30% Colantonio's, 20% Kusama), armado con el mismo mecanismo de
+// "varios medios de pago" que ya usa un gasto pagado con más de una cuenta. Así no hace falta
+// tocar ningún cálculo de disponibilidad: cada parte descuenta de su local como si se hubiese
+// cargado por separado.
+function repartoEfectivoOficina(monto){
+  var m=parseFloat(monto)||0;
+  var bod=Math.round(m*0.5), col=Math.round(m*0.3), kus=m-bod-col; // el resto absorbe el redondeo
+  return [
+    {medio:"Efectivo - Bodegón",monto:bod},
+    {medio:"Efectivo - Colantonio's",monto:col},
+    {medio:"Efectivo - Kusama",monto:kus},
+  ];
+}
 async function sbSaveGasto(gasto) {
   try {
+    if((gasto.forma_pago||"").trim()==="Efectivo - Oficina"&&(!gasto.pagos||gasto.pagos.length===0)){
+      gasto.pagos=repartoEfectivoOficina(gasto.monto);
+    }
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var payload = {
       id: gasto.id,

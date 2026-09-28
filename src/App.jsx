@@ -18680,9 +18680,23 @@ function repartoEfectivoOficina(monto){
 }
 async function sbSaveGasto(gasto) {
   try {
-    if((gasto.forma_pago||"").trim()==="Efectivo - Oficina"&&(!gasto.pagos||gasto.pagos.length===0)){
-      gasto.pagos=repartoEfectivoOficina(gasto.monto);
-    }
+    // El formulario arma "pagos" siempre, incluso con un solo medio cargado —no alcanza con
+    // mirar forma_pago cuando pagos está vacío—. Por eso se recorre pagos (o, si no hay,
+    // forma_pago solo) y se expande cualquier fila "Efectivo - Oficina" en las tres, sin
+    // tocar el resto de las filas si el gasto se pagó con más de un medio.
+    var pagosOrig=(gasto.pagos&&gasto.pagos.length>0)?gasto.pagos:((gasto.forma_pago||"").trim()?[{medio:gasto.forma_pago,monto:gasto.monto}]:[]);
+    var pagosExpandidos=[];
+    var huboOficina=false;
+    pagosOrig.forEach(function(pg){
+      var medio=(pg.medio||pg.tipo||"").trim();
+      if(medio==="Efectivo - Oficina"){
+        huboOficina=true;
+        pagosExpandidos=pagosExpandidos.concat(repartoEfectivoOficina(pg.monto));
+      } else {
+        pagosExpandidos.push(pg);
+      }
+    });
+    if(huboOficina)gasto.pagos=pagosExpandidos;
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var payload = {
       id: gasto.id,

@@ -12110,9 +12110,16 @@ function esMedioCorrecto(gasto){
 }
 // De qué local es un medio, para poder decir a quién le corresponde.
 function localDelMedio(medio){
-  return Object.keys(MEDIOS_POR_LOCAL).find(function(lid){
+  var lid=Object.keys(MEDIOS_POR_LOCAL).find(function(lid){
     return MEDIOS_POR_LOCAL[lid].some(function(m){return (medio||"").startsWith(m)&&m!=="Efectivo";});
-  })||null;
+  });
+  if(lid)return lid;
+  // "Efectivo - Oficina" (u otro medio específico que no sea de ningún local operativo)
+  // cae acá: un "Efectivo" a secas es ambiguo y sigue sin adivinar, pero un medio con
+  // nombre propio sí identifica de dónde salió la plata —incluida la Oficina (l4)—.
+  var m=(medio||"").trim();
+  if(!m||m==="Efectivo")return null;
+  return getLocalFromMedio(m);
 }
 
 // Cuánto efectivo debería haber en la caja física de un local, hasta una fecha (inclusive):

@@ -18664,8 +18664,39 @@ async function sbLoadGastos() {
   } catch(e) { return []; }
 }
 
+// "Efectivo - Oficina" no es una caja propia: es un reparto fijo entre las tres cajas de
+// los locales (50% Bodegón, 30% Colantonio's, 20% Kusama), armado con el mismo mecanismo de
+// "varios medios de pago" que ya usa un gasto pagado con más de una cuenta. Así no hace falta
+// tocar ningún cálculo de disponibilidad: cada parte descuenta de su local como si se hubiese
+// cargado por separado.
+function repartoEfectivoOficina(monto){
+  var m=parseFloat(monto)||0;
+  var bod=Math.round(m*0.5), col=Math.round(m*0.3), kus=m-bod-col; // el resto absorbe el redondeo
+  return [
+    {medio:"Efectivo - Bodegón",monto:bod},
+    {medio:"Efectivo - Colantonio's",monto:col},
+    {medio:"Efectivo - Kusama",monto:kus},
+  ];
+}
 async function sbSaveGasto(gasto) {
   try {
+    // El formulario arma "pagos" siempre, incluso con un solo medio cargado —no alcanza con
+    // mirar forma_pago cuando pagos está vacío—. Por eso se recorre pagos (o, si no hay,
+    // forma_pago solo) y se expande cualquier fila "Efectivo - Oficina" en las tres, sin
+    // tocar el resto de las filas si el gasto se pagó con más de un medio.
+    var pagosOrig=(gasto.pagos&&gasto.pagos.length>0)?gasto.pagos:((gasto.forma_pago||"").trim()?[{medio:gasto.forma_pago,monto:gasto.monto}]:[]);
+    var pagosExpandidos=[];
+    var huboOficina=false;
+    pagosOrig.forEach(function(pg){
+      var medio=(pg.medio||pg.tipo||"").trim();
+      if(medio==="Efectivo - Oficina"){
+        huboOficina=true;
+        pagosExpandidos=pagosExpandidos.concat(repartoEfectivoOficina(pg.monto));
+      } else {
+        pagosExpandidos.push(pg);
+      }
+    });
+    if(huboOficina)gasto.pagos=pagosExpandidos;
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
     var payload = {
       id: gasto.id,

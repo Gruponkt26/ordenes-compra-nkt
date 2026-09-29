@@ -9984,11 +9984,11 @@ function PanelNovedades(p){
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0},
-          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer"},
+          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",onClick:function(){p.irVencimientos();}},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
-          <div key={x.t} style={{background:"#0C0C0C",padding:"13px 15px"}}>
-            <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}</div>
+          <div key={x.t} onClick={x.onClick} style={{background:"#0C0C0C",padding:"13px 15px",cursor:x.onClick?"pointer":"default"}}>
+            <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}{x.onClick?" →":""}</div>
             <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.alerta?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{x.v}</div>
             <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>{x.d}</div>
           </div>
@@ -10127,7 +10127,7 @@ function PanelNovedades(p){
                         {x.et?x.et+" ":""}{fmtDate(x.f)}
                       </span>;
                     })}
-                    {a.dias===0?<span style={{color:"#D4A017"}}>hoy </span>:null}
+                    {a.dias===0?<span style={{color:"#D4A017"}}>hoy </span>:(a.dias>0&&a.dias<=7?<span style={{color:"#B8963A"}}>{(a.dias===1?"mañana":"en "+a.dias+" días")+" "}</span>:null)}
                     {fmt(a.monto)}
                   </span>}
                   color={a.dias===0?"#D4A017":(a.dias<=7?"#B8963A":"#7A7A7A")}/>;

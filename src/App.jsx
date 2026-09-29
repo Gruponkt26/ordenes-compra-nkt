@@ -9942,7 +9942,7 @@ function PanelNovedades(p){
           avisos.push({rojo:true, resolverId:a.id,
             txt:"Caja no coincide en "+(l?l.nombre:a.local)+" ("+fmtDate(a.fecha)+") — contó "+fmt(a.contado)+", se esperaba "+fmt(a.esperado)+" · diferencia "+(a.diferencia>=0?"+":"")+fmt(a.diferencia)});
         });
-        if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", "),rojo:true});
+        if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
         function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
         // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
         // cuota vence dentro de la ventana de "vence pronto", se avisan juntas en un renglón,

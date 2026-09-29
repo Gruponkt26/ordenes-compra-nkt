@@ -3535,6 +3535,9 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
     {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
     {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
+    {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
+    {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
+    {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Colantonio's",value:"Caja Mayor - Colantonio's"},
     {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
     {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
@@ -3739,7 +3742,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
                     <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
                       <select value={pago.medio} onChange={function(e){var v=e.target.value;setFormObra(function(f){var n=[...(f.pagos||[])];n[idx]={...n[idx],medio:v};return{...f,pagos:n};});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
                         <option value="">-- Medio --</option>
-                        {["Efectivo","Transferencia","Otros"].map(function(grp){
+                        {["Efectivo","Caja Mayor","Transferencia","Otros"].map(function(grp){
                           var items=MEDIOS_OBRA.filter(function(m){return m.grupo===grp;});
                           return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
                         })}
@@ -6231,6 +6234,27 @@ function getLocalFromMedio(medio){
   }
   return null;
 }
+// "Caja Mayor - Bodegón/Kusama/Colantonio's": un egreso pagado con plata que YA se retiró
+// de la caja física de ese local (no del cajón). A propósito es un mapa aparte de
+// MEDIO_LOCAL_MAP: tiene que bajar la Caja Mayor de ese local en Resultados, pero NO la Caja
+// Menor —si compartiera el mapa, localDelMedio (el de la Caja Menor) lo tomaría también—.
+var CAJA_MAYOR_MEDIO_MAP={
+  "caja mayor - bodegón":"l1","caja mayor - bodegon":"l1",
+  "caja mayor - kusama":"l2",
+  "caja mayor - colantonio's":"l3","caja mayor - colantonios":"l3",
+};
+function localDeCajaMayor(medio){
+  if(!medio)return null;
+  var k=medio.toLowerCase().trim();
+  for(var key in CAJA_MAYOR_MEDIO_MAP){
+    if(k.includes(key))return CAJA_MAYOR_MEDIO_MAP[key];
+  }
+  return null;
+}
+function esEfectivoOCajaMayor(medio){
+  var k=(medio||"").toLowerCase();
+  return k.includes("efectivo")||k.includes("caja mayor");
+}
 
 // ─── MEDIOS DE PAGO MÚLTIPLES ────────────────────────────────────────────────
 // Un mismo pago (un sueldo, un aguinaldo, un gasto) puede repartirse entre varias
@@ -6888,6 +6912,11 @@ var MEDIOS_EGRESO=[
   {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
   {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
   {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
+  // Plata que ya se retiró de la caja física de ese local (no toca la Caja Menor, sólo
+  // la Caja Mayor de ese local en Resultados) — ver localDeCajaMayor.
+  {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
+  {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
+  {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Colantonio's",value:"Caja Mayor - Colantonio's"},
   {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
   {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
   {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
@@ -6901,7 +6930,7 @@ var MEDIOS_EGRESO=[
   {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
-var GRUPOS_MEDIOS_EGRESO=["Efectivo","Transferencia","Tarjeta","Otros"];
+var GRUPOS_MEDIOS_EGRESO=["Efectivo","Caja Mayor","Transferencia","Tarjeta","Otros"];
 // Las cuentas de las que puede salir un débito automático: las mismas de la lista de medios,
 // así lo que se anota acá es exactamente lo que después se elige al pagar.
 function cuentasDebito(){ return MEDIOS_EGRESO.filter(function(m){return m.grupo==="Transferencia"||m.grupo==="Tarjeta";}); }
@@ -14910,20 +14939,20 @@ function PanelResultados(p){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
-          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||lid;
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||lid;
           // Solo contar si el pago sale de este local
           if(pagoLocal!==lid)return;
-          var esEf=medioStr.includes("efectivo");
+          var esEf=esEfectivoOCajaMayor(medioStr);
           if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
           detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:false});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
-        var pagoLocal=getLocalFromMedio(g.forma_pago)||lid;
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||lid;
         // Solo contar si el pago sale de este local
         if(pagoLocal!==lid)return;
-        var esEf2=fp.includes("efectivo");
+        var esEf2=esEfectivoOCajaMayor(fp);
         if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
         detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:false});
       }
@@ -14937,18 +14966,18 @@ function PanelResultados(p){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
-          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||g.local;
+          var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||g.local;
           if(pagoLocal!==lid)return;
-          var esEf=medioStr.includes("efectivo");
+          var esEf=esEfectivoOCajaMayor(medioStr);
           if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
           detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
-        var pagoLocal=getLocalFromMedio(g.forma_pago)||g.local;
+        var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||g.local;
         if(pagoLocal!==lid)return;
-        var esEf2=fp.includes("efectivo");
+        var esEf2=esEfectivoOCajaMayor(fp);
         if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
         detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:true});
       }

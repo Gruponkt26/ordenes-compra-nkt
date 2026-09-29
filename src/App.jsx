@@ -13085,6 +13085,12 @@ function PanelCierre(p) {
     return faltante;
   })();
 
+  // Un cierre nuevo (no una edición) que no coincide con el día de negocio de hoy: el
+  // cajero puede haber tocado mal el selector de fecha. Sólo aplica cuando el campo es
+  // editable —con un día atrasado pendiente ya viene fijo en esa fecha, no hay nada que
+  // marcar—.
+  var fechaSospechosa=!editId&&!diaFaltante&&form.fecha&&form.fecha!==hoy;
+
   var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
   // Un día antes del día de NEGOCIO (no de la fecha real): si son las 00:45 y "hoy" para
   // la caja sigue siendo ayer, "el día anterior" tiene que ser antes de ayer.
@@ -13167,6 +13173,11 @@ function PanelCierre(p) {
     // nada, así que no se lo bloquea.
     if(!editId&&diaFaltante&&form.fecha!==diaFaltante){
       alert("Antes de cargar este día, cerrá el "+fmtDate(diaFaltante)+": está pendiente.");
+      return;
+    }
+    // Fecha distinta a la de hoy en un cierre nuevo: probablemente tocaron mal el selector.
+    // No se bloquea del todo —puede ser una carga atrasada real— pero se pide confirmar.
+    if(fechaSospechosa&&!window.confirm("Hoy es "+fmtDate(hoy)+", pero este cierre dice "+fmtDate(form.fecha)+". ¿Guardarlo con esa fecha igual?")){
       return;
     }
     var total=calcTotal(form);
@@ -13418,8 +13429,9 @@ function PanelCierre(p) {
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fecha</label>
             <input type="date" value={form.fecha} disabled={!editId&&!!diaFaltante}
               onChange={function(e){setForm(function(f){return{...f,fecha:e.target.value};});}}
-              style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:(!editId&&diaFaltante)?"#0A0A0A":"#0F0F0F",color:(!editId&&diaFaltante)?"#9A9A9A":"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+              style={{padding:"9px 12px",borderRadius:8,border:"1px solid "+(fechaSospechosa?"#D4A017":"#2A2A2A"),background:(!editId&&diaFaltante)?"#0A0A0A":"#0F0F0F",color:(!editId&&diaFaltante)?"#9A9A9A":"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
             {!editId&&diaFaltante&&<div style={{fontSize:10,color:"#9A9A9A",marginTop:4}}>Primero hay que cerrar este día. Los demás se habilitan uno por uno.</div>}
+            {fechaSospechosa&&<div style={{fontSize:10,color:"#D4A017",marginTop:4}}>⚠️ Hoy es {fmtDate(hoy)} — revisá que esta fecha esté bien antes de guardar.</div>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             {(function(){

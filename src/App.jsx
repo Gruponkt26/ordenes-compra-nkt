@@ -2337,19 +2337,25 @@ function GestProveedoresPanel(p) {
 
   function doSaveMov(){
     if(!formMov.monto||!sel)return;
-    var mov={id:String(Date.now()),prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
+    var movId=String(Date.now());
+    var mov={id:movId,prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
     if(onSaveMov)onSaveMov(mov);
-    // Si es pago, generar egreso automático en Egresos → Proveedores
+    // Si es pago, generar egreso automático en Egresos → Proveedores. Queda atado al
+    // movimiento guardando mov_id adentro de "pagos" (que ya es JSON libre, así no hace
+    // falta agregar ninguna columna nueva a la tabla): si alguien borra este egreso desde
+    // Egresos, hay que borrar también el movimiento de la cuenta corriente —si no, el saldo
+    // del proveedor sigue mostrando como pagada una plata que ya no está en ningún lado—.
+    // Ver despagarPorEgreso.
     if(formMov.tipo==="pago"&&p.onSaveEgreso){
       var provNombre=provs.find(function(pv){return pv.id===sel;})?provs.find(function(pv){return pv.id===sel;}).nombre:"Proveedor";
       var egreso={
-        id:"egr_prov_"+String(Date.now()),
+        id:"egr_prov_"+movId,
         local:formMov.local,
         concepto:provNombre,
         subramo:"Pago cuenta corriente",
         monto:parseFloat(formMov.monto),
         forma_pago:formMov.medio_pago,
-        pagos:[{medio:formMov.medio_pago,monto:parseFloat(formMov.monto)}],
+        pagos:[{medio:formMov.medio_pago,monto:parseFloat(formMov.monto),mov_id:movId}],
         facturado:!!formMov.facturado,
         facturacion:formMov.facturado?formMov.facturacion:"",
         categoria:"Proveedores",
@@ -19702,6 +19708,23 @@ export default function App() {
         alert("Ese egreso venía del vencimiento \""+v.concepto+"\": volvió a quedar impago en 📅 Vencimientos.");
       },100);
     });
+    // Un pago a proveedor cargado desde 🤝 Cuenta Corriente genera este egreso automático,
+    // con el id del movimiento guardado adentro de pagos[0].mov_id. Si se borra el egreso,
+    // el movimiento tiene que borrarse con él —si no, el saldo del proveedor sigue
+    // mostrando como pagada una plata que en Egresos ya no está en ningún lado—.
+    var egresoProv=gastos.find(function(g){return g.id===egresoId;});
+    var movId=egresoProv&&Array.isArray(egresoProv.pagos)&&egresoProv.pagos[0]&&egresoProv.pagos[0].mov_id;
+    if(movId){
+      var mov=saldosProveedores.find(function(m){return m.id===movId;});
+      if(mov){
+        sbDeleteSaldoProv(mov.id);
+        setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==movId;});});
+        var provNombre=(proveedores.find(function(pv){return pv.id===mov.prov_id;})||{}).nombre||"el proveedor";
+        window.setTimeout(function(){
+          alert("Ese egreso venía de un pago a "+provNombre+" en Cuenta Corriente: se borró también ese movimiento, y el saldo vuelve a mostrar la deuda.");
+        },100);
+      }
+    }
   }
   function borrarEgreso(id){
     borrarEgresoSolo(id);

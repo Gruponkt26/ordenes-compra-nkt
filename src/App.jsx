@@ -2558,6 +2558,9 @@ function GestProveedoresPanel(p) {
                             <optgroup label="Efectivo">
                               <option>Efectivo - Bodegón</option><option>Efectivo - Kusama</option><option>Efectivo - Colantonio's</option>
                             </optgroup>
+                            <optgroup label="Caja Mayor">
+                              <option>Caja Mayor - Bodegón</option><option>Caja Mayor - Kusama</option><option>Caja Mayor - Colantonio's</option>
+                            </optgroup>
                             <optgroup label="Transferencia">
                               <option>Transferencia - Provincia Personas</option><option>Transferencia - Galicia Empresas</option>
                               <option>Transferencia - Patagonia Personas</option><option>Transferencia - Patagonia Empresas</option><option>Transferencia - Mercado Pago Nicolás</option>

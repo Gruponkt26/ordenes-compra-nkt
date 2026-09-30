@@ -9970,6 +9970,7 @@ function PanelNovedades(p){
       </div>
 
       {/* Caja menor de cada local, de un vistazo */}
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>Caja Menor</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {efectivoPorLocal.map(function(x){
           return(
@@ -9982,7 +9983,7 @@ function PanelNovedades(p){
         })}
       </div>
 
-      {/* Lo urgente, si lo hay: una sola línea por cosa */}
+      {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
         var avisos=[];
         // El cajero dijo que la plata no cierra: es lo primero que hay que mirar.
@@ -10014,6 +10015,7 @@ function PanelNovedades(p){
         var hayRojo=avisos.some(function(a){return a.rojo;});
         return(
           <div style={{border:"1px solid "+(hayRojo?"#C1440E44":"#D4A01733"),background:hayRojo?"#140807":"#12100A",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+            <div style={{fontSize:10,color:hayRojo?"#E0714A":"#D4A017",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Prioridad</div>
             {avisos.map(function(a,i){
               return (
                 <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
@@ -10029,9 +10031,9 @@ function PanelNovedades(p){
       })()}
 
       {/* Los cuatro números que importan */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:(expandido.porVencerCard||expandido.deudaCard)?0:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:(expandido.porVencerCard||expandido.deudaCard||expandido.ventasCard)?0:14}}>
         {[
-          {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
+          {t:rango==="hoy"?"Ventas hasta hoy":"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")+" cargado"+(cierresR.length===1?"":"s"),onClick:function(){setExpandido(function(e){var n={...e};n.ventasCard=!e.ventasCard;return n;});},flecha:expandido.ventasCard?"▾":"▸"},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){setExpandido(function(e){var n={...e};n.deudaCard=!e.deudaCard;return n;});},flecha:expandido.deudaCard?"▾":"▸"},
           {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",aclara:"⏱ próximos 7 días",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
@@ -10044,6 +10046,28 @@ function PanelNovedades(p){
           </div>
         );})}
       </div>
+
+      {/* Detalle de "Ventas": lo vendido en el rango, por local */}
+      {expandido.ventasCard&&(
+        <div style={{background:"#0C120C",border:"1px solid #3A7D4433",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+          <div style={{fontSize:11.5,fontWeight:700,color:"#4C9A5A",marginBottom:6}}>Ventas por local · {rango==="hoy"?"hasta hoy":etiquetaRango}</div>
+          {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l,i){
+            var cs=cierresR.filter(function(c){return c.local===l.id;});
+            var tot=cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
+            return <Fila key={l.id} primera={i===0}
+              izq={<span style={{color:l.color}}>{l.emoji} {l.nombre}<span style={{color:"#7E7E7E"}}> · {cs.length===0?"sin cierre":cs.length+" cierre"+(cs.length===1?"":"s")}</span></span>}
+              der={fmt(tot)} color={tot>0?"#F0EDE8":"#6E6E6E"}/>;
+          })}
+          {(function(){
+            var otros=cierresR.filter(function(c){return !LOCALES.some(function(l){return l.id!=="l4"&&l.id===c.local;});});
+            var t=otros.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
+            return otros.length>0?<Fila primera={false} izq={<span style={{color:"#8C8C8C"}}>Otros</span>} der={fmt(t)} color="#F0EDE8"/>:null;
+          })()}
+          <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A2A1A",marginTop:6,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
+            <span>Total</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(ventas)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Detalle de "Deuda": el total partido por local */}
       {expandido.deudaCard&&(

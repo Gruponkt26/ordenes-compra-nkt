@@ -9726,13 +9726,16 @@ function PanelNovedades(p){
       .sort(function(a,b){return b.total-a.total;});
   })();
   var ventasMes=ventasPorLocal.reduce(function(a,x){return a+x.total;},0);
-  // La tarjeta de ventas sigue al selector: en "Hoy" muestra lo acumulado del mes hasta hoy;
-  // en "Ayer" y "7 días", ese rango.
-  var ventasAcum=rango==="hoy";
-  var cierresTarjeta=ventasAcum?cierresMes:cierresR;
-  var ventasTarjeta=ventasAcum?ventasMes:ventas;
-  var tituloVentas=ventasAcum?"Ventas hasta hoy":"Ventas "+(rango==="semana"?"7 días":etiquetaRango);
-  var subVentas=ventasAcum?("del 1 al "+fmtDate(hoy).substring(0,5)):(rango==="semana"?"últimos 7 días":"ayer");
+  // La tarjeta de ventas es siempre un acumulado desde el 1 del mes; el selector mueve hasta
+  // dónde llega: hoy, ayer o hace 7 días.
+  var finVentas=rango==="hoy"?hoy:(rango==="ayer"?ayer:fechaLocal(new Date(Date.now()-7*86400000)));
+  var cierresTarjeta=cierres.filter(function(c){
+    var f=String(c.fecha||"").substring(0,10);
+    return f.substring(0,7)===finVentas.substring(0,7)&&f<=finVentas;
+  });
+  var ventasTarjeta=cierresTarjeta.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
+  var tituloVentas="Ventas hasta "+(rango==="hoy"?"hoy":(rango==="ayer"?"ayer":"hace 7 días"));
+  var subVentas="del 1 al "+fmtDate(finVentas).substring(0,5);
   var ventasLocalTarjeta=function(lid){
     var cs=cierresTarjeta.filter(function(c){return c.local===lid;});
     return {cuantos:cs.length,total:cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0)};

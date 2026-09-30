@@ -9736,6 +9736,18 @@ function PanelNovedades(p){
   var ventasTarjeta=cierresTarjeta.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
   var tituloVentas="Ventas hasta "+(rango==="hoy"?"hoy":(rango==="ayer"?"ayer":"hace 7 días"));
   var subVentas="del 1 al "+fmtDate(finVentas).substring(0,5);
+  // Egresos del mismo período que las ventas de la tarjeta (del 1 hasta la fecha de corte).
+  var gastosTarjeta=(p.gastos||[]).filter(function(g){
+    var f=String(g.fecha||"").substring(0,10);
+    return f&&f.substring(0,7)===finVentas.substring(0,7)&&f<=finVentas;
+  });
+  var resumenLocales=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+    var eg=gastosTarjeta.filter(function(g){return g.local===l.id;}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
+    var vt=cierresTarjeta.filter(function(c){return c.local===l.id;}).reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
+    return {local:l,ventas:vt,egresos:eg};
+  });
+  var egresosOtros=gastosTarjeta.filter(function(g){return !resumenLocales.some(function(x){return x.local.id===g.local;});})
+    .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
   var ventasLocalTarjeta=function(lid){
     var cs=cierresTarjeta.filter(function(c){return c.local===lid;});
     return {cuantos:cs.length,total:cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0)};
@@ -10123,6 +10135,27 @@ function PanelNovedades(p){
 
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
+
+        <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
+          <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
+          {resumenLocales.map(function(x,i){
+            var res=x.ventas-x.egresos;
+            return(
+              <div key={x.local.id} style={{padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                <div style={{fontSize:12.5,fontWeight:700,color:x.local.color,marginBottom:3}}>{x.local.emoji} {x.local.nombre}</div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Ventas</span><span style={{color:"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{fmt(x.ventas)}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Egresos</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(x.egresos)}</span></div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#9A9A9A"}}><span>Diferencia</span><span style={{color:res<0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(res)}</span></div>
+              </div>
+            );
+          })}
+          {egresosOtros>0.5&&(
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A",padding:"7px 0",borderTop:"1px solid #141414"}}><span>Egresos sin local</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(egresosOtros)}</span></div>
+          )}
+          <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #141414",marginTop:4,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
+            <span>Total · ventas {fmt(ventasTarjeta)} · egresos {fmt(resumenLocales.reduce(function(a,x){return a+x.egresos;},0)+egresosOtros)}</span>
+          </div>
+        </Seccion>
 
         <div ref={refDeuda}>
         <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">

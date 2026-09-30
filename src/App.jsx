@@ -9816,6 +9816,8 @@ function PanelNovedades(p){
       return et+" "+fmt(mapa[k]);
     }).join(" · ");
   }
+  // La deuda total partida por local, para la tarjeta "Deuda".
+  var deudaLocal={};
   var deudaRubros=GRUPOS_VENC.map(function(g){
     var vencido=0, comprometido=0, cuantos=0, quien={}, items=[];
     // De quién es cada deuda, con el mismo criterio que el total: CUIT en los rubros que
@@ -9834,7 +9836,7 @@ function PanelNovedades(p){
           // puede pagar: no es deuda.
           // La deuda se muestra entera, venga del mes que venga: lo que se debe se debe.
           if(estaVencida(c,hoy)){
-            vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);
+            vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);sumarEn(deudaLocal,v.local||"_s",m);
             items.push({txt:v.concepto+(c.nro===0?" · anticipo":" · cuota "+c.nro),
               duenio:duenioTxt(v), fecha:venceFinal(c), monto:m});
           }
@@ -9854,6 +9856,7 @@ function PanelNovedades(p){
         vencido+=mv;
         cuantos++;
         sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,mv);
+        sumarEn(deudaLocal,v.local||"_s",mv);
         items.push({txt:v.concepto, duenio:duenioTxt(v), fecha:f, monto:mv});
       }
     });
@@ -9887,6 +9890,15 @@ function PanelNovedades(p){
   }).filter(function(x){ return x.saldo>0.5; })
     .sort(function(a,b){ return b.saldo-a.saldo; });
 
+  deudaProv.forEach(function(x){
+    saldosProv.filter(function(m){return m.prov_id===x.pv.id;}).forEach(function(m){
+      sumarEn(deudaLocal,m.local||"_s",(m.tipo==="pago"?-1:1)*(parseFloat(m.monto)||0));
+    });
+  });
+  var desgloseDeuda=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+    return l.emoji+" "+l.nombre+" "+fmt(deudaLocal[l.id]||0);
+  });
+  if((deudaLocal._s||0)>0.5)desgloseDeuda.push("Sin local "+fmt(deudaLocal._s));
   var totalProv=deudaProv.reduce(function(a,x){return a+x.saldo;},0);
   var totalVencido=deudaRubros.reduce(function(a,x){return a+x.vencido;},0);
   var totalDeuda=totalVencido+totalProv;
@@ -10020,7 +10032,7 @@ function PanelNovedades(p){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:expandido.porVencerCard?0:14}}>
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
-          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}},
+          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,desglose:desgloseDeuda,onClick:function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}},
           {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",aclara:"⏱ próximos 7 días",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
@@ -10028,6 +10040,7 @@ function PanelNovedades(p){
             <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}{x.onClick?" "+(x.flecha||"→"):""}</div>
             <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.alerta?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{x.v}</div>
             <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>{x.d}</div>
+            {x.desglose&&x.desglose.map(function(t,i){return <div key={i} style={{fontSize:10.5,color:"#B8B8B8",marginTop:i===0?4:1,fontVariantNumeric:"tabular-nums"}}>{t}</div>;})}
             {x.aclara&&<div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginTop:3}}>{x.aclara}</div>}
           </div>
         );})}

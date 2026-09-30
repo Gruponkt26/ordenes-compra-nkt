@@ -9726,6 +9726,17 @@ function PanelNovedades(p){
       .sort(function(a,b){return b.total-a.total;});
   })();
   var ventasMes=ventasPorLocal.reduce(function(a,x){return a+x.total;},0);
+  // La tarjeta de ventas sigue al selector: en "Hoy" muestra lo acumulado del mes hasta hoy;
+  // en "Ayer" y "7 días", ese rango.
+  var ventasAcum=rango==="hoy";
+  var cierresTarjeta=ventasAcum?cierresMes:cierresR;
+  var ventasTarjeta=ventasAcum?ventasMes:ventas;
+  var tituloVentas=ventasAcum?"Ventas hasta hoy":"Ventas "+(rango==="semana"?"7 días":etiquetaRango);
+  var subVentas=ventasAcum?("del 1 al "+fmtDate(hoy).substring(0,5)):(rango==="semana"?"últimos 7 días":"ayer");
+  var ventasLocalTarjeta=function(lid){
+    var cs=cierresTarjeta.filter(function(c){return c.local===lid;});
+    return {cuantos:cs.length,total:cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0)};
+  };
 
   // Los retiros van en su propio bloque abajo de los cierres, no colgando de cada uno: son
   // dos cosas distintas —lo que entró y lo que salió del cajón— y mezcladas se leen mal.
@@ -10033,7 +10044,7 @@ function PanelNovedades(p){
       {/* Los cuatro números que importan */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:(expandido.porVencerCard||expandido.deudaCard||expandido.ventasCard)?0:14}}>
         {[
-          {t:"Ventas hasta hoy",v:fmt(ventasMes),d:"del 1 al "+fmtDate(hoy).substring(0,5)+" · "+cierresMes.length+" cierre"+(cierresMes.length===1?"":"s"),onClick:function(){setExpandido(function(e){var n={...e};n.ventasCard=!e.ventasCard;return n;});},flecha:expandido.ventasCard?"▾":"▸"},
+          {t:tituloVentas,v:fmt(ventasTarjeta),d:subVentas+" · "+cierresTarjeta.length+" cierre"+(cierresTarjeta.length===1?"":"s"),onClick:function(){setExpandido(function(e){var n={...e};n.ventasCard=!e.ventasCard;return n;});},flecha:expandido.ventasCard?"▾":"▸"},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){setExpandido(function(e){var n={...e};n.deudaCard=!e.deudaCard;return n;});},flecha:expandido.deudaCard?"▾":"▸"},
           {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",aclara:"⏱ próximos 7 días",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
@@ -10050,20 +10061,20 @@ function PanelNovedades(p){
       {/* Detalle de "Ventas hasta hoy": lo vendido del 1 del mes hasta hoy, por local */}
       {expandido.ventasCard&&(
         <div style={{background:"#0C120C",border:"1px solid #3A7D4433",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
-          <div style={{fontSize:11.5,fontWeight:700,color:"#4C9A5A",marginBottom:6}}>Ventas por local · del 1 al {fmtDate(hoy).substring(0,5)}</div>
+          <div style={{fontSize:11.5,fontWeight:700,color:"#4C9A5A",marginBottom:6}}>Ventas por local · {subVentas}</div>
           {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l,i){
-            var x=ventasPorLocal.find(function(v){return v.local===l.id;})||{total:0,cuantos:0};
+            var x=ventasLocalTarjeta(l.id);
             return <Fila key={l.id} primera={i===0}
               izq={<span style={{color:l.color}}>{l.emoji} {l.nombre}<span style={{color:"#7E7E7E"}}> · {x.cuantos===0?"sin cierres":x.cuantos+" cierre"+(x.cuantos===1?"":"s")}</span></span>}
               der={fmt(x.total)} color={x.total>0?"#F0EDE8":"#6E6E6E"}/>;
           })}
           {(function(){
-            var otros=ventasPorLocal.filter(function(x){return !LOCALES.some(function(l){return l.id!=="l4"&&l.id===x.local;});});
-            var t=otros.reduce(function(a,x){return a+x.total;},0);
+            var otros=cierresTarjeta.filter(function(c){return !LOCALES.some(function(l){return l.id!=="l4"&&l.id===c.local;});});
+            var t=otros.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
             return otros.length>0?<Fila primera={false} izq={<span style={{color:"#8C8C8C"}}>Otros</span>} der={fmt(t)} color="#F0EDE8"/>:null;
           })()}
           <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A2A1A",marginTop:6,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
-            <span>Total</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(ventasMes)}</span>
+            <span>Total</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(ventasTarjeta)}</span>
           </div>
         </div>
       )}

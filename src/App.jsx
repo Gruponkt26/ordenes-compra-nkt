@@ -9896,9 +9896,9 @@ function PanelNovedades(p){
     });
   });
   var desgloseDeuda=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-    return l.emoji+" "+l.nombre+" "+fmt(deudaLocal[l.id]||0);
+    return {txt:l.emoji+" "+l.nombre,monto:deudaLocal[l.id]||0,color:l.color};
   });
-  if((deudaLocal._s||0)>0.5)desgloseDeuda.push("Sin local "+fmt(deudaLocal._s));
+  if((deudaLocal._s||0)>0.5)desgloseDeuda.push({txt:"Sin local asignado",monto:deudaLocal._s,color:"#8C8C8C"});
   var totalProv=deudaProv.reduce(function(a,x){return a+x.saldo;},0);
   var totalVencido=deudaRubros.reduce(function(a,x){return a+x.vencido;},0);
   var totalDeuda=totalVencido+totalProv;
@@ -10029,10 +10029,10 @@ function PanelNovedades(p){
       })()}
 
       {/* Los cuatro números que importan */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:expandido.porVencerCard?0:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:(expandido.porVencerCard||expandido.deudaCard)?0:14}}>
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
-          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,desglose:desgloseDeuda,onClick:function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}},
+          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){setExpandido(function(e){var n={...e};n.deudaCard=!e.deudaCard;return n;});},flecha:expandido.deudaCard?"▾":"▸"},
           {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",aclara:"⏱ próximos 7 días",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
@@ -10040,11 +10040,24 @@ function PanelNovedades(p){
             <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}{x.onClick?" "+(x.flecha||"→"):""}</div>
             <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.alerta?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{x.v}</div>
             <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>{x.d}</div>
-            {x.desglose&&x.desglose.map(function(t,i){return <div key={i} style={{fontSize:10.5,color:"#B8B8B8",marginTop:i===0?4:1,fontVariantNumeric:"tabular-nums"}}>{t}</div>;})}
             {x.aclara&&<div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginTop:3}}>{x.aclara}</div>}
           </div>
         );})}
       </div>
+
+      {/* Detalle de "Deuda": el total partido por local */}
+      {expandido.deudaCard&&(
+        <div style={{background:"#120A0A",border:"1px solid #C1440E33",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+          <div style={{fontSize:11.5,fontWeight:700,color:"#E0714A",marginBottom:6}}>Deuda por local</div>
+          {desgloseDeuda.map(function(x,i){
+            return <Fila key={i} primera={i===0} izq={<span style={{color:x.color}}>{x.txt}</span>} der={fmt(x.monto)} color={x.monto>0.5?"#F0EDE8":"#6E6E6E"}/>;
+          })}
+          <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #2A1A1A",marginTop:6,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
+            <span>Total</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(totalDeuda)}</span>
+          </div>
+          <button onClick={function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10,cursor:"pointer",padding:"7px 0 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>Ver detalle por título ↓</button>
+        </div>
+      )}
 
       {/* Detalle de "Por vencer": qué vence específicamente, sin tener que ir a Vencimientos */}
       {expandido.porVencerCard&&(function(){

@@ -6986,16 +6986,17 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     return ml&&mf;
   }).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
 
-  // Detectar si un gasto es cruzado (medio de pago pertenece a otro local)
+  // Detectar si un gasto es cruzado (medio de pago pertenece a otro local). "Caja Mayor -
+  // [Local]" también identifica un local, igual que "Efectivo - [Local]" —está en un mapa
+  // aparte (localDeCajaMayor) para que no lo tome la Caja Menor, pero acá sí hay que mirarlo—.
+  function localDelPago(medio){ return getLocalFromMedio(medio)||localDeCajaMayor(medio); }
   function esCruzado(g){
     var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
-    var result=medios.some(function(pago){
+    return medios.some(function(pago){
       var medio=pago.medio||pago.tipo||g.forma_pago;
-      var pagoLocal=getLocalFromMedio(medio);
-      console.log("esCruzado check:",g.concepto,"medio:",medio,"pagoLocal:",pagoLocal,"g.local:",g.local);
+      var pagoLocal=localDelPago(medio);
       return pagoLocal&&pagoLocal!==g.local;
     });
-    return result;
   }
 
   // Gastos de otros locales cubiertos por este local (cruzados entrantes)
@@ -7003,7 +7004,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     if(g.local===miLocal)return false; // no los propios
     var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
     return medios.some(function(pago){
-      return getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago)===miLocal;
+      return localDelPago(pago.medio||pago.tipo||g.forma_pago)===miLocal;
     });
   }).filter(function(g){
     var mf=true;
@@ -7077,7 +7078,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
             if(cruzado){
               var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
               medios.forEach(function(pago){
-                var pl=getLocalFromMedio(pago.medio||pago.tipo||g.forma_pago);
+                var pl=localDelPago(pago.medio||pago.tipo||g.forma_pago);
                 if(pl&&pl!==g.local)medioLocal=pl;
               });
             }

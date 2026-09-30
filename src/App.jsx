@@ -10058,6 +10058,11 @@ function PanelNovedades(p){
               izq={<span style={{color:l.color}}>{l.emoji} {l.nombre}<span style={{color:"#7E7E7E"}}> · {cs.length===0?"sin cierre":cs.length+" cierre"+(cs.length===1?"":"s")}</span></span>}
               der={fmt(tot)} color={tot>0?"#F0EDE8":"#6E6E6E"}/>;
           })}
+          {(function(){
+            var otros=cierresR.filter(function(c){return !LOCALES.some(function(l){return l.id!=="l4"&&l.id===c.local;});});
+            var t=otros.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
+            return otros.length>0?<Fila primera={false} izq={<span style={{color:"#8C8C8C"}}>Otros</span>} der={fmt(t)} color="#F0EDE8"/>:null;
+          })()}
           <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A2A1A",marginTop:6,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
             <span>Total</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(ventas)}</span>
           </div>

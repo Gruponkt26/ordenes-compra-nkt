@@ -10021,7 +10021,7 @@ function PanelNovedades(p){
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}},
-          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
+          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer · próx. 7 días",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
           <div key={x.t} onClick={x.onClick} style={{background:"#0C0C0C",padding:"13px 15px",cursor:x.onClick?"pointer":"default"}}>
@@ -10037,6 +10037,7 @@ function PanelNovedades(p){
         var items=avisos.filter(function(x){return x.dias>=0;});
         return (
           <div style={{background:"#12100A",border:"1px solid #D4A01733",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+            <div style={{fontSize:10,color:"#6A6A6A",marginBottom:items.length===0?4:6}}>Vencimientos de hoy hasta dentro de 7 días</div>
             {items.length===0?(
               <div style={vacio}>Nada por vencer en los próximos 7 días.</div>
             ):items.map(function(a,i){
@@ -10172,6 +10173,7 @@ function PanelNovedades(p){
         </Seccion>
 
         <Seccion titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
+          <div style={{fontSize:10,color:"#6A6A6A",marginBottom:6}}>Vencimientos desde hoy hasta fin de mes</div>
           {porVencer.length===0?(
             <div style={vacio}>Nada más por vencer en {mesEnCurso}.{vencidos.length>0?" Lo vencido está en Deudas.":""}</div>
           ):(

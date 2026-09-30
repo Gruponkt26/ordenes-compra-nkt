@@ -466,26 +466,13 @@ async function sbDeletePauta(id) {
   } catch(e) {}
 }
 
-// ─── NOTAS DE LA EMPRESA (cuadro de Novedades) ──────────────────────────────
+// ─── NOTAS DE SOFÍA (ventana de Novedades) ───────────────────────────────────
+// Viven en la tabla de pautas, que ya existe: ámbito "nota_sofia" = pendiente y
+// "nota_sofia_ok" = resuelta. La pantalla de Pautas sólo lista sus propios ámbitos, así que
+// estas notas no aparecen ahí.
 async function sbLoadNotas() {
-  try {
-    var r = await fetch(SURL + "/rest/v1/notas_novedades?order=created_at.desc", { headers: SH });
-    var d = await r.json();
-    return Array.isArray(d) ? d : [];
-  } catch(e) { return []; }
-}
-async function sbSaveNota(nota) {
-  try {
-    var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL+"/rest/v1/notas_novedades",{method:"POST",headers:h,body:JSON.stringify(nota)});
-    if(!r.ok){var errText=await r.text();return errText||("Error "+r.status);}
-    return null;
-  } catch(e) { return String((e&&e.message)||e); }
-}
-async function sbDeleteNota(id) {
-  try {
-    await fetch(SURL+"/rest/v1/notas_novedades?id=eq."+id,{method:"DELETE",headers:SH});
-  } catch(e) {}
+  var d = await sbLoadPautas();
+  return d.filter(function(x){return x.ambito==="nota_sofia"||x.ambito==="nota_sofia_ok";});
 }
 
 // ─── INFO PARA CAJEROS ──────────────────────────────────────────────────────
@@ -9715,21 +9702,24 @@ function PanelNovedades(p){
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
+  var [notasAbierto,setNotasAbierto]=useState(false);
   useEffect(function(){ sbLoadNotas().then(function(d){setNotas(d||[]);}); },[]);
   function guardarNota(n){
-    sbSaveNota(n).then(function(err){if(err)alert("No se pudo guardar la nota en la base:\n\n"+err+"\n\nSi el error menciona la tabla notas_novedades, hay que crearla en Supabase (sql/notas-novedades.sql).");});
+    sbSavePauta(n).then(function(err){if(err)alert("No se pudo guardar la nota en la base:\n\n"+err);});
     setNotas(function(prev){return [n].concat(prev.filter(function(x){return x.id!==n.id;}));});
   }
   function agregarNota(){
     var t=notaNueva.trim();
     if(!t)return;
-    guardarNota({id:"n"+Date.now()+Math.random().toString(36).slice(2,6),texto:t,hecha:false,created_at:new Date().toISOString()});
+    var ahora=new Date().toISOString();
+    guardarNota({id:"pau_nota_"+Date.now(),ambito:"nota_sofia",texto:t,usuario:"sofia",created_at:ahora,updated_at:ahora});
     setNotaNueva("");
   }
   function borrarNota(id){
-    sbDeleteNota(id);
+    sbDeletePauta(id);
     setNotas(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }
+  function esRes(n){return n.ambito==="nota_sofia_ok";}
   var refDeuda=useRef(null); // para poder bajar directo a "Deudas por título" desde la tarjeta
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
@@ -10172,45 +10162,60 @@ function PanelNovedades(p){
         );
       })()}
 
+      {notasAbierto&&(
+        <div onClick={function(){setNotasAbierto(false);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#0C0C0C",border:"1px solid #2A2A2A",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:520,maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:"#F0EDE8"}}>📝 Notas de la empresa</div>
+              <button onClick={function(){setNotasAbierto(false);}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:18,cursor:"pointer"}}>✕</button>
+            </div>
+          <div style={{display:"flex",gap:6,marginBottom:9}}>
+                <input value={notaNueva} onChange={function(e){setNotaNueva(e.target.value);}}
+                  onKeyDown={function(e){if(e.key==="Enter")agregarNota();}}
+                  placeholder="Anotar algo para tener presente…"
+                  style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                <button onClick={agregarNota} style={{padding:"8px 13px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Anotar</button>
+              </div>
+              {(function(){
+                var pend=notas.filter(function(n){return n.ambito!=="nota_sofia_ok";});
+                var res=notas.filter(function(n){return n.ambito==="nota_sofia_ok";});
+                function fila(n,i){
+                  return(
+                    <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12.5,color:esRes(n)?"#5A5A5A":"#C8C8C8",textDecoration:esRes(n)?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
+                        {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
+                      </div>
+                      <button onClick={function(){guardarNota({...n,ambito:esRes(n)?"nota_sofia":"nota_sofia_ok",updated_at:new Date().toISOString()});}} style={{background:esRes(n)?"none":"#3A7D4422",border:"1px solid "+(esRes(n)?"#2A2A2A":"#3A7D4466"),borderRadius:6,color:esRes(n)?"#8C8C8C":"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>{esRes(n)?"↩ Reabrir":"✓ Resuelta"}</button>
+                      <button onClick={function(){if(confirm("¿Borrar esta nota?"))borrarNota(n.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:13,cursor:"pointer",padding:"0 2px"}}>✕</button>
+                    </div>
+                  );
+                }
+                return(
+                  <div>
+                    {pend.length===0&&<div style={{...vacio,marginTop:8}}>{res.length>0?"No queda nada pendiente.":"Sin notas. Estas notas las ves solo vos."}</div>}
+                    {pend.map(fila)}
+                    {res.length>0&&(
+                      <div style={{marginTop:8}}>
+                        <button onClick={function(){setExpandido(function(e){var n={...e};n.notasRes=!e.notasRes;return n;});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10.5,cursor:"pointer",padding:"4px 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>{expandido.notasRes?"Ocultar resueltas":"Ver resueltas ("+res.length+")"}</button>
+                        {expandido.notasRes&&res.map(fila)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              </div>
+        </div>
+      )}
+
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
 
         <Seccion titulo="📝 Notas de la empresa · solo Sofía" color="#D4A017">
-          <div style={{display:"flex",gap:6,marginBottom:9}}>
-            <input value={notaNueva} onChange={function(e){setNotaNueva(e.target.value);}}
-              onKeyDown={function(e){if(e.key==="Enter")agregarNota();}}
-              placeholder="Anotar algo para tener presente…"
-              style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
-            <button onClick={agregarNota} style={{padding:"8px 13px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Anotar</button>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+            <span style={{fontSize:12.5,color:"#C8C8C8"}}>{notas.filter(function(n){return n.ambito!=="nota_sofia_ok";}).length} pendiente{notas.filter(function(n){return n.ambito!=="nota_sofia_ok";}).length===1?"":"s"}</span>
+            <button onClick={function(){setNotasAbierto(true);}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Abrir y anotar</button>
           </div>
-          {(function(){
-            var pend=notas.filter(function(n){return !n.hecha;});
-            var res=notas.filter(function(n){return !!n.hecha;});
-            function fila(n,i){
-              return(
-                <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12.5,color:n.hecha?"#5A5A5A":"#C8C8C8",textDecoration:n.hecha?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
-                    {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
-                  </div>
-                  <button onClick={function(){guardarNota({...n,hecha:!n.hecha});}} style={{background:n.hecha?"none":"#3A7D4422",border:"1px solid "+(n.hecha?"#2A2A2A":"#3A7D4466"),borderRadius:6,color:n.hecha?"#8C8C8C":"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>{n.hecha?"↩ Reabrir":"✓ Resuelta"}</button>
-                  <button onClick={function(){if(confirm("¿Borrar esta nota?"))borrarNota(n.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:13,cursor:"pointer",padding:"0 2px"}}>✕</button>
-                </div>
-              );
-            }
-            return(
-              <div>
-                {pend.length===0&&<div style={{...vacio,marginTop:8}}>{res.length>0?"No queda nada pendiente.":"Sin notas. Estas notas las ves solo vos."}</div>}
-                {pend.map(fila)}
-                {res.length>0&&(
-                  <div style={{marginTop:8}}>
-                    <button onClick={function(){setExpandido(function(e){var n={...e};n.notasRes=!e.notasRes;return n;});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10.5,cursor:"pointer",padding:"4px 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>{expandido.notasRes?"Ocultar resueltas":"Ver resueltas ("+res.length+")"}</button>
-                    {expandido.notasRes&&res.map(fila)}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
         </Seccion>
 
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">

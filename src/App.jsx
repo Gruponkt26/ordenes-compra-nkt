@@ -13640,7 +13640,7 @@ function PanelRetiros(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta de la que SALIÓ la plata, que puede no ser
   // el local al que corresponde el retiro (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Efectivo",subtipo:"",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Caja Mayor",subtipo:"",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -13654,9 +13654,11 @@ function PanelRetiros(p) {
     }
   },[showForm,editando&&editando.id]);
 
-  var TIPOS_RETIRO=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  // Un socio nunca retira directo del cajón: la plata en efectivo sale de Caja Mayor, ya
+  // retirada de la caja menor del local que corresponda (mismo criterio que los egresos).
+  var TIPOS_RETIRO=["Caja Mayor","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
-    "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
+    "Caja Mayor":["Bodegón","Kusama","Colantonio's"],
     "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
     "Tarjeta de débito":["Mastercard ML Calzon Gitano","Mastercard ML Nicolás","Visa Provincia Personas","Visa Patagonia Empresas","Visa Patagonia Personas"],
     "Tarjeta de crédito":["Mastercard Patagonia Personas","Visa Patagonia Personas"]
@@ -13848,7 +13850,7 @@ function PanelRetiros(p) {
             {subtiposOpts.length>0&&(
               <select value={form.subtipo} onChange={function(e){
                 var cta=e.target.value;
-                var locDetectado=getLocalFromMedio(cta);
+                var locDetectado=getLocalFromMedio(cta)||localDeCajaMayor(cta);
                 setForm(function(f){return{...f,subtipo:cta,local_cuenta:locDetectado||f.local_cuenta};});
               }} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:form.subtipo?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}>
                 <option value="">-- Seleccioná cuenta --</option>
@@ -14995,7 +14997,7 @@ function PanelResultados(p){
     retirosCajaLocal.forEach(function(r){
       var rm=parseFloat(r.monto||0);
       var medioStr=(r.tipo_retiro||"").toLowerCase();
-      var esEf=medioStr.includes("efectivo");
+      var esEf=esEfectivoOCajaMayor(medioStr);
       var esCruzado=r.local!==lid;
       if(esEf)gastoEfectivo+=rm;else gastoElectronico+=rm;
       detGastos.push({fecha:r.fecha,concepto:"👤 Retiro — "+(r.socio||"")+(esCruzado?" ("+((getLocal(r.local)||{}).nombre||"")+")":""),medio:r.tipo_retiro||"",monto:rm,tipo:esEf?"efectivo":"electronico",cruzado:esCruzado});

@@ -10175,32 +10175,42 @@ function PanelNovedades(p){
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
 
-        <Seccion titulo="📝 Notas de la empresa" color="#D4A017">
-          <div style={{display:"flex",gap:6,marginBottom:notas.length>0?9:0}}>
+        <Seccion titulo="📝 Notas de la empresa · solo Sofía" color="#D4A017">
+          <div style={{display:"flex",gap:6,marginBottom:9}}>
             <input value={notaNueva} onChange={function(e){setNotaNueva(e.target.value);}}
               onKeyDown={function(e){if(e.key==="Enter")agregarNota();}}
               placeholder="Anotar algo para tener presente…"
               style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
             <button onClick={agregarNota} style={{padding:"8px 13px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Anotar</button>
           </div>
-          {notas.length===0?(
-            <div style={{...vacio,marginTop:8}}>Sin notas. Lo que anotes acá lo ven todos los que entran a Novedades.</div>
-          ):(
-            <div>
-              {notas.slice().sort(function(a,b){return (a.hecha?1:0)-(b.hecha?1:0);}).map(function(n,i){
-                return(
-                  <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
-                    <input type="checkbox" checked={!!n.hecha} onChange={function(){guardarNota({...n,hecha:!n.hecha});}} style={{marginTop:3,cursor:"pointer",accentColor:"#D4A017"}}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12.5,color:n.hecha?"#5A5A5A":"#C8C8C8",textDecoration:n.hecha?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
-                      {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
-                    </div>
-                    <button onClick={function(){if(confirm("¿Borrar esta nota?"))borrarNota(n.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:13,cursor:"pointer",padding:"0 2px"}}>✕</button>
+          {(function(){
+            var pend=notas.filter(function(n){return !n.hecha;});
+            var res=notas.filter(function(n){return !!n.hecha;});
+            function fila(n,i){
+              return(
+                <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12.5,color:n.hecha?"#5A5A5A":"#C8C8C8",textDecoration:n.hecha?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
+                    {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <button onClick={function(){guardarNota({...n,hecha:!n.hecha});}} style={{background:n.hecha?"none":"#3A7D4422",border:"1px solid "+(n.hecha?"#2A2A2A":"#3A7D4466"),borderRadius:6,color:n.hecha?"#8C8C8C":"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>{n.hecha?"↩ Reabrir":"✓ Resuelta"}</button>
+                  <button onClick={function(){if(confirm("¿Borrar esta nota?"))borrarNota(n.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:13,cursor:"pointer",padding:"0 2px"}}>✕</button>
+                </div>
+              );
+            }
+            return(
+              <div>
+                {pend.length===0&&<div style={{...vacio,marginTop:8}}>{res.length>0?"No queda nada pendiente.":"Sin notas. Estas notas las ves solo vos."}</div>}
+                {pend.map(fila)}
+                {res.length>0&&(
+                  <div style={{marginTop:8}}>
+                    <button onClick={function(){setExpandido(function(e){var n={...e};n.notasRes=!e.notasRes;return n;});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10.5,cursor:"pointer",padding:"4px 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>{expandido.notasRes?"Ocultar resueltas":"Ver resueltas ("+res.length+")"}</button>
+                    {expandido.notasRes&&res.map(fila)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Seccion>
 
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">

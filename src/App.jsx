@@ -9916,7 +9916,7 @@ function PanelNovedades(p){
     return(
       <div onClick={clic} role={clic?"button":undefined} tabIndex={clic?0:undefined}
         onKeyDown={clic?function(e){ if(e.key==="Enter"||e.key===" "){e.preventDefault();clic();} }:undefined}
-        style={{padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414",cursor:clic?"pointer":"default"}}>
+        style={props.fondo?{padding:"7px 9px",margin:"2px 0",borderRadius:8,background:props.fondo,border:"1px solid #E0714A",cursor:clic?"pointer":"default"}:{padding:"7px 0",borderTop:props.primera?"none":"1px solid #141414",cursor:clic?"pointer":"default"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline"}}>
           <div style={{fontSize:12.5,color:"#C8C8C8",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{props.izq}</div>
           <div style={{fontSize:12.5,color:props.color||"#7A7A7A",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>
@@ -10131,18 +10131,22 @@ function PanelNovedades(p){
               </div>
             </div>
           )}
-          {(ventasPorLocal.length+retirosCaja.length)===0?(
+          {(ventasPorLocal.length+retirosCaja.length+faltanCerrar.length)===0?(
             <div style={vacio}>Sin cierres en {mesEnCurso}.</div>
           ):(
             <div>
-              {ventasPorLocal.length>0&&(
+              {(ventasPorLocal.length+faltanCerrar.length)>0&&(
                 <div>
                   <Sub primera={true}>Cierres del mes · hasta el {fmtDate(hoy).substring(0,5)}</Sub>
-                  {ventasPorLocal.map(function(x,i){
+                  {ventasPorLocal.concat(faltanCerrar.filter(function(l){
+                    return !ventasPorLocal.some(function(x){return x.local===l.id;});
+                  }).map(function(l){return {local:l.id,total:0,cuantos:0};})).map(function(x,i){
                     var l=getLocal(x.local);
-                    return <Fila key={"vm"+x.local} primera={i===0}
-                      izq={<span>{l?l.emoji+" "+l.nombre:x.local}<span style={{color:"#7E7E7E"}}> · {x.cuantos} cierre{x.cuantos===1?"":"s"}</span></span>}
-                      der={fmt(x.total)} color="#C8C8C8"/>;
+                    // Si anoche esta caja no cerró, el rectángulo entero va en rojo.
+                    var noCerro=faltanCerrar.some(function(f){return f.id===x.local;});
+                    return <Fila key={"vm"+x.local} primera={i===0} fondo={noCerro?"#C1440E":null}
+                      izq={<span style={noCerro?{color:"#fff",fontWeight:700}:null}>{l?l.emoji+" "+l.nombre:x.local}<span style={{color:noCerro?"#FFD9CC":"#7E7E7E"}}> · {noCerro?"anoche no cerró":x.cuantos+" cierre"+(x.cuantos===1?"":"s")}</span></span>}
+                      der={fmt(x.total)} color={noCerro?"#fff":"#C8C8C8"}/>;
                   })}
                   <div style={{fontSize:11,color:"#8A8A8A",padding:"7px 0 0",borderTop:"1px solid #141414",marginTop:6}}>
                     Total del mes: <strong style={{color:"#C8C8C8"}}>{fmt(ventasMes)}</strong>

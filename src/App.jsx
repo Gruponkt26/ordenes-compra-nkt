@@ -9691,6 +9691,7 @@ function PanelNovedades(p){
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
+  var refDeuda=useRef(null); // para poder bajar directo a "Deudas por título" desde la tarjeta
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
   var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
   var desdeSemana=fechaLocal(new Date(Date.now()-6*86400000));
@@ -10019,7 +10020,7 @@ function PanelNovedades(p){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:expandido.porVencerCard?0:14}}>
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
-          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0},
+          {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0,onClick:function(){refDeuda.current&&refDeuda.current.scrollIntoView({behavior:"smooth",block:"start"});}},
           {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
@@ -10058,6 +10059,7 @@ function PanelNovedades(p){
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
 
+        <div ref={refDeuda}>
         <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
             <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
@@ -10115,6 +10117,7 @@ function PanelNovedades(p){
             </div>
           )}
         </Seccion>
+        </div>
 
         <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
           {faltaColRetiro&&(

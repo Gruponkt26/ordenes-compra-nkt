@@ -2555,9 +2555,6 @@ function GestProveedoresPanel(p) {
                           <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Medio de pago</label>
                           <select value={formMov.medio_pago} onChange={function(e){setFormMov(function(f){return{...f,medio_pago:e.target.value};});}} style={INP}>
                             <option value="">-- Seleccioná --</option>
-                            <optgroup label="Efectivo">
-                              <option>Efectivo - Bodegón</option><option>Efectivo - Kusama</option><option>Efectivo - Colantonio's</option>
-                            </optgroup>
                             <optgroup label="Caja Mayor">
                               <option>Caja Mayor - Bodegón</option><option>Caja Mayor - Kusama</option><option>Caja Mayor - Colantonio's</option>
                             </optgroup>
@@ -3540,9 +3537,6 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
   var [editObra,setEditObra]=useState(null);
   var [formObra,setFormObra]=useState({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]});
   var MEDIOS_OBRA=[
-    {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
-    {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
-    {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
     {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
@@ -6271,11 +6265,12 @@ function esEfectivoOCajaMayor(medio){
 // Se guarda en `pagos: [{medio, monto}]` y se deja `medio_pago`/`forma_pago` con el
 // primer medio para que lo viejo (y los registros ya cargados) siga funcionando.
 var MEDIOS_SUELDOS=[
-  {g:"Efectivo",v:"Efectivo - Bodegón"},{g:"Efectivo",v:"Efectivo - Kusama"},{g:"Efectivo",v:"Efectivo - Colantonio's"},{g:"Efectivo",v:"Efectivo - Oficina"},
+  {g:"Efectivo",v:"Efectivo - Oficina"},
+  {g:"Caja Mayor",v:"Caja Mayor - Bodegón"},{g:"Caja Mayor",v:"Caja Mayor - Kusama"},{g:"Caja Mayor",v:"Caja Mayor - Colantonio's"},
   {g:"Transferencia",v:"Transferencia - Provincia Personas"},{g:"Transferencia",v:"Transferencia - Patagonia Personas"},{g:"Transferencia",v:"Transferencia - Mercado Pago Nicolás"},{g:"Transferencia",v:"Transferencia - Galicia Empresas"},{g:"Transferencia",v:"Transferencia - Patagonia Empresas"},{g:"Transferencia",v:"Transferencia - MP Calzon Gitano"},
   {g:"Otros",v:"Cheque"},{g:"Otros",v:"Otro"}
 ];
-var GRUPOS_MEDIOS_SUELDOS=["Efectivo","Transferencia","Otros"];
+var GRUPOS_MEDIOS_SUELDOS=["Efectivo","Caja Mayor","Transferencia","Otros"];
 
 // Lista de medios de un registro, normalizada. Si tiene `pagos[]` los usa; si no,
 // cae al medio único de siempre.
@@ -6917,9 +6912,11 @@ var CONCEPTOS_POR_AREA={
 // Con qué se paga algo. La lista es una sola para toda la app: la usan el alta de un
 // egreso y el pago de un vencimiento, así el medio que se elige en un lado existe en el otro.
 var MEDIOS_EGRESO=[
-  {grupo:"Efectivo",label:"💵 Efectivo — Bodegón",value:"Efectivo - Bodegón"},
-  {grupo:"Efectivo",label:"💵 Efectivo — Kusama",value:"Efectivo - Kusama"},
-  {grupo:"Efectivo",label:"💵 Efectivo — Colantonio's",value:"Efectivo - Colantonio's"},
+  // Un egreso en efectivo de un local nunca sale directo del cajón: primero hay que
+  // retirarlo a Caja Mayor (retiro de caja menor) y pagar desde ahí — así el cajero
+  // siempre encuentra en el cajón lo que efectivamente vendió, nunca de menos por un
+  // gasto que se descontó solo. "Efectivo - Oficina" es la excepción: nunca fue plata
+  // de ningún cajón, así que se reparte igual, pero directo entre las 3 Caja Mayor.
   {grupo:"Efectivo",label:"💵 Efectivo — Oficina",value:"Efectivo - Oficina"},
   // Plata que ya se retiró de la caja física de ese local (no toca la Caja Menor, sólo
   // la Caja Mayor de ese local en Resultados) — ver localDeCajaMayor.
@@ -6954,7 +6951,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var [showForm,setShowForm]=useState(false);
   var [editId,setEditId]=useState(null);
-  var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+  var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
 
   var grupos_medios=GRUPOS_MEDIOS_EGRESO;
@@ -7028,14 +7025,14 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
-    setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Efectivo - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
+    setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
     setEditId(g.id);
-    setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Efectivo - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
-    setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Efectivo - Bodegón",monto:String(g.monto||"")}]);
+    setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Caja Mayor - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
+    setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Caja Mayor - Bodegón",monto:String(g.monto||"")}]);
     setShowForm(true);
   }
 
@@ -7211,7 +7208,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
             <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
-                <button onClick={function(){setPagosEgreso(function(prev){return[...prev,{medio:"Efectivo - Bodegón",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
+                <button onClick={function(){setPagosEgreso(function(prev){return[...prev,{medio:"Caja Mayor - Bodegón",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
               </div>
               {pagosEgreso.map(function(pago,idx){return(
                 <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -12115,18 +12112,18 @@ function PanelVencimientos(p){
 var HORA_APERTURA_CAJA={l1:{h:20,m:0},l2:{h:19,m:30},l3:{h:19,m:30}};
 var MEDIOS_POR_LOCAL={
   "l1":[
-    "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón",
+    "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón","Caja Mayor - Bodegón",
     "Transferencia - Provincia Personas","Transferencia - Patagonia Personas","Transferencia - Mercado Pago Nicolás",
     "Tarjeta de débito - Visa Provincia Personas",
     "Tarjeta de crédito - Mastercard Patagonia Personas","Tarjeta de crédito - Visa Patagonia Personas",
     "Tarjeta de débito - Visa Patagonia Personas"
   ],
   "l2":[
-    "Efectivo","Efectivo - Kusama",
+    "Efectivo","Efectivo - Kusama","Caja Mayor - Kusama",
     "Transferencia - Galicia Empresas"
   ],
   "l3":[
-    "Efectivo","Efectivo - Colantonio's","Efectivo - Colantonios",
+    "Efectivo","Efectivo - Colantonio's","Efectivo - Colantonios","Caja Mayor - Colantonio's",
     "Transferencia - Patagonia Empresas","Transferencia - Mercado Pago Calzon Gitano"
   ]
 };
@@ -12555,7 +12552,7 @@ function impDebitoTasaDeMedio(lid, medioStr){
   var t=IMP_DEBITO[lid];
   if(!t)return 0;
   var m=(medioStr||"").toLowerCase();
-  if(m.includes("efectivo"))return 0;
+  if(esEfectivoOCajaMayor(m))return 0;
   if(m.includes("mercado pago")||/\bmp\b/.test(m))return t.mp;
   return t.banco;
 }
@@ -12570,7 +12567,7 @@ function salidasPorMedio(gastos, sueldosADescontar, adelantosLocal, retirosCuent
   function sumar(medio, monto, localPago){
     if(localPago!==lid)return;
     var m=(medio||"").toLowerCase();
-    if(m.includes("efectivo"))return; // el efectivo no toca el banco
+    if(esEfectivoOCajaMayor(m))return; // ni el efectivo ni la Caja Mayor tocan el banco
     var v=parseFloat(monto||0);
     if(!v)return;
     if(m.includes("mercado pago")||/\bmp\b/.test(m))out.mp+=v;
@@ -15083,11 +15080,12 @@ function PanelResultados(p){
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0,gastoMp=0;
     var procesarPagoDetalle=function(medioStr,pm,pagoLocal){
       if(pagoLocal!==lid)return;
+      if(esEfectivoOCajaMayor(medioStr))return; // ya se descontó en gastoEfectivo, más arriba
       if(medioStr.includes("mercado pago")||/\bmp\b/.test(medioStr))gastoMp+=pm;
       else if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
       else if(medioStr.includes("débito")||medioStr.includes("debito"))gastoDebito+=pm;
       else if(medioStr.includes("crédito")||medioStr.includes("credito"))gastoCredito+=pm;
-      else if(!medioStr.includes("efectivo"))gastoOtros+=pm;
+      else gastoOtros+=pm;
     };
     // Gastos propios del local
     gl.forEach(function(g){
@@ -18724,9 +18722,9 @@ function repartoEfectivoOficina(monto){
   var m=parseFloat(monto)||0;
   var bod=Math.round(m*0.5), col=Math.round(m*0.3), kus=m-bod-col; // el resto absorbe el redondeo
   return [
-    {medio:"Efectivo - Bodegón",monto:bod},
-    {medio:"Efectivo - Colantonio's",monto:col},
-    {medio:"Efectivo - Kusama",monto:kus},
+    {medio:"Caja Mayor - Bodegón",monto:bod},
+    {medio:"Caja Mayor - Colantonio's",monto:col},
+    {medio:"Caja Mayor - Kusama",monto:kus},
   ];
 }
 async function sbSaveGasto(gasto) {

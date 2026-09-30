@@ -10016,20 +10016,44 @@ function PanelNovedades(p){
       })()}
 
       {/* Los cuatro números que importan */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:expandido.porVencerCard?0:14}}>
         {[
           {t:"Ventas "+(rango==="semana"?"7 días":etiquetaRango),v:fmt(ventas),d:cierresR.length+" cierre"+(cierresR.length===1?"":"s")},
           {t:"Deuda",v:fmt(totalDeuda),d:totalVencido>0?fmt(totalVencido)+" vencido · "+fmt(totalProv)+" proveedores":fmt(totalProv)+" de proveedores",alerta:totalVencido>0},
-          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",onClick:function(){p.irVencimientos();}},
+          {t:"Por vencer",v:fmt(avisos.filter(function(x){return x.dias>=0;}).reduce(function(a,x){return a+x.monto;},0)),d:avisos.filter(function(x){return x.dias>=0;}).length+" por vencer",onClick:function(){setExpandido(function(e){var n={...e};n.porVencerCard=!e.porVencerCard;return n;});},flecha:expandido.porVencerCard?"▾":"▸"},
           {t:"Socios",v:fmt(totalAportes-totalRetiros),d:aportesR.length+" aporte"+(aportesR.length===1?"":"s")+" · "+retirosR.length+" retiro"+(retirosR.length===1?"":"s")}
         ].map(function(x){return(
           <div key={x.t} onClick={x.onClick} style={{background:"#0C0C0C",padding:"13px 15px",cursor:x.onClick?"pointer":"default"}}>
-            <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}{x.onClick?" →":""}</div>
+            <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.t}{x.onClick?" "+(x.flecha||"→"):""}</div>
             <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.alerta?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{x.v}</div>
             <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>{x.d}</div>
           </div>
         );})}
       </div>
+
+      {/* Detalle de "Por vencer": qué vence específicamente, sin tener que ir a Vencimientos */}
+      {expandido.porVencerCard&&(function(){
+        var items=avisos.filter(function(x){return x.dias>=0;});
+        return (
+          <div style={{background:"#12100A",border:"1px solid #D4A01733",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+            {items.length===0?(
+              <div style={vacio}>Nada por vencer en los próximos 7 días.</div>
+            ):items.map(function(a,i){
+              var g=grupoDe(a.v.grupo);
+              var duenio=porCuit(a.v.grupo)?cuitVenc(cuitIdDe(a.v)).corto:((getLocal(a.v.local)||{}).nombre||"");
+              return <Fila key={i} primera={i===0}
+                izq={<span><span style={{color:"#8C8C8C"}}>{g.corto}</span>{duenio?<span style={{color:"#8C8C8C"}}> · {duenio}</span>:null} · {a.v.concepto}{a.cuota?" · "+(a.cuota.nro===0?"anticipo":"cuota "+a.cuota.nro):""}</span>}
+                onClick={function(){p.irVencimientos(g.id);}}
+                der={<span>
+                  {a.dias===0?<span style={{color:"#D4A017"}}>hoy </span>:<span style={{color:"#B8963A"}}>{(a.dias===1?"mañana":"en "+a.dias+" días")+" "}</span>}
+                  {fmt(a.monto)}
+                </span>}
+                color={a.dias===0?"#D4A017":"#B8963A"}/>;
+            })}
+            <button onClick={function(){p.irVencimientos();}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10,cursor:"pointer",padding:"7px 0 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>Ver en Vencimientos →</button>
+          </div>
+        );
+      })()}
 
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>

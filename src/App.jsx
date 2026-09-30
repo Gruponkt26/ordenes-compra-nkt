@@ -12918,8 +12918,12 @@ function PanelCierresSofia(p) {
           {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
         </select>
         <button onClick={function(){setLocalActivo("all");}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo==="all"?"#555":"#1A1A1A"),background:localActivo==="all"?"#222":"none",color:localActivo==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Todos</button>
-        {localesFiltro.map(function(l){return(
-          <button key={l.id} onClick={function(){setLocalActivo(l.id);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo===l.id?l.color:"#1A1A1A"),background:localActivo===l.id?l.color+"22":"none",color:localActivo===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{l.emoji}</button>
+        {localesFiltro.map(function(l){
+          // Si anoche esta caja no cerró, la pestaña entera se pinta de rojo.
+          var ayerTab=fechaLocal(new Date(Date.now()-86400000));
+          var noCerro=abreEseDia(l.id,ayerTab)&&!cierres.some(function(c){return c.local===l.id&&c.fecha===ayerTab;});
+          return(
+          <button key={l.id} onClick={function(){setLocalActivo(l.id);}} title={noCerro?"Anoche no cerró ("+fmtDate(ayerTab)+")":undefined} style={noCerro?{padding:"6px 12px",borderRadius:8,border:"1px solid #E0714A",background:"#C1440E",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif",outline:localActivo===l.id?"2px solid #F0EDE8":"none",outlineOffset:1}:{padding:"6px 12px",borderRadius:8,border:"1px solid "+(localActivo===l.id?l.color:"#1A1A1A"),background:localActivo===l.id?l.color+"22":"none",color:localActivo===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{l.emoji}{noCerro?" ⚠ sin cierre":""}</button>
         );})}
         <button onClick={function(){setVistaVerif(true);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4444",background:"#3A7D4411",color:"#3A7D44",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>✅ Verificaciones</button>
         <button onClick={function(){setVistaGrid(true);}} style={{marginLeft:"auto",padding:"6px 12px",borderRadius:8,border:"1px solid #D4A01744",background:"#D4A01711",color:"#D4A017",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>📊 Vista mensual</button>

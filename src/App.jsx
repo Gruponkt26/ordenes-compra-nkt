@@ -15534,7 +15534,15 @@ function PanelResultados(p){
     var finMes=fechaLocal(new Date(parseInt(partes[0],10),parseInt(partes[1],10),0));
     var hasta=mesFiltro===fechaLocal().substring(0,7)?fechaLocal():finMes;
     return efectivoTeoricoCaja(lid,hasta,{cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}});
-  }
+  }  // "Disponible efectivo" de Caja Mayor es el efectivo que ya salió del cajón: lo que sigue
+  // en la caja menor todavía no es de Caja Mayor. El total del local queda en dispEfectivoBruto.
+  localesFiltro.forEach(function(l){
+    var d=datos[l.id];
+    d.efectivoCajon=efectivoEnCajaMenor(l.id);
+    d.dispEfectivoBruto=d.dispEfectivo;
+    d.dispEfectivo=d.dispEfectivo-d.efectivoCajon;
+  });
+
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0);
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
   var totalResultado=totalVentas-totalGastos;
@@ -15864,7 +15872,7 @@ function PanelResultados(p){
                 </tr>
                 {/* Disponibilidad efectivo */}
                 <tr style={{background:"#0A0F0A"}}>
-                  <td style={{padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💵 Disponible efectivo</td>
+                  <td style={{padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>💵 Disponible efectivo <span style={{color:"#6E6E6E",fontSize:9,fontWeight:400}}>(retirado a Caja Mayor)</span></td>
                   {localesFiltro.map(function(l){
                     var d=datos[l.id];
                     var disp=d.dispEfectivo||0;
@@ -15872,21 +15880,15 @@ function PanelResultados(p){
                   })}
                   <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0))}</td>
                 </tr>
-                {/* El efectivo, partido: lo que sigue en el cajón y lo que ya se retiró a Caja Mayor */}
-                {[["🧾 ↳ En caja menor (cajón)",false],["🏦 ↳ En caja mayor (retirado)",true]].map(function(f){
-                  var esMayor=f[1];
-                  var valor=function(l){var m=efectivoEnCajaMenor(l.id);return esMayor?(datos[l.id].dispEfectivo||0)-m:m;};
-                  return(
-                    <tr key={f[0]} style={{background:"#0A0F0A"}}>
-                      <td style={{padding:"4px 8px 4px 18px",color:"#8C8C8C",fontSize:10}}>{f[0]}</td>
-                      {localesFiltro.map(function(l){
-                        var v=valor(l);
-                        return <td key={l.id} style={{textAlign:"right",padding:"4px 8px",color:v<0?"#C1440E":(esMayor?"#8B6BB8":"#9A9A9A"),fontSize:10}}>{fmt(v)}</td>;
-                      })}
-                      <td style={{textAlign:"right",padding:"4px 8px",color:esMayor?"#8B6BB8":"#9A9A9A",fontWeight:700,fontSize:10}}>{fmt(localesFiltro.reduce(function(a,l){return a+valor(l);},0))}</td>
-                    </tr>
-                  );
-                })}
+                {/* Lo que todavía está en el cajón de cada local: no es de Caja Mayor hasta que se retira */}
+                <tr style={{background:"#0A0F0A"}}>
+                  <td style={{padding:"4px 8px 4px 18px",color:"#8C8C8C",fontSize:10}}>🧾 ↳ Sigue en el cajón (caja menor) · no incluido arriba</td>
+                  {localesFiltro.map(function(l){
+                    var v=datos[l.id].efectivoCajon||0;
+                    return <td key={l.id} style={{textAlign:"right",padding:"4px 8px",color:v<0?"#C1440E":"#9A9A9A",fontSize:10}}>{fmt(v)}</td>;
+                  })}
+                  <td style={{textAlign:"right",padding:"4px 8px",color:"#9A9A9A",fontWeight:700,fontSize:10}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].efectivoCajon||0);},0))}</td>
+                </tr>
                 {/* Disponibilidad electrónico */}
                 <tr style={{background:"#0A0A0F"}}>
                   <td style={{padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>📲 Disponible electrónico</td>
@@ -16084,21 +16086,10 @@ function PanelResultados(p){
                     {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
-                    {(function(){
-                      // Dónde está ese efectivo: lo que sigue en el cajón (caja menor, con el mismo
-                      // cálculo que Novedades y Caja) y lo demás, que ya está en Caja Mayor.
-                      var partes=mesFiltro.split("-");
-                      var finMes=fechaLocal(new Date(parseInt(partes[0],10),parseInt(partes[1],10),0));
-                      var hasta=mesFiltro===fechaLocal().substring(0,7)?fechaLocal():finMes;
-                      var enMenor=efectivoTeoricoCaja(l.id,hasta,{cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}});
-                      var enMayor=d.dispEfectivo-enMenor;
-                      return(
-                        <div style={{marginTop:4,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C",marginBottom:2}}><span>🧾 En caja menor (cajón)</span><span style={{color:enMenor<0?"#C1440E":"#C8C8C8"}}>{fmt(enMenor)}</span></div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C"}}><span>🏦 En caja mayor (retirado)</span><span style={{color:enMayor<0?"#C1440E":"#8B6BB8"}}>{fmt(enMayor)}</span></div>
-                        </div>
-                      );
-                    })()}
+                    <div style={{marginTop:4,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C",marginBottom:2}}><span>🧾 Sigue en el cajón (caja menor) · no incluido</span><span style={{color:(d.efectivoCajon||0)<0?"#C1440E":"#C8C8C8"}}>{fmt(d.efectivoCajon||0)}</span></div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C"}}><span>💵 Efectivo total del local</span><span>{fmt(d.dispEfectivoBruto||0)}</span></div>
+                    </div>
                   </div>
                 )}
                 {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}

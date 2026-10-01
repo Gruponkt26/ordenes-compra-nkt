@@ -12764,8 +12764,8 @@ var ALICUOTA_IIBB=0.02;
 // Esos ya vienen con IVA adentro, que es como los informa Mercado Pago.
 // Los bancos publican el arancel SIN IVA, así que los suyos se escriben con conIVA() para que
 // se lea el número del contrato y la cuenta quede a la vista. Galicia (Kusama), Provincia
-// (Bodegón) y Patagonia Empresas (Colantonio's) tienen cargados débito y crédito; la
-// transferencia y el QR de Provincia y Patagonia siguen en cero, y un medio en cero no
+// (Bodegón) y Patagonia Empresas (Colantonio's) tienen cargados débito y crédito. En ningún
+// banco la transferencia ni el QR pagan comisión: quedan en cero, y un medio en cero no
 // descuenta nada.
 function conIVA(arancel){ return arancel*1.21; }
 var COMISIONES={
@@ -12773,8 +12773,8 @@ var COMISIONES={
   // Personas, otra cuenta: siguen en cero.
   l1:{transferencia:0, tarjeta_debito:conIVA(0.008), tarjeta_credito:conIVA(0.018), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
-  // Galicia: transferencia y QR 0,8% + IVA, débito 1,6% + IVA, crédito 5,8% + IVA.
-  l2:{transferencia:conIVA(0.008), tarjeta_debito:conIVA(0.016), tarjeta_credito:conIVA(0.058), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:conIVA(0.008),
+  // Galicia: débito 1,6% + IVA, crédito 5,8% + IVA. La transferencia y el QR no pagan comisión.
+  l2:{transferencia:0, tarjeta_debito:conIVA(0.016), tarjeta_credito:conIVA(0.058), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
   // Patagonia Empresas: débito 0,8% + IVA, crédito 1,8% + IVA. El "otros" de Colantonio's era
   // el QR de Mercado Pago antes de que MP tuviera sus propios campos: los cierres viejos lo

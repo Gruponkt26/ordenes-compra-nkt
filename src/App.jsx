@@ -14971,7 +14971,20 @@ function PanelVentasEgresos(p){
   var totImpDeb=filas.reduce(function(a,f){return a+(f.impDeb||0);},0);
   var totComision=filas.reduce(function(a,f){return a+(f.comision||0);},0);
   var totCostos=totIibb+totImpCred+totImpDeb+totComision;
-  var hayCostos=totCostos>0;
+  // Percepciones de Coca Cola por local (facturas pagadas por medio electrónico): IVA y IIBB a
+  // favor. No son un egreso: no entran al total, se muestran al lado.
+  var percPorLocal={};
+  localesFiltro.forEach(function(l){ percPorLocal[l.id]={iva:0,iibb:0}; });
+  gastos.forEach(function(g){
+    if(!g.fecha||g.fecha.substring(0,7)!==mesFiltro||!percPorLocal[g.local])return;
+    var pc=percepcionesCocaCola(g);
+    percPorLocal[g.local].iva+=pc.iva;
+    percPorLocal[g.local].iibb+=pc.iibb;
+  });
+  var totPercIva=localesFiltro.reduce(function(a,l){return a+percPorLocal[l.id].iva;},0);
+  var totPercIibb=localesFiltro.reduce(function(a,l){return a+percPorLocal[l.id].iibb;},0);
+  var hayPerc=totPercIva+totPercIibb>0.5;
+  var hayCostos=totCostos>0||hayPerc;
   var totVentas=filas.reduce(function(a,f){return a+f.ventas;},0);
   var totEgresos=filas.reduce(function(a,f){return a+f.egresos;},0);
   var totDif=totVentas-totEgresos;
@@ -15051,7 +15064,7 @@ function PanelVentasEgresos(p){
             Ya están adentro de los egresos de arriba, en el área Administrativo. Los calcula la app: no se cargan a mano.
           </div>
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",minWidth:460,fontVariantNumeric:"tabular-nums"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:hayPerc?640:460,fontVariantNumeric:"tabular-nums"}}>
               <thead>
                 <tr>
                   <th style={{...TH,textAlign:"left"}}>Local</th>
@@ -15060,10 +15073,12 @@ function PanelVentasEgresos(p){
                   <th style={{...TH,textAlign:"right"}}>Imp. débito</th>
                   <th style={{...TH,textAlign:"right"}}>Comisiones</th>
                   <th style={{...TH,textAlign:"right"}}>Total</th>
+                  {hayPerc&&<th style={{...TH,textAlign:"right",color:"#4C9A5A"}}>Percep. IVA a favor</th>}
+                  {hayPerc&&<th style={{...TH,textAlign:"right",color:"#4C9A5A"}}>Percep. IIBB a favor</th>}
                 </tr>
               </thead>
               <tbody>
-                {filas.filter(function(f){return (f.iibb||0)+(f.impCred||0)+(f.impDeb||0)+(f.comision||0)>0;}).map(function(f){
+                {filas.filter(function(f){return (f.iibb||0)+(f.impCred||0)+(f.impDeb||0)+(f.comision||0)+percPorLocal[f.local.id].iva+percPorLocal[f.local.id].iibb>0.5;}).map(function(f){
                   var tot=(f.iibb||0)+(f.impCred||0)+(f.impDeb||0)+(f.comision||0);
                   return(
                     <tr key={f.local.id}>
@@ -15073,6 +15088,8 @@ function PanelVentasEgresos(p){
                       <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.impDeb||0)}</td>
                       <td style={{...TD,fontSize:12,color:"#8A6A2A"}}>{fmt(f.comision||0)}</td>
                       <td style={{...TD,fontSize:13,color:"#C1440E"}}>{fmt(tot)}</td>
+                      {hayPerc&&<td style={{...TD,fontSize:12,color:"#4C9A5A"}}>{fmt(percPorLocal[f.local.id].iva)}</td>}
+                      {hayPerc&&<td style={{...TD,fontSize:12,color:"#4C9A5A"}}>{fmt(percPorLocal[f.local.id].iibb)}</td>}
                     </tr>
                   );
                 })}
@@ -15083,11 +15100,14 @@ function PanelVentasEgresos(p){
                   <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totImpDeb)}</td>
                   <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#8A6A2A"}}>{fmt(totComision)}</td>
                   <td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:15,color:"#C1440E"}}>{fmt(totCostos)}</td>
+                  {hayPerc&&<td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#4C9A5A"}}>{fmt(totPercIva)}</td>}
+                  {hayPerc&&<td style={{...TD,borderBottom:"none",paddingTop:11,fontSize:13,color:"#4C9A5A"}}>{fmt(totPercIibb)}</td>}
                 </tr>
               </tbody>
             </table>
           </div>
           <div style={{fontSize:9,color:"#7E7E7E",marginTop:8,lineHeight:1.7}}>
+            {hayPerc&&<span><b style={{color:"#4C9A5A"}}>Percepciones a favor (Coca Cola):</b> IVA 2,2% e IIBB 3,16% sobre el neto de las facturas pagadas por medio electrónico. Son crédito, no egreso: no entran al total. </span>}
             <b style={{color:"#9A9A9A"}}>IIBB e impuesto al crédito:</b> sobre lo que se cobró por medios electrónicos. <b style={{color:"#9A9A9A"}}>Impuesto al débito:</b> sobre todo lo que salió de la cuenta —proveedores, sueldos, adelantos y retiros—, no sobre las ventas. <b style={{color:"#9A9A9A"}}>Comisiones:</b> lo que cobra el procesador por cobrar con tarjeta. El efectivo no paga ninguno de los cuatro.
           </div>
         </div>

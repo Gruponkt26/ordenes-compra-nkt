@@ -9693,7 +9693,7 @@ function PanelNovedades(p){
   // corte lo dejaría afuera de la suma y el efectivo mostrado quedaría incompleto (o
   // negativo) hasta que amanezca.
   var hoyReal=fechaLocal();
-  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:retiros,aportes:aportes};
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:retiros,aportes:aportes,cajaInicial:p.cajaInicial||{}};
   var efectivoPorLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
     return {local:l, monto:efectivoTeoricoCaja(l.id,hoyReal,datosEfectivo)};
   });
@@ -9703,6 +9703,27 @@ function PanelNovedades(p){
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
   var [notasAbierto,setNotasAbierto]=useState(false);
+  var [iniAbierto,setIniAbierto]=useState(false);
+  var [iniVal,setIniVal]=useState({});
+  var mesCaja=hoyReal.substring(0,7);
+  function abrirIni(){
+    var v={};
+    LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+      var x=(p.cajaInicial||{})[l.id+"|"+mesCaja];
+      v[l.id]=x===undefined?"":String(x);
+    });
+    setIniVal(v);setIniAbierto(true);
+  }
+  function guardarIni(){
+    LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+      var txt=String(iniVal[l.id]||"").replace(/\./g,"").replace(",",".").trim();
+      var actual=(p.cajaInicial||{})[l.id+"|"+mesCaja];
+      if(txt===""&&actual===undefined)return;
+      var n=parseFloat(txt)||0;
+      if(n!==(actual||0))p.onGuardarCajaInicial(l.id,mesCaja,n);
+    });
+    setIniAbierto(false);
+  }
   useEffect(function(){ sbLoadNotas().then(function(d){setNotas(d||[]);}); },[]);
   function guardarNota(n){
     sbSavePauta(n).then(function(err){if(err)alert("No se pudo guardar la nota en la base:\n\n"+err);});
@@ -10025,7 +10046,10 @@ function PanelNovedades(p){
       </div>
 
       {/* Caja menor de cada local, de un vistazo */}
-      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>Caja Menor</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>Caja Menor</div>
+        <button onClick={abrirIni} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>✎ Saldo inicial del mes</button>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {efectivoPorLocal.map(function(x){
           return(
@@ -10161,6 +10185,28 @@ function PanelNovedades(p){
           </div>
         );
       })()}
+
+      {iniAbierto&&(
+        <div onClick={function(){setIniAbierto(false);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#0C0C0C",border:"1px solid #2A2A2A",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:380}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>Saldo inicial de la caja menor</div>
+            <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>Con cuánto efectivo arranca cada caja en {mesCaja}. Si queda vacío, arranca en $0.</div>
+            {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+              return(
+                <div key={l.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <span style={{flex:1,fontSize:12.5,color:l.color,fontWeight:700}}>{l.emoji} {l.nombre}</span>
+                  <input value={iniVal[l.id]||""} onChange={function(e){var v=e.target.value;setIniVal(function(o){var n={...o};n[l.id]=v;return n;});}} inputMode="decimal" placeholder="$ 0"
+                    style={{width:130,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,textAlign:"right"}}/>
+                </div>
+              );
+            })}
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={function(){setIniAbierto(false);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+              <button onClick={guardarIni} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {notasAbierto&&(
         <div onClick={function(){setNotasAbierto(false);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -12384,7 +12430,8 @@ function efectivoTeoricoCaja(lid, hastaFecha, datos){
   function esEfectivo(medio){ return (medio||"").toLowerCase().includes("efectivo"); }
   function delMes(f){ return !!f&&f.substring(0,7)===mes&&f<=hastaFecha; }
 
-  var saldo=0;
+  // Arranca del saldo inicial que Sofía cargó para ese local y ese mes (si no cargó, de cero).
+  var saldo=parseFloat((datos.cajaInicial||{})[lid+"|"+mes])||0;
 
   cierres.filter(function(c){return c.local===lid&&delMes(c.fecha);}).forEach(function(c){
     saldo+=parseFloat(c.efectivo||0)-egresoNeteado(c);
@@ -12831,7 +12878,7 @@ function plataAR(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
 
 function PanelCierresSofia(p) {
   var cierres=p.cierres;
-  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}};
   var hoy=new Date().toISOString().split("T")[0];
   var CAMPOS_CIERRE={
     "l1":[["efectivo","💵","Efectivo"],["transferencia","📲","Transf. Provincia"],["tarjeta_debito","💳","Débito Provincia"],["tarjeta_credito","💳","Crédito Provincia"],["otros","📱","QR Provincia"]],
@@ -13343,7 +13390,7 @@ function PanelCierre(p) {
   // marcar—.
   var fechaSospechosa=!editId&&!diaFaltante&&form.fecha&&form.fecha!==hoy;
 
-  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[]};
+  var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}};
   // Un día antes del día de NEGOCIO (no de la fecha real): si son las 00:45 y "hoy" para
   // la caja sigue siendo ayer, "el día anterior" tiene que ser antes de ayer.
   var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
@@ -19639,6 +19686,19 @@ export default function App() {
     sbSaveReceta(r).then(function(err){if(err)alert("No se pudo guardar la receta en la base:\n\n"+err+"\n\nSi el error menciona la tabla recetas, hay que crearla en Supabase.");});
     setRecetas(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});
   }
+  // Saldo inicial de cada caja menor por mes ("l1|2026-10" → monto). Vive en la tabla de
+  // pautas, con ámbito "caja_inicial" y un id fijo por local y mes, así que cargarlo de nuevo
+  // lo pisa.
+  var cajaInicial={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="caja_inicial")return;
+    var m=String(x.id).match(/^caja_ini_(l\d+)_(\d{4}-\d{2})$/);
+    if(m)cajaInicial[m[1]+"|"+m[2]]=parseFloat(x.texto)||0;
+  });
+  function guardarCajaInicial(local,mes,monto){
+    var ahora=new Date().toISOString();
+    guardarPauta({id:"caja_ini_"+local+"_"+mes,ambito:"caja_inicial",texto:String(monto),usuario:(cu&&cu.usuario)||"",created_at:ahora,updated_at:ahora});
+  }
   function guardarPauta(x){
     sbSavePauta(x).then(function(err){if(err)alert("No se pudo guardar la pauta en la base:\n\n"+err+"\n\nSi el error menciona la tabla pautas, hay que crearla en Supabase.");});
     setPautas(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
@@ -20401,7 +20461,7 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades
+            <PanelNovedades cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
@@ -20684,7 +20744,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="cierres"&&(
-            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes}
+            <PanelCierresSofia cierres={cierres} gastos={gastos} retiros={retiros} aportes={aportes} cajaInicial={cajaInicial}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}/>
           )}
 
@@ -20844,7 +20904,7 @@ export default function App() {
 
           {esCajero&&subCompras==="caja"&&(
             <PanelCierre localId={lf} localNombre={la?la.nombre:""} usuario={cu.nombre} cierres={cierres}
-              gastos={gastos} retiros={retiros} aportes={aportes}
+              gastos={gastos} retiros={retiros} aportes={aportes} cajaInicial={cajaInicial}
               onSave={guardarCierre}
               onDelete={async function(id){await sbDeleteCierre(id);setCierres(function(p){return p.filter(function(x){return x.id!==id;});});}}
               onAvisoCaja={guardarAvisoCaja}

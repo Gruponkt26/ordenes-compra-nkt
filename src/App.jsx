@@ -15135,6 +15135,9 @@ function PanelResultados(p){
     // salen por ahí. Los de los cierres viejos siguen netos, como se guardaron.
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0);
     var retiros=cl.reduce(function(a,c){return a+parseFloat(c.retiro_socio||0);},0);
+    // Lo que se sacó de la caja menor del local en el mes (retiro de caja): informativo, la
+    // plata pasa de la caja física a la Caja Mayor y el efectivo total del local no cambia.
+    var retirosCajaMenor=cl.reduce(function(a,c){return a+(parseFloat(c.retiro_caja||0)||0);},0);
     var egresos=cl.reduce(function(a,c){return egresoNeteado(c)===0?a+parseFloat(c.egresos_diarios||0):a;},0);
     var ventasPorMedio={};
     cl.forEach(function(c){
@@ -15520,7 +15523,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -16049,7 +16052,7 @@ function PanelResultados(p){
                 <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏦 Caja mayor estimada</div>
                 
                 {/* Efectivo */}
-                {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo)&&(
+                {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo||d.retirosCajaMenor>0)&&(
                   <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){var k=l.id+"_efectivo";setDetalleAbierto(detalleAbierto===k?null:k);}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                       <span style={{fontSize:10,color:"#8C8C8C",fontWeight:700}}>💵 Efectivo {detalleAbierto===l.id+"_efectivo"?"▾":"▸"}</span>
@@ -16058,6 +16061,7 @@ function PanelResultados(p){
                     {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
+                    {(d.retirosCajaMenor||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B6BB8",marginTop:4,paddingTop:4,borderTop:"1px solid #1A1A1A"}}><span>💼 Ya retirado de caja menor (incluido arriba)</span><span>{fmt(d.retirosCajaMenor)}</span></div>}
                   </div>
                 )}
                 {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}

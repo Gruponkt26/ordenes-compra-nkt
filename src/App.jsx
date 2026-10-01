@@ -15527,6 +15527,14 @@ function PanelResultados(p){
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
+  // Del efectivo de un local, lo que sigue en el cajón (caja menor: mismo cálculo que Novedades
+  // y Caja) hasta hoy, o hasta el último día si se mira un mes ya cerrado.
+  function efectivoEnCajaMenor(lid){
+    var partes=mesFiltro.split("-");
+    var finMes=fechaLocal(new Date(parseInt(partes[0],10),parseInt(partes[1],10),0));
+    var hasta=mesFiltro===fechaLocal().substring(0,7)?fechaLocal():finMes;
+    return efectivoTeoricoCaja(lid,hasta,{cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}});
+  }
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0);
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
   var totalResultado=totalVentas-totalGastos;
@@ -15864,6 +15872,21 @@ function PanelResultados(p){
                   })}
                   <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0))}</td>
                 </tr>
+                {/* El efectivo, partido: lo que sigue en el cajón y lo que ya se retiró a Caja Mayor */}
+                {[["🧾 ↳ En caja menor (cajón)",false],["🏦 ↳ En caja mayor (retirado)",true]].map(function(f){
+                  var esMayor=f[1];
+                  var valor=function(l){var m=efectivoEnCajaMenor(l.id);return esMayor?(datos[l.id].dispEfectivo||0)-m:m;};
+                  return(
+                    <tr key={f[0]} style={{background:"#0A0F0A"}}>
+                      <td style={{padding:"4px 8px 4px 18px",color:"#8C8C8C",fontSize:10}}>{f[0]}</td>
+                      {localesFiltro.map(function(l){
+                        var v=valor(l);
+                        return <td key={l.id} style={{textAlign:"right",padding:"4px 8px",color:v<0?"#C1440E":(esMayor?"#8B6BB8":"#9A9A9A"),fontSize:10}}>{fmt(v)}</td>;
+                      })}
+                      <td style={{textAlign:"right",padding:"4px 8px",color:esMayor?"#8B6BB8":"#9A9A9A",fontWeight:700,fontSize:10}}>{fmt(localesFiltro.reduce(function(a,l){return a+valor(l);},0))}</td>
+                    </tr>
+                  );
+                })}
                 {/* Disponibilidad electrónico */}
                 <tr style={{background:"#0A0A0F"}}>
                   <td style={{padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>📲 Disponible electrónico</td>

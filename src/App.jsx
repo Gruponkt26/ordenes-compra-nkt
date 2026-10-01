@@ -13363,15 +13363,20 @@ function PanelCierre(p) {
   var hoyDataCruda=cierresLocal.find(function(c){return c.fecha===hoy;});
   var hoyEsSoloRetiro=!!hoyDataCruda&&!esCierreReal(hoyDataCruda);
   var hoyData=hoyEsSoloRetiro?null:hoyDataCruda;
-  // El día más viejo que le falta cerrar, mirando para atrás desde ayer, pero sin salir
-  // del mes en curso: lo de meses anteriores ya quedó atrás y se arregla con el traspaso
-  // de Resultados, no reclamándoselo al cajero de hoy. Tampoco se pide antes del primer
+  // El día más viejo que le falta cerrar, mirando para atrás desde ayer: el mes en curso
+  // entero y, si recién empezó, la última semana del anterior. Lo más viejo que eso ya
+  // quedó atrás y se arregla con el traspaso de Resultados, no reclamándoselo al cajero. Tampoco se pide antes del primer
   // cierre que el local tenga cargado —si recién empieza, no hay de qué ponerse al día—.
   var diaFaltante=(function(){
     if(cierresLocal.length===0)return null;
     var masViejo=cierresLocal[cierresLocal.length-1].fecha;
     var inicioMes=hoy.substring(0,7)+"-01";
-    var desde=masViejo>inicioMes?masViejo:inicioMes;
+    // Los primeros días del mes todavía se reclaman los últimos días del mes anterior: si
+    // el 30 no se cerró, el 1 tiene que poder cerrarlo. Se mira hasta 7 días para atrás o
+    // hasta el 1 del mes, lo que llegue más lejos.
+    var haceUnaSemana=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-7*86400000));
+    var limite=haceUnaSemana<inicioMes?haceUnaSemana:inicioMes;
+    var desde=masViejo>limite?masViejo:limite;
     var d=new Date(hoy+"T00:00:00");
     var faltante=null;
     for(var i=0;i<31;i++){

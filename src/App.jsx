@@ -13569,7 +13569,10 @@ function PanelCierre(p) {
   // Apenas se abre Caja, antes de ver ningún dato: el cajero tiene que parar y confirmar
   // que el efectivo coincide, no asumir que coincide después de mirar los números en
   // pantalla. Si no coincide, el aviso sale para Novedades ahí mismo, no queda perdido.
-  if(!verificoCaja)return(
+  // Si falta cerrar un día de antes, primero se cierra: contar contra un efectivo al que le
+  // falta ese día daría una diferencia falsa. Al cargarlo, diaFaltante pasa a null y esta
+  // pantalla aparece sola, ya con ese cierre incluido en lo que se espera.
+  if(!verificoCaja&&!diaFaltante)return(
     <div style={{fontFamily:"'Inter',sans-serif",maxWidth:600,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh",padding:16}}>
       <div style={{background:"#111",borderRadius:16,padding:"26px 22px",width:"100%",maxWidth:380,border:"2px solid "+(local?local.color:"#3A7D44"),textAlign:"center"}}>
         <div style={{fontSize:40,marginBottom:8}}>🧮</div>
@@ -13636,7 +13639,7 @@ function PanelCierre(p) {
         <div style={{background:"#1A0808",border:"2px solid #C1440E",borderRadius:16,padding:"22px 20px",marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:36,marginBottom:6}}>⛔</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Falta cerrar el {fmtDate(diaFaltante)}</div>
-          <div style={{fontSize:13,color:"#C88888",marginTop:6}}>No se puede cargar el cierre de hoy hasta cerrar ese día.</div>
+          <div style={{fontSize:13,color:"#C88888",marginTop:6}}>No se puede cargar el cierre de hoy hasta cerrar ese día. Al cerrarlo, te pedimos verificar el efectivo.</div>
           <button onClick={abrirNuevo} style={{background:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Cerrar el {fmtDate(diaFaltante)}</button>
         </div>
       )}

@@ -9704,6 +9704,7 @@ function PanelNovedades(p){
   var [notaNueva,setNotaNueva]=useState("");
   var [notasAbierto,setNotasAbierto]=useState(false);
   var [iniAbierto,setIniAbierto]=useState(false);
+  var [ivaAnterior,setIvaAnterior]=useState(false); // false: mes en curso | true: mes anterior (el que se declara)
   var [iniVal,setIniVal]=useState({});
   var mesCaja=hoyReal.substring(0,7);
   function abrirIni(){
@@ -10263,6 +10264,43 @@ function PanelNovedades(p){
             <button onClick={function(){setNotasAbierto(true);}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Abrir y anotar</button>
           </div>
         </Seccion>
+
+        {(function(){
+          var mesIva=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
+          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIva);
+          var chip=function(act){return {padding:"3px 9px",borderRadius:20,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"none",color:act?"#B07AE0":"#7E7E7E",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"};};
+          var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
+          return(
+            <Seccion titulo="🧾 IVA por CUIT" color="#8B2FC9">
+              <div style={{display:"flex",gap:6,marginBottom:8}}>
+                <button onClick={function(){setIvaAnterior(false);}} style={chip(!ivaAnterior)}>{mesEnCurso} · en curso</button>
+                <button onClick={function(){setIvaAnterior(true);}} style={chip(ivaAnterior)}>{mesAnteriorDe(mesEnCurso)} · a declarar</button>
+              </div>
+              {FACTURACION.map(function(f,i){
+                var o=pos[f.id];
+                var cf=o.cfFacturas+o.cfComisiones;
+                var saldo=o.df-cf;
+                return(
+                  <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{f.razonSocial}</div>
+                    <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
+                    {linea("Débito fiscal (ventas electrónicas)",o.df,"#E0714A")}
+                    {linea("Crédito · facturas cargadas ("+o.facturas+")",o.cfFacturas,"#4C9A5A",true)}
+                    {linea(calculaAutomatico(mesIva)?"Crédito · IVA de comisiones":"Crédito · IVA de comisiones (cargadas a mano)",o.cfComisiones,"#4C9A5A",true)}
+                    <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IVA a pagar":"Saldo a favor"}</span>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#7E7E7E",marginTop:5}}><span>IIBB retenido por los bancos ({Math.round(ALICUOTA_IIBB*100)}% de lo cobrado electrónico)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbRetenido)}</span></div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
+                Los CUIT no se compensan entre sí. El IVA de comisiones supone que el banco o Mercado Pago factura a ese CUIT. El IIBB es lo retenido, no la liquidación del mes.
+              </div>
+            </Seccion>
+          );
+        })()}
 
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
@@ -12754,6 +12792,39 @@ var MES_AUTOMATICO="2026-09";
 function calculaAutomatico(mes){ return String(mes||"")>=MES_AUTOMATICO; }
 
 var ALICUOTA_IIBB=0.02;
+
+// IVA de un mes por CUIT, para la tarjeta de Novedades. Misma lógica que la posición por CUIT de
+// la pantalla de IVA —débito de las ventas electrónicas facturadas, crédito de las facturas
+// cargadas en Egresos—, más el IVA que viene adentro de las comisiones de bancos y Mercado Pago
+// (que también es crédito) y el IIBB que retienen los bancos, como dato. Los CUIT no se
+// compensan entre sí. Bodegón factura por f2 y Kusama y Colantonio's por f1.
+var CUIT_DE_LOCAL_IVA={l1:"f2",l2:"f1",l3:"f1"};
+function posicionIVAPorCuit(gastos, cierres, mes){
+  var out={};
+  FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfComisiones:0,iibbRetenido:0,ventasElec:0,facturas:0}; });
+  (cierres||[]).forEach(function(c){
+    if(!c.fecha||c.fecha.substring(0,7)!==mes||c.local==="l4")return;
+    var o=out[CUIT_DE_LOCAL_IVA[c.local]];
+    if(!o)return;
+    var m=ventaFacturada(c);
+    o.ventasElec+=m;
+    o.df+=m-m/1.21;
+    o.iibbRetenido+=iibbRetenido(c);
+    // Antes de MES_AUTOMATICO las comisiones se cargaban a mano en Egresos: no se cuentan acá.
+    if(calculaAutomatico(mes))o.cfComisiones+=comisionDeCierre(c)*0.21/1.21;
+  });
+  (gastos||[]).forEach(function(g){
+    if(!g.facturado||!g.fecha||g.fecha.substring(0,7)!==mes||g.local==="l4")return;
+    var o=out[g.facturacion||CUIT_DE_LOCAL_IVA[g.local]];
+    if(!o)return;
+    var monto=parseFloat(g.monto||0)||0;
+    var cat=(g.categoria||"").toLowerCase();
+    var alic=cat.includes("verdulería")||cat.includes("verduleria")?0.105:0.21;
+    o.cfFacturas+=monto-monto/(1+alic);
+    o.facturas++;
+  });
+  return out;
+}
 
 // Lo que cobra el procesador por cobrar con tarjeta. Van los porcentajes CON IVA adentro
 // —el costo real que figura en la liquidación, no la comisión nominal—, y no incluyen las

@@ -9678,6 +9678,72 @@ function PanelFichajes(p){
   );
 }
 
+// Los bloques de IIBB por CUIT, compartidos por la tarjeta de Novedades y la pestaña IIBB de
+// Administración. Es una estimación: no incluye otras retenciones ni saldos de meses anteriores.
+function BloquesIIBBPorCuit(props){
+  var fmt=props.fmt;
+  var pos=posicionIVAPorCuit(props.gastos||[],props.cierres||[],props.mes);
+  var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
+  return(
+    <div>
+              {FACTURACION.map(function(f,i){
+                var o=pos[f.id];
+                var alic=ALICUOTA_IIBB_CUIT[f.id]||0;
+                var base=o.ventasTotal/1.21;
+                var devengado=base*alic;
+                var saldo=devengado-o.iibbRetenido-o.iibbAFavor;
+                return(
+                  <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{f.razonSocial}</div>
+                    <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
+                    {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
+                    {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
+                    {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
+                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola",o.iibbAFavor,"#4C9A5A",true)}
+                    <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
+                Mismo mes que la tarjeta de IVA. Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
+              </div>
+      <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
+        {props.nota||""}Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
+      </div>
+    </div>
+  );
+}
+function PanelIIBB(p){
+  var gastos=p.gastos||[], cierres=p.cierres||[];
+  var mesCurrent=new Date().toISOString().slice(0,7);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var mesesDisp=[...new Set([
+    ...cierres.map(function(c){return c.fecha?c.fecha.substring(0,7):null;}),
+    ...gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;})
+  ].filter(Boolean))].sort().reverse();
+  if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
+  function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Finanzas</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🧾 Ingresos Brutos por CUIT</div>
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+        <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>
+          {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"8px 14px 12px"}}>
+        <BloquesIIBBPorCuit gastos={gastos} cierres={cierres} mes={mesFiltro} fmt={fmt}/>
+      </div>
+    </div>
+  );
+}
+
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
@@ -10304,39 +10370,9 @@ function PanelNovedades(p){
           );
         })()}
 
-        {(function(){
-          var mesIibb=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
-          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIibb);
-          var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
-          return(
-            <Seccion titulo={"🧾 IIBB por CUIT · "+mesIibb} color="#D4A017">
-              {FACTURACION.map(function(f,i){
-                var o=pos[f.id];
-                var alic=ALICUOTA_IIBB_CUIT[f.id]||0;
-                var base=o.ventasTotal/1.21;
-                var devengado=base*alic;
-                var saldo=devengado-o.iibbRetenido-o.iibbAFavor;
-                return(
-                  <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
-                    <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{f.razonSocial}</div>
-                    <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
-                    {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
-                    {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
-                    {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
-                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola",o.iibbAFavor,"#4C9A5A",true)}
-                    <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
-                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
-                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
-                Mismo mes que la tarjeta de IVA. Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
-              </div>
-            </Seccion>
-          );
-        })()}
+        <Seccion titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
+          <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} nota="Mismo mes que la tarjeta de IVA. "/>
+        </Seccion>
 
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
@@ -20468,7 +20504,7 @@ export default function App() {
               {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
               {id:"config",label:"⚙️ Config",color:"#8C8C8C"},
             ];
-            var vistaFinanzas=["iva","cruzados","resultados","analytics","ventasegresos"].includes(vista);
+            var vistaFinanzas=["iva","iibb","cruzados","resultados","analytics","ventasegresos"].includes(vista);
             var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vista==="vencimientos"?"vencimientos":vistaFinanzas?"finanzas":"egresos";
             return(
               <div>
@@ -20501,7 +20537,7 @@ export default function App() {
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"],["ventasegresos","🧮 Ventas y Egresos","#1A6B8A"]].map(function(t){return(
+                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["iibb","🧾 IIBB","#D4A017"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"],["ventasegresos","🧮 Ventas y Egresos","#1A6B8A"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
                   </div>
@@ -20997,6 +21033,10 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="iva"&&(
             <PanelIVA gastos={gastos} cierres={cierres}/>
+          )}
+
+          {esSofia&&modulo==="admin"&&vista==="iibb"&&(
+            <PanelIIBB gastos={gastos} cierres={cierres}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(

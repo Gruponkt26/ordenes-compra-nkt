@@ -5654,7 +5654,7 @@ function PanelDeportes(p){
     setFormTipo(s.tipo);setFormDisciplina(s.disciplina);
     setForm(depFormVacio(s.tipo));
     setEditId(null);setAbierto(false);setEligiendo(false);
-    setFiltroEstado("todos");setFiltroMes("todos");setBusqueda("");
+    setFiltroEstado("todos");setBusqueda("");
   }
   function abrirForm(disc,tp,previo){
     setFormDisciplina(disc);setFormTipo(tp);
@@ -5747,6 +5747,15 @@ function PanelDeportes(p){
   // Meses con movimiento, para poder mirar un mes solo. Sin esto la caja se vuelve
   // ilegible al tercer mes cargado.
   var meses=[...new Set(delTipo.map(function(x){return String(x.fecha||"").slice(0,7);}).filter(Boolean))].sort().reverse();
+  // El selector de meses de arriba es uno solo para todo Deportes: junta los meses con
+  // movimiento de cualquier sección, más el mes en curso, y se conserva al cambiar de sección.
+  var mesEnCursoDep=fechaLocal().slice(0,7);
+  var mesesGlobal=[...new Set(registros.map(function(x){return String(x.fecha||"").slice(0,7);}).filter(Boolean).concat([mesEnCursoDep]))].sort().reverse();
+  function nombreMesDep(m){
+    var pt=m.split("-");
+    var nom=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pt[1],10)]||m;
+    return nom+" "+pt[0];
+  }
 
   var q=busqueda.trim().toLowerCase();
   var lista=delTipo.filter(function(x){
@@ -5859,6 +5868,12 @@ function PanelDeportes(p){
         })}
       </div>
 
+      {/* Selector de mes: manda sobre el saldo y sobre la lista de la sección */}
+      <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:13,fontWeight:700,marginBottom:10}}>
+        <option value="todos">📅 Todos los meses</option>
+        {mesesGlobal.map(function(m){return <option key={m} value={m}>{"📅 "+nombreMesDep(m)}</option>;})}
+      </select>
+
       {/* El saldo del predio */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
         <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
@@ -5932,7 +5947,6 @@ function PanelDeportes(p){
 
         var aCobrarTotal=entradas.reduce(function(a,e){return a+e.pendiente;},0);
         var aPagarTotal=salidas.reduce(function(a,e){return a+e.pendiente;},0);
-        var mesesTodos=[...new Set(registros.map(function(x){return String(x.fecha||"").slice(0,7);}).filter(Boolean))].sort().reverse();
 
         function Bloque(props){
           var hay=props.filas.some(function(f){return f.cuantas>0;});
@@ -5958,16 +5972,6 @@ function PanelDeportes(p){
 
         return(
           <div>
-            {mesesTodos.length>0&&(
-              <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:12,marginBottom:12}}>
-                <option value="todos">📅 Todos los meses</option>
-                {mesesTodos.map(function(m){
-                  var pt=m.split("-");
-                  var nom=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pt[1],10)]||m;
-                  return <option key={m} value={m}>{nom+" "+pt[0]}</option>;
-                })}
-              </select>
-            )}
             <Bloque titulo="📥 Entró" color="#3A7D44" verbo="cobrar" filas={entradas} total={totalEntradas}/>
             <Bloque titulo="📤 Salió" color="#C1440E" verbo="pagar"  filas={salidas}  total={totalSalidas}/>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 15px",background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:12}}>
@@ -6082,16 +6086,6 @@ function PanelDeportes(p){
       {/* Filtros y búsqueda */}
       {delTipo.length>0&&(
         <div style={{marginBottom:12}}>
-          {meses.length>0&&(
-            <select value={filtroMes} onChange={function(e){setFiltroMes(e.target.value);}} style={{...INP,fontSize:12,marginBottom:8}}>
-              <option value="todos">📅 Todos los meses</option>
-              {meses.map(function(m){
-                var pt=m.split("-");
-                var nom=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pt[1],10)]||m;
-                return <option key={m} value={m}>{nom+" "+pt[0]}</option>;
-              })}
-            </select>
-          )}
           <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
             <button onClick={function(){setFiltroEstado("todos");}}
               style={{padding:"5px 12px",borderRadius:20,border:"1px solid "+(filtroEstado==="todos"?color:"#1A1A1A"),background:filtroEstado==="todos"?color+"22":"none",color:filtroEstado==="todos"?color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>

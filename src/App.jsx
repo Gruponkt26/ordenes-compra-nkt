@@ -12763,18 +12763,23 @@ var ALICUOTA_IIBB=0.02;
 // Los mp_* son los de Mercado Pago y son iguales en los tres locales: es la misma cuenta.
 // Esos ya vienen con IVA adentro, que es como los informa Mercado Pago.
 // Los bancos publican el arancel SIN IVA, así que los suyos se escriben con conIVA() para que
-// se lea el número del contrato y la cuenta quede a la vista. Galicia (Kusama) ya está; los de
-// Provincia y Patagonia siguen en cero, y un medio en cero no descuenta nada.
+// se lea el número del contrato y la cuenta quede a la vista. Galicia (Kusama), Provincia
+// (Bodegón) y Patagonia Empresas (Colantonio's) tienen cargados débito y crédito; la
+// transferencia y el QR de Provincia y Patagonia siguen en cero, y un medio en cero no
+// descuenta nada.
 function conIVA(arancel){ return arancel*1.21; }
 var COMISIONES={
-  l1:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
+  // Provincia: débito 0,8% + IVA, crédito 1,8% + IVA. Los pat_* de Bodegón son Patagonia
+  // Personas, otra cuenta: siguen en cero.
+  l1:{transferencia:0, tarjeta_debito:conIVA(0.008), tarjeta_credito:conIVA(0.018), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
   // Galicia: transferencia y QR 0,8% + IVA, débito 1,6% + IVA, crédito 5,8% + IVA.
   l2:{transferencia:conIVA(0.008), tarjeta_debito:conIVA(0.016), tarjeta_credito:conIVA(0.058), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:conIVA(0.008),
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
-  // El "otros" de Colantonio's era el QR de Mercado Pago antes de que MP tuviera sus propios
-  // campos: los cierres viejos lo tienen ahí, y por eso conserva la tasa del QR.
-  l3:{transferencia:0, tarjeta_debito:0, tarjeta_credito:0, pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0.0141,
+  // Patagonia Empresas: débito 0,8% + IVA, crédito 1,8% + IVA. El "otros" de Colantonio's era
+  // el QR de Mercado Pago antes de que MP tuviera sus propios campos: los cierres viejos lo
+  // tienen ahí, y por eso conserva la tasa del QR.
+  l3:{transferencia:0, tarjeta_debito:conIVA(0.008), tarjeta_credito:conIVA(0.018), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0.0141,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
 };
 // Impuesto a los débitos y créditos bancarios, el "impuesto al cheque". Son dos alícuotas

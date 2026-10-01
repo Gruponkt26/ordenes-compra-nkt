@@ -10403,6 +10403,9 @@ function PanelNovedades(p){
 
         <Seccion titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
           <div style={{fontSize:11.5,fontWeight:700,color:"#D4A017",marginBottom:6}}>⏱ Vencimientos desde hoy hasta fin de mes</div>
+          <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>
+            Acá: {porVencer.length} de {mesEnCurso}. El número rojo de la pestaña Vencimientos ({avisos.length}) suma {vencidos.length} vencido{vencidos.length===1?"":"s"} sin pagar + {avisos.length-vencidos.length} de los próximos 7 días.
+          </div>
           {porVencer.length===0?(
             <div style={vacio}>Nada más por vencer en {mesEnCurso}.{vencidos.length>0?" Lo vencido está en Deudas.":""}</div>
           ):(
@@ -20324,7 +20327,7 @@ export default function App() {
                         else if(sm.id==="configadmin")irVista("configadmin");
                       }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#7E7E7E",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center",position:"relative"}}>
                         {sm.label}
-                        {sm.avisos>0&&<span style={{marginLeft:5,background:"#C1440E",color:"#fff",borderRadius:9,padding:"1px 6px",fontSize:9,fontWeight:800}}>{sm.avisos}</span>}
+                        {sm.avisos>0&&<span title="Vencidos sin pagar + los que vencen en los próximos 7 días" style={{marginLeft:5,background:"#C1440E",color:"#fff",borderRadius:9,padding:"1px 6px",fontSize:9,fontWeight:800}}>{sm.avisos}</span>}
                       </button>
                     );
                   })}

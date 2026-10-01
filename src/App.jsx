@@ -10304,6 +10304,40 @@ function PanelNovedades(p){
           );
         })()}
 
+        {(function(){
+          var mesIibb=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
+          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIibb);
+          var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
+          return(
+            <Seccion titulo={"🧾 IIBB por CUIT · "+mesIibb} color="#D4A017">
+              {FACTURACION.map(function(f,i){
+                var o=pos[f.id];
+                var alic=ALICUOTA_IIBB_CUIT[f.id]||0;
+                var base=o.ventasTotal/1.21;
+                var devengado=base*alic;
+                var saldo=devengado-o.iibbRetenido-o.iibbAFavor;
+                return(
+                  <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{f.razonSocial}</div>
+                    <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
+                    {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
+                    {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
+                    {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
+                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola",o.iibbAFavor,"#4C9A5A",true)}
+                    <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
+                      <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
+                Mismo mes que la tarjeta de IVA. Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
+              </div>
+            </Seccion>
+          );
+        })()}
+
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
           {resumenLocales.map(function(x,i){
@@ -12801,6 +12835,9 @@ var ALICUOTA_IIBB=0.02;
 // (que también es crédito) y el IIBB que retienen los bancos, como dato. Los CUIT no se
 // compensan entre sí. Bodegón factura por f2 y Kusama y Colantonio's por f1.
 var CUIT_DE_LOCAL_IVA={l1:"f2",l2:"f1",l3:"f1"};
+// Alícuota de Ingresos Brutos de cada CUIT para la tarjeta de IIBB de Novedades. Es la que
+// informó el contador; si un CUIT cambia de actividad o régimen, se cambia acá.
+var ALICUOTA_IIBB_CUIT={f1:0.035, f2:0.035};
 // Percepciones de Coca Cola, en cualquiera de los locales y solo cuando la factura se paga por
 // un medio electrónico: 2,2% de IVA, que se suma al crédito fiscal, y 3,16% de IIBB, que queda
 // a favor. Se calculan sobre el neto de la factura y, si el pago es mixto, sobre la parte
@@ -12829,13 +12866,14 @@ function percepcionesCocaCola(g){
 }
 function posicionIVAPorCuit(gastos, cierres, mes){
   var out={};
-  FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfComisiones:0,iibbRetenido:0,iibbAFavor:0,percIVA:0,ventasElec:0,facturas:0}; });
+  FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfComisiones:0,iibbRetenido:0,iibbAFavor:0,percIVA:0,ventasTotal:0,ventasElec:0,facturas:0}; });
   (cierres||[]).forEach(function(c){
     if(!c.fecha||c.fecha.substring(0,7)!==mes||c.local==="l4")return;
     var o=out[CUIT_DE_LOCAL_IVA[c.local]];
     if(!o)return;
     var m=ventaFacturada(c);
     o.ventasElec+=m;
+    o.ventasTotal+=ventasDeCierre(c);
     o.df+=m-m/1.21;
     o.iibbRetenido+=iibbRetenido(c);
     // Antes de MES_AUTOMATICO las comisiones se cargaban a mano en Egresos: no se cuentan acá.

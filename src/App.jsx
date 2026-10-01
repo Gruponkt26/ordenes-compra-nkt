@@ -20596,6 +20596,12 @@ export default function App() {
                   var lRM=getLocal(retiroMenorForm.local);
                   var hoyRM=diaDeNegocio();
                   var yaHay=cierres.find(function(c){return c.local===retiroMenorForm.local&&c.fecha===hoyRM;});
+                  // El efectivo que hay hoy en cada caja menor, con el mismo cálculo que Novedades.
+                  var datosRM={cierres:cierres,gastos:gastos,retiros:retiros,aportes:aportes,cajaInicial:cajaInicial};
+                  var hayEn=function(lid){return efectivoTeoricoCaja(lid,fechaLocal(),datosRM);};
+                  var fmtRM=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+                  var disponibleRM=hayEn(retiroMenorForm.local);
+                  var montoRM=parseFloat(retiroMenorForm.monto)||0;
                   return(
                     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
                       <div style={{background:"#111",borderRadius:16,padding:"20px",width:"100%",maxWidth:380,border:"1px solid #2A2A2A"}}>
@@ -20610,8 +20616,13 @@ export default function App() {
                             return <button key={l.id} onClick={function(){setRetiroMenorForm(function(f){return{...f,local:l.id};});}}
                               style={{flex:1,padding:"9px 6px",borderRadius:8,border:"1px solid "+(act?l.color:"#2A2A2A"),background:act?l.color+"22":"#0F0F0F",color:act?l.color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                               {l.emoji} {l.nombre}
+                              <div style={{fontSize:10,fontWeight:600,marginTop:3,color:hayEn(l.id)<0?"#E0714A":(act?"#F0EDE8":"#7E7E7E")}}>{fmtRM(hayEn(l.id))}</div>
                             </button>;
                           })}
+                        </div>
+                        <div style={{fontSize:11.5,color:"#C8C8C8",marginBottom:14}}>
+                          Hay en la caja menor de {lRM?lRM.nombre:""}: <b style={{color:disponibleRM<0?"#E0714A":"#F0EDE8"}}>{fmtRM(disponibleRM)}</b>
+                          {montoRM>0&&<span style={{color:montoRM>disponibleRM?"#E0714A":"#8C8C8C"}}> · {montoRM>disponibleRM?"te pasás por "+fmtRM(montoRM-disponibleRM):"quedan "+fmtRM(disponibleRM-montoRM)}</span>}
                         </div>
 
                         <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Monto</label>

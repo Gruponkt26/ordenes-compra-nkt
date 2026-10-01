@@ -15327,8 +15327,8 @@ function PanelResultados(p){
     // Detalle línea por línea de ingresos (para el desglose clickeable)
     var detIngresos=[];
     cl.forEach(function(c){
-      var ef=parseFloat(c.efectivo||0)-parseFloat(c.retiro_socio||0)-egresoNeteado(c);
-      if(ef!==0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja",monto:ef,tipo:"efectivo"});
+      var rcm=parseFloat(c.retiro_caja||0)||0;
+      if(rcm>0)detIngresos.push({fecha:c.fecha,concepto:"💼 Retiro de caja menor"+(c.retiro_caja_nota?" — "+c.retiro_caja_nota:""),monto:rcm,tipo:"efectivo"});
       [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"],["mp_transferencia","Transferencia MP"],["mp_qr","QR MP"],["mp_debito","Débito MP"],["mp_credito","Crédito MP"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
         if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
@@ -15483,7 +15483,9 @@ function PanelResultados(p){
     // Disponibilidad = ingreso corregido − IIBB retenido − gastos + traspaso + aportes de socios.
     // Los aportes entran acá y NO en ingr*/venta*: la plata está en la caja, pero no es
     // una venta, así que no debe ensuciar ni las ventas ni el cálculo de correcciones.
-    var dispEfectivo=ingrEfectivo-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo;
+    // Caja Mayor tiene el efectivo que ya salió del cajón (retiros de caja menor), no el que
+    // todavía está en la caja física de cada local.
+    var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo;
     var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia;
     var dispDebito=ingrDebito-iibbDebito-comDebito-icDebito-idDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispCredito=ingrCredito-iibbCredito-comCredito-icCredito-idCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
@@ -15534,14 +15536,8 @@ function PanelResultados(p){
     var finMes=fechaLocal(new Date(parseInt(partes[0],10),parseInt(partes[1],10),0));
     var hasta=mesFiltro===fechaLocal().substring(0,7)?fechaLocal():finMes;
     return efectivoTeoricoCaja(lid,hasta,{cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}});
-  }  // "Disponible efectivo" de Caja Mayor es el efectivo que ya salió del cajón: lo que sigue
-  // en la caja menor todavía no es de Caja Mayor. El total del local queda en dispEfectivoBruto.
-  localesFiltro.forEach(function(l){
-    var d=datos[l.id];
-    d.efectivoCajon=efectivoEnCajaMenor(l.id);
-    d.dispEfectivoBruto=d.dispEfectivo;
-    d.dispEfectivo=d.dispEfectivo-d.efectivoCajon;
-  });
+  }  // Lo que todavía está en el cajón de cada local (informativo: no es de Caja Mayor).
+  localesFiltro.forEach(function(l){ datos[l.id].efectivoCajon=efectivoEnCajaMenor(l.id); });
 
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0);
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
@@ -16083,12 +16079,11 @@ function PanelResultados(p){
                       <span style={{fontSize:10,color:"#8C8C8C",fontWeight:700}}>💵 Efectivo {detalleAbierto===l.id+"_efectivo"?"▾":"▸"}</span>
                       <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
                     </div>
-                    {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
+                    {(d.retirosCajaMenor||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>💼 Retirado de caja menor</span><span style={{color:"#3A7D44"}}>+{fmt(d.retirosCajaMenor)}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
                     <div style={{marginTop:4,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C",marginBottom:2}}><span>🧾 Sigue en el cajón (caja menor) · no incluido</span><span style={{color:(d.efectivoCajon||0)<0?"#C1440E":"#C8C8C8"}}>{fmt(d.efectivoCajon||0)}</span></div>
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C"}}><span>💵 Efectivo total del local</span><span>{fmt(d.dispEfectivoBruto||0)}</span></div>
                     </div>
                   </div>
                 )}

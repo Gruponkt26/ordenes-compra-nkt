@@ -16061,7 +16061,21 @@ function PanelResultados(p){
                     {d.ingrEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Ingresos</span><span style={{color:"#3A7D44"}}>+{fmt(d.ingrEfectivo)}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
-                    {(d.retirosCajaMenor||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8B6BB8",marginTop:4,paddingTop:4,borderTop:"1px solid #1A1A1A"}}><span>💼 Ya retirado de caja menor (incluido arriba)</span><span>{fmt(d.retirosCajaMenor)}</span></div>}
+                    {(function(){
+                      // Dónde está ese efectivo: lo que sigue en el cajón (caja menor, con el mismo
+                      // cálculo que Novedades y Caja) y lo demás, que ya está en Caja Mayor.
+                      var partes=mesFiltro.split("-");
+                      var finMes=fechaLocal(new Date(parseInt(partes[0],10),parseInt(partes[1],10),0));
+                      var hasta=mesFiltro===fechaLocal().substring(0,7)?fechaLocal():finMes;
+                      var enMenor=efectivoTeoricoCaja(l.id,hasta,{cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}});
+                      var enMayor=d.dispEfectivo-enMenor;
+                      return(
+                        <div style={{marginTop:4,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C",marginBottom:2}}><span>🧾 En caja menor (cajón)</span><span style={{color:enMenor<0?"#C1440E":"#C8C8C8"}}>{fmt(enMenor)}</span></div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C"}}><span>🏦 En caja mayor (retirado)</span><span style={{color:enMayor<0?"#C1440E":"#8B6BB8"}}>{fmt(enMayor)}</span></div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}
@@ -20809,7 +20823,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+            <PanelResultados cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);

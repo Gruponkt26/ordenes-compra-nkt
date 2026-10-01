@@ -12871,17 +12871,16 @@ function posicionIVAPorCuit(gastos, cierres, mes){
 // descuenta nada.
 function conIVA(arancel){ return arancel*1.21; }
 var COMISIONES={
-  // Provincia: débito 0,8% + IVA, crédito 1,8% + IVA. Los pat_* de Bodegón son Patagonia
-  // Personas, otra cuenta: siguen en cero.
-  l1:{transferencia:0, tarjeta_debito:conIVA(0.008), tarjeta_credito:conIVA(0.018), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
+  // Provincia y Patagonia (Personas, en los pat_* de Bodegón): débito 1,2% + IVA, crédito 2% + IVA.
+  l1:{transferencia:0, tarjeta_debito:conIVA(0.012), tarjeta_credito:conIVA(0.02), pat_transferencia:0, pat_qr:0, pat_debito:conIVA(0.012), pat_credito:conIVA(0.02), otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
   // Galicia: débito 1,6% + IVA, crédito 5,8% + IVA. La transferencia y el QR no pagan comisión.
   l2:{transferencia:0, tarjeta_debito:conIVA(0.016), tarjeta_credito:conIVA(0.058), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
-  // Patagonia Empresas: débito 0,8% + IVA, crédito 1,8% + IVA. El "otros" de Colantonio's era
+  // Patagonia Empresas: débito 1,2% + IVA, crédito 2% + IVA. El "otros" de Colantonio's era
   // el QR de Mercado Pago antes de que MP tuviera sus propios campos: los cierres viejos lo
   // tienen ahí, y por eso conserva la tasa del QR.
-  l3:{transferencia:0, tarjeta_debito:conIVA(0.008), tarjeta_credito:conIVA(0.018), pat_transferencia:0, pat_qr:0, pat_debito:0, pat_credito:0, otros:0.0141,
+  l3:{transferencia:0, tarjeta_debito:conIVA(0.012), tarjeta_credito:conIVA(0.02), pat_transferencia:0, pat_qr:0, pat_debito:conIVA(0.012), pat_credito:conIVA(0.02), otros:0.0141,
       mp_transferencia:0, mp_qr:0.0141, mp_debito:0.0314, mp_credito:0.0629},
 };
 // Impuesto a los débitos y créditos bancarios, el "impuesto al cheque". Son dos alícuotas

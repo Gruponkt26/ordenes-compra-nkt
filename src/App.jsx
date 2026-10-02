@@ -6250,6 +6250,9 @@ var CAJA_MAYOR_MEDIO_MAP={
   "caja mayor - colantonio's":"l3","caja mayor - colantonios":"l3",
 };
 // Medio de pago "Caja Mayor" de cada local (el mismo texto que ofrece la lista de medios).
+// Los egresos de caja anotados antes de esta fecha no generan aviso: ya se cargaron a mano.
+// Desde ahí, el aviso queda en Prioridad hasta que se cargue el gasto.
+var EGRESOS_CAJA_DESDE="2026-10-02";
 var CAJA_MAYOR_POR_LOCAL={l1:"Caja Mayor - Bodegón",l2:"Caja Mayor - Kusama",l3:"Caja Mayor - Colantonio's"};
 function localDeCajaMayor(medio){
   if(!medio)return null;
@@ -9842,11 +9845,9 @@ function PanelNovedades(p){
   var [egCajaForm,setEgCajaForm]=useState(null);
   var [guardandoEgCaja,setGuardandoEgCaja]=useState(false);
   var egresosCajaPend=(function(){
-    var desde=new Date(hoy+"T12:00:00");desde.setDate(desde.getDate()-3);
-    var d=desde.getFullYear()+"-"+String(desde.getMonth()+1).padStart(2,"0")+"-"+String(desde.getDate()).padStart(2,"0");
     var gs=p.gastos||[];
     return cierres.filter(function(c){
-      return c.fecha&&c.fecha>=d&&parseFloat(c.egresos_diarios||0)>0&&egresoNeteado(c)===0&&CAJA_MAYOR_POR_LOCAL[c.local]
+      return c.fecha&&c.fecha>=EGRESOS_CAJA_DESDE&&parseFloat(c.egresos_diarios||0)>0&&egresoNeteado(c)===0&&CAJA_MAYOR_POR_LOCAL[c.local]
         &&!gs.some(function(g){return g.id==="egcaja_"+c.id;});
     }).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   })();

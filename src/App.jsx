@@ -9796,7 +9796,7 @@ function BloquesIIBBPorCuit(props){
                     {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
                     {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
                     {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
-                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola",o.iibbAFavor,"#4C9A5A",true)}
+                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola / Pepsi / La Serenísima",o.iibbAFavor,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
@@ -10536,7 +10536,7 @@ function PanelNovedades(p){
                     <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
                     {linea("Débito fiscal (ventas electrónicas)",o.df,"#E0714A")}
                     {linea("Crédito · facturas cargadas ("+o.facturas+")",o.cfFacturas,"#4C9A5A",true)}
-                    {o.percIVA>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#6E8F74",padding:"0 0 1.5px 12px"}}><span>↳ incluye percepción de IVA Coca Cola ({(PERCEPCION_IVA_COCA*100).toFixed(1).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.percIVA)}</span></div>}
+                    {o.percIVA>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#6E8F74",padding:"0 0 1.5px 12px"}}><span>↳ incluye percepción de IVA Coca Cola / Pepsi / La Serenísima ({(PERCEPCION_IVA_COCA*100).toFixed(1).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.percIVA)}</span></div>}
                     {linea(calculaAutomatico(mesIva)?"Crédito · IVA de comisiones":"Crédito · IVA de comisiones (cargadas a mano)",o.cfComisiones,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IVA a pagar":"Saldo a favor"}</span>
@@ -13125,11 +13125,14 @@ var CUIT_DE_LOCAL_IVA={l1:"f2",l2:"f1",l3:"f1"};
 // Alícuota de Ingresos Brutos de cada CUIT para la tarjeta de IIBB de Novedades. Es la que
 // informó el contador; si un CUIT cambia de actividad o régimen, se cambia acá.
 var ALICUOTA_IIBB_CUIT={f1:0.035, f2:0.035};
-// Percepciones de Coca Cola, en cualquiera de los locales y solo cuando la factura se paga por
-// un medio electrónico: 2,2% de IVA, que se suma al crédito fiscal, y 3,16% de IIBB, que queda
-// a favor. Se calculan sobre el neto de la factura y, si el pago es mixto, sobre la parte
-// electrónica. Es el IVA/IIBB que se computa a favor: no cambia lo que se pagó.
+// Percepciones de Coca Cola, Pepsi y La Serenísima, en cualquiera de los locales y con cualquier
+// medio de pago —la percepción viene en la factura, no depende de cómo se pague—: 2,2% de IVA,
+// que se suma al crédito fiscal, y 3,16% de IIBB, que queda a favor. Se calculan sobre el neto
+// de la factura. Es el IVA/IIBB que se computa a favor: no cambia lo que se pagó.
 var PERCEPCION_IVA_COCA=0.022, PERCEPCION_IIBB_COCA=0.0316;
+// Proveedores que perciben: Coca Cola, Pepsi y La Serenísima. Todos usan las mismas tasas que
+// Coca Cola; si la factura de alguno trae otras, hay que separarlas acá.
+var PERCIBEN_IVA_IIBB=/coca[\s-]*cola|pepsi|seren[ií]sima/i;
 // Alícuota de IVA de una factura de compra: la verdura (La Finca y el resto de las verdulerías)
 // va al 10,5 %; lo demás, al 21 %. Se mira la categoría, el subrubro y el proveedor, porque en
 // los egresos de Proveedores la categoría es solo "Proveedores".
@@ -13137,24 +13140,12 @@ function alicuotaIVACompra(g){
   var txt=((g&&g.categoria)||"")+" "+((g&&g.subramo)||"")+" "+((g&&g.concepto)||"");
   return /verduler[ií]a|la finca/i.test(txt)?0.105:0.21;
 }
-function esMedioElectronicoEgreso(medio){
-  var m=String(medio||"").toLowerCase();
-  return ["transferencia","tarjeta","débito","debito","crédito","credito","mercado pago","qr","visa","mastercard"].some(function(k){return m.includes(k);});
-}
 function percepcionesCocaCola(g){
   var cero={iva:0,iibb:0};
-  if(!g||!g.facturado||!/coca[\s-]*cola/i.test(g.concepto||""))return cero;
-  var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
-  var total=0, elec=0;
-  pagos.forEach(function(pg){
-    var mt=parseFloat(pg.monto||0)||0;
-    total+=mt;
-    if(esMedioElectronicoEgreso(pg.medio||pg.tipo))elec+=mt;
-  });
-  if(total<=0||elec<=0)return cero;
+  if(!g||!g.facturado||!PERCIBEN_IVA_IIBB.test(g.concepto||""))return cero;
   var monto=parseFloat(g.monto||0)||0;
-  var alic=alicuotaIVACompra(g);
-  var neto=(monto/(1+alic))*(elec/total);
+  if(monto<=0)return cero;
+  var neto=monto/(1+alicuotaIVACompra(g));
   return {iva:neto*PERCEPCION_IVA_COCA, iibb:neto*PERCEPCION_IIBB_COCA};
 }
 function posicionIVAPorCuit(gastos, cierres, mes){
@@ -15301,7 +15292,7 @@ function PanelVentasEgresos(p){
   var totImpDeb=filas.reduce(function(a,f){return a+(f.impDeb||0);},0);
   var totComision=filas.reduce(function(a,f){return a+(f.comision||0);},0);
   var totCostos=totIibb+totImpCred+totImpDeb+totComision;
-  // Percepciones de Coca Cola por local (facturas pagadas por medio electrónico): IVA y IIBB a
+  // Percepciones de Coca Cola por local (facturas facturadas, con cualquier medio de pago): IVA y IIBB a
   // favor. No son un egreso: no entran al total, se muestran al lado.
   var percPorLocal={};
   localesFiltro.forEach(function(l){ percPorLocal[l.id]={iva:0,iibb:0}; });
@@ -15437,7 +15428,7 @@ function PanelVentasEgresos(p){
             </table>
           </div>
           <div style={{fontSize:9,color:"#7E7E7E",marginTop:8,lineHeight:1.7}}>
-            {hayPerc&&<span><b style={{color:"#4C9A5A"}}>Percepciones a favor (Coca Cola):</b> IVA 2,2% e IIBB 3,16% sobre el neto de las facturas pagadas por medio electrónico. Son crédito, no egreso: no entran al total. </span>}
+            {hayPerc&&<span><b style={{color:"#4C9A5A"}}>Percepciones a favor (Coca Cola / Pepsi / La Serenísima):</b> IVA 2,2% e IIBB 3,16% sobre el neto de las facturas, se paguen como se paguen. Son crédito, no egreso: no entran al total. </span>}
             <b style={{color:"#9A9A9A"}}>IIBB e impuesto al crédito:</b> sobre lo que se cobró por medios electrónicos. <b style={{color:"#9A9A9A"}}>Impuesto al débito:</b> sobre todo lo que salió de la cuenta —proveedores, sueldos, adelantos y retiros—, no sobre las ventas. <b style={{color:"#9A9A9A"}}>Comisiones:</b> lo que cobra el procesador por cobrar con tarjeta. El efectivo no paga ninguno de los cuatro.
           </div>
         </div>
@@ -17548,7 +17539,7 @@ function PanelIVA(p) {
   function calcIVACompra(g){
     var monto=parseFloat(g.monto||0);
     var alicuota=alicuotaIVACompra(g);
-    // Las facturas de Coca Cola pagadas por medio electrónico suman su percepción de IVA.
+    // Las facturas de Coca Cola, Pepsi y La Serenísima suman su percepción de IVA.
     return {neto:monto/(1+alicuota),iva:monto-(monto/(1+alicuota))+percepcionesCocaCola(g).iva,alicuota};
   }
   function calcIVAVenta(monto){

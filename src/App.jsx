@@ -6940,6 +6940,18 @@ var MEDIOS_EGRESO=[
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
 var GRUPOS_MEDIOS_EGRESO=["Efectivo","Caja Mayor","Transferencia","Tarjeta","Otros"];
+// "Deuda": un egreso que se carga normal —con su medio de pago, así que baja la disponibilidad y
+// cuenta en Resultados— pero que paga algo que no es de este mes, y por eso no entra en Ventas
+// y Egresos, que muestra solo lo que entró y salió del mes para cada local. Se marca con una
+// casilla antes de guardar, en estas áreas. La marca vive dentro de `pagos` (deuda:true), sin
+// columnas nuevas.
+var AREAS_CON_DEUDA=["Administrativo","Marketing","Obras","Mantenimiento"];
+function montoDeudaDeGasto(g){
+  if(!g)return 0;
+  if(g.pagos&&g.pagos.length>0)return g.pagos.reduce(function(a,pg){return pg.deuda?a+(parseFloat(pg.monto||0)||0):a;},0);
+  return g.deuda?(parseFloat(g.monto||0)||0):0;
+}
+function esGastoDeuda(g){ return montoDeudaDeGasto(g)>0; }
 // Las cuentas de las que puede salir un débito automático: las mismas de la lista de medios,
 // así lo que se anota acá es exactamente lo que después se elige al pagar.
 function cuentasDebito(){ return MEDIOS_EGRESO.filter(function(m){return m.grupo==="Transferencia"||m.grupo==="Tarjeta";}); }
@@ -6956,6 +6968,8 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [editId,setEditId]=useState(null);
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
+  var [esDeuda,setEsDeuda]=useState(false);
+  var admiteDeuda=AREAS_CON_DEUDA.indexOf(area)!==-1;
 
   var grupos_medios=GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
@@ -7025,17 +7039,21 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     if(!form.concepto.trim()||!form.monto)return;
     var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
+    // La marca de deuda va en cada pago; si no corresponde, se saca.
+    pagosValidos=pagosValidos.map(function(p){var q={...p};if(admiteDeuda&&esDeuda)q.deuda=true;else delete q.deuda;return q;});
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
+    setEsDeuda(false);
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
     setEditId(g.id);
     setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Caja Mayor - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
     setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Caja Mayor - Bodegón",monto:String(g.monto||"")}]);
+    setEsDeuda(esGastoDeuda(g));
     setShowForm(true);
   }
 
@@ -7089,6 +7107,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
                     {cruzado&&<div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>↔️ Cruzado {locMedio?locMedio.emoji+locMedio.nombre:""}</div>}
+                    {esGastoDeuda(g)&&<div style={{fontSize:9,color:"#E0714A",background:"#E0714A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>🕓 Deuda</div>}
                   </div>
                   <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
@@ -7255,9 +7274,22 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
               <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
             </div>
 
+            {/* Deuda: antes de guardar, se puede marcar que es el pago de una deuda */}
+            {admiteDeuda&&(
+              <div style={{marginBottom:14,background:esDeuda?"#1A0A0A":"#0A0A0A",border:"1px solid "+(esDeuda?"#E0714A66":"#1E1E1E"),borderRadius:10,padding:"10px 12px"}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:esDeuda?"#E0714A":"#888",fontWeight:esDeuda?700:400,cursor:"pointer"}}>
+                  <input type="checkbox" checked={esDeuda} onChange={function(e){setEsDeuda(e.target.checked);}}/>
+                  🕓 Es deuda
+                </label>
+                <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>
+                  Sí cuenta en Resultados y baja la disponibilidad, pero no aparece en Ventas y Egresos, que muestra solo lo del mes.
+                </div>
+              </div>
+            )}
+
             <div style={{display:"flex",gap:8}}>
               <button onClick={doSave} style={{flex:1,padding:"11px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
-              <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+              <button onClick={function(){setShowForm(false);setEditId(null);setEsDeuda(false);}} style={{padding:"11px 16px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -9853,12 +9885,13 @@ function PanelNovedades(p){
     return f&&f.substring(0,7)===finVentas.substring(0,7)&&f<=finVentas;
   });
   var resumenLocales=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-    var eg=gastosTarjeta.filter(function(g){return g.local===l.id;}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
+    // Los pagos de deuda no entran: acá va lo del mes.
+    var eg=gastosTarjeta.filter(function(g){return g.local===l.id;}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
     var vt=cierresTarjeta.filter(function(c){return c.local===l.id;}).reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
     return {local:l,ventas:vt,egresos:eg};
   });
   var egresosOtros=gastosTarjeta.filter(function(g){return !resumenLocales.some(function(x){return x.local.id===g.local;});})
-    .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
+    .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
   var ventasLocalTarjeta=function(lid){
     var cs=cierresTarjeta.filter(function(c){return c.local===lid;});
     return {cuantos:cs.length,total:cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0)};
@@ -14999,7 +15032,7 @@ function iibbDeCierres(cierres, lid, mes){
 // gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
 // todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
 // Devuelve también las piezas intermedias, que Resultados usa para el desglose.
-function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros){
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros, sinDeuda){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
@@ -15010,6 +15043,8 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var esAguinaldo=function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!=="";};
   var pagado=function(s){return s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);};
   var total=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0)+adelantosMonto;
+  // Ventas y Egresos pide sinDeuda: ahí no entran los pagos de deuda; Resultados sí los cuenta.
+  if(sinDeuda)total-=gl.reduce(function(a,g){return a+montoDeudaDeGasto(g);},0);
   if(!hasSueldosGastos)total+=sueldosTabla.filter(function(s){return !esAguinaldo(s);}).reduce(function(a,s){return a+pagado(s);},0);
   if(!hasAguinaldosGastos)total+=sueldosTabla.filter(esAguinaldo).reduce(function(a,s){return a+pagado(s);},0);
   // Ingresos Brutos: es un costo de vender, así que suma a los egresos. El manual ya está
@@ -15095,7 +15130,7 @@ function PanelVentasEgresos(p){
   // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros,true);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
     return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual,impDeb:eg.impDebEgreso};
@@ -19305,7 +19340,7 @@ async function sbSaveGasto(gasto) {
       var medio=(pg.medio||pg.tipo||"").trim();
       if(medio==="Efectivo - Oficina"){
         huboOficina=true;
-        pagosExpandidos=pagosExpandidos.concat(repartoEfectivoOficina(pg.monto));
+        pagosExpandidos=pagosExpandidos.concat(repartoEfectivoOficina(pg.monto).map(function(x){return pg.deuda?{...x,deuda:true}:x;}));
       } else {
         pagosExpandidos.push(pg);
       }

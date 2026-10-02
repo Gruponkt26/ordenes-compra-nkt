@@ -14041,9 +14041,17 @@ function PanelCierre(p) {
             </div>
           </div>
         ):(
+          <div>
+            {hoyEsSoloRetiro&&parseFloat(hoyDataCruda.retiro_caja||0)>0&&(
+              <div style={{background:"#1A1426",border:"1px solid #8B6BB844",borderRadius:8,padding:"9px 12px",marginBottom:10,fontSize:12,color:"#C8B8E8",lineHeight:1.5}}>
+                💼 Hoy se retiró de la caja <b>${parseFloat(hoyDataCruda.retiro_caja).toLocaleString("es-AR")}</b>{hoyDataCruda.retiro_caja_nota?" ("+hoyDataCruda.retiro_caja_nota+")":""}
+                <div style={{fontSize:10,color:"#8A7AAA",marginTop:2}}>Ya queda anotado en el cierre. Lo vas a ver al cargarlo.</div>
+              </div>
+            )}
           <button onClick={abrirNuevo} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",width:"100%",marginTop:4}}>
             + Cargar cierre de hoy
           </button>
+          </div>
         )}
       </div>
       )}

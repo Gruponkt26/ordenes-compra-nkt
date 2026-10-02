@@ -6936,10 +6936,21 @@ var MEDIOS_EGRESO=[
   {grupo:"Tarjeta",label:"💳 Débito Visa Patagonia",value:"Débito - Visa Patagonia"},
   {grupo:"Tarjeta",label:"💳 Débito Mastercard Patagonia",value:"Débito - Mastercard Patagonia"},
   {grupo:"Tarjeta",label:"💳 Crédito",value:"Crédito"},
+  {grupo:"Deuda",label:"🕓 Deuda (a pagar)",value:"Deuda"},
   {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
 var GRUPOS_MEDIOS_EGRESO=["Efectivo","Caja Mayor","Transferencia","Tarjeta","Otros"];
+// "Deuda": un egreso que ya es del mes pero todavía no se pagó. Cuenta en el resultado —es un
+// costo del período— pero no sale plata de ninguna caja, así que no baja la disponibilidad ni
+// aparece en Ventas y Egresos, que muestra solo lo que entró y salió de verdad. Solo se ofrece
+// en estas áreas; al pagarla se edita el egreso y se cambia el medio por el real.
+var AREAS_CON_DEUDA=["Administrativo","Marketing","Obras","Mantenimiento"];
+function esMedioDeuda(medio){ return String(medio||"").toLowerCase().trim().startsWith("deuda"); }
+function montoDeudaDeGasto(g){
+  var pagos=(g&&g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g&&g.forma_pago,monto:g&&g.monto}];
+  return pagos.reduce(function(a,pg){return esMedioDeuda(pg.medio||pg.tipo)?a+(parseFloat(pg.monto||0)||0):a;},0);
+}
 // Las cuentas de las que puede salir un débito automático: las mismas de la lista de medios,
 // así lo que se anota acá es exactamente lo que después se elige al pagar.
 function cuentasDebito(){ return MEDIOS_EGRESO.filter(function(m){return m.grupo==="Transferencia"||m.grupo==="Tarjeta";}); }
@@ -6957,7 +6968,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
 
-  var grupos_medios=GRUPOS_MEDIOS_EGRESO;
+  var grupos_medios=AREAS_CON_DEUDA.indexOf(area)!==-1?GRUPOS_MEDIOS_EGRESO.concat(["Deuda"]):GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
   function pagosCuadranEgreso(){return !form.monto||Math.abs(totalPagosEgreso()-parseFloat(form.monto||0))<0.01;}
   var [filtroLocal,setFiltroLocal]=useState("all");
@@ -9853,12 +9864,13 @@ function PanelNovedades(p){
     return f&&f.substring(0,7)===finVentas.substring(0,7)&&f<=finVentas;
   });
   var resumenLocales=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-    var eg=gastosTarjeta.filter(function(g){return g.local===l.id;}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
+    // Sin la deuda: acá van los egresos que salieron de verdad.
+    var eg=gastosTarjeta.filter(function(g){return g.local===l.id;}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
     var vt=cierresTarjeta.filter(function(c){return c.local===l.id;}).reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
     return {local:l,ventas:vt,egresos:eg};
   });
   var egresosOtros=gastosTarjeta.filter(function(g){return !resumenLocales.some(function(x){return x.local.id===g.local;});})
-    .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0);},0);
+    .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
   var ventasLocalTarjeta=function(lid){
     var cs=cierresTarjeta.filter(function(c){return c.local===lid;});
     return {cuantos:cs.length,total:cs.reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0)};
@@ -13070,7 +13082,7 @@ function salidasPorMedio(gastos, sueldosADescontar, adelantosLocal, retirosCuent
   function sumar(medio, monto, localPago){
     if(localPago!==lid)return;
     var m=(medio||"").toLowerCase();
-    if(esEfectivoOCajaMayor(m))return; // ni el efectivo ni la Caja Mayor tocan el banco
+    if(esEfectivoOCajaMayor(m)||esMedioDeuda(m))return; // ni el efectivo, ni la Caja Mayor, ni una deuda tocan el banco
     var v=parseFloat(monto||0);
     if(!v)return;
     if(m.includes("mercado pago")||/\bmp\b/.test(m))out.mp+=v;
@@ -14999,7 +15011,7 @@ function iibbDeCierres(cierres, lid, mes){
 // gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
 // todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
 // Devuelve también las piezas intermedias, que Resultados usa para el desglose.
-function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros){
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros, sinDeuda){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
@@ -15010,6 +15022,8 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var esAguinaldo=function(s){return s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!=="";};
   var pagado=function(s){return s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);};
   var total=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0)+adelantosMonto;
+  // Ventas y Egresos pide sinDeuda: ahí solo va lo que salió; Resultados cuenta la deuda.
+  if(sinDeuda)total-=gl.reduce(function(a,g){return a+montoDeudaDeGasto(g);},0);
   if(!hasSueldosGastos)total+=sueldosTabla.filter(function(s){return !esAguinaldo(s);}).reduce(function(a,s){return a+pagado(s);},0);
   if(!hasAguinaldosGastos)total+=sueldosTabla.filter(esAguinaldo).reduce(function(a,s){return a+pagado(s);},0);
   // Ingresos Brutos: es un costo de vender, así que suma a los egresos. El manual ya está
@@ -15095,7 +15109,7 @@ function PanelVentasEgresos(p){
   // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros,true);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
     return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual,impDeb:eg.impDebEgreso};
@@ -15479,13 +15493,15 @@ function PanelResultados(p){
     var traspaso=calcTraspaso(lid);
 
     // Gastos por medio de pago — descontar del local que paga (no del local del gasto)
-    var gastoEfectivo=0,gastoElectronico=0;
+    var gastoEfectivo=0,gastoElectronico=0,deudaPendiente=0;
     var detGastos=[]; // detalle línea por línea de qué se restó (para el desglose clickeable)
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          // Una deuda no sacó plata de ninguna caja: va aparte, no a la disponibilidad.
+          if(esMedioDeuda(medioStr)){deudaPendiente+=pm;return;}
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||lid;
           // Solo contar si el pago sale de este local
           if(pagoLocal!==lid)return;
@@ -15496,6 +15512,7 @@ function PanelResultados(p){
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
+        if(esMedioDeuda(fp)){deudaPendiente+=gm;return;}
         var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||lid;
         // Solo contar si el pago sale de este local
         if(pagoLocal!==lid)return;
@@ -15513,6 +15530,7 @@ function PanelResultados(p){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
+          if(esMedioDeuda(medioStr))return;
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||g.local;
           if(pagoLocal!==lid)return;
           var esEf=esEfectivoOCajaMayor(medioStr);
@@ -15522,6 +15540,7 @@ function PanelResultados(p){
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
+        if(esMedioDeuda(fp))return;
         var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||g.local;
         if(pagoLocal!==lid)return;
         var esEf2=esEfectivoOCajaMayor(fp);
@@ -15789,7 +15808,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{deudaPendiente,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -16169,6 +16188,17 @@ function PanelResultados(p){
                   })}
                   <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
                 </tr>
+                {/* Deuda: ya está en el resultado, pero no salió plata, así que no baja la disponibilidad */}
+                {localesFiltro.some(function(l){return (datos[l.id].deudaPendiente||0)>0.5;})&&(
+                  <tr style={{background:"#140A0A"}}>
+                    <td style={{padding:"8px",color:"#E0714A",fontWeight:700,fontSize:11}}>🕓 Deuda por pagar <span style={{color:"#6E6E6E",fontSize:9,fontWeight:400}}>(en el resultado, no salió plata)</span></td>
+                    {localesFiltro.map(function(l){
+                      var dp=datos[l.id].deudaPendiente||0;
+                      return <td key={l.id} style={{textAlign:"right",padding:"8px",color:dp>0.5?"#E0714A":"#6E6E6E",fontWeight:700,fontSize:11}}>{dp>0.5?fmt(dp):"—"}</td>;
+                    })}
+                    <td style={{textAlign:"right",padding:"8px",color:"#E0714A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].deudaPendiente||0);},0))}</td>
+                  </tr>
+                )}
                 {/* Débito pendiente de acreditar */}
                 {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
                   <tr style={{background:"#14100A"}}>

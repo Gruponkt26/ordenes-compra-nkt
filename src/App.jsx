@@ -13011,6 +13011,13 @@ var ALICUOTA_IIBB_CUIT={f1:0.035, f2:0.035};
 // a favor. Se calculan sobre el neto de la factura y, si el pago es mixto, sobre la parte
 // electrónica. Es el IVA/IIBB que se computa a favor: no cambia lo que se pagó.
 var PERCEPCION_IVA_COCA=0.022, PERCEPCION_IIBB_COCA=0.0316;
+// Alícuota de IVA de una factura de compra: la verdura (La Finca y el resto de las verdulerías)
+// va al 10,5 %; lo demás, al 21 %. Se mira la categoría, el subrubro y el proveedor, porque en
+// los egresos de Proveedores la categoría es solo "Proveedores".
+function alicuotaIVACompra(g){
+  var txt=((g&&g.categoria)||"")+" "+((g&&g.subramo)||"")+" "+((g&&g.concepto)||"");
+  return /verduler[ií]a|la finca/i.test(txt)?0.105:0.21;
+}
 function esMedioElectronicoEgreso(medio){
   var m=String(medio||"").toLowerCase();
   return ["transferencia","tarjeta","débito","debito","crédito","credito","mercado pago","qr","visa","mastercard"].some(function(k){return m.includes(k);});
@@ -13027,8 +13034,7 @@ function percepcionesCocaCola(g){
   });
   if(total<=0||elec<=0)return cero;
   var monto=parseFloat(g.monto||0)||0;
-  var cat=(g.categoria||"").toLowerCase();
-  var alic=cat.includes("verdulería")||cat.includes("verduleria")?0.105:0.21;
+  var alic=alicuotaIVACompra(g);
   var neto=(monto/(1+alic))*(elec/total);
   return {iva:neto*PERCEPCION_IVA_COCA, iibb:neto*PERCEPCION_IIBB_COCA};
 }
@@ -13052,8 +13058,7 @@ function posicionIVAPorCuit(gastos, cierres, mes){
     var o=out[g.facturacion||CUIT_DE_LOCAL_IVA[g.local]];
     if(!o)return;
     var monto=parseFloat(g.monto||0)||0;
-    var cat=(g.categoria||"").toLowerCase();
-    var alic=cat.includes("verdulería")||cat.includes("verduleria")?0.105:0.21;
+    var alic=alicuotaIVACompra(g);
     var perc=percepcionesCocaCola(g);
     o.cfFacturas+=monto-monto/(1+alic)+perc.iva;
     o.iibbAFavor+=perc.iibb;
@@ -17424,8 +17429,7 @@ function PanelIVA(p) {
   // ── Helpers IVA ──
   function calcIVACompra(g){
     var monto=parseFloat(g.monto||0);
-    var cat=(g.categoria||"").toLowerCase();
-    var alicuota=cat.includes("verdulería")||cat.includes("verduleria")?0.105:0.21;
+    var alicuota=alicuotaIVACompra(g);
     // Las facturas de Coca Cola pagadas por medio electrónico suman su percepción de IVA.
     return {neto:monto/(1+alicuota),iva:monto-(monto/(1+alicuota))+percepcionesCocaCola(g).iva,alicuota};
   }

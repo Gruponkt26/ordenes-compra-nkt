@@ -2647,26 +2647,6 @@ function GestProveedoresPanel(p) {
             <div>
             {/* Productos */}
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Productos ({(prods[sel]||[]).length})</div>
-            {(function(){
-              var actuales={};
-              (prods[sel]||[]).forEach(function(x){ actuales[String(typeof x==="string"?x:x.nombre).trim().toLowerCase()]=true; });
-              var recuperables=productosDeHistorial(sel,p.ordenes,preciosLocal).filter(function(x){ return !actuales[x.nombre.toLowerCase()]; });
-              if(recuperables.length===0)return null;
-              return(
-                <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    <div style={{fontSize:11,color:"#1A6B8A"}}>
-                      ♻️ Hay <b>{recuperables.length}</b> producto{recuperables.length===1?"":"s"} que este proveedor ya tuvo —en órdenes o precios anteriores— y hoy no está{recuperables.length===1?"":"n"} en la lista.
-                    </div>
-                    <button onClick={function(){
-                      if(!window.confirm("Se agregan "+recuperables.length+" producto"+(recuperables.length===1?"":"s")+" sacados de las órdenes y los precios anteriores:\n\n"+recuperables.map(function(x){return "· "+x.nombre;}).join("\n")+"\n\nDespués borrá los que no quieras y guardá."))return;
-                      setProds(function(a){ var n={...a}; n[sel]=[...(n[sel]||[]),...recuperables]; return n; });
-                    }} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>♻️ Recuperar</button>
-                  </div>
-                  <div style={{fontSize:9,color:"#3A5560",marginTop:5}}>Se agregan a la lista de abajo; no quedan guardados hasta que toques Guardar.</div>
-                </div>
-              );
-            })()}
             <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
               <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
               <input type="number" placeholder={autoContenido(newProd.nombre)} title="Cuánto trae la presentación: 6 si es un pack de 6, 900 si es de 900 ml. Vacío = lo deduce del nombre." value={newProd.contenido||""} onChange={function(e){setNewProd(function(n){return{...n,contenido:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,width:62,flexShrink:0,textAlign:"right"}}/>
@@ -6405,29 +6385,6 @@ function fechaAcreditacionDebito(fechaCierre){
 
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa","penca","balde"];
 
-// Los productos de un proveedor viven en su propia tabla, pero su nombre quedó grabado en
-// cada orden que se le pidió y en cada precio que se le cargó. Si esa lista se pierde, se
-// puede reconstruir desde ahí: no es un backup, es lo que ya se usó.
-function productosDeHistorial(provId, ordenes, precios){
-  var vistos={};
-  function sumar(nombre, unidad){
-    var n=String(nombre||"").trim();
-    if(!n)return;
-    var clave=n.toLowerCase();
-    if(vistos[clave])return;
-    vistos[clave]={nombre:n, unidad:(unidad&&String(unidad).trim())||"unidad"};
-  }
-  (ordenes||[]).forEach(function(o){
-    (o.provSections||o.prov_sections||[]).forEach(function(sec){
-      if(sec.provId!==provId)return;
-      (sec.items||[]).forEach(function(it){ sumar(it.nombre, it.unidad); });
-    });
-  });
-  var pr=(precios||{})[provId]||{};
-  Object.keys(pr).forEach(function(nombre){ sumar(nombre, null); });
-  return Object.keys(vistos).map(function(k){ return vistos[k]; })
-    .sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
-}
 function GestProveedores(p) {
   var [provs,setProvs]=useState(p.proveedores);
   var [prods,setProds]=useState(p.productos);
@@ -6501,26 +6458,6 @@ function GestProveedores(p) {
                 </div>
                 <div style={{fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Productos ({(prods[sel]||[]).length})</div>
                 {/* Agregar producto */}
-                {(function(){
-                  var actuales={};
-                  (prods[sel]||[]).forEach(function(x){ actuales[String(getProdNombre(x)).trim().toLowerCase()]=true; });
-                  var recuperables=productosDeHistorial(sel,p.ordenes,p.precios).filter(function(x){ return !actuales[x.nombre.toLowerCase()]; });
-                  if(recuperables.length===0)return null;
-                  return(
-                    <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                        <div style={{fontSize:11,color:"#1A6B8A"}}>
-                          ♻️ Hay <b>{recuperables.length}</b> producto{recuperables.length===1?"":"s"} que este proveedor ya tuvo, en órdenes o precios viejos, y hoy no está{recuperables.length===1?"":"n"} en la lista.
-                        </div>
-                        <button onClick={function(){
-                          if(!window.confirm("Se agregan "+recuperables.length+" producto"+(recuperables.length===1?"":"s")+" sacados de las órdenes y los precios anteriores:\n\n"+recuperables.map(function(x){return "· "+x.nombre;}).join("\n")+"\n\nDespués podés borrar los que no quieras y tocar Guardar."))return;
-                          setProds(function(a){ var n={...a}; n[sel]=[...(n[sel]||[]),...recuperables]; return n; });
-                        }} style={{...BS("#1A6B8A"),padding:"6px 12px",fontSize:11,flexShrink:0}}>♻️ Recuperar</button>
-                      </div>
-                      <div style={{fontSize:9,color:"#3A5560",marginTop:5}}>Se agregan a la lista de acá abajo; no se guardan hasta que toques ✓ Guardar.</div>
-                    </div>
-                  );
-                })()}
                 <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
                   <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
                   <select value={newProd.unidad} onChange={function(e){setNewProd(function(n){return{...n,unidad:e.target.value};});}} style={{...INP,width:80,flexShrink:0}}>

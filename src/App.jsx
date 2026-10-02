@@ -2308,6 +2308,7 @@ function GestProveedoresPanel(p) {
   var [edProd,setEdProd]=useState(null);
   var [tabSel,setTabSel]=useState("productos"); // productos | saldos
   var [showFormMov,setShowFormMov]=useState(false);
+  var [editMovId,setEditMovId]=useState(null); // movimiento que se está editando, o null si es alta
   var [preciosLocal,setPreciosLocal]=useState(p.precios||{});
   var [guardando,setGuardando]=useState(false);
   var [guardadoOk,setGuardadoOk]=useState(false);
@@ -2344,10 +2345,25 @@ function GestProveedoresPanel(p) {
     setEditSaldoInicial(null);
   }
 
+  // Editar un movimiento existente. El tipo no se cambia (un pago genera su egreso y una
+  // compra no): para eso se borra y se vuelve a cargar. Si es un pago, también se actualiza
+  // el egreso que generó, que se reconoce por su id "egr_prov_"+id del movimiento.
+  function abrirEditarMov(m){
+    var eg=(p.gastos||[]).find(function(g){return g.id==="egr_prov_"+m.id;});
+    if(eg&&Array.isArray(eg.pagos)&&eg.pagos.length>1){
+      alert("Este pago está repartido en varios medios en Egresos. Editalo desde ahí.");
+      return;
+    }
+    setFormMov({tipo:m.tipo,local:m.local,monto:String(m.monto),medio_pago:m.tipo==="pago"?(m.medio_pago||""):"",fecha:m.fecha||new Date().toISOString().split("T")[0],
+      notas:m.notas||"",facturado:eg?!!eg.facturado:false,facturacion:eg&&eg.facturado?(eg.facturacion||""):""});
+    setEditMovId(m.id);
+    setShowFormMov(true);
+  }
   function doSaveMov(){
     if(!formMov.monto||!sel)return;
-    var movId=String(Date.now());
-    var mov={id:movId,prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:p.usuario||"",created_at:new Date().toISOString()};
+    var editando=editMovId?saldos.find(function(m){return m.id===editMovId;}):null;
+    var movId=editando?editando.id:String(Date.now());
+    var mov={id:movId,prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:editando?(editando.usuario||p.usuario||""):(p.usuario||""),created_at:editando?(editando.created_at||new Date().toISOString()):new Date().toISOString()};
     if(onSaveMov)onSaveMov(mov);
     // Si es pago, generar egreso automático en Egresos → Proveedores. Queda atado al
     // movimiento guardando mov_id adentro de "pagos" (que ya es JSON libre, así no hace
@@ -2374,8 +2390,19 @@ function GestProveedoresPanel(p) {
         usuario:p.usuario||"",
         created_at:new Date().toISOString()
       };
+      // Al editar se parte del egreso que ya existe, para no pisar lo que se haya corregido a
+      // mano en Egresos (subrubro, detalle...): sólo cambian los datos del movimiento.
+      var egPrevio=editando?(p.gastos||[]).find(function(g){return g.id===egreso.id;}):null;
+      if(egPrevio){
+        var pg0=(Array.isArray(egPrevio.pagos)&&egPrevio.pagos[0])||{};
+        egreso={...egPrevio,local:egreso.local,monto:egreso.monto,forma_pago:egreso.forma_pago,
+          pagos:[{...pg0,medio:egreso.forma_pago,monto:egreso.monto,mov_id:movId}],
+          facturado:egreso.facturado,facturacion:egreso.facturacion,fecha:egreso.fecha,
+          notas:formMov.notas||egPrevio.notas};
+      }
       p.onSaveEgreso(egreso);
     }
+    setEditMovId(null);
     setShowFormMov(false);
     setFormMov({tipo:"compra",local:"l1",monto:"",medio_pago:"",fecha:new Date().toISOString().split("T")[0],notas:"",facturado:false,facturacion:""});
   }
@@ -2503,7 +2530,7 @@ function GestProveedoresPanel(p) {
                   </div>
                   {/* Botón nuevo movimiento */}
                   <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-                    <button onClick={function(){setShowFormMov(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar movimiento</button>
+                    <button onClick={function(){setEditMovId(null);setShowFormMov(true);}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar movimiento</button>
                   </div>
                   {/* Historial */}
                   {movsProv.length===0?(
@@ -2524,6 +2551,7 @@ function GestProveedoresPanel(p) {
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <span style={{fontSize:13,fontWeight:800,color:m.tipo==="compra"?"#C1440E":"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{m.tipo==="compra"?"+":"-"}{fmt(m.monto)}</span>
+                              <button onClick={function(){abrirEditarMov(m);}} title="Editar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>✏️</button>
                               <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteMov(m.id);}} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
                             </div>
                           </div>
@@ -2537,11 +2565,11 @@ function GestProveedoresPanel(p) {
                   {showFormMov&&(
                     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
                       <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #D4A01744"}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#D4A017",marginBottom:14}}>Registrar movimiento</div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#D4A017",marginBottom:14}}>{editMovId?"Editar movimiento":"Registrar movimiento"}</div>
                         {/* Tipo */}
                         <div style={{display:"flex",gap:6,marginBottom:10}}>
                           {[["compra","📦 Compra","#C1440E"],["pago","💸 Pago","#3A7D44"]].map(function(t){return(
-                            <button key={t[0]} onClick={function(){setFormMov(function(f){return{...f,tipo:t[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formMov.tipo===t[0]?t[2]:"#2A2A2A"),background:formMov.tipo===t[0]?t[2]+"22":"#0F0F0F",color:formMov.tipo===t[0]?t[2]:"#8C8C8C",fontWeight:700,cursor:"pointer",fontSize:12}}>{t[1]}</button>
+                            <button key={t[0]} disabled={!!editMovId&&formMov.tipo!==t[0]} onClick={function(){if(editMovId)return;setFormMov(function(f){return{...f,tipo:t[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formMov.tipo===t[0]?t[2]:"#2A2A2A"),background:formMov.tipo===t[0]?t[2]+"22":"#0F0F0F",color:formMov.tipo===t[0]?t[2]:"#8C8C8C",fontWeight:700,cursor:"pointer",fontSize:12}}>{t[1]}</button>
                           );})}
                         </div>
                         {/* Local */}
@@ -2605,7 +2633,7 @@ function GestProveedoresPanel(p) {
                         </div>
                         <div style={{display:"flex",gap:8}}>
                           <button onClick={doSaveMov} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Guardar</button>
-                          <button onClick={function(){setShowFormMov(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                          <button onClick={function(){setShowFormMov(false);setEditMovId(null);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
                         </div>
                       </div>
                     </div>
@@ -20365,7 +20393,7 @@ export default function App() {
   function renderGestProveedores(){
     return (
       <GestProveedoresPanel proveedores={proveedores} productos={productos} precios={precios} ordenes={ordenes}
-        saldos={saldosProveedores} usuario={cu.nombre}
+        saldos={saldosProveedores} gastos={gastos} usuario={cu.nombre}
         onSave={async function(pv,pd,provIdActivo){
           // Solo guardar el proveedor activo y sus productos
           var pvActivo=pv.find(function(x){return x.id===provIdActivo;});
@@ -20392,7 +20420,7 @@ export default function App() {
           setProveedores(pv);setProductos(pdFinal);
         }}
         onDelete={function(id){sbDeleteProveedor(id);setProveedores(function(prev){return prev.filter(function(pv){return pv.id!==id;});});}}
-        onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev];});}}
+        onSaveMov={function(mov){sbSaveSaldoProv(mov);setSaldosProveedores(function(prev){return[mov,...prev.filter(function(m){return m.id!==mov.id;})];});}}
         onDeleteMov={function(id){sbDeleteSaldoProv(id);setSaldosProveedores(function(prev){return prev.filter(function(m){return m.id!==id;});});}}
         onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}
         onSaveProveedor={function(pv){sbSaveProveedor(pv);setProveedores(function(prev){return[pv,...prev];});}}

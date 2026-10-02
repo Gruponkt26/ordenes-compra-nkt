@@ -14137,6 +14137,13 @@ function PanelCierre(p) {
             </div>
           </div>
 
+          {(parseFloat(form.retiro_caja)||0)>0&&(
+            <div style={{background:"#1A1426",border:"1px solid #8B6BB844",borderRadius:10,padding:"10px 13px",marginBottom:12,fontSize:12,color:"#C8B8E8",lineHeight:1.5}}>
+              💼 Retiro de caja ya anotado: <b>${(parseFloat(form.retiro_caja)||0).toLocaleString("es-AR")}</b>{form.retiro_caja_nota?" ("+form.retiro_caja_nota+")":""}
+              <div style={{fontSize:10,color:"#8A7AAA",marginTop:2}}>Lo hizo Administración. No se puede editar desde acá ni cambia el total.</div>
+            </div>
+          )}
+
           <div style={{background:"#1A1A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Total calculado</div>
             <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${calcTotal(form).toLocaleString("es-AR")}</div>

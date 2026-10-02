@@ -10368,6 +10368,39 @@ function PanelNovedades(p){
           <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} nota="Mismo mes que la tarjeta de IVA. "/>
         </Seccion>
 
+        {(function(){
+          // Las órdenes de compra que se emitieron en el período: borrador es lo que todavía
+          // no se emitió, así que no cuenta.
+          var emitidas=(p.ordenes||[]).filter(function(o){return o.status&&o.status!=="borrador"&&enRango(o.fecha);})
+            .sort(function(a,b){return String(b.createdAt||b.fecha||"").localeCompare(String(a.createdAt||a.fecha||""));});
+          var ST={pendiente:["Pendiente","#D4A017"],enviada:["Enviada","#4A9AC8"],confirmada:["Confirmada","#4C9A5A"],cancelada:["Cancelada","#C1440E"]};
+          var totalOrden=function(o){return (o.provSections||[]).reduce(function(a,sec){return a+(sec.items||[]).reduce(function(b,i){return b+(parseFloat(i.cantidad||0)||0)*(parseFloat(i.precio||0)||0);},0);},0);};
+          var provsDe=function(o){return (o.provSections||[]).filter(function(sec){return (sec.items||[]).length>0;}).map(function(sec){var pv=(proveedores||[]).find(function(x){return x.id===sec.provId;});return pv?pv.nombre:"";}).filter(Boolean).join(", ");};
+          var porLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return {l:l,n:emitidas.filter(function(o){return o.local===l.id&&o.status!=="cancelada";}).length};}).filter(function(x){return x.n>0;});
+          return(
+            <Seccion titulo={"📋 Órdenes de compra · "+etiquetaRango} color="#C1440E">
+              {emitidas.length===0?(
+                <div style={vacio}>No se emitió ninguna orden de compra {etiquetaRango}.</div>
+              ):(
+                <div>
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:11,color:"#9A9A9A",marginBottom:6}}>
+                    <span><b style={{color:"#F0EDE8"}}>{emitidas.length}</b> emitida{emitidas.length===1?"":"s"}</span>
+                    {porLocal.map(function(x){return <span key={x.l.id} style={{color:x.l.color}}>{x.l.emoji} {x.l.nombre}: {x.n}</span>;})}
+                  </div>
+                  {(expandido.ordenes?emitidas:emitidas.slice(0,6)).map(function(o,i){
+                    var l=getLocal(o.local); var st=ST[o.status]||["","#8C8C8C"]; var t=totalOrden(o);
+                    return <Fila key={o.id} primera={i===0}
+                      izq={<span>{l?l.emoji+" "+l.nombre:o.local}<span style={{color:"#7E7E7E"}}> · {o.id}</span></span>}
+                      detalle={(provsDe(o)||"Sin proveedores")+(rango!=="hoy"&&o.fecha?" · "+fmtDate(o.fecha):"")}
+                      der={<span><span style={{color:st[1]}}>{st[0]}</span>{t>0?<span style={{color:"#C8C8C8"}}> · {fmt(t)}</span>:null}</span>} color="#C8C8C8"/>;
+                  })}
+                  <Mas id="ordenes" n={expandido.ordenes?0:emitidas.length-6}/>
+                </div>
+              )}
+            </Seccion>
+          );
+        })()}
+
         <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
           {resumenLocales.map(function(x,i){
@@ -20694,7 +20727,7 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades ordenes={ordenes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}

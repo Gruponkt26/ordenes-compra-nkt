@@ -7336,7 +7336,7 @@ function PanelEgresos(p){
   // de Egresos coincida con el de Ventas y Egresos.
   function costosCalc(lid, mes){
     var eg=egresosOperativos(gastos,p.sueldos,p.adelantos||[],lid,mes,p.cierres||[],(p.retiros||[]).filter(esMovDinero));
-    var filas=[["IIBB retenido (2% de lo electrónico)",eg.iibbEgreso||0],["Impuesto al crédito (0,6%)",eg.impCredEgreso||0],["Impuesto al débito (0,6%)",eg.impDebEgreso||0],["Comisiones del procesador",eg.comisionEgreso||0]];
+    var filas=[["IIBB retenido ("+pctIIBB()+"% de lo electrónico)",eg.iibbEgreso||0],["Impuesto al crédito (0,6%)",eg.impCredEgreso||0],["Impuesto al débito (0,6%)",eg.impDebEgreso||0],["Comisiones del procesador",eg.comisionEgreso||0]];
     return {filas:filas,total:filas.reduce(function(a,f){return a+f[1];},0)};
   }
   if(vistaGrid){
@@ -9772,10 +9772,10 @@ function BloquesIIBBPorCuit(props){
                 );
               })}
               <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
-                Mismo mes que la tarjeta de IVA. Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
+                Mismo mes que la tarjeta de IVA. Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos ({pctIIBB()} % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
               </div>
       <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
-        {props.nota||""}Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos (2 % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
+        {props.nota||""}Estimación: alícuota {(ALICUOTA_IIBB_CUIT.f1*100).toFixed(1).replace(".",",")} % sobre todas las ventas sin IVA, menos lo retenido por los bancos ({pctIIBB()} % de lo cobrado electrónico) y las percepciones. No incluye otras retenciones (SIRCREB), ni anticipos ni saldos a favor de meses anteriores.
       </div>
     </div>
   );
@@ -10424,7 +10424,7 @@ function PanelNovedades(p){
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
                     </div>
                     {o.iibbAFavor>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#4C9A5A",marginTop:5}}><span>IIBB a favor · percepciones Coca Cola ({(PERCEPCION_IIBB_COCA*100).toFixed(2).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbAFavor)}</span></div>}
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#7E7E7E",marginTop:5}}><span>IIBB retenido por los bancos ({Math.round(ALICUOTA_IIBB*100)}% de lo cobrado electrónico)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbRetenido)}</span></div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#7E7E7E",marginTop:5}}><span>IIBB retenido por los bancos ({pctIIBB()}% de lo cobrado electrónico)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbRetenido)}</span></div>
                   </div>
                 );
               })}
@@ -12995,7 +12995,9 @@ function ivaAReservar(c){
 var MES_AUTOMATICO="2026-09";
 function calculaAutomatico(mes){ return String(mes||"")>=MES_AUTOMATICO; }
 
-var ALICUOTA_IIBB=0.02;
+var ALICUOTA_IIBB=0.025;
+// "2,5" para los textos: así un cambio de alícuota se ve en todas las pantallas.
+function pctIIBB(){ return String(Math.round(ALICUOTA_IIBB*1000)/10).replace(".",","); }
 
 // IVA de un mes por CUIT, para la tarjeta de Novedades. Misma lógica que la posición por CUIT de
 // la pantalla de IVA —débito de las ventas electrónicas facturadas, crédito de las facturas
@@ -15280,7 +15282,7 @@ function PanelVentasEgresos(p){
               <thead>
                 <tr>
                   <th style={{...TH,textAlign:"left"}}>Local</th>
-                  <th style={{...TH,textAlign:"right"}}>IIBB 2%</th>
+                  <th style={{...TH,textAlign:"right"}}>IIBB {pctIIBB()}%</th>
                   <th style={{...TH,textAlign:"right"}}>Imp. crédito</th>
                   <th style={{...TH,textAlign:"right"}}>Imp. débito</th>
                   <th style={{...TH,textAlign:"right"}}>Comisiones</th>

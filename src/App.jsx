@@ -10389,10 +10389,44 @@ function PanelNovedades(p){
                   </div>
                   {(expandido.ordenes?emitidas:emitidas.slice(0,6)).map(function(o,i){
                     var l=getLocal(o.local); var st=ST[o.status]||["","#8C8C8C"]; var t=totalOrden(o);
-                    return <Fila key={o.id} primera={i===0}
-                      izq={<span>{l?l.emoji+" "+l.nombre:o.local}<span style={{color:"#7E7E7E"}}> · {o.id}</span></span>}
-                      detalle={(provsDe(o)||"Sin proveedores")+(rango!=="hoy"&&o.fecha?" · "+fmtDate(o.fecha):"")}
-                      der={<span><span style={{color:st[1]}}>{st[0]}</span>{t>0?<span style={{color:"#C8C8C8"}}> · {fmt(t)}</span>:null}</span>} color="#C8C8C8"/>;
+                    var abierta=!!expandido["ord_"+o.id];
+                    return(
+                      <div key={o.id}>
+                        <Fila primera={i===0}
+                          onClick={function(){setExpandido(function(e){var n={...e};n["ord_"+o.id]=!e["ord_"+o.id];return n;});}}
+                          izq={<span>{l?l.emoji+" "+l.nombre:o.local}<span style={{color:"#7E7E7E"}}> · {o.id}</span></span>}
+                          detalle={(provsDe(o)||"Sin proveedores")+(rango!=="hoy"&&o.fecha?" · "+fmtDate(o.fecha):"")}
+                          der={<span><span style={{color:st[1]}}>{st[0]}</span>{t>0?<span style={{color:"#C8C8C8"}}> · {fmt(t)}</span>:null}</span>} color="#C8C8C8"/>
+                        {abierta&&(
+                          <div style={{background:"#080808",border:"1px solid #1A1A1A",borderRadius:8,padding:"9px 11px",margin:"2px 0 6px"}}>
+                            <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6,lineHeight:1.6}}>
+                              {o.fecha?"Fecha "+fmtDate(o.fecha):""}{o.fechaEntrega?" · Entrega "+fmtDate(o.fechaEntrega):""}{o.emisor?" · Emitió "+o.emisor:""}
+                            </div>
+                            {(o.provSections||[]).filter(function(sec){return (sec.items||[]).length>0;}).map(function(sec,si){
+                              var pv=(proveedores||[]).find(function(x){return x.id===sec.provId;});
+                              var sub=(sec.items||[]).reduce(function(a,it){return a+(parseFloat(it.cantidad||0)||0)*(parseFloat(it.precio||0)||0);},0);
+                              return(
+                                <div key={si} style={{marginTop:si===0?0:8}}>
+                                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"#D4A017",marginBottom:3}}>
+                                    <span>{pv?pv.nombre:"Proveedor"}</span>{sub>0&&<span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(sub)}</span>}
+                                  </div>
+                                  {(sec.items||[]).map(function(it,ii){
+                                    var pr=parseFloat(it.precio||0)||0;
+                                    return(
+                                      <div key={ii} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#B8B8B8",padding:"1.5px 0"}}>
+                                        <span>{it.nombre}</span>
+                                        <span style={{color:"#8C8C8C",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{it.cantidad} {it.unidad||""}{pr>0?" · "+fmt(pr):""}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                            {o.notas&&<div style={{fontSize:10.5,color:"#8C8C8C",marginTop:8,paddingTop:6,borderTop:"1px solid #141414",whiteSpace:"pre-wrap"}}>📝 {o.notas}</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
                   })}
                   <Mas id="ordenes" n={expandido.ordenes?0:emitidas.length-6}/>
                 </div>

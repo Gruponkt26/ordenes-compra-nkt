@@ -10542,13 +10542,11 @@ function PanelNovedades(p){
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IVA a pagar":"Saldo a favor"}</span>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
                     </div>
-                    {o.iibbAFavor>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#4C9A5A",marginTop:5}}><span>IIBB a favor · percepciones Coca Cola ({(PERCEPCION_IIBB_COCA*100).toFixed(2).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbAFavor)}</span></div>}
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#7E7E7E",marginTop:5}}><span>IIBB retenido por los bancos ({pctIIBB()}% de lo cobrado electrónico)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.iibbRetenido)}</span></div>
                   </div>
                 );
               })}
               <div style={{fontSize:9.5,color:"#6A6A6A",lineHeight:1.5,marginTop:6,borderTop:"1px solid #141414",paddingTop:7}}>
-                Los CUIT no se compensan entre sí. El IVA de comisiones supone que el banco o Mercado Pago factura a ese CUIT. El IIBB es lo retenido, no la liquidación del mes.
+                Los CUIT no se compensan entre sí. El IVA de comisiones supone que el banco o Mercado Pago factura a ese CUIT.
               </div>
             </Seccion>
           );

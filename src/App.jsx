@@ -10256,7 +10256,7 @@ function PanelNovedades(p){
                 <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
                   <span>{a.rojo?"🚨":"⚠️"} {a.txt}</span>
                   {a.cargarEg&&(
-                    <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios))});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
+                    <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
                   )}
                   {a.resolverId&&(
                     <button onClick={function(){p.onResolverAvisoCaja(a.resolverId);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Resuelto</button>
@@ -10355,8 +10355,9 @@ function PanelNovedades(p){
           if(guardandoEgCaja)return;
           if(!egCajaForm.concepto.trim()){alert("Poné en qué se gastó.");return;}
           if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
+          if(egCajaForm.facturado&&!egCajaForm.facturacion){alert("Elegí a qué CUIT está facturado.");return;}
           setGuardandoEgCaja(true);
-          Promise.resolve(p.onCargarEgresoCaja(c,{concepto:egCajaForm.concepto.trim(),area:egCajaForm.area,monto:monto})).then(function(ok){
+          Promise.resolve(p.onCargarEgresoCaja(c,{concepto:egCajaForm.concepto.trim(),area:egCajaForm.area,monto:monto,facturado:!!egCajaForm.facturado,facturacion:egCajaForm.facturado?egCajaForm.facturacion:""})).then(function(ok){
             setGuardandoEgCaja(false);
             if(ok)setEgCajaForm(null);
           });
@@ -10381,6 +10382,18 @@ function PanelNovedades(p){
                   <label style={lbl}>Monto</label>
                   <input type="number" value={egCajaForm.monto} onChange={function(e){setF("monto",e.target.value);}} style={campo}/>
                 </div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!egCajaForm.facturado} onChange={function(e){setF("facturado",e.target.checked);}}/>
+                  Tiene factura
+                </label>
+                {egCajaForm.facturado&&(
+                  <select value={egCajaForm.facturacion} onChange={function(e){setF("facturacion",e.target.value);}} style={{...campo,marginTop:6}}>
+                    <option value="">-- Seleccioná CUIT --</option>
+                    {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
+                  </select>
+                )}
               </div>
               <div style={{background:"#12100A",border:"1px solid #D4A01733",borderRadius:10,padding:"10px 12px",fontSize:11.5,color:"#C8B070",lineHeight:1.6}}>
                 Al confirmar se hacen dos cosas juntas:
@@ -20267,7 +20280,7 @@ export default function App() {
     var ok=await guardarCierre(cierre);
     if(!ok)return false;
     var g={id:"egcaja_"+c.id,local:c.local,concepto:d.concepto,subramo:"",detalle:"Egreso de caja menor anotado en el cierre del "+c.fecha,
-      monto:d.monto,forma_pago:medio,facturado:false,facturacion:"",categoria:d.area,area:d.area,
+      monto:d.monto,forma_pago:medio,facturado:!!d.facturado,facturacion:d.facturado?d.facturacion:"",categoria:d.area,area:d.area,
       notas:"Cargado desde Novedades",fecha:c.fecha,usuario:quien,created_at:new Date().toISOString(),
       pagos:[{medio:medio,monto:d.monto}]};
     sbSaveGasto(g);

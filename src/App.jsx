@@ -14129,22 +14129,6 @@ function PanelCierre(p) {
             </div>
           </div>
 
-          {/* Retiro diario de caja: sólo queda anotado, no se resta de nada. */}
-          <div style={{background:"#0F0F0F",border:"1px solid #2A2A2A",borderRadius:10,padding:"12px",marginBottom:12}}>
-            <div style={{fontSize:10,color:"#9A9A9A",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>💼 Retiro diario de caja</div>
-            <div style={{fontSize:10,color:"#7E7E7E",marginBottom:10}}>Sólo para dejarlo anotado: no afecta el total ni ningún cálculo.</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
-              <div>
-                <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Monto</label>
-                <input type="number" placeholder="0" value={form.retiro_caja} onChange={function(e){setForm(function(f){return{...f,retiro_caja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Detalle</label>
-                <input value={form.retiro_caja_nota} onChange={function(e){setForm(function(f){return{...f,retiro_caja_nota:e.target.value};});}} placeholder="Quién lo retiró..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
-              </div>
-            </div>
-          </div>
-
           <div style={{background:"#1A1A1A",borderRadius:10,padding:"10px 13px",marginBottom:12}}>
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Total calculado</div>
             <div style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:local?local.color:"#F0EDE8"}}>${calcTotal(form).toLocaleString("es-AR")}</div>

@@ -7331,6 +7331,14 @@ function PanelEgresos(p){
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
   // Vista mensual full screen
+  // IIBB retenido, impuestos al crédito y al débito y comisiones: no se cargan, los calcula la app
+  // (desde que corre el cálculo automático). Se muestran acá en solo lectura para que el total
+  // de Egresos coincida con el de Ventas y Egresos.
+  function costosCalc(lid, mes){
+    var eg=egresosOperativos(gastos,p.sueldos,p.adelantos||[],lid,mes,p.cierres||[],(p.retiros||[]).filter(esMovDinero));
+    var filas=[["IIBB retenido (2% de lo electrónico)",eg.iibbEgreso||0],["Impuesto al crédito (0,6%)",eg.impCredEgreso||0],["Impuesto al débito (0,6%)",eg.impDebEgreso||0],["Comisiones del procesador",eg.comisionEgreso||0]];
+    return {filas:filas,total:filas.reduce(function(a,f){return a+f[1];},0)};
+  }
   if(vistaGrid){
     return(
       <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Inter',sans-serif"}}>
@@ -7359,13 +7367,14 @@ function PanelEgresos(p){
             var totS=hasSG?0:slResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totAg=hasAG?0:agResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-            var tot=totG+totS+totAg+totR;
+            var ccTop=costosCalc(l.id,mesFiltroGrid);
+            var tot=totG+totS+totAg+totR+ccTop.total;
             var activo=localGrid===l.id;
             return(
               <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
-                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)} · Retiros {fmt(totR)}</div>
+                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
               </div>
             );
           })}
@@ -7403,7 +7412,8 @@ function PanelEgresos(p){
             var totExtraSueldos=hasSueldosGastos?0:(porArea["Sueldos"]||0);
             var totExtraAg=hasAguinaldosGastos?0:(porArea["Aguinaldos"]||0);
             var totR=rl.reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
-            var totTotal=totG+totExtraSueldos+totExtraAg+totR;
+            var cc=costosCalc(l.id,mesFiltroGrid);
+            var totTotal=totG+totExtraSueldos+totExtraAg+totR+cc.total;
             return(
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
@@ -7532,6 +7542,34 @@ function PanelEgresos(p){
                               <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
                             </div>
                           );})}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Impuestos y comisiones — los calcula la app, solo lectura */}
+                {cc.total>0&&(function(){
+                  var gkey=l.id+"_impcom";
+                  var abierto=expandidoGrid===gkey;
+                  return(
+                    <div style={{marginBottom:6}}>
+                      <div onClick={function(){setExpandidoGrid(function(prev){return prev===gkey?null:gkey;});}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 4px",borderBottom:"1px solid #1A1A1A",cursor:"pointer"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:8,color:"#8A6A2A",transform:abierto?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                          <span style={{fontSize:11,fontWeight:700,color:"#8A6A2A"}}>🏦 Impuestos y comisiones</span>
+                          <span style={{fontSize:9,color:"#7E7E7E"}}>(calculados)</span>
+                        </div>
+                        <span style={{fontSize:12,fontWeight:800,color:"#8A6A2A",fontFamily:"'Playfair Display',serif"}}>{fmt(cc.total)}</span>
+                      </div>
+                      {abierto&&(
+                        <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {cc.filas.filter(function(f){return f[1]>0;}).map(function(f){return(
+                            <div key={f[0]} style={{display:"flex",justifyContent:"space-between",padding:"3px 4px",fontSize:10}}>
+                              <span style={{color:"#888"}}>{f[0]}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f[1])}</span>
+                            </div>
+                          );})}
+                          <div style={{fontSize:9,color:"#6E6E6E",marginTop:5,lineHeight:1.5}}>Los calcula la app a partir de los cierres y de los pagos: no se cargan ni se borran acá. También figuran en Ventas y Egresos y en Resultados.</div>
                         </div>
                       )}
                     </div>
@@ -21072,7 +21110,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="egresos"&&(
-            <PanelEgresos gastos={gastos} usuario={cu.nombre} proveedores={proveedores}
+            <PanelEgresos gastos={gastos} usuario={cu.nombre} proveedores={proveedores} cierres={cierres} adelantos={adelantos}
               conceptosCustom={conceptosGastos}
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}

@@ -6249,6 +6249,8 @@ var CAJA_MAYOR_MEDIO_MAP={
   "caja mayor - kusama":"l2",
   "caja mayor - colantonio's":"l3","caja mayor - colantonios":"l3",
 };
+// Medio de pago "Caja Mayor" de cada local (el mismo texto que ofrece la lista de medios).
+var CAJA_MAYOR_POR_LOCAL={l1:"Caja Mayor - Bodegón",l2:"Caja Mayor - Kusama",l3:"Caja Mayor - Colantonio's"};
 function localDeCajaMayor(medio){
   if(!medio)return null;
   var k=medio.toLowerCase().trim();
@@ -9834,6 +9836,20 @@ function PanelNovedades(p){
   var [notaNueva,setNotaNueva]=useState("");
   var [notasAbierto,setNotasAbierto]=useState(false);
   var [iniAbierto,setIniAbierto]=useState(false);
+  // Egresos que el cajero anotó al cerrar y que todavía nadie cargó como gasto oficial. El
+  // gasto que se genera desde acá lleva un id fijo por cierre ("egcaja_"+id del cierre): eso
+  // es lo que lo marca como cargado, sin columnas nuevas, y evita duplicarlo con un doble click.
+  var [egCajaForm,setEgCajaForm]=useState(null);
+  var [guardandoEgCaja,setGuardandoEgCaja]=useState(false);
+  var egresosCajaPend=(function(){
+    var desde=new Date(hoy+"T12:00:00");desde.setDate(desde.getDate()-3);
+    var d=desde.getFullYear()+"-"+String(desde.getMonth()+1).padStart(2,"0")+"-"+String(desde.getDate()).padStart(2,"0");
+    var gs=p.gastos||[];
+    return cierres.filter(function(c){
+      return c.fecha&&c.fecha>=d&&parseFloat(c.egresos_diarios||0)>0&&egresoNeteado(c)===0&&CAJA_MAYOR_POR_LOCAL[c.local]
+        &&!gs.some(function(g){return g.id==="egcaja_"+c.id;});
+    }).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+  })();
   var [ivaAnterior,setIvaAnterior]=useState(false); // false: mes en curso | true: mes anterior (el que se declara)
   var [iniVal,setIniVal]=useState({});
   var mesCaja=hoyReal.substring(0,7);
@@ -10203,6 +10219,13 @@ function PanelNovedades(p){
           avisos.push({rojo:true, resolverId:a.id,
             txt:"Caja no coincide en "+(l?l.nombre:a.local)+" ("+fmtDate(a.fecha)+") — contó "+fmt(a.contado)+", se esperaba "+fmt(a.esperado)+" · diferencia "+(a.diferencia>=0?"+":"")+fmt(a.diferencia)});
         });
+        // Un egreso en efectivo que anotó el cajero: hay que cargarlo como gasto y, de paso, retirar
+        // esa plata de la caja menor a la Caja Mayor. Se hace todo con un click en "Cargar".
+        egresosCajaPend.forEach(function(c){
+          var l=getLocal(c.local);
+          avisos.push({rojo:false, cargarEg:c,
+            txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
+        });
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
         function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
         // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
@@ -10231,6 +10254,9 @@ function PanelNovedades(p){
               return (
                 <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":"#D4A017",padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
                   <span>{a.rojo?"🚨":"⚠️"} {a.txt}</span>
+                  {a.cargarEg&&(
+                    <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios))});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
+                  )}
                   {a.resolverId&&(
                     <button onClick={function(){p.onResolverAvisoCaja(a.resolverId);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Resuelto</button>
                   )}
@@ -10314,6 +10340,57 @@ function PanelNovedades(p){
                 color={a.dias===0?"#D4A017":"#B8963A"}/>;
             })}
             <button onClick={function(){p.irVencimientos();}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10,cursor:"pointer",padding:"7px 0 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>Ver en Vencimientos →</button>
+          </div>
+        );
+      })()}
+
+      {egCajaForm&&(function(){
+        var c=egCajaForm.cierre, l=getLocal(c.local);
+        var campo={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+        var lbl={display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5};
+        var monto=parseFloat(egCajaForm.monto)||0;
+        function setF(k,v){setEgCajaForm(function(f){var n={...f};n[k]=v;return n;});}
+        function confirmar(){
+          if(guardandoEgCaja)return;
+          if(!egCajaForm.concepto.trim()){alert("Poné en qué se gastó.");return;}
+          if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
+          setGuardandoEgCaja(true);
+          Promise.resolve(p.onCargarEgresoCaja(c,{concepto:egCajaForm.concepto.trim(),area:egCajaForm.area,monto:monto})).then(function(ok){
+            setGuardandoEgCaja(false);
+            if(ok)setEgCajaForm(null);
+          });
+        }
+        return(
+          <div onClick={function(){setEgCajaForm(null);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div onClick={function(e){e.stopPropagation();}} style={{background:"#0C0C0C",border:"1px solid #2A2A2A",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:400,maxHeight:"85vh",overflowY:"auto"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>Cargar egreso de caja</div>
+              <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>{l?l.emoji+" "+l.nombre:c.local} · {fmtDate(c.fecha)}</div>
+              <div style={{marginBottom:10}}>
+                <label style={lbl}>En qué se gastó</label>
+                <input value={egCajaForm.concepto} onChange={function(e){setF("concepto",e.target.value);}} placeholder="Ej: hielo" style={campo}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
+                <div>
+                  <label style={lbl}>Área</label>
+                  <select value={egCajaForm.area} onChange={function(e){setF("area",e.target.value);}} style={campo}>
+                    {AREAS_BASE.filter(function(a){return !esAreaSocios(a);}).map(function(a){return <option key={a} value={a}>{a}</option>;})}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Monto</label>
+                  <input type="number" value={egCajaForm.monto} onChange={function(e){setF("monto",e.target.value);}} style={campo}/>
+                </div>
+              </div>
+              <div style={{background:"#12100A",border:"1px solid #D4A01733",borderRadius:10,padding:"10px 12px",fontSize:11.5,color:"#C8B070",lineHeight:1.6}}>
+                Al confirmar se hacen dos cosas juntas:
+                <div>1. Retiro de caja menor de {l?l.nombre:c.local} a Caja Mayor por <b>{fmt(monto)}</b>.</div>
+                <div>2. Gasto oficial por <b>{fmt(monto)}</b>, pagado con {CAJA_MAYOR_POR_LOCAL[c.local]}.</div>
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:12}}>
+                <button onClick={function(){setEgCajaForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+                <button onClick={confirmar} disabled={guardandoEgCaja} style={{flex:2,padding:"9px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:guardandoEgCaja?"not-allowed":"pointer"}}>{guardandoEgCaja?"Cargando...":"Cargar gasto y retiro"}</button>
+              </div>
+            </div>
           </div>
         );
       })()}
@@ -20174,6 +20251,28 @@ export default function App() {
     setGuardandoRetiroMenor(false);
     setRetiroMenorForm(null);
   }
+  // Del aviso de Novedades: un egreso que el cajero anotó en el cierre. En un solo paso saca
+  // esa plata de la caja menor (retiro a Caja Mayor, en el mismo cierre) y carga el gasto
+  // oficial pagado con la Caja Mayor del local. El retiro va primero: si falla, no se carga
+  // el gasto y el aviso sigue ahí para reintentar sin duplicar nada.
+  async function cargarEgresoDeCaja(c,d){
+    var medio=CAJA_MAYOR_POR_LOCAL[c.local];
+    if(!medio||gastos.some(function(g){return g.id==="egcaja_"+c.id;}))return false;
+    var quien=cu&&cu.nombre?cu.nombre:"Administración";
+    var notaNueva="Egreso de caja — "+d.concepto+" ("+quien+")";
+    var cierre={...c,
+      retiro_caja:(parseFloat(c.retiro_caja)||0)+d.monto,
+      retiro_caja_nota:c.retiro_caja_nota?c.retiro_caja_nota+" · "+notaNueva:notaNueva};
+    var ok=await guardarCierre(cierre);
+    if(!ok)return false;
+    var g={id:"egcaja_"+c.id,local:c.local,concepto:d.concepto,subramo:"",detalle:"Egreso de caja menor anotado en el cierre del "+c.fecha,
+      monto:d.monto,forma_pago:medio,facturado:false,facturacion:"",categoria:d.area,area:d.area,
+      notas:"Cargado desde Novedades",fecha:c.fecha,usuario:quien,created_at:new Date().toISOString(),
+      pagos:[{medio:medio,monto:d.monto}]};
+    sbSaveGasto(g);
+    setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});
+    return true;
+  }
   function guardarIdea(x){
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
   }
@@ -20861,6 +20960,7 @@ export default function App() {
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
+              onCargarEgresoCaja={cargarEgresoDeCaja}
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}

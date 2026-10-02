@@ -6403,7 +6403,7 @@ function fechaAcreditacionDebito(fechaCierre){
   return addBusinessDays(fechaCierre,2);
 }
 
-var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa"];
+var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa","penca","balde"];
 
 // Los productos de un proveedor viven en su propia tabla, pero su nombre quedó grabado en
 // cada orden que se le pidió y en cada precio que se le cargó. Si esa lista se pierde, se

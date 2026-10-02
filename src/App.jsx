@@ -6947,6 +6947,36 @@ var GRUPOS_MEDIOS_EGRESO=["Efectivo","Caja Mayor","Transferencia","Tarjeta","Otr
 // en estas áreas; al pagarla se edita el egreso y se cambia el medio por el real.
 var AREAS_CON_DEUDA=["Administrativo","Marketing","Obras","Mantenimiento"];
 function esMedioDeuda(medio){ return String(medio||"").toLowerCase().trim().startsWith("deuda"); }
+// Una deuda se paga entera, con una fecha y un medio: ese pago queda dentro de `pagos` con su
+// fecha_pago. El gasto sigue en el mes en que nació (resultado), pero la plata salió el día del
+// pago. La "vista de caja" parte cada pago con fecha_pago en su propio movimiento fechado ese
+// día, para que la disponibilidad y Ventas y Egresos lo cuenten en el mes en que se pagó.
+function gastosEnVistaCaja(gastos){
+  var out=[];
+  (gastos||[]).forEach(function(g){
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:null;
+    if(!pagos||!pagos.some(function(pg){return pg.fecha_pago;})){out.push(g);return;}
+    var resto=pagos.filter(function(pg){return !pg.fecha_pago;});
+    out.push({...g,pagos:resto.length>0?resto:[{medio:"Pagado luego",monto:0}]});
+    pagos.filter(function(pg){return pg.fecha_pago;}).forEach(function(pg,i){
+      var sinFecha={...pg};delete sinFecha.fecha_pago;
+      out.push({...g,id:g.id+"_pago"+i,fecha:pg.fecha_pago,monto:parseFloat(pg.monto||0)||0,forma_pago:pg.medio||pg.tipo||g.forma_pago,pagos:[sinFecha]});
+    });
+  });
+  return out;
+}
+// Cuánto hay que sumarle o restarle a lo que figura en `mes` por el gasto g, por los pagos de
+// deuda hechos en otro mes: lo que se pagó este mes pero nació en otro suma; lo que nació este
+// mes y se pagó en otro, resta.
+function ajusteCajaDelMes(g, mes){
+  if(!g||!g.fecha||!g.pagos)return 0;
+  var origenEnMes=g.fecha.substring(0,7)===mes?1:0;
+  return g.pagos.reduce(function(a,pg){
+    if(!pg.fecha_pago)return a;
+    var m=parseFloat(pg.monto||0)||0;
+    return a+m*((String(pg.fecha_pago).substring(0,7)===mes?1:0)-origenEnMes);
+  },0);
+}
 function montoDeudaDeGasto(g){
   var pagos=(g&&g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g&&g.forma_pago,monto:g&&g.monto}];
   return pagos.reduce(function(a,pg){return esMedioDeuda(pg.medio||pg.tipo)?a+(parseFloat(pg.monto||0)||0):a;},0);
@@ -6967,6 +6997,19 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [editId,setEditId]=useState(null);
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
+  // Pagar una deuda (entera): se elige cuándo y con qué se pagó.
+  var [pagarDeuda,setPagarDeuda]=useState(null); // null | {g, fecha, medio}
+  function confirmarPagoDeuda(){
+    var pd=pagarDeuda;
+    if(!pd||!pd.medio||!pd.fecha)return;
+    var g=pd.g;
+    var base=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
+    var pagos=base.map(function(pg){
+      return esMedioDeuda(pg.medio||pg.tipo)?{...pg,medio:pd.medio,fecha_pago:pd.fecha,deuda_origen:true}:pg;
+    });
+    onSave({...g,pagos:pagos,forma_pago:esMedioDeuda(g.forma_pago)?pd.medio:g.forma_pago});
+    setPagarDeuda(null);
+  }
 
   var grupos_medios=AREAS_CON_DEUDA.indexOf(area)!==-1?GRUPOS_MEDIOS_EGRESO.concat(["Deuda"]):GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
@@ -7046,7 +7089,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   function abrirEditar(g){
     setEditId(g.id);
     setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Caja Mayor - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
-    setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Caja Mayor - Bodegón",monto:String(g.monto||"")}]);
+    setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0),fecha_pago:p.fecha_pago,deuda_origen:p.deuda_origen};}): [{medio:g.forma_pago||"Caja Mayor - Bodegón",monto:String(g.monto||"")}]);
     setShowForm(true);
   }
 
@@ -7100,6 +7143,8 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
                     {cruzado&&<div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>↔️ Cruzado {locMedio?locMedio.emoji+locMedio.nombre:""}</div>}
+                    {montoDeudaDeGasto(g)>0&&<div style={{fontSize:9,color:"#E0714A",background:"#E0714A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>🕓 Deuda</div>}
+                    {(g.pagos||[]).some(function(pg){return pg.deuda_origen;})&&<div style={{fontSize:9,color:"#4C9A5A",background:"#4C9A5A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>✓ Deuda pagada el {fmtDate((g.pagos.find(function(pg){return pg.deuda_origen;})||{}).fecha_pago)}</div>}
                   </div>
                   <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
@@ -7112,12 +7157,36 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                     {cruzado&&<div style={{fontSize:9,color:"#1A6B8A"}}>no sumado</div>}
                     {g.facturado&&!cruzado&&<div style={{fontSize:9,color:"#3A7D44"}}>✅ Fact.</div>}
                   </div>
+                  {montoDeudaDeGasto(g)>0&&<button onClick={function(){setPagarDeuda({g:g,fecha:hoy,medio:""});}} style={{background:"#3A7D4422",border:"1px solid #3A7D4466",borderRadius:7,padding:"4px 8px",color:"#4C9A5A",fontSize:11,fontWeight:700,cursor:"pointer"}}>💸 Pagar</button>}
                   <button onClick={function(){abrirEditar(g);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"4px 8px",color:"#8C8C8C",fontSize:11,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete(g.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,padding:"4px 8px",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {pagarDeuda&&(
+        <div onClick={function(){setPagarDeuda(null);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#111",border:"1px solid #2A2A2A",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:380}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>💸 Pagar deuda</div>
+            <div style={{fontSize:12,color:"#9A9A9A",marginBottom:12}}>{pagarDeuda.g.concepto} · {fmt(montoDeudaDeGasto(pagarDeuda.g))}</div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fecha de pago</label>
+            <input type="date" value={pagarDeuda.fecha} onChange={function(e){var v=e.target.value;setPagarDeuda(function(d){return {...d,fecha:v};});}} style={{...INP,marginBottom:10}}/>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Medio de pago</label>
+            <select value={pagarDeuda.medio} onChange={function(e){var v=e.target.value;setPagarDeuda(function(d){return {...d,medio:v};});}} style={{...INP,marginBottom:10}}>
+              <option value="">-- Seleccioná medio --</option>
+              {GRUPOS_MEDIOS_EGRESO.map(function(grp){
+                return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+              })}
+            </select>
+            <div style={{fontSize:10,color:"#7E7E7E",marginBottom:12,lineHeight:1.5}}>El gasto queda en el mes en que nació. La plata sale de la disponibilidad el día del pago.</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={confirmarPagoDeuda} disabled={!pagarDeuda.medio||!pagarDeuda.fecha} style={{flex:2,padding:"11px",borderRadius:8,border:"none",background:(pagarDeuda.medio&&pagarDeuda.fecha)?"#3A7D44":"#1A1A1A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Confirmar pago</button>
+              <button onClick={function(){setPagarDeuda(null);}} style={{flex:1,padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -9859,7 +9928,7 @@ function PanelNovedades(p){
   var tituloVentas="Ventas hasta "+(rango==="hoy"?"hoy":(rango==="ayer"?"ayer":"hace 7 días"));
   var subVentas="del 1 al "+fmtDate(finVentas).substring(0,5);
   // Egresos del mismo período que las ventas de la tarjeta (del 1 hasta la fecha de corte).
-  var gastosTarjeta=(p.gastos||[]).filter(function(g){
+  var gastosTarjeta=gastosEnVistaCaja(p.gastos||[]).filter(function(g){
     var f=String(g.fecha||"").substring(0,10);
     return f&&f.substring(0,7)===finVentas.substring(0,7)&&f<=finVentas;
   });
@@ -12609,7 +12678,7 @@ function localDelMedio(medio){
 // el traspaso de Resultados —eso es otra cuenta, la de la disponibilidad general, no la de
 // lo que tiene que contar el cajero en la mano—.
 function efectivoTeoricoCaja(lid, hastaFecha, datos){
-  var cierres=datos.cierres||[], gastos=datos.gastos||[];
+  var cierres=datos.cierres||[], gastos=gastosEnVistaCaja(datos.gastos||[]);
   var retiros=(datos.retiros||[]).filter(esMovDinero), aportes=(datos.aportes||[]).filter(esMovDinero);
   var mes=hastaFecha.substring(0,7);
   function cuentaDe(x){ return x.local_cuenta||x.local; }
@@ -15023,7 +15092,11 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var pagado=function(s){return s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0);};
   var total=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0)+adelantosMonto;
   // Ventas y Egresos pide sinDeuda: ahí solo va lo que salió; Resultados cuenta la deuda.
-  if(sinDeuda)total-=gl.reduce(function(a,g){return a+montoDeudaDeGasto(g);},0);
+  if(sinDeuda){
+    total-=gl.reduce(function(a,g){return a+montoDeudaDeGasto(g);},0);
+    // Las deudas pagadas en otro mes se mueven al mes en que se pagaron.
+    total+=(gastos||[]).filter(function(g){return g.local===lid;}).reduce(function(a,g){return a+ajusteCajaDelMes(g,mes);},0);
+  }
   if(!hasSueldosGastos)total+=sueldosTabla.filter(function(s){return !esAguinaldo(s);}).reduce(function(a,s){return a+pagado(s);},0);
   if(!hasAguinaldosGastos)total+=sueldosTabla.filter(esAguinaldo).reduce(function(a,s){return a+pagado(s);},0);
   // Ingresos Brutos: es un costo de vender, así que suma a los egresos. El manual ya está
@@ -15055,7 +15128,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var retirosCuenta=(retiros||[]).filter(function(r){
     return (r.local_cuenta||r.local)===lid&&r.fecha&&r.fecha.substring(0,7)===mes;
   });
-  var pagosMedio=salidasPorMedio(gastos,sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
+  var pagosMedio=salidasPorMedio(gastosEnVistaCaja(gastos),sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
   var impDebCalc=pagosMedio.impDebito;
   var impDebEgreso=auto?impDebCalc:0;
   total+=impDebEgreso;
@@ -15495,7 +15568,10 @@ function PanelResultados(p){
     // Gastos por medio de pago — descontar del local que paga (no del local del gasto)
     var gastoEfectivo=0,gastoElectronico=0,deudaPendiente=0;
     var detGastos=[]; // detalle línea por línea de qué se restó (para el desglose clickeable)
-    gl.forEach(function(g){
+    // La plata sale el día del pago: una deuda pagada en otro mes se cuenta en ese mes.
+    var gastosC=gastosEnVistaCaja(gastos);
+    var glCaja=gastosC.filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;});
+    glCaja.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
           var pm=parseFloat(pago.monto||0);
@@ -15523,7 +15599,7 @@ function PanelResultados(p){
     });
 
     // También sumar gastos de OTROS locales que se pagaron con medios de ESTE local
-    gastos.filter(function(g){
+    gastosC.filter(function(g){
       return g.local!==lid&&g.fecha&&g.fecha.substring(0,7)===mesFiltro;
     }).forEach(function(g){
       if(g.pagos&&g.pagos.length>0){

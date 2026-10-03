@@ -15966,7 +15966,18 @@ function PanelResultados(p){
     var dispDebito=ingrDebito-iibbDebito-comDebito-icDebito-idDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispCredito=ingrCredito-iibbCredito-comCredito-icCredito-idCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
     var dispOtros=ingrOtros-iibbOtros-comOtros-icOtros-idOtros-gastoOtros+aporteOtros;
-    var dispMp=ingrMp-iibbMp-comMp-icMp-idMp-gastoMp;
+    // La cuenta de Mercado Pago Calzon Gitano se le asigna entera a Colantonio's: lo que cobra
+    // Kusama por MP (misma cuenta, casi no se usa) suma al saldo de Colantonio's y no al de Kusama.
+    // Los pagos desde esa cuenta ya se cargan a Colantonio's (ver MEDIO_LOCAL_MAP). La venta de
+    // Kusama sigue siendo de Kusama en ventas y resultados: esto sólo mueve el saldo disponible.
+    var clMpCuenta=lid==="l3"?cierres.filter(function(c){return (c.local==="l2"||c.local==="l3")&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;}):(lid==="l2"?[]:cl);
+    var ingrMpCuenta=clMpCuenta.reduce(function(a,c){return a+sumaMedios(c,MEDIOS_MP);},0);
+    var comMpCuenta=clMpCuenta.reduce(function(a,c){
+      return a+MEDIOS_MP.reduce(function(b,m){return b+parseFloat(c[m]||0)*comisionTasa(c.local,m);},0);
+    },0)*factorCom;
+    var icMpCuenta=ingrMpCuenta*impCreditoTasa(lid,"mp_qr")*factorImpCred;
+    var iibbMpCuenta=ingrMpCuenta*tasaIIBB;
+    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,

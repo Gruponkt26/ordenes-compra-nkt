@@ -9778,6 +9778,81 @@ function PanelIIBB(p){
   );
 }
 
+// Cuántas órdenes de compra emitió cada local en cada mes. Borrador no cuenta (todavía no se
+// emitió) y las canceladas se muestran aparte, chiquitas, para que no inflen el número.
+function PanelOrdenesPorMes(p){
+  var ordenes=p.ordenes||[];
+  var locales=LOCALES.filter(function(l){return l.id!=="l4";});
+  var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  var mesActual=diaDeNegocio().substring(0,7);
+  var porMes={};
+  ordenes.forEach(function(o){
+    if(!o.status||o.status==="borrador")return;
+    var f=String(o.fecha||o.createdAt||"").substring(0,7);
+    if(!/^\d{4}-\d{2}$/.test(f))return;
+    if(!porMes[f])porMes[f]={};
+    var c=porMes[f][o.local]||(porMes[f][o.local]={n:0,canc:0});
+    if(o.status==="cancelada")c.canc++; else c.n++;
+  });
+  var meses=Object.keys(porMes);
+  if(meses.indexOf(mesActual)===-1)meses.push(mesActual);
+  meses.sort().reverse();
+  function etiqueta(m){var pr=m.split("-");return MESES[parseInt(pr[1],10)-1]+" "+pr[0];}
+  var totales={};locales.forEach(function(l){totales[l.id]=0;});
+  var totalGeneral=0;
+  meses.forEach(function(m){locales.forEach(function(l){var c=(porMes[m]||{})[l.id];if(c){totales[l.id]+=c.n;totalGeneral+=c.n;}});});
+  var TH={fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,fontWeight:700,padding:"8px 10px",textAlign:"right",borderBottom:"1px solid #1E1E1E",whiteSpace:"nowrap"};
+  var TD={fontSize:13,padding:"9px 10px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800}}>📦 Órdenes de compra por mes</div>
+        <div style={{fontSize:11,color:"#7E7E7E",marginTop:3}}>Cuántas emitió cada local. No cuentan los borradores ni las canceladas.</div>
+      </div>
+      <div style={{overflowX:"auto",border:"1px solid #171717",borderRadius:14,background:"#0C0C0C"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
+          <thead>
+            <tr>
+              <th style={{...TH,textAlign:"left"}}>Mes</th>
+              {locales.map(function(l){return <th key={l.id} style={{...TH,color:l.color}}>{l.emoji} {l.nombre}</th>;})}
+              <th style={TH}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {meses.map(function(m){
+              var tot=0,canc=0;
+              locales.forEach(function(l){var c=(porMes[m]||{})[l.id];if(c){tot+=c.n;canc+=c.canc;}});
+              return(
+                <tr key={m}>
+                  <td style={{...TD,textAlign:"left",color:m===mesActual?"#D4A017":"#F0EDE8",fontWeight:m===mesActual?700:500}}>{etiqueta(m)}{m===mesActual&&<span style={{fontSize:9,color:"#7E7E7E",marginLeft:6}}>en curso</span>}</td>
+                  {locales.map(function(l){
+                    var c=(porMes[m]||{})[l.id]||{n:0,canc:0};
+                    return(
+                      <td key={l.id} style={{...TD,color:c.n>0?"#F0EDE8":"#4A4A4A",fontWeight:c.n>0?700:400}}>
+                        {c.n}
+                        {c.canc>0&&<div style={{fontSize:9,color:"#8A5A4A",fontWeight:400}}>{c.canc} cancelada{c.canc===1?"":"s"}</div>}
+                      </td>
+                    );
+                  })}
+                  <td style={{...TD,fontWeight:800,color:tot>0?"#F0EDE8":"#4A4A4A"}}>
+                    {tot}
+                    {canc>0&&<div style={{fontSize:9,color:"#8A5A4A",fontWeight:400}}>{canc} cancelada{canc===1?"":"s"}</div>}
+                  </td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td style={{...TD,textAlign:"left",fontWeight:800,borderBottom:"none"}}>Total</td>
+              {locales.map(function(l){return <td key={l.id} style={{...TD,fontWeight:800,color:l.color,borderBottom:"none"}}>{totales[l.id]}</td>;})}
+              <td style={{...TD,fontWeight:800,color:"#D4A017",borderBottom:"none"}}>{totalGeneral}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
@@ -20923,6 +20998,17 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
+            <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+              {[["novedades_inicio","🔔 Del día","#D4A017"],["novedades_ordenes","📦 Órdenes de compra","#C1440E"]].map(function(t){
+                var act=(vista==="novedades_ordenes")===(t[0]==="novedades_ordenes");
+                return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+              })}
+            </div>
+          )}
+          {esSofia&&modulo==="novedades"&&vista==="novedades_ordenes"&&(
+            <PanelOrdenesPorMes ordenes={ordenes}/>
+          )}
+          {esSofia&&modulo==="novedades"&&vista!=="novedades_ordenes"&&(
             <PanelNovedades ordenes={ordenes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}

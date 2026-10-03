@@ -9805,10 +9805,14 @@ function PanelOrdenesPorMes(p){
   var TD={fontSize:13,padding:"9px 10px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
-      <div style={{marginBottom:14}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800}}>📦 Órdenes de compra por mes</div>
-        <div style={{fontSize:11,color:"#7E7E7E",marginTop:3}}>Cuántas emitió cada local. No cuentan los borradores ni las canceladas.</div>
-      </div>
+      {p.compacto?(
+        <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Cuántas emitió cada local por mes. No cuentan los borradores ni las canceladas.</div>
+      ):(
+        <div style={{marginBottom:14}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,fontWeight:800}}>📦 Órdenes de compra por mes</div>
+          <div style={{fontSize:11,color:"#7E7E7E",marginTop:3}}>Cuántas emitió cada local. No cuentan los borradores ni las canceladas.</div>
+        </div>
+      )}
       <div style={{overflowX:"auto",border:"1px solid #171717",borderRadius:14,background:"#0C0C0C"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
           <thead>
@@ -10631,6 +10635,8 @@ function PanelNovedades(p){
                   <Mas id="ordenes" n={expandido.ordenes?0:emitidas.length-6}/>
                 </div>
               )}
+              <button onClick={function(){setExpandido(function(e){var n={...e};n.ordMes=!e.ordMes;return n;});}} style={{marginTop:9,padding:"6px 12px",borderRadius:8,border:"1px solid #C1440E55",background:expandido.ordMes?"#C1440E22":"none",color:"#E0714A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{expandido.ordMes?"▲ Ocultar":"▼ Ver"} por mes y local</button>
+              {expandido.ordMes&&<div style={{marginTop:10}}><PanelOrdenesPorMes ordenes={p.ordenes||[]} compacto={true}/></div>}
             </Seccion>
           );
         })()}
@@ -20998,17 +21004,6 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-              {[["novedades_inicio","🔔 Del día","#D4A017"],["novedades_ordenes","📦 Órdenes de compra","#C1440E"]].map(function(t){
-                var act=(vista==="novedades_ordenes")===(t[0]==="novedades_ordenes");
-                return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
-              })}
-            </div>
-          )}
-          {esSofia&&modulo==="novedades"&&vista==="novedades_ordenes"&&(
-            <PanelOrdenesPorMes ordenes={ordenes}/>
-          )}
-          {esSofia&&modulo==="novedades"&&vista!=="novedades_ordenes"&&(
             <PanelNovedades ordenes={ordenes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}

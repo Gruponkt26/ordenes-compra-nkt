@@ -10533,7 +10533,7 @@ function PanelNovedades(p){
 
         {(function(){
           var mesIva=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
-          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIva);
+          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIva,p.creditosFiscales||[]);
           var chip=function(act){return {padding:"3px 9px",borderRadius:20,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"none",color:act?"#B07AE0":"#7E7E7E",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"};};
           var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
           return(
@@ -10544,7 +10544,7 @@ function PanelNovedades(p){
               </div>
               {FACTURACION.map(function(f,i){
                 var o=pos[f.id];
-                var cf=o.cfFacturas+o.cfComisiones;
+                var cf=o.cfFacturas+o.cfAtrasado+o.cfComisiones;
                 var saldo=o.df-cf;
                 return(
                   <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
@@ -10553,6 +10553,7 @@ function PanelNovedades(p){
                     {linea("Débito fiscal (ventas electrónicas)",o.df,"#E0714A")}
                     {linea("Crédito · facturas cargadas ("+o.facturas+")",o.cfFacturas,"#4C9A5A",true)}
                     {o.percIVA>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#6E8F74",padding:"0 0 1.5px 12px"}}><span>↳ incluye percepción de IVA Coca Cola / Pepsi / La Serenísima ({(PERCEPCION_IVA_COCA*100).toFixed(1).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.percIVA)}</span></div>}
+                    {o.cfAtrasado>0.5&&linea("Crédito · facturas atrasadas",o.cfAtrasado,"#4C9A5A",true)}
                     {linea(calculaAutomatico(mesIva)?"Crédito · IVA de comisiones":"Crédito · IVA de comisiones (cargadas a mano)",o.cfComisiones,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IVA a pagar":"Saldo a favor"}</span>
@@ -13166,9 +13167,9 @@ function percepcionesCocaCola(g){
   var neto=monto/(1+alicuotaIVACompra(g));
   return {iva:neto*PERCEPCION_IVA_COCA, iibb:neto*PERCEPCION_IIBB_COCA};
 }
-function posicionIVAPorCuit(gastos, cierres, mes){
+function posicionIVAPorCuit(gastos, cierres, mes, creditosExtra){
   var out={};
-  FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfComisiones:0,iibbRetenido:0,iibbAFavor:0,percIVA:0,ventasTotal:0,ventasElec:0,facturas:0}; });
+  FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfAtrasado:0,cfComisiones:0,iibbRetenido:0,iibbAFavor:0,percIVA:0,ventasTotal:0,ventasElec:0,facturas:0}; });
   (cierres||[]).forEach(function(c){
     if(!c.fecha||c.fecha.substring(0,7)!==mes||c.local==="l4")return;
     var o=out[CUIT_DE_LOCAL_IVA[c.local]];
@@ -13192,6 +13193,12 @@ function posicionIVAPorCuit(gastos, cierres, mes){
     o.iibbAFavor+=perc.iibb;
     o.percIVA+=perc.iva;
     o.facturas++;
+  });
+  // Crédito fiscal de facturas que llegaron tarde, cargado a mano en el módulo IVA: entra en el
+  // mes en que se decidió computarlo, no en el de la factura.
+  (creditosExtra||[]).forEach(function(c){
+    if(c.mes!==mes||!out[c.cuit])return;
+    out[c.cuit].cfAtrasado+=parseFloat(c.monto||0)||0;
   });
   return out;
 }
@@ -17542,6 +17549,8 @@ function PanelSueldos(p){
 // ─── PANEL IVA ────────────────────────────────────────────────────────────────
 function PanelIVA(p) {
   var gastos=p.gastos, cierres=p.cierres||[];
+  var creditosFiscales=p.creditosFiscales||[];
+  var [formCred,setFormCred]=useState(null); // crédito que se está cargando o editando, o null
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
@@ -17652,6 +17661,12 @@ function PanelIVA(p) {
     var x=calcIVACompra(g);
     porCuit[cu].cf+=x.iva;
     porCuit[cu].netoC+=x.neto;
+  });
+  // Crédito de facturas atrasadas, cargado a mano: se suma al CUIT en el mes en que se computa.
+  var creditosMes=creditosFiscales.filter(function(c){return c.mes===mesFiltro;});
+  creditosMes.forEach(function(c){
+    if(!porCuit[c.cuit])return;
+    porCuit[c.cuit].cf+=parseFloat(c.monto||0)||0;
   });
 
   // Cuánto del débito reservado se termina pagando. El crédito sólo tapa débito del
@@ -18108,6 +18123,84 @@ function PanelIVA(p) {
       {/* TAB: CRÉDITO FISCAL (compras) */}
       {tab==="compras"&&(
         <div>
+          {/* Crédito fiscal de facturas que llegaron tarde: se carga acá, sin tocar Egresos */}
+          <div style={{background:"#0F0F0F",border:"1px solid #3A7D4444",borderRadius:12,padding:"13px 14px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:creditosMes.length>0||formCred?10:0}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>➕ Crédito fiscal de facturas atrasadas</div>
+                <div style={{fontSize:10,color:"#7E7E7E",marginTop:3,lineHeight:1.5}}>Suma IVA a favor en el CUIT y el mes que elijas. No crea ningún egreso ni toca los gastos.</div>
+              </div>
+              {!formCred&&<button onClick={function(){setFormCred({id:"",cuit:FACTURACION[0].id,mes:mesFiltro,monto:"",detalle:"",fecha_factura:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar crédito</button>}
+            </div>
+            {formCred&&(function(){
+              var INPc={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+              var lblc={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+              function setC(k,v){setFormCred(function(f){var n={...f};n[k]=v;return n;});}
+              function guardarC(){
+                var monto=parseFloat(formCred.monto)||0;
+                if(monto<=0){alert("Cargá el monto de IVA, mayor a cero.");return;}
+                if(!/^\d{4}-\d{2}$/.test(formCred.mes)){alert("Elegí el mes en que se computa.");return;}
+                p.onSaveCredito({id:formCred.id||("credfisc_"+Date.now()),cuit:formCred.cuit,mes:formCred.mes,monto:monto,detalle:formCred.detalle.trim(),fecha_factura:formCred.fecha_factura||""});
+                setFormCred(null);
+              }
+              return(
+                <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:creditosMes.length>0?10:0}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+                    <div>
+                      <label style={lblc}>CUIT</label>
+                      <select value={formCred.cuit} onChange={function(e){setC("cuit",e.target.value);}} style={INPc}>
+                        {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={lblc}>Mes en que se computa</label>
+                      <input type="month" value={formCred.mes} onChange={function(e){setC("mes",e.target.value);}} style={INPc}/>
+                    </div>
+                    <div>
+                      <label style={lblc}>IVA de la factura ($)</label>
+                      <input type="number" placeholder="0" value={formCred.monto} onChange={function(e){setC("monto",e.target.value);}} style={INPc}/>
+                    </div>
+                    <div>
+                      <label style={lblc}>Fecha de la factura (opcional)</label>
+                      <input type="date" value={formCred.fecha_factura} onChange={function(e){setC("fecha_factura",e.target.value);}} style={INPc}/>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <label style={lblc}>Proveedor / detalle</label>
+                    <input value={formCred.detalle} onChange={function(e){setC("detalle",e.target.value);}} placeholder="Ej: Factura A 0001-00001234 de Disproal" style={INPc}/>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={guardarC} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{formCred.id?"Guardar cambios":"Cargar crédito"}</button>
+                    <button onClick={function(){setFormCred(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+                  </div>
+                </div>
+              );
+            })()}
+            {creditosMes.length>0&&(
+              <div>
+                {creditosMes.map(function(c){
+                  var f=FACTURACION.find(function(x){return x.id===c.cuit;});
+                  return(
+                    <div key={c.id} style={{borderTop:"1px solid #1A1A1A",padding:"7px 0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                      <div>
+                        <div style={{fontSize:11,color:"#F0EDE8"}}>{c.detalle||"Factura atrasada"}</div>
+                        <div style={{fontSize:10,color:"#7E7E7E"}}>{f?f.razonSocial:c.cuit}{c.fecha_factura?" · factura del "+fmtDate(c.fecha_factura):""}</div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>{fmt(parseFloat(c.monto||0))}</span>
+                        <button onClick={function(){setFormCred({id:c.id,cuit:c.cuit,mes:c.mes,monto:String(c.monto),detalle:c.detalle||"",fecha_factura:c.fecha_factura||""});}} title="Editar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>✏️</button>
+                        <button onClick={function(){if(window.confirm("¿Eliminar este crédito fiscal?"))p.onDeleteCredito(c.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",paddingTop:7,fontSize:12,fontWeight:800,color:"#F0EDE8"}}>
+                  <span>Total de {mesFiltro}</span><span style={{color:"#4C9A5A"}}>{fmt(creditosMes.reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0))}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {LOCALES_CTRL.map(function(l){
             var loc=comprasPorLocal[l.id];
             if(!loc||loc.items.length===0)return(
@@ -20216,6 +20309,21 @@ export default function App() {
     var m=String(x.id).match(/^caja_ini_(l\d+)_(\d{4}-\d{2})$/);
     if(m)cajaInicial[m[1]+"|"+m[2]]=parseFloat(x.texto)||0;
   });
+  // Crédito fiscal de facturas atrasadas (módulo IVA): una pauta por crédito, ámbito
+  // "credito_fiscal", con los datos en JSON dentro de texto. Así no hace falta una tabla nueva.
+  var creditosFiscales=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="credito_fiscal")return;
+    try{
+      var d=JSON.parse(x.texto||"{}");
+      if(d&&d.cuit&&d.mes)creditosFiscales.push({...d,id:x.id});
+    }catch(e){}
+  });
+  function guardarCreditoFiscal(c){
+    var ahora=new Date().toISOString();
+    var previo=pautas.find(function(x){return x.id===c.id;});
+    guardarPauta({id:c.id,ambito:"credito_fiscal",texto:JSON.stringify({cuit:c.cuit,mes:c.mes,monto:c.monto,detalle:c.detalle,fecha_factura:c.fecha_factura}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+  }
   function guardarCajaInicial(local,mes,monto){
     var ahora=new Date().toISOString();
     guardarPauta({id:"caja_ini_"+local+"_"+mes,ambito:"caja_inicial",texto:String(monto),usuario:(cu&&cu.usuario)||"",created_at:ahora,updated_at:ahora});
@@ -21008,6 +21116,7 @@ export default function App() {
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
+              creditosFiscales={creditosFiscales}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
               onCargarEgresoCaja={cargarEgresoDeCaja}
               irCierres={function(){abrirModulo("admin","cierres");}}
@@ -21337,7 +21446,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iva"&&(
-            <PanelIVA gastos={gastos} cierres={cierres}/>
+            <PanelIVA gastos={gastos} cierres={cierres} creditosFiscales={creditosFiscales} onSaveCredito={guardarCreditoFiscal} onDeleteCredito={borrarPauta}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iibb"&&(

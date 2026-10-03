@@ -15999,7 +15999,11 @@ function PanelResultados(p){
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }
-    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-(debitoAcreditadoHoy*comisionTasa(lid,"tarjeta_debito")*factorCom)-(debitoAcreditadoHoy*impCreditoTasa(lid,"tarjeta_debito")*factorImpCred)-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    var dispDebitoHoy=debitoAcreditadoHoy-(debitoAcreditadoHoy*tasaIIBB)-(debitoAcreditadoHoy*comisionTasa(lid,"tarjeta_debito")*factorCom)-(debitoAcreditadoHoy*impCreditoTasa(lid,"tarjeta_debito")*factorImpCred)-idDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
+    // Lo que el débito pendiente aporta al total una vez que se acredita: ya neto de IIBB, comisión
+    // e impuesto, que es como entra en dispDebito. Así Total caja mayor − pendiente = Caja mayor HOY.
+    var fDebito=tasaIIBB+comisionTasa(lid,"tarjeta_debito")*factorCom+impCreditoTasa(lid,"tarjeta_debito")*factorImpCred;
+    var debitoPendienteNeto=debitoPendiente*(1-fDebito);
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros+dispMp;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
@@ -16009,7 +16013,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{debitoPendientePorFecha,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{debitoPendientePorFecha,debitoPendienteNeto,factorDebitoPend:1-fDebito,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -16371,37 +16375,38 @@ function PanelResultados(p){
                 </tr>
                 {/* Disponibilidad electrónico */}
                 <tr style={{background:"#0A0A0F"}}>
-                  <td style={{padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>📲 Disponible electrónico</td>
+                  <td style={{padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>📲 Disponible electrónico <span style={{color:"#6E6E6E",fontSize:9,fontWeight:400}}>(incluye Mercado Pago)</span></td>
                   {localesFiltro.map(function(l){
                     var d=datos[l.id];
-                    var dispElec=(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);
+                    var dispElec=(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:dispElec>=0?"#1A6B8A":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(dispElec)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
                 </tr>
                 {/* Total disponible */}
                 <tr style={{background:"#111",borderTop:"2px solid #1A1A1A"}}>
                   <td style={{padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>💰 Total caja mayor</td>
                   {localesFiltro.map(function(l){
                     var d=datos[l.id];
-                    var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);
+                    var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:tot>=0?"#F0EDE8":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
                 </tr>
                 {/* Débito pendiente de acreditar */}
                 {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
                   <tr style={{background:"#14100A"}}>
-                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito pendiente</td>
+                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito pendiente <span style={{color:"#8A7040",fontSize:9,fontWeight:400}}>(neto de IIBB, comisión e impuestos)</span></td>
                     {localesFiltro.map(function(l){
-                      var pend=datos[l.id].debitoPendiente||0;
+                      var pend=datos[l.id].debitoPendienteNeto||0;
+                      var fNeto=datos[l.id].factorDebitoPend!==undefined?datos[l.id].factorDebitoPend:1;
                       var tandas=datos[l.id].debitoPendientePorFecha||[];
                       return <td key={l.id} style={{textAlign:"right",padding:"8px",color:pend>0?"#D4A017":"#6E6E6E",fontWeight:700,fontSize:11,verticalAlign:"top"}}>
                         {pend>0?fmt(pend):"—"}
-                        {tandas.map(function(t){return <div key={t.fecha} style={{fontSize:9,fontWeight:400,color:"#B8963A",marginTop:2}}>{fmtFecha(t.fecha)} · {fmt(t.monto)}</div>;})}
+                        {tandas.map(function(t){return <div key={t.fecha} style={{fontSize:9,fontWeight:400,color:"#B8963A",marginTop:2}}>{fmtFecha(t.fecha)} · {fmt(t.monto*fNeto)}</div>;})}
                       </td>;
                     })}
-                    <td style={{textAlign:"right",padding:"8px",color:"#D4A017",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].debitoPendiente||0);},0))}</td>
+                    <td style={{textAlign:"right",padding:"8px",color:"#D4A017",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].debitoPendienteNeto||0);},0))}</td>
                   </tr>
                 )}
                 {/* Total disponible HOY (real, sin débito en tránsito) */}
@@ -16629,16 +16634,17 @@ function PanelResultados(p){
                   <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                       <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Débito pendiente de acreditar</span>
-                      <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.debitoPendiente)}</span>
+                      <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.debitoPendienteNeto)}</span>
                     </div>
                     <div style={{fontSize:9,color:"#888"}}>
                       Se acredita en el banco a partir del {d.proximaAcreditacionDebito?new Date(d.proximaAcreditacionDebito+"T00:00:00").toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"}):"—"}
                     </div>
                     {(d.debitoPendientePorFecha||[]).map(function(t){return(
                       <div key={t.fecha} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#B8963A",marginTop:2}}>
-                        <span>📅 {new Date(t.fecha+"T00:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"numeric",month:"short"})}</span><span>{fmt(t.monto)}</span>
+                        <span>📅 {new Date(t.fecha+"T00:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"numeric",month:"short"})}</span><span>{fmt(t.monto*(d.factorDebitoPend!==undefined?d.factorDebitoPend:1))}</span>
                       </div>
                     );})}
+                    <div style={{fontSize:9,color:"#8A7040",marginTop:4}}>Neto de IIBB, comisión e impuestos. Cobrado con débito: {fmt(d.debitoPendiente)}.</div>
                     <div style={{fontSize:9,color:"#9A9A9A",marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
                       💰 Disponible HOY en electrónico (sin el pendiente): <b style={{color:"#F0EDE8"}}>{fmt(d.dispElectronicoHoy)}</b>
                     </div>

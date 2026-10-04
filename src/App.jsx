@@ -17023,6 +17023,29 @@ function PanelCuit(props){
         </div>
       </div>
 
+      {/* Egresos de F.931 que quedaron sin su registro (F.931 borrados antes de que el borrado los limpiara) */}
+      {(function(){
+        var ids={};
+        (props.cargasSociales||[]).forEach(function(c){ids[c.id]=true;});
+        var huerfanos=(props.gastos||[]).filter(function(g){
+          var m=/^f931_(.+)_(l\d+)$/.exec(String(g.id));
+          return m&&!ids[m[1]];
+        });
+        if(huerfanos.length===0||!props.onBorrarEgreso)return null;
+        var total=huerfanos.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+        return(
+          <div style={{background:"#1A1000",border:"1px solid #E07B0055",borderRadius:10,padding:"11px 13px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#E07B00",marginBottom:4}}>⚠️ {huerfanos.length} egreso{huerfanos.length===1?"":"s"} de F.931 sin su F.931</div>
+            <div style={{fontSize:10,color:"#B8963A",marginBottom:8,lineHeight:1.5}}>Son de F.931 que ya borraste y siguen sumando {fmt(total)} en Egresos y en Resultados:</div>
+            {huerfanos.map(function(g){
+              var l=getLocal(g.local);
+              return <div key={g.id} style={{fontSize:10,color:"#C8C8C8",display:"flex",justifyContent:"space-between",gap:8,marginBottom:2}}><span>{l?l.emoji+" "+l.nombre:g.local} · {g.concepto} · {g.fecha}</span><span>{fmt(parseFloat(g.monto)||0)}</span></div>;
+            })}
+            <button onClick={function(){if(window.confirm("¿Borrar estos "+huerfanos.length+" egresos de F.931 sin registro?"))huerfanos.forEach(function(g){props.onBorrarEgreso(g.id);});}} style={{marginTop:8,padding:"7px 14px",borderRadius:8,border:"none",background:"#E07B00",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Borrar estos egresos</button>
+          </div>
+        );
+      })()}
+
       {/* Empleados que aportan por este CUIT: lista fija, no depende del mes */}
       {(function(){
         var asign=props.cuitAportes||{};
@@ -17623,6 +17646,8 @@ function PanelSueldos(p){
         onDeleteCargaSocial={onDeleteCargaSocial}
         onSaveCargaSocial={onSaveCargaSocial}
         onSaveEgresoF931={p.onSaveEgresoF931}
+        gastos={p.gastos||[]}
+        onBorrarEgreso={p.onBorrarEgresoHuerfano}
         ESTADOS_SUELDO={ESTADOS_SUELDO}
       />}
 
@@ -21356,6 +21381,7 @@ export default function App() {
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onDeleteEgresoSueldo={borrarEgreso}
+                onBorrarEgresoHuerfano={borrarEgresoSolo}
                 vacaciones={vacaciones}
                 onSaveVacacion={function(v){sbSaveVacacion(v);setVacaciones(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});}}
                 onDeleteVacacion={function(id){sbDeleteVacacion(id);setVacaciones(function(prev){return prev.filter(function(v){return v.id!==id;});});}}

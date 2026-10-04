@@ -4997,6 +4997,31 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       var montoEgreso=Math.max(0,montoEgresoBase-totalAdel);
       if(montoEgreso>0){
         var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
+        if(modalPl.local==="l4"){
+          // Empleada de la Oficina: tres egresos, uno por local, con la proporción 50/30/20.
+          var idBase="egr_sueldo_"+(pagoExistente?pagoExistente.id:sid);
+          var pagosNeto=pagosValidos;
+          if(totalAdel>0){
+            // los adelantos ya salieron antes: el neto se reparte entre los medios en la misma proporción
+            var totPag=pagosValidos.reduce(function(a,x){return a+x.monto;},0)||1;
+            var factor=montoEgreso/totPag;
+            pagosNeto=pagosValidos.map(function(x){return {medio:x.medio,monto:x.monto*factor};});
+          }
+          var rep=repartirSueldoOficina(pagosNeto);
+          [["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]].forEach(function(t){
+            var parte=rep[t[0]];
+            if(!parte||parte.monto<=0)return;
+            onSaveEgresoSueldo({id:idBase+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
+              subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · Oficina "+t[2]+"%",
+              detalle:"Parte de la Oficina ("+t[2]+"% de "+fmt(montoEgreso)+")"+(modalForm.estado==="parcial"?" · pago parcial de "+fmt(montoFinal):""),
+              monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
+              notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
+          });
+          montoEgreso=0;
+        }
+      }
+      if(montoEgreso>0){
+        var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
         var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos};
         onSaveEgresoSueldo(eg);
       }
@@ -17335,7 +17360,11 @@ function PanelSueldos(p){
             if(!window.confirm("¿Resetear "+aEliminar.length+" pago(s) de "+mesFiltro+" en "+loc+"?"))return;
             aEliminar.forEach(function(s){
               onDeleteSueldo(s.id);
-              if(p.onDeleteEgresoSueldo)p.onDeleteEgresoSueldo("egr_sueldo_"+s.id);
+              if(p.onDeleteEgresoSueldo){
+                p.onDeleteEgresoSueldo("egr_sueldo_"+s.id);
+                // El sueldo de la Oficina genera un egreso por local: se borran los tres.
+                ["l1","l2","l3"].forEach(function(lid){p.onDeleteEgresoSueldo("egr_sueldo_"+s.id+"_"+lid);});
+              }
             });
           }} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>🗑️ Resetear mes</button>}
         </div>
@@ -19931,6 +19960,34 @@ function repartoEfectivoOficina(monto){
     {medio:"Caja Mayor - Colantonio's",monto:col},
     {medio:"Caja Mayor - Kusama",monto:kus},
   ];
+}
+// El sueldo de una empleada de la Oficina (local l4) se reparte igual que los demás gastos de la
+// Oficina: 50% Bodegón, 30% Colantonio's, 20% Kusama. Cada local se queda con su parte del costo
+// y la plata sale de los medios con los que se pagó: primero se usa el medio del propio local
+// para su parte; lo que sobra completa las partes que quedaron sin cubrir. Si el medio es de
+// otro local, esa parte queda como gasto cruzado.
+function repartirSueldoOficina(pagos){
+  var total=pagos.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
+  var bod=Math.round(total*0.5), col=Math.round(total*0.3), kus=total-bod-col; // el resto absorbe el redondeo
+  var falta={l1:bod,l3:col,l2:kus};
+  var orden=["l1","l3","l2"];
+  var asignado={l1:[],l3:[],l2:[]};
+  var lineas=pagos.map(function(x){return {medio:x.medio,resta:parseFloat(x.monto)||0};});
+  function tomar(linea,lid,max){
+    var n=Math.min(linea.resta,falta[lid],max===undefined?Infinity:max);
+    if(n<=0)return;
+    var ya=asignado[lid].find(function(a){return a.medio===linea.medio;});
+    if(ya)ya.monto+=n; else asignado[lid].push({medio:linea.medio,monto:n});
+    linea.resta-=n; falta[lid]-=n;
+  }
+  // 1) cada local usa primero lo que salió de su propia cuenta
+  lineas.forEach(function(l){
+    var dueno=localDeCajaMayor(l.medio)||getLocalFromMedio(l.medio);
+    if(falta[dueno]!==undefined)tomar(l,dueno);
+  });
+  // 2) lo que quedó de los medios cubre las partes sin cubrir
+  lineas.forEach(function(l){ orden.forEach(function(lid){ tomar(l,lid); }); });
+  return {l1:{monto:bod,pagos:asignado.l1},l3:{monto:col,pagos:asignado.l3},l2:{monto:kus,pagos:asignado.l2}};
 }
 async function sbSaveGasto(gasto) {
   try {

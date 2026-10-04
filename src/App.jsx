@@ -16916,7 +16916,31 @@ function PanelCuit(props){
       // Solo Bodegón
       return[{local:"l1",nombre:"Bodegón",monto:total,pct:100}];
     } else {
-      // SRL — Kusama (l2) y Colantonio's (l3) proporcional a empleados activos
+      // SRL: un tercio del F.931 se reparte fijo entre los tres locales (50% Bodegón, 30%
+      // Colantonio's, 20% Kusama) y los otros dos tercios, entre Kusama y Colantonio's según
+      // los empleados activos de cada uno.
+      var tercio=total/3;
+      var resto=calcSrlPorEmpleados(total-tercio);
+      var fijo={l1:0.5,l3:0.3,l2:0.2};
+      var porLocal={
+        l1:{local:"l1",nombre:"Bodegón",monto:tercio*fijo.l1,fijo:tercio*fijo.l1},
+        l2:{local:"l2",nombre:"Kusama",monto:tercio*fijo.l2,fijo:tercio*fijo.l2},
+        l3:{local:"l3",nombre:"Colantonio's",monto:tercio*fijo.l3,fijo:tercio*fijo.l3}
+      };
+      resto.forEach(function(d){ porLocal[d.local].monto+=d.monto; porLocal[d.local].empleados=d.empleados; });
+      var lista=["l1","l3","l2"].map(function(k){
+        var d=porLocal[k]; d.monto=Math.round(d.monto); d.fijo=Math.round(d.fijo);
+        d.pct=total>0?Math.round(d.monto/total*100):0;
+        return d;
+      });
+      // El redondeo se absorbe en el que más recibe, para que la suma dé siempre el total.
+      var dif=Math.round(total)-lista.reduce(function(a,d){return a+d.monto;},0);
+      if(dif!==0)lista[0].monto+=dif;
+      return lista;
+    }
+  }
+  function calcSrlPorEmpleados(total){
+    {
       var empKusama=empleados.filter(function(e){return e.local==="l2"&&e.activo!==false;}).length;
       var empColant=empleados.filter(function(e){return e.local==="l3"&&e.activo!==false;}).length;
       var total_emp=empKusama+empColant;
@@ -16932,21 +16956,37 @@ function PanelCuit(props){
     }
   }
 
+  // Con qué medio paga cada local su parte. Por defecto, la Caja Mayor de ese local.
+  function medioDeLocal(localId){
+    return ((form.medios||{})[localId])||CAJA_MAYOR_POR_LOCAL[localId]||"";
+  }
+  function resumenReparto(distribucion){
+    return distribucion.map(function(d){return "• "+d.nombre+": "+fmt(d.monto)+" ("+d.pct+"%)";}).join("\n");
+  }
+
   function doSave(){
     var total=totalCargaLocal(form);
     var id=editReg?editReg.id:String(Date.now());
     var distribucion=calcDistribucion(form.cuit,total);
+    var pagaConMedios=form.cuit==="c2"&&(form.estado==="pagado"||form.estado==="parcial");
+    if(pagaConMedios)distribucion=distribucion.map(function(d){return {...d,medio:medioDeLocal(d.local)};});
     var obj={id,cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,distribucion:distribucion,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
     if(props.onSaveCargaSocial)props.onSaveCargaSocial(obj);
     // Generar egresos por local — solo si está pagado o parcial
     if(total>0&&props.onSaveEgresoF931&&(form.estado==="pagado"||form.estado==="parcial")){
       distribucion.forEach(function(d){
-        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:"F.931 "+form.periodo,subramo:d.nombre+" ("+d.pct+"%)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:[]};
+        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:"F.931 "+form.periodo,subramo:d.nombre+" ("+d.pct+"%)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:d.medio||"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:d.medio?[{medio:d.medio,monto:d.monto}]:[]};
         props.onSaveEgresoF931(egreso);
       });
     }
     setShowModal(false);setEditReg(null);
     setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+    // Antes de pagar: qué le toca a cada local de este F.931.
+    if(form.cuit==="c2"&&total>0&&!pagaConMedios){
+      window.setTimeout(function(){
+        alert("F.931 de Calzon Gitano "+form.periodo+" cargado por "+fmt(total)+".\n\nAntes de pagarlo, a cada local le corresponde:\n"+resumenReparto(distribucion)+"\n\nAl marcarlo como pagado vas a poder elegir con qué medio paga cada uno.");
+      },100);
+    }
   }
 
   return(
@@ -17053,6 +17093,33 @@ function PanelCuit(props){
                 <span style={{fontSize:15,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totalCargaLocal(form))}</span>
               </div>
             </div>
+            {form.cuit==="c2"&&totalCargaLocal(form)>0&&(function(){
+              var dist=calcDistribucion("c2",totalCargaLocal(form));
+              var conMedio=form.estado==="pagado"||form.estado==="parcial";
+              return(
+                <div style={{background:"#0A0A0A",border:"1px solid #1A6B8A44",borderRadius:10,padding:"12px",marginBottom:10}}>
+                  <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Reparto entre locales</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>Un tercio se divide fijo (50% Bodegón, 30% Colantonio's, 20% Kusama) y el resto va a Kusama y Colantonio's según sus empleados.</div>
+                  {dist.map(function(d){
+                    return(
+                      <div key={d.local} style={{marginBottom:8}}>
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                          <span style={{color:"#F0EDE8",fontWeight:700}}>{d.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {d.pct}%</span></span>
+                          <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(d.monto)}</span>
+                        </div>
+                        <div style={{fontSize:9,color:"#6E6E6E"}}>{fmt(d.fijo)} del tercio fijo{d.monto-d.fijo>0?" + "+fmt(d.monto-d.fijo)+" por empleados":""}</div>
+                        {conMedio&&(
+                          <select value={medioDeLocal(d.local)} onChange={function(e){var v=e.target.value;setForm(function(f){var m={...(f.medios||{})};m[d.local]=v;return{...f,medios:m};});}} style={{...INP,marginTop:5,fontSize:12,padding:"7px 10px"}}>
+                            {MEDIOS_EGRESO.filter(function(m){return m.value!=="Efectivo - Oficina";}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                          </select>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {!conMedio&&<div style={{fontSize:9,color:"#8A7040"}}>Al marcarlo como Pagado o Parcial elegís con qué medio paga cada local.</div>}
+                </div>
+              );
+            })()}
             <div style={{marginBottom:14}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Notas</label>
               <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
@@ -17094,10 +17161,10 @@ function PanelCuit(props){
                 {/* Distribución por local */}
                 {c.distribucion&&c.distribucion.length>0&&(
                   <div style={{marginTop:6,padding:"6px 8px",background:"#080808",borderRadius:6}}>
-                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Distribución</div>
+                    <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{c.estado==="pendiente"?"Antes de pagar, le corresponde a cada local":"Distribución"}</div>
                     {c.distribucion.map(function(d){return(
                       <div key={d.local} style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:2}}>
-                        <span style={{color:"#888"}}>{d.nombre} {d.empleados!==undefined?"("+d.empleados+" emp.)":""} — {d.pct}%</span>
+                        <span style={{color:"#888"}}>{d.nombre} {d.empleados!==undefined?"("+d.empleados+" emp.)":""} — {d.pct}%{d.medio?" · "+d.medio:""}</span>
                         <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(d.monto)}</span>
                       </div>
                     );})}

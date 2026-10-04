@@ -4946,15 +4946,19 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   function partesOficinaModal(){
     var n=netoModal();
     var bod=Math.round(n*0.5), col=Math.round(n*0.3), kus=n-bod-col;
-    var medios=modalForm.mediosOf||{};
+    var medios=modalForm.mediosOf||{}, pagaOf=modalForm.pagaOf||{};
+    // "paga" es lo que pone cada local de su cuenta: por defecto su parte, pero se puede cambiar
+    // mientras la suma dé el total (la diferencia queda como gasto cruzado).
+    function paga(lid,share){ var v=pagaOf[lid]; return (v===undefined||v==="")?share:(parseFloat(v)||0); }
     return [
-      {local:"l1",nombre:"Bodegón",pct:50,monto:bod,medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1},
-      {local:"l3",nombre:"Colantonio's",pct:30,monto:col,medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3},
-      {local:"l2",nombre:"Kusama",pct:20,monto:kus,medio:medios.l2||CAJA_MAYOR_POR_LOCAL.l2}
+      {local:"l1",nombre:"Bodegón",pct:50,monto:bod,paga:paga("l1",bod),medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1},
+      {local:"l3",nombre:"Colantonio's",pct:30,monto:col,paga:paga("l3",col),medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3},
+      {local:"l2",nombre:"Kusama",pct:20,monto:kus,paga:paga("l2",kus),medio:medios.l2||CAJA_MAYOR_POR_LOCAL.l2}
     ];
   }
+  function sumaPagaOficina(){ return partesOficinaModal().reduce(function(a,x){return a+x.paga;},0); }
   function pagosModal(){
-    if(esOficinaModal())return partesOficinaModal().filter(function(x){return x.monto>0;}).map(function(x){return {medio:x.medio,monto:x.monto};});
+    if(esOficinaModal())return partesOficinaModal().filter(function(x){return x.paga>0;}).map(function(x){return {medio:x.medio,monto:x.paga};});
     var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
     if(filas.length===1&&!(parseFloat(filas[0].monto)>0))return [{medio:filas[0].medio,monto:netoModal()}];
     return filas.filter(function(pg){return parseFloat(pg.monto)>0;}).map(function(pg){return{medio:pg.medio,monto:parseFloat(pg.monto)};});
@@ -4973,6 +4977,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     if(!modalPl)return;
     var pagosValidos=pagosModal();
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
+    if(esOficinaModal()&&Math.abs(sumaPagaOficina()-netoModal())>0.5){alert("Lo que ponen los tres locales ("+fmt(sumaPagaOficina())+") tiene que sumar el total a pagar ("+fmt(netoModal())+").");return;}
     var montoFinal=parseFloat(modalPl.monto)||0;
     var montoParcial=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):0;
     var sid=String(Date.now());
@@ -5269,7 +5274,11 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     <div key={x.local} style={{marginBottom:8}}>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
                         <span style={{color:"#F0EDE8",fontWeight:700}}>{x.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {x.pct}%</span></span>
-                        <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)}</span>
+                        <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)} <span style={{color:"#7E7E7E",fontWeight:400,fontSize:10}}>de costo</span></span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                        <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",flex:"none"}}>Paga $</label>
+                        <input type="number" placeholder={String(x.monto)} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
                       </div>
                       <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
                         {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
@@ -5279,6 +5288,16 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     </div>
                   );
                 })}
+                {(function(){
+                  var ok=Math.abs(sumaPagaOficina()-netoModal())<=0.5;
+                  var cruzado=partesOficinaModal().some(function(x){return Math.abs(x.paga-x.monto)>0.5;});
+                  return(
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:ok?"#0A1A0A":"#1A0A0A"}}>
+                      <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · queda un gasto cruzado":""}</span>
+                      <span style={{color:ok?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(sumaPagaOficina())} / {fmt(netoModal())}{ok?" ✓":" ← diferencia"}</span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
             {!esOficinaModal()&&<div style={{marginBottom:10}}>

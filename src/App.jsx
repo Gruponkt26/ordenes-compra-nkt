@@ -3745,6 +3745,7 @@ function PanelResumenOficina(p){
   var hoy=new Date().toISOString().split("T")[0];
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var [mes,setMes]=useState(hoy.slice(0,7));
+  var [abierto,setAbierto]=useState({});
   var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
   function esParteOficina(g){ return g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
   var partes=gastos.filter(esParteOficina);
@@ -3765,12 +3766,21 @@ function PanelResumenOficina(p){
       puso[d]+=parseFloat(pg.monto)||0;
     });
     var k=String(g.id).replace(/_l[123]$/,"");
-    var gr=grupos[k]||(grupos[k]={id:k,concepto:g.concepto,fecha:g.fecha,area:g.area||g.categoria||"",total:0,porLocal:{l1:0,l3:0,l2:0}});
+    // Qué es: se deduce del código del egreso, y se le saca al subrubro y al detalle el texto del reparto.
+    var tipoG=/^egr_sueldo_/.test(k)?"👤 Sueldo":/^egr_of_/.test(k)?"💸 Gasto fijo":/^egr_obra_/.test(k)?"🏗️ Obra":"📄 Egreso";
+    var sub=String(g.subramo||"").replace(/\s*·?\s*Oficina (50|30|20)%\s*·?\s*/g," ").replace(/\s+/g," ").trim().replace(/^·\s*|\s*·$/g,"");
+    var det=String(g.detalle||"").replace(/\s*·?\s*Parte de la Oficina \([^)]*\)/g,"").replace(/^\s*·\s*/,"").trim();
+    var gr=grupos[k]||(grupos[k]={id:k,concepto:g.concepto,fecha:g.fecha,area:g.area||g.categoria||"",tipo:tipoG,sub:sub,detalle:det,notas:g.notas||"",total:0,porLocal:{l1:0,l3:0,l2:0},medios:{}});
     gr.total+=parseFloat(g.monto)||0; gr.porLocal[g.local]+=parseFloat(g.monto)||0;
+    pagos.forEach(function(pg){ var mm=String(pg.medio||pg.tipo||"")||"Sin medio"; gr.medios[mm]=(gr.medios[mm]||0)+(parseFloat(pg.monto)||0); });
     if(String(g.fecha||"")>String(gr.fecha||""))gr.fecha=g.fecha;
   });
   var lista=Object.keys(grupos).map(function(k){return grupos[k];}).sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   var total=lista.reduce(function(a,x){return a+x.total;},0);
+  // En qué se gastó, por rubro
+  var porRubro={};
+  lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
+  var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
   var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
   var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
@@ -3814,24 +3824,51 @@ function PanelResumenOficina(p){
         "Le correspondía" es la parte del costo de cada local (50/30/20). "Puso de su cuenta" es la plata que salió de las cuentas de ese local. Si no coinciden, la diferencia son los gastos cruzados: quien puso de más está cubriendo a quien puso de menos.
       </div>
 
-      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Lo que se pagó</div>
+      {rubros.length>0&&(
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>En qué se gastó</div>
+          <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:12,padding:"6px 12px"}}>
+            {rubros.map(function(r,i){
+              var pct=total>0?Math.round(r.total/total*100):0;
+              return(
+                <div key={r.rubro} style={{padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                    <span style={{color:"#F0EDE8",fontWeight:600}}>{r.rubro} <span style={{color:"#6E6E6E",fontWeight:400,fontSize:10}}>{pct}%</span></span>
+                    <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(r.total)}</span>
+                  </div>
+                  <div style={{height:3,background:"#161616",borderRadius:2,marginTop:4}}><div style={{height:3,width:pct+"%",background:"#3A7D44",borderRadius:2}}/></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Lo que se pagó <span style={{color:"#6E6E6E",textTransform:"none",letterSpacing:0}}>· tocá uno para ver el detalle</span></div>
       {lista.length===0?(
         <div style={{textAlign:"center",padding:"20px 0",color:"#6E6E6E",fontSize:12}}>No hay egresos de la Oficina {mes==="todos"?"todavía":"en "+mes}.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {lista.map(function(x){
             return(
-              <div key={x.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 12px"}}>
+              <div key={x.id} onClick={function(){setAbierto(function(a){var n={...a};n[x.id]=!a[x.id];return n;});}} style={{background:"#0F0F0F",border:"1px solid "+(abierto[x.id]?"#2A2A2A":"#1A1A1A"),borderRadius:10,padding:"9px 12px",cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                   <div>
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{x.concepto}</div>
-                    <div style={{fontSize:10,color:"#7E7E7E"}}>{x.area?x.area+" · ":""}{fmtDate(x.fecha)}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E"}}>{x.tipo} · {x.area?x.area+" · ":""}{x.sub?x.sub+" · ":""}{fmtDate(x.fecha)}</div>
                   </div>
                   <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.total)}</div>
                 </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#8C8C8C",marginTop:4}}>
                   {LOC.map(function(t){var l=getLocal(t[0]);return <span key={t[0]} style={{color:l?l.color:"#8C8C8C"}}>{l?l.emoji:""} {fmt(x.porLocal[t[0]])}</span>;})}
                 </div>
+                {abierto[x.id]&&(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #1A1A1A",fontSize:10,color:"#9A9A9A",lineHeight:1.6}}>
+                    {x.sub&&<div>🏷️ {x.sub}</div>}
+                    {x.detalle&&<div>📝 {x.detalle}</div>}
+                    {x.notas&&<div>🗒️ {x.notas}</div>}
+                    <div>💳 Pagado con: {Object.keys(x.medios).map(function(m){return m+" "+fmt(x.medios[m]);}).join(" · ")}</div>
+                  </div>
+                )}
               </div>
             );
           })}

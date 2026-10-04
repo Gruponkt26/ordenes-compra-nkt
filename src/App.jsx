@@ -693,7 +693,7 @@ var INIT_PRODUCTOS = {
   p11: [],
 };
 
-var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa"];
+var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa","penca","atado","pack"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
 var _oc = 1, _pc = 10, _uc = 100; // _uc arranca en 100 para no chocar con los ids u1-u11 ya usados en INIT_USERS
@@ -1290,7 +1290,7 @@ function NuevaOrden(p) {
                               <div style={{fontSize:10,color:"#7E7E7E"}}>{f.unidad}</div>
                             </div>
                             <input type="number" min="0" placeholder="cant." value={f.cantidad} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,cantidad:v}:x;});});}} style={{...INP,textAlign:"right",borderColor:falta?"#C1440E88":(parseFloat(f.cantidad)>0?"#D4A01788":"#2A2A2A")}}/>
-                            <select value={f.unidad} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,unidad:v}:x;});});}} style={{...INP,fontSize:11,padding:"9px 4px"}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                            <select value={f.unidad} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,unidad:v}:x;});});}} style={{...INP,fontSize:11,padding:"9px 4px"}}>{(UNIDADES.indexOf(f.unidad)===-1?[f.unidad].concat(UNIDADES):UNIDADES).map(function(u){return <option key={u}>{u}</option>;})}</select>
                             <input type="number" placeholder="$ unit." value={f.precio} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,precio:v}:x;});});}} style={{...INP,textAlign:"right",fontSize:12}}/>
                           </div>
                         );

@@ -20269,6 +20269,33 @@ function repartirSueldoOficina(pagos){
   lineas.forEach(function(l){ orden.forEach(function(lid){ tomar(l,lid); }); });
   return {l1:{monto:bod,pagos:asignado.l1},l3:{monto:col,pagos:asignado.l3},l2:{monto:kus,pagos:asignado.l2}};
 }
+// Un egreso cargado con local Oficina (una obra, un mantenimiento, cualquier gasto suelto) se parte
+// en tres, uno por local, con la misma proporción que el resto de la Oficina: 50% Bodegón, 30%
+// Colantonio's, 20% Kusama. La plata sale de los medios con que se cargó (si el medio es de otro
+// local, esa parte queda como gasto cruzado) y "Efectivo - Oficina" se reparte en las tres cajas.
+function partirEgresoOficina(g){
+  var monto=parseFloat(g.monto)||0;
+  var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:monto}];
+  var lineas=[];
+  pagos.forEach(function(pg){
+    var med=String(pg.medio||pg.tipo||"").trim(), m=parseFloat(pg.monto)||0;
+    if(med==="Efectivo - Oficina")repartoEfectivoOficina(m).forEach(function(x){lineas.push({medio:x.medio,monto:x.monto,deuda:pg.deuda});});
+    else lineas.push({medio:med,monto:m,deuda:pg.deuda});
+  });
+  var suma=lineas.reduce(function(a,x){return a+x.monto;},0);
+  if(monto>suma+0.5)lineas.push({medio:"",monto:monto-suma});
+  var deuda=lineas.some(function(x){return x.deuda;});
+  var rep=repartirSueldoOficina(lineas.map(function(x){return {medio:x.medio,monto:x.monto};}));
+  return [["l1",50],["l3",30],["l2",20]].map(function(t){
+    var parte=rep[t[0]];
+    if(!parte||parte.monto<=0)return null;
+    return {...g,id:g.id+"_"+t[0],local:t[0],
+      subramo:(g.subramo?g.subramo+" · ":"")+"Oficina "+t[1]+"%",
+      detalle:(g.detalle?g.detalle+" · ":"")+"Parte de la Oficina ("+t[1]+"% de $"+Math.round(monto).toLocaleString("es-AR")+")",
+      monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",
+      pagos:parte.pagos.map(function(x){return deuda?{...x,deuda:true}:x;})};
+  }).filter(Boolean);
+}
 async function sbSaveGasto(gasto) {
   try {
     // El formulario arma "pagos" siempre, incluso con un solo medio cargado —no alcanza con
@@ -21331,6 +21358,18 @@ export default function App() {
     var prefijo="f931_"+id+"_";
     gastos.filter(function(g){return String(g.id).indexOf(prefijo)===0;}).forEach(function(g){borrarEgresoSolo(g.id);});
   }
+  // Guarda un egreso; si es de la Oficina lo parte en tres (uno por local) y borra el egreso entero
+  // que hubiera quedado de antes con el mismo id.
+  function guardarEgresoConOficina(g){
+    var lista=g.local==="l4"?partirEgresoOficina(g):[g];
+    if(g.local==="l4"){ sbDeleteGasto(g.id); }
+    lista.forEach(function(x){ sbSaveGasto(x); });
+    setGastos(function(prev){
+      var ids={}; lista.forEach(function(x){ids[x.id]=true;});
+      var f=prev.filter(function(x){return !ids[x.id]&&!(g.local==="l4"&&x.id===g.id);});
+      return lista.concat(f);
+    });
+  }
   function borrarEgresoSolo(id){
     sbDeleteGasto(id);
     setGastos(function(p){return p.filter(function(g){return g.id!==id;});});
@@ -21896,10 +21935,12 @@ export default function App() {
                 // Eliminar el egreso automático asociado
                 // El ID del egreso es egr_obra_ + id de obra (que puede incluir prefijo "obra_")
                 var egresoId="egr_obra_"+id.replace("obra_","");
-                sbDeleteGasto(egresoId);
-                setGastos(function(prev){return prev.filter(function(g){return g.id!==egresoId;});});
+                // Si la obra era de la Oficina, el egreso está partido en tres.
+                var idsEgreso=[egresoId,egresoId+"_l1",egresoId+"_l3",egresoId+"_l2"];
+                idsEgreso.forEach(function(x){sbDeleteGasto(x);});
+                setGastos(function(prev){return prev.filter(function(g){return idsEgreso.indexOf(g.id)===-1;});});
               }}
-              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              onSaveEgreso={guardarEgresoConOficina}
               onDeleteEgreso={borrarEgresoSolo}
               gastosFijosOf={gastosFijosOf} pagosFijosOf={pagosFijosOf}
               onSaveGastoFijoOf={function(g){guardarOfPauta("of_gasto",g);}} onDeleteGastoFijoOf={borrarPauta}
@@ -22118,7 +22159,7 @@ export default function App() {
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
-              onSave={function(g){sbSaveGasto(g);setGastos(function(p){var f=p.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              onSave={guardarEgresoConOficina}
               onDelete={borrarEgreso}
               onSaveConcepto={function(c){sbSaveConcepto(c);setConceptosGastos(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteConcepto={function(id){sbDeleteConcepto(id);setConceptosGastos(function(p){return p.filter(function(c){return c.id!==id;});});}}

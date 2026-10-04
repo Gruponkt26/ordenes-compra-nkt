@@ -1096,6 +1096,28 @@ function NuevaOrden(p) {
   var [actProv,setActProv]=useState(null);
   var [ni,setNi]=useState({producto:"",cantidad:"",unidad:"kg",precio:""});
   var [cp,setCp]=useState("");
+  // Planilla del proveedor abierto: una fila por producto de su lista, que hay que completar
+  // entera (con 0 si no se necesita) para poder confirmar. Se arma al abrir el proveedor.
+  var [lista,setLista]=useState([]);
+  var [otro,setOtro]=useState({nombre:"",cantidad:"",unidad:"kg",precio:""});
+  useEffect(function(){
+    if(!actProv){setLista([]);return;}
+    var prods=p.productos[actProv]||[];
+    var sec=orden.provSections.find(function(x){return x.provId===actProv;});
+    var previos=(sec&&sec.items)||[];
+    var filas=prods.map(function(pr){
+      var pn=typeof pr==="string"?pr:(pr.nombre||"");
+      var un=typeof pr==="string"?"unidad":(pr.unidad||"unidad");
+      var ya=previos.find(function(i){return i.nombre===pn;});
+      return {nombre:pn,cantidad:ya?String(ya.cantidad):"",unidad:ya?ya.unidad:un,precio:ya?String(ya.precio||""):getPrecio(actProv,pr),custom:false};
+    });
+    // Lo que ya estaba cargado y no está en la lista del proveedor (un "Otro") se conserva.
+    previos.forEach(function(i){
+      if(!filas.some(function(f){return f.nombre===i.nombre;}))filas.push({nombre:i.nombre,cantidad:String(i.cantidad),unidad:i.unidad,precio:String(i.precio||""),custom:true});
+    });
+    setLista(filas);
+    setOtro({nombre:"",cantidad:"",unidad:"kg",precio:""});
+  },[actProv]);
   var local=getLocal(orden.local);
   var lc=local?local.color:"#C1440E";
   var precios=p.precios||{};
@@ -1253,85 +1275,70 @@ function NuevaOrden(p) {
                       }} style={{background:"none",border:"1px solid #222",color:"#8C8C8C",borderRadius:8,width:34,height:34,cursor:"pointer",fontSize:15}}>✕</button>
                     </div>
 
-                    {/* Add item */}
-                    <div style={{padding:"14px 20px",borderBottom:"1px solid #1E1E1E",background:"#0F0F0F",flexShrink:0}}>
-                      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:7,alignItems:"end"}}>
-                        <div>
-                          <label style={{fontSize:10,color:"#7E7E7E",display:"block",marginBottom:4}}>Producto</label>
-                          <select value={ni.producto} onChange={function(e){var prod=e.target.value;var precio=getPrecio(actProv,prod);setNi(function(n){return{...n,producto:prod,precio:precio};});}} style={INP}>
-                            <option value="">Seleccionar...</option>
-                            {prods.map(function(pr,i){var pn=typeof pr==="string"?pr:(pr.nombre||"");return <option key={i} value={pn}>{pn}</option>;})}
-                            <option value="__custom__">+ Otro</option>
-                          </select>
-                          {ni.producto==="__custom__"&&<input placeholder="Escribir producto..." value={cp} onChange={function(e){setCp(e.target.value);}} style={{...INP,marginTop:5}}/>}
-                        </div>
-                        <div><label style={{fontSize:10,color:"#7E7E7E",display:"block",marginBottom:4}}>Cant.</label><input type="number" placeholder="0" value={ni.cantidad} onChange={function(e){setNi(function(n){return{...n,cantidad:e.target.value};});}} style={INP}/></div>
-                        <div><label style={{fontSize:10,color:"#7E7E7E",display:"block",marginBottom:4}}>Unidad</label><select value={ni.unidad} onChange={function(e){setNi(function(n){return{...n,unidad:e.target.value};});}} style={INP}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select></div>
-                        <div><label style={{fontSize:10,color:"#7E7E7E",display:"block",marginBottom:4}}>$ Unit.</label><input type="number" placeholder="0.00" value={ni.precio} onChange={function(e){setNi(function(n){return{...n,precio:e.target.value};});}} style={INP}/></div>
-                        <button onClick={function(){
-                          var nombre=ni.producto==="__custom__"?cp:ni.producto;
-                          if(!nombre||!ni.cantidad)return;
-                          var it={id:Date.now(),nombre:nombre,cantidad:ni.cantidad,unidad:ni.unidad,precio:ni.precio};
-                          var hasSec=orden.provSections.find(function(s){return s.provId===actProv;});
-                          if(hasSec){
-                            setOrden(function(o){return{...o,provSections:o.provSections.map(function(s){return s.provId===actProv?{...s,items:[...s.items,it]}:s;})};});
-                          } else {
-                            setOrden(function(o){return{...o,provSections:[...o.provSections,{provId:actProv,items:[it]}]};});
-                          }
-                          setNi({producto:"",cantidad:"",unidad:"kg",precio:""});setCp("");
-                        }} style={{...BS("#C1440E"),padding:"9px 12px",height:37,flexShrink:0}}>+</button>
-                      </div>
+                    {/* Planilla: todos los productos del proveedor, hay que completarlos todos */}
+                    <div style={{padding:"10px 20px",borderBottom:"1px solid #1E1E1E",background:"#0F0F0F",flexShrink:0,fontSize:11,color:"#9A9A9A",lineHeight:1.5}}>
+                      Poné la cantidad de <b style={{color:"#F0EDE8"}}>cada producto</b>. Si no necesitás uno, poné <b style={{color:"#D4A017"}}>0</b>. No se puede confirmar hasta completar toda la lista.
                     </div>
-
-                    {/* Items list */}
-                    <div style={{overflowY:"auto",flex:1,padding:"12px 20px"}}>
-                      {sec.items.length===0?(
-                        <div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>
-                          <div style={{fontSize:28,marginBottom:8}}>📦</div>
-                          <div style={{fontSize:13}}>Agregá productos arriba</div>
+                    <div style={{overflowY:"auto",flex:1,padding:"8px 20px"}}>
+                      {lista.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"#6E6E6E",fontSize:12}}>Este proveedor no tiene productos cargados. Usá "Otro producto" abajo.</div>}
+                      {lista.map(function(f,idx){
+                        var falta=f.cantidad==="";
+                        return(
+                          <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 78px 70px 74px",gap:6,alignItems:"center",padding:"7px 0",borderTop:idx===0?"none":"1px solid #1A1A1A"}}>
+                            <div>
+                              <div style={{fontSize:13,color:falta?"#F0EDE8":(parseFloat(f.cantidad)>0?"#D4A017":"#6E6E6E"),fontWeight:600}}>{f.nombre}{f.custom?" (otro)":""}</div>
+                              <div style={{fontSize:10,color:"#7E7E7E"}}>{f.unidad}</div>
+                            </div>
+                            <input type="number" min="0" placeholder="cant." value={f.cantidad} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,cantidad:v}:x;});});}} style={{...INP,textAlign:"right",borderColor:falta?"#C1440E88":(parseFloat(f.cantidad)>0?"#D4A01788":"#2A2A2A")}}/>
+                            <select value={f.unidad} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,unidad:v}:x;});});}} style={{...INP,fontSize:11,padding:"9px 4px"}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                            <input type="number" placeholder="$ unit." value={f.precio} onChange={function(e){var v=e.target.value;setLista(function(l){return l.map(function(x,k){return k===idx?{...x,precio:v}:x;});});}} style={{...INP,textAlign:"right",fontSize:12}}/>
+                          </div>
+                        );
+                      })}
+                      {/* Un producto que no está en la lista */}
+                      <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #2A2A2A"}}>
+                        <div style={{fontSize:10,color:"#7E7E7E",marginBottom:5,textTransform:"uppercase",letterSpacing:1}}>+ Otro producto (que no está en la lista)</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 78px 70px 74px auto",gap:6,alignItems:"center"}}>
+                          <input placeholder="Producto" value={otro.nombre} onChange={function(e){var v=e.target.value;setOtro(function(o){return{...o,nombre:v};});}} style={INP}/>
+                          <input type="number" min="0" placeholder="cant." value={otro.cantidad} onChange={function(e){var v=e.target.value;setOtro(function(o){return{...o,cantidad:v};});}} style={{...INP,textAlign:"right"}}/>
+                          <select value={otro.unidad} onChange={function(e){var v=e.target.value;setOtro(function(o){return{...o,unidad:v};});}} style={{...INP,fontSize:11,padding:"9px 4px"}}>{UNIDADES.map(function(u){return <option key={u}>{u}</option>;})}</select>
+                          <input type="number" placeholder="$ unit." value={otro.precio} onChange={function(e){var v=e.target.value;setOtro(function(o){return{...o,precio:v};});}} style={{...INP,textAlign:"right",fontSize:12}}/>
+                          <button onClick={function(){
+                            if(!otro.nombre.trim()||otro.cantidad==="")return;
+                            setLista(function(l){return l.concat([{nombre:otro.nombre.trim(),cantidad:otro.cantidad,unidad:otro.unidad,precio:otro.precio,custom:true}]);});
+                            setOtro({nombre:"",cantidad:"",unidad:"kg",precio:""});
+                          }} style={{...BS("#1A6B8A"),padding:"9px 11px",height:37}}>+</button>
                         </div>
-                      ):(
-                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                          <thead>
-                            <tr style={{color:"#7E7E7E",fontSize:10,textTransform:"uppercase",letterSpacing:1}}>
-                              <th style={{textAlign:"left",padding:"5px 4px"}}>Producto</th>
-                              <th style={{textAlign:"right",padding:"5px 4px"}}>Cant.</th>
-                              <th style={{textAlign:"left",padding:"5px 4px"}}>Ud.</th>
-                              <th style={{textAlign:"right",padding:"5px 4px"}}>Subtotal</th>
-                              <th></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sec.items.map(function(item){return(
-                              <tr key={item.id} style={{borderTop:"1px solid #1A1A1A"}}>
-                                <td style={{padding:"9px 4px",color:"#F0EDE8",fontWeight:500}}>{item.nombre}</td>
-                                <td style={{padding:"9px 4px",textAlign:"right",color:"#D4A017",fontWeight:600}}>{item.cantidad}</td>
-                                <td style={{padding:"9px 4px",color:"#8C8C8C"}}>{item.unidad}</td>
-                                <td style={{padding:"9px 4px",textAlign:"right",color:"#888"}}>${(parseFloat(item.cantidad)*parseFloat(item.precio||0)).toFixed(2)}</td>
-                                <td style={{padding:"9px 4px"}}><button onClick={function(){remItem(actProv,item.id);}} style={{background:"none",border:"none",color:"#7E7E7E",cursor:"pointer",fontSize:15}}>✕</button></td>
-                              </tr>
-                            );})}
-                            <tr style={{borderTop:"2px solid #222"}}>
-                              <td colSpan={3} style={{padding:"10px 4px",textAlign:"right",color:"#8C8C8C",fontSize:11,textTransform:"uppercase"}}>Total proveedor</td>
-                              <td style={{padding:"10px 4px",textAlign:"right",color:"#C1440E",fontWeight:800,fontSize:15}}>${st.toFixed(2)}</td>
-                              <td></td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      )}
+                      </div>
                     </div>
 
                     {/* Footer */}
                     <div style={{padding:"13px 20px",borderTop:"1px solid #1E1E1E",flexShrink:0}}>
-                      <button onClick={function(){
-                        var hasSec=orden.provSections.find(function(s){return s.provId===actProv;});
-                        if(hasSec&&hasSec.items.length===0){
-                          setOrden(function(o){return{...o,provSections:o.provSections.filter(function(s){return s.provId!==actProv;})};});
-                        }
-                        setActProv(null);
-                      }} style={{...BS("#C1440E"),width:"100%",padding:"12px",fontSize:14}}>
-                        ✓ Listo — volver a proveedores
-                      </button>
+                      {(function(){
+                        var faltan=lista.filter(function(f){return f.cantidad==="";}).length;
+                        var conCant=lista.filter(function(f){return parseFloat(f.cantidad)>0;});
+                        var totalLista=conCant.reduce(function(a,f){return a+parseFloat(f.cantidad)*parseFloat(f.precio||0);},0);
+                        return(
+                          <div>
+                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#8C8C8C",marginBottom:8}}>
+                              <span>{conCant.length} producto{conCant.length===1?"":"s"} a pedir</span>
+                              <span style={{color:"#C1440E",fontWeight:700}}>${totalLista.toFixed(2)}</span>
+                            </div>
+                            <button disabled={faltan>0} onClick={function(){
+                              var items=conCant.map(function(f,k){return {id:Date.now()+k,nombre:f.nombre,cantidad:f.cantidad,unidad:f.unidad,precio:f.precio};});
+                              setOrden(function(o){
+                                var hay=o.provSections.some(function(x){return x.provId===actProv;});
+                                if(items.length===0)return{...o,provSections:o.provSections.filter(function(x){return x.provId!==actProv;})};
+                                if(hay)return{...o,provSections:o.provSections.map(function(x){return x.provId===actProv?{...x,items:items}:x;})};
+                                return{...o,provSections:[...o.provSections,{provId:actProv,items:items}]};
+                              });
+                              setActProv(null);
+                            }} style={{...BS(faltan>0?"#2A2A2A":"#C1440E",faltan>0?"#7E7E7E":"#fff"),width:"100%",padding:"12px",fontSize:14,cursor:faltan>0?"not-allowed":"pointer"}}>
+                              {faltan>0?"Faltan "+faltan+" producto"+(faltan===1?"":"s")+" por completar (poné 0 si no lo necesitás)":"✓ Confirmar — volver a proveedores"}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

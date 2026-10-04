@@ -16985,7 +16985,7 @@ function PanelCuit(props){
     // Generar egresos por local — solo si está pagado o parcial
     if(total>0&&props.onSaveEgresoF931&&(form.estado==="pagado"||form.estado==="parcial")){
       distribucion.forEach(function(d){
-        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:"F.931 "+form.periodo,subramo:d.nombre+" ("+d.pct+"%)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:d.medio||"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:d.medio?[{medio:d.medio,monto:d.monto}]:[]};
+        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:form.cuit==="c2"?"F.931 SRL (Calzon Gitano) "+form.periodo:"F.931 Bodegón (CUIT propio) "+form.periodo,subramo:form.cuit==="c2"?d.nombre+" · "+d.pct+"% del F.931 de la SRL":d.nombre+" · 100% (CUIT propio)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:d.medio||"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:d.medio?[{medio:d.medio,monto:d.monto}]:[]};
         props.onSaveEgresoF931(egreso);
       });
     }

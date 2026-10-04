@@ -5620,6 +5620,160 @@ function depQueEs(x){
   return (d?d.emoji+" ":"")+n+(d?" de "+d.nombre.toLowerCase():"");
 }
 
+// ─── SUELDO DEL EMPLEADO DE DEPORTES ──────────────────────────────────────────
+// El sueldo de Marcos Bracamonte no es un gasto del grupo, pero la plata sale de la Caja Mayor
+// del Bodegón. Cada pago (total o parcial) se registra además como un retiro de socio de Nicolás,
+// que baja la disponibilidad del Bodegón sin tocar su Resultado. Los registros viven en la tabla
+// de pautas (ámbito "dep_sueldo"), uno por sueldo o aguinaldo, con sus pagos adentro.
+var DEP_EMPLEADO="Marcos Bracamonte";
+var DEP_MEDIOS_PAGO=[["Caja Mayor - Bodegón","Caja Mayor Bodegón"],["Transferencia - Patagonia Personas","Transf. Patagonia Personas"],["Transferencia - Provincia Personas","Transf. Provincia Personas"],["Transferencia - Mercado Pago Nicolás","Transf. MP Nicolás"]];
+function depSueldoPagado(r){ return (r.pagos||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0); }
+function PanelSueldoDeportes(p){
+  var registros=(p.registros||[]).slice().sort(function(a,b){return String(b.mes||"").localeCompare(String(a.mes||""))||String(b.id).localeCompare(String(a.id));});
+  var hoy=new Date().toISOString().split("T")[0];
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var [form,setForm]=useState(null);   // sueldo que se está cargando
+  var [pagando,setPagando]=useState(null); // {id, monto, fecha, medio}
+  var INPs={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  function nuevoPago(rec,monto,fecha,medio){
+    var n=(rec.pagos||[]).length+1;
+    var pid=rec.id+"_p"+Date.now();
+    var pago={id:pid,monto:monto,fecha:fecha,medio:medio};
+    p.onSaveRetiro({id:"retdep_"+pid,socio:"Nicolás",local:"l1",local_cuenta:"l1",monto:monto,tipo_retiro:medio,clase:"dinero",bien:"",cotizacion:0,usd:0,
+      notas:"Pago sueldo y/o aguinaldo "+DEP_EMPLEADO+" — "+rec.concepto+" "+rec.mes,fecha:fecha,usuario:p.usuario||"",created_at:new Date().toISOString()});
+    return {...rec,pagos:(rec.pagos||[]).concat([pago])};
+  }
+  function guardar(){
+    var monto=parseFloat(form.monto)||0;
+    if(monto<=0){alert("Cargá el valor del sueldo, mayor a cero.");return;}
+    var rec={id:"depsueldo_"+Date.now(),mes:form.mes,concepto:form.concepto,monto:monto,pagos:[]};
+    if(form.modo!=="ninguno"){
+      var pagoMonto=form.modo==="total"?monto:(parseFloat(form.parcial)||0);
+      if(pagoMonto<=0){alert("Poné cuánto se pagó.");return;}
+      if(pagoMonto>monto+0.5){alert("El pago no puede ser mayor al valor del sueldo.");return;}
+      rec=nuevoPago(rec,pagoMonto,form.fecha,form.medio);
+    }
+    p.onSave(rec);
+    setForm(null);
+  }
+  function registrarPago(rec){
+    var monto=parseFloat(pagando.monto)||0;
+    var falta=rec.monto-depSueldoPagado(rec);
+    if(monto<=0){alert("Poné cuánto se pagó.");return;}
+    if(monto>falta+0.5){alert("Eso es más de lo que falta pagar ("+fmt(falta)+").");return;}
+    p.onSave(nuevoPago(rec,monto,pagando.fecha,pagando.medio));
+    setPagando(null);
+  }
+  function borrarPago(rec,pago){
+    if(!window.confirm("¿Eliminar este pago? También se borra el retiro de Nicolás que generó."))return;
+    p.onDeleteRetiro("retdep_"+pago.id);
+    p.onSave({...rec,pagos:(rec.pagos||[]).filter(function(x){return x.id!==pago.id;})});
+  }
+  function borrarRegistro(rec){
+    if(!window.confirm("¿Eliminar este sueldo? Se borran también sus pagos y los retiros de Nicolás que generaron."))return;
+    (rec.pagos||[]).forEach(function(pg){p.onDeleteRetiro("retdep_"+pg.id);});
+    p.onDelete(rec.id);
+  }
+  return(
+    <div style={{background:"#0F0F0F",border:"1px solid #8B2FC933",borderRadius:12,padding:"13px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <div>
+          <div style={{fontSize:13,fontWeight:700,color:"#B07AE0"}}>💼 Sueldo {DEP_EMPLEADO}</div>
+          <div style={{fontSize:10,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Cada pago sale de la Caja Mayor del Bodegón como retiro de socio de Nicolás: baja la disponibilidad, no el Resultado.</div>
+        </div>
+        {!form&&<button onClick={function(){setForm({mes:hoy.slice(0,7),concepto:"Sueldo",monto:"",modo:"ninguno",parcial:"",fecha:hoy,medio:"Caja Mayor - Bodegón"});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#8B2FC9",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar sueldo</button>}
+      </div>
+      {form&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+            <div><label style={lbl}>Mes</label><input type="month" value={form.mes} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,mes:v};});}} style={INPs}/></div>
+            <div><label style={lbl}>Concepto</label>
+              <select value={form.concepto} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,concepto:v};});}} style={INPs}>
+                <option>Sueldo</option><option>Aguinaldo</option><option>Sueldo y aguinaldo</option>
+              </select></div>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Valor a pagar ($)</label><input type="number" placeholder="0" value={form.monto} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,monto:v};});}} style={INPs}/></div>
+          </div>
+          <div style={{marginBottom:9}}>
+            <label style={lbl}>Pago</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[["ninguno","Todavía no se pagó"],["parcial","🔸 Pago parcial"],["total","✅ Pago total"]].map(function(o){
+                var act=form.modo===o[0];
+                return <button key={o[0]} onClick={function(){setForm(function(f){return{...f,modo:o[0]};});}} style={{padding:"7px 11px",borderRadius:8,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"#111",color:act?"#B07AE0":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{o[1]}</button>;
+              })}
+            </div>
+          </div>
+          {form.modo!=="ninguno"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+              {form.modo==="parcial"&&<div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Monto abonado ($)</label><input type="number" placeholder="0" value={form.parcial} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,parcial:v};});}} style={INPs}/></div>}
+              <div><label style={lbl}>Fecha de pago</label><input type="date" value={form.fecha} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,fecha:v};});}} style={INPs}/></div>
+              <div><label style={lbl}>Sale de</label>
+                <select value={form.medio} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,medio:v};});}} style={INPs}>
+                  {DEP_MEDIOS_PAGO.map(function(m){return <option key={m[0]} value={m[0]}>{m[1]}</option>;})}
+                </select></div>
+            </div>
+          )}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#8B2FC9",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+            <button onClick={function(){setForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {registros.length===0?(
+        !form&&<div style={{fontSize:11,color:"#6E6E6E",textAlign:"center",padding:"10px 0"}}>Todavía no cargaste ningún sueldo.</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {registros.map(function(r){
+            var pag=depSueldoPagado(r), falta=Math.max(0,r.monto-pag);
+            var est=pag<=0?["⏳ Pendiente","#D4A017"]:(falta>0.5?["🔸 Parcial","#E07B00"]:["✅ Pagado","#3A7D44"]);
+            return(
+              <div key={r.id} style={{background:"#0B0B0B",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{r.concepto} · {r.mes}</div>
+                    <div style={{fontSize:10,color:est[1],marginTop:2}}>{est[0]}{pag>0?" · pagado "+fmt(pag):""}{falta>0.5&&pag>0?" · falta "+fmt(falta):""}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:15,fontWeight:800,color:"#B07AE0",fontFamily:"'Playfair Display',serif"}}>{fmt(r.monto)}</span>
+                    <button onClick={function(){borrarRegistro(r);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
+                  </div>
+                </div>
+                {(r.pagos||[]).map(function(pg){
+                  var m=DEP_MEDIOS_PAGO.find(function(x){return x[0]===pg.medio;});
+                  return(
+                    <div key={pg.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,color:"#8C8C8C",marginTop:5,paddingTop:5,borderTop:"1px solid #141414"}}>
+                      <span>💸 {fmtDate(pg.fecha)} · {m?m[1]:pg.medio}</span>
+                      <span style={{display:"flex",alignItems:"center",gap:6}}><b style={{color:"#F0EDE8"}}>{fmt(pg.monto)}</b><button onClick={function(){borrarPago(r,pg);}} title="Eliminar pago" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11}}>✕</button></span>
+                    </div>
+                  );
+                })}
+                {falta>0.5&&(pagando&&pagando.id===r.id?(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #141414"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                      <div><label style={lbl}>Monto ($)</label><input type="number" value={pagando.monto} onChange={function(e){var v=e.target.value;setPagando(function(x){return{...x,monto:v};});}} style={INPs}/></div>
+                      <div><label style={lbl}>Fecha</label><input type="date" value={pagando.fecha} onChange={function(e){var v=e.target.value;setPagando(function(x){return{...x,fecha:v};});}} style={INPs}/></div>
+                      <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Sale de</label>
+                        <select value={pagando.medio} onChange={function(e){var v=e.target.value;setPagando(function(x){return{...x,medio:v};});}} style={INPs}>
+                          {DEP_MEDIOS_PAGO.map(function(m){return <option key={m[0]} value={m[0]}>{m[1]}</option>;})}
+                        </select></div>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={function(){registrarPago(r);}} style={{flex:2,padding:"8px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Registrar pago</button>
+                      <button onClick={function(){setPagando(null);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+                    </div>
+                  </div>
+                ):(
+                  <button onClick={function(){setPagando({id:r.id,monto:String(Math.round(falta)),fecha:hoy,medio:"Caja Mayor - Bodegón"});}} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4466",background:"none",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelDeportes(p){
   var registros=p.deportes||[];
   var [seccion,setSeccion]=useState("entradas");
@@ -5636,6 +5790,7 @@ function PanelDeportes(p){
   var [busqueda,setBusqueda]=useState("");
   var [problemaTabla,setProblemaTabla]=useState(null);
   var [verFichas,setVerFichas]=useState(false);
+  var [verSueldo,setVerSueldo]=useState(false);
 
   useEffect(function(){
     var vivo=true;
@@ -5841,6 +5996,16 @@ function PanelDeportes(p){
         <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Deportes</div>
       </div>
+
+      {/* Sueldo del empleado de deportes: plegado, un toque lo abre */}
+      {p.sueldosDep&&(
+        <div style={{marginBottom:12}}>
+          <button onClick={function(){setVerSueldo(!verSueldo);}} style={{width:"100%",textAlign:"left",padding:"9px 13px",borderRadius:10,border:"1px solid "+(verSueldo?"#8B2FC9":"#1E1E1E"),background:verSueldo?"#8B2FC911":"#111",color:verSueldo?"#B07AE0":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            💼 Sueldo {DEP_EMPLEADO} {verSueldo?"▲":"▼"}
+          </button>
+          {verSueldo&&<div style={{marginTop:8}}><PanelSueldoDeportes registros={p.sueldosDep} usuario={p.usuario} onSave={p.onSaveSueldoDep} onDelete={p.onDeleteSueldoDep} onSaveRetiro={p.onSaveRetiroDep} onDeleteRetiro={p.onDeleteRetiroDep}/></div>}
+        </div>
+      )}
 
       {/* Si la base no está lista, decirlo antes de que se cargue nada */}
       {problemaTabla&&(
@@ -20395,6 +20560,21 @@ export default function App() {
     var previo=pautas.find(function(x){return x.id===id;});
     guardarPauta({id:id,ambito:"cuit_aportes",texto:cuitId,usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
   }
+  // Sueldo del empleado de deportes (módulo Deportes): una pauta por sueldo o aguinaldo, ámbito
+  // "dep_sueldo", con los pagos adentro. Cada pago también es un retiro de socio (ver abajo).
+  var sueldosDep=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="dep_sueldo")return;
+    try{
+      var d=JSON.parse(x.texto||"{}");
+      if(d&&d.mes)sueldosDep.push({...d,id:x.id});
+    }catch(e){}
+  });
+  function guardarSueldoDep(r){
+    var ahora=new Date().toISOString();
+    var previo=pautas.find(function(x){return x.id===r.id;});
+    guardarPauta({id:r.id,ambito:"dep_sueldo",texto:JSON.stringify({mes:r.mes,concepto:r.concepto,monto:r.monto,pagos:r.pagos||[]}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+  }
   function guardarCajaInicial(local,mes,monto){
     var ahora=new Date().toISOString();
     guardarPauta({id:"caja_ini_"+local+"_"+mes,ambito:"caja_inicial",texto:String(monto),usuario:(cu&&cu.usuario)||"",created_at:ahora,updated_at:ahora});
@@ -21179,7 +21359,10 @@ export default function App() {
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
           {esSofia&&modulo==="deportes"&&(
             <PanelDeportes deportes={deportes} usuario={cu.nombre}
-              onSave={guardarDeporte} onDelete={borrarDeporte}/>
+              onSave={guardarDeporte} onDelete={borrarDeporte}
+              sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
+              onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
+              onDeleteRetiroDep={function(id){sbDeleteRetiro(id);setRetiros(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
           )}
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}

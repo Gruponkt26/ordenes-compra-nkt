@@ -4940,7 +4940,21 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var totalAdel=adelantosDe(modalPl.empleado_id).reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
     return Math.max(0,base-totalAdel);
   }
+  // Empleada de la Oficina: el pago se arma por local (50% Bodegón, 30% Colantonio's, 20% Kusama),
+  // cada parte con el medio que se elija; por defecto, la Caja Mayor de ese local.
+  function esOficinaModal(){ return !!modalPl&&modalPl.local==="l4"; }
+  function partesOficinaModal(){
+    var n=netoModal();
+    var bod=Math.round(n*0.5), col=Math.round(n*0.3), kus=n-bod-col;
+    var medios=modalForm.mediosOf||{};
+    return [
+      {local:"l1",nombre:"Bodegón",pct:50,monto:bod,medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1},
+      {local:"l3",nombre:"Colantonio's",pct:30,monto:col,medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3},
+      {local:"l2",nombre:"Kusama",pct:20,monto:kus,medio:medios.l2||CAJA_MAYOR_POR_LOCAL.l2}
+    ];
+  }
   function pagosModal(){
+    if(esOficinaModal())return partesOficinaModal().filter(function(x){return x.monto>0;}).map(function(x){return {medio:x.medio,monto:x.monto};});
     var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
     if(filas.length===1&&!(parseFloat(filas[0].monto)>0))return [{medio:filas[0].medio,monto:netoModal()}];
     return filas.filter(function(pg){return parseFloat(pg.monto)>0;}).map(function(pg){return{medio:pg.medio,monto:parseFloat(pg.monto)};});
@@ -5246,7 +5260,28 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 <input type="number" placeholder="0" value={modalForm.monto_parcial} onChange={function(e){setModalForm(function(f){return{...f,monto_parcial:e.target.value};});}} style={{...INP,color:"#E07B00",border:"1px solid #E07B0033"}}/>
               </div>
             )}
-            <div style={{marginBottom:10}}>
+            {esOficinaModal()&&(
+              <div style={{marginBottom:10,background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px 12px"}}>
+                <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🏢 Reparto de la Oficina</div>
+                <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>El sueldo se reparte entre los tres locales. Cada uno paga su parte con su Caja Mayor; si elegís el medio de otro local, esa parte queda como gasto cruzado.</div>
+                {partesOficinaModal().map(function(x){
+                  return(
+                    <div key={x.local} style={{marginBottom:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                        <span style={{color:"#F0EDE8",fontWeight:700}}>{x.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {x.pct}%</span></span>
+                        <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)}</span>
+                      </div>
+                      <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
+                        {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
+                          <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
+                        );})}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {!esOficinaModal()&&<div style={{marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                 <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase"}}>Medios de pago</label>
                 <button onClick={function(){setModalForm(function(f){return{...f,pagos:[...(f.pagos||[]),{medio:"",monto:""}]};});}} style={{fontSize:11,color:"#4CAF50",background:"none",border:"1px solid #4CAF5044",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar</button>
@@ -5272,7 +5307,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               {(modalForm.pagos||[]).length===1&&(
                 <div style={{fontSize:9,color:"#7E7E7E"}}>Dejá el monto vacío si todo se paga con ese medio. Usá “+ Agregar” para dividirlo.</div>
               )}
-            </div>
+            </div>}
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de pago</label>
               <input type="date" value={modalForm.fecha_pago} onChange={function(e){setModalForm(function(f){return{...f,fecha_pago:e.target.value};});}} style={INP}/>

@@ -17104,10 +17104,10 @@ function PanelCuit(props){
                     return(
                       <div key={d.local} style={{marginBottom:8}}>
                         <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
-                          <span style={{color:"#F0EDE8",fontWeight:700}}>{d.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {d.pct}%</span></span>
+                          <span style={{color:"#F0EDE8",fontWeight:700}}>{d.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {d.pct}% del total</span></span>
                           <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(d.monto)}</span>
                         </div>
-                        <div style={{fontSize:9,color:"#6E6E6E"}}>{fmt(d.fijo)} del tercio fijo{d.monto-d.fijo>0?" + "+fmt(d.monto-d.fijo)+" por empleados":""}</div>
+                        <div style={{fontSize:9,color:"#6E6E6E"}}>{fmt(d.fijo)} del tercio ({d.local==="l1"?50:d.local==="l3"?30:20}% del tercio){d.monto-d.fijo>0?" + "+fmt(d.monto-d.fijo)+" de los otros dos tercios, por empleados":""}</div>
                         {conMedio&&(
                           <select value={medioDeLocal(d.local)} onChange={function(e){var v=e.target.value;setForm(function(f){var m={...(f.medios||{})};m[d.local]=v;return{...f,medios:m};});}} style={{...INP,marginTop:5,fontSize:12,padding:"7px 10px"}}>
                             {MEDIOS_EGRESO.filter(function(m){return m.value!=="Efectivo - Oficina";}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}

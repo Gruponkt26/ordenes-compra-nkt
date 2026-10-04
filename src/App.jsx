@@ -3538,7 +3538,204 @@ function PanelChecklist({local, usuario}){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta}){
+// ─── GASTOS FIJOS DE LA OFICINA ───────────────────────────────────────────────
+// La Oficina no vende, pero tiene gastos (alquiler, luz, internet, insumos...) que pagan los tres
+// locales en común: 50% Bodegón, 30% Colantonio's, 20% Kusama. Acá se define la lista de gastos
+// fijos y cada mes se marca cuáles se pagaron, con qué medio y cuánto pone cada local; si un
+// local no pone su parte, la completa otro y queda como gasto cruzado. Pagar un gasto genera un
+// egreso por local ("egr_of_<pago>_<local>"). El catálogo y los pagos viven en la tabla de pautas
+// (ámbitos "of_gasto" y "of_pago"), sin columnas nuevas.
+var OF_RUBROS=["Alquileres","Servicios","Administrativo","Mantenimiento","Marketing","Proveedores"];
+function opcionesMediosDeLocal(localRef){
+  function dueno(v){ var d=localDeCajaMayor(v)||getLocalFromMedio(v); return (d==="l1"||d==="l2"||d==="l3")?d:null; }
+  var propios=MEDIOS_SUELDOS.filter(function(m){return dueno(m.v)===localRef;});
+  var otros=MEDIOS_SUELDOS.filter(function(m){var d=dueno(m.v);return d&&d!==localRef;});
+  var libres=MEDIOS_SUELDOS.filter(function(m){return !dueno(m.v);});
+  var l=getLocal(localRef);
+  function grupo(titulo,lista){
+    if(lista.length===0)return null;
+    return <optgroup key={titulo} label={titulo}>{lista.map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>;
+  }
+  return [grupo("── Medios de "+(l?l.nombre:"este local")+" ──",propios),grupo("── Otros locales (queda como cruzado) ──",otros),grupo("── Sin local ──",libres)];
+}
+function PanelGastosFijosOficina(p){
+  var gastos=p.gastos||[], pagosReg=p.pagos||[];
+  var hoy=new Date().toISOString().split("T")[0];
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var [mes,setMes]=useState(hoy.slice(0,7));
+  var [formG,setFormG]=useState(null);   // definición de un gasto fijo
+  var [pagando,setPagando]=useState(null); // pago en curso
+  var INPo={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
+
+  function pagoDe(g){ return pagosReg.find(function(x){return x.gasto_id===g.id&&x.mes===mes;}); }
+  function partes(f){
+    var m=parseFloat(f.monto)||0;
+    var bod=Math.round(m*0.5), col=Math.round(m*0.3), kus=m-bod-col;
+    var shares={l1:bod,l3:col,l2:kus};
+    return LOC.map(function(t){
+      var v=(f.pagaOf||{})[t[0]];
+      var medio=(f.mediosOf||{})[t[0]]||CAJA_MAYOR_POR_LOCAL[t[0]];
+      return {local:t[0],nombre:t[1],pct:t[2],monto:shares[t[0]],paga:(v===undefined||v==="")?shares[t[0]]:(parseFloat(v)||0),medio:medio};
+    });
+  }
+  function abrirPago(g){
+    setPagando({gasto:g,monto:g.monto_habitual?String(g.monto_habitual):"",fecha:hoy,facturado:false,facturacion:"",mediosOf:{},pagaOf:{}});
+  }
+  function guardarG(){
+    if(!formG.nombre.trim()){alert("Poné el nombre del gasto.");return;}
+    p.onSaveGasto({id:formG.id||("ofgf_"+Date.now()),nombre:formG.nombre.trim(),rubro:formG.rubro,monto_habitual:parseFloat(formG.monto_habitual)||0});
+    setFormG(null);
+  }
+  function borrarG(g){
+    if(!window.confirm("¿Eliminar \""+g.nombre+"\" de la lista? Los pagos ya hechos y sus egresos no se borran."))return;
+    p.onDeleteGasto(g.id);
+  }
+  function confirmarPago(){
+    var f=pagando, g=f.gasto, monto=parseFloat(f.monto)||0;
+    if(monto<=0){alert("Cargá el monto del gasto.");return;}
+    var ps=partes(f);
+    var suma=ps.reduce(function(a,x){return a+x.paga;},0);
+    if(Math.abs(suma-monto)>0.5){alert("Lo que ponen los tres locales ("+fmt(suma)+") tiene que sumar el total ("+fmt(monto)+").");return;}
+    if(f.facturado&&!f.facturacion){alert("Elegí a qué CUIT está facturado.");return;}
+    var id="ofgp_"+g.id+"_"+mes;
+    var rep=repartirSueldoOficina(ps.filter(function(x){return x.paga>0;}).map(function(x){return {medio:x.medio,monto:x.paga};}));
+    var ahora=new Date().toISOString();
+    LOC.forEach(function(t){
+      var parte=rep[t[0]];
+      if(!parte||parte.monto<=0)return;
+      p.onSaveEgreso({id:"egr_of_"+id+"_"+t[0],local:t[0],concepto:g.nombre,subramo:"Oficina "+t[2]+"% · "+mes,
+        detalle:"Parte de la Oficina ("+t[2]+"% de "+fmt(monto)+")",monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",
+        facturado:!!f.facturado,facturacion:f.facturado?f.facturacion:"",categoria:g.rubro,area:g.rubro,notas:"Gasto fijo de la Oficina",
+        fecha:f.fecha,usuario:p.usuario||"",created_at:ahora,pagos:parte.pagos});
+    });
+    p.onSavePago({id:id,gasto_id:g.id,mes:mes,monto:monto,fecha:f.fecha});
+    setPagando(null);
+  }
+  function deshacerPago(g,pg){
+    if(!window.confirm("¿Deshacer el pago de "+g.nombre+" de "+mes+"? Se borran también los egresos que generó."))return;
+    LOC.forEach(function(t){ p.onDeleteEgreso("egr_of_"+pg.id+"_"+t[0]); });
+    p.onDeletePago(pg.id);
+  }
+  var totalMes=gastos.reduce(function(a,g){var pg=pagoDe(g);return a+(pg?pg.monto:0);},0);
+  var meses=[]; var d0=new Date(hoy+"T12:00:00");
+  for(var i=-3;i<=1;i++){var d=new Date(d0.getFullYear(),d0.getMonth()+i,1,12);meses.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));}
+  if(meses.indexOf(mes)===-1)meses.push(mes);
+  meses.sort();
+  return(
+    <div>
+      <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:12,padding:"12px 14px",marginBottom:12,fontSize:11,color:"#9A9A9A",lineHeight:1.6}}>
+        Los gastos de la Oficina los pagan los tres locales en común: <b style={{color:"#F0EDE8"}}>50% Bodegón, 30% Colantonio's y 20% Kusama</b>. Al pagarlos elegís con qué medio sale la plata; si un local no pone su parte, la completa otro y queda como gasto cruzado.
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{...INPo,width:"auto",fontSize:12,padding:"7px 10px"}}>
+          {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <div style={{fontSize:11,color:"#8C8C8C"}}>Pagado en {mes}: <b style={{color:"#4C9A5A"}}>{fmt(totalMes)}</b></div>
+        {!formG&&<button onClick={function(){setFormG({id:"",nombre:"",rubro:"Servicios",monto_habitual:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo gasto fijo</button>}
+      </div>
+      {formG&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Gasto</label><input value={formG.nombre} onChange={function(e){var v=e.target.value;setFormG(function(f){return{...f,nombre:v};});}} placeholder="Ej: Alquiler, Luz, Internet, Insumos" style={INPo}/></div>
+            <div><label style={lbl}>Rubro</label>
+              <select value={formG.rubro} onChange={function(e){var v=e.target.value;setFormG(function(f){return{...f,rubro:v};});}} style={INPo}>{OF_RUBROS.map(function(r){return <option key={r}>{r}</option>;})}</select></div>
+            <div><label style={lbl}>Monto habitual (opcional)</label><input type="number" placeholder="0" value={formG.monto_habitual} onChange={function(e){var v=e.target.value;setFormG(function(f){return{...f,monto_habitual:v};});}} style={INPo}/></div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardarG} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+            <button onClick={function(){setFormG(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {gastos.length===0?(
+        <div style={{textAlign:"center",padding:"26px 0",color:"#6E6E6E",fontSize:12}}>Todavía no cargaste ningún gasto fijo. Empezá con el alquiler, la luz, el internet…</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {gastos.map(function(g){
+            var pg=pagoDe(g);
+            return(
+              <div key={g.id} style={{background:"#0F0F0F",border:"1px solid "+(pg?"#3A7D4433":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{g.nombre}</div>
+                    <div style={{fontSize:10,color:pg?"#4C9A5A":"#D4A017",marginTop:2}}>{g.rubro}{g.monto_habitual>0?" · habitual "+fmt(g.monto_habitual):""} · {pg?"✅ Pagado "+fmt(pg.monto)+" el "+fmtDate(pg.fecha):"⏳ Pendiente"}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    {pg?<button onClick={function(){deshacerPago(g,pg);}} style={{padding:"4px 9px",borderRadius:6,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>Deshacer</button>
+                       :<button onClick={function(){abrirPago(g);}} style={{padding:"5px 11px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontSize:11,fontWeight:700,cursor:"pointer"}}>💸 Pagar</button>}
+                    <button onClick={function(){setFormG({id:g.id,nombre:g.nombre,rubro:g.rubro,monto_habitual:String(g.monto_habitual||"")});}} title="Editar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>✏️</button>
+                    <button onClick={function(){borrarG(g);}} title="Eliminar de la lista" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {pagando&&(function(){
+        var ps=partes(pagando), monto=parseFloat(pagando.monto)||0;
+        var suma=ps.reduce(function(a,x){return a+x.paga;},0);
+        var ok=Math.abs(suma-monto)<=0.5, cruzado=ps.some(function(x){return Math.abs(x.paga-x.monto)>0.5;});
+        return(
+          <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:420,border:"1px solid #3A7D4444",maxHeight:"90vh",overflowY:"auto"}}>
+              <div style={{fontSize:14,fontWeight:700,color:"#4C9A5A",marginBottom:2}}>💸 Pagar {pagando.gasto.nombre}</div>
+              <div style={{fontSize:10,color:"#7E7E7E",marginBottom:12}}>Gasto de la Oficina · {mes} · {pagando.gasto.rubro}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
+                <div><label style={lbl}>Monto total ($)</label><input type="number" placeholder="0" value={pagando.monto} onChange={function(e){var v=e.target.value;setPagando(function(f){return{...f,monto:v};});}} style={INPo}/></div>
+                <div><label style={lbl}>Fecha de pago</label><input type="date" value={pagando.fecha} onChange={function(e){var v=e.target.value;setPagando(function(f){return{...f,fecha:v};});}} style={INPo}/></div>
+              </div>
+              <div style={{background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px 12px",marginBottom:10}}>
+                <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏢 Reparto entre locales</div>
+                {ps.map(function(x){
+                  return(
+                    <div key={x.local} style={{marginBottom:8}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                        <span style={{color:"#F0EDE8",fontWeight:700}}>{x.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {x.pct}%</span></span>
+                        <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)} <span style={{color:"#7E7E7E",fontWeight:400,fontSize:10}}>de costo</span></span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                        <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",flex:"none"}}>Paga $</label>
+                        <input type="number" placeholder={String(x.monto)} value={(pagando.pagaOf||{})[x.local]===undefined?"":(pagando.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setPagando(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INPo,fontSize:12,padding:"7px 10px"}}/>
+                      </div>
+                      <select value={x.medio} onChange={function(e){var v=e.target.value;setPagando(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INPo,marginTop:4,fontSize:11}}>
+                        {opcionesMediosDeLocal(x.local)}
+                      </select>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:ok?"#0A1A0A":"#1A0A0A"}}>
+                  <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · queda un gasto cruzado":""}</span>
+                  <span style={{color:ok?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(suma)} / {fmt(monto)}{ok?" ✓":" ← diferencia"}</span>
+                </div>
+              </div>
+              <div style={{background:"#14100A",border:"1px solid #D4A01733",borderRadius:8,padding:"9px 11px",marginBottom:12}}>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,color:pagando.facturado?"#D4A017":"#888"}}>
+                  <input type="checkbox" checked={!!pagando.facturado} onChange={function(e){var v=e.target.checked;setPagando(function(f){return{...f,facturado:v};});}}/>
+                  🧾 Tiene factura
+                </label>
+                {pagando.facturado&&(
+                  <select value={pagando.facturacion} onChange={function(e){var v=e.target.value;setPagando(function(f){return{...f,facturacion:v};});}} style={{...INPo,marginTop:7}}>
+                    <option value="">-- Seleccioná CUIT --</option>
+                    {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
+                  </select>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={confirmarPago} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Confirmar pago</button>
+                <button onClick={function(){setPagando(null);}} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -3575,7 +3772,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
   function abrirLocal(l){
     setLocalSel(l);
-    setTab("datos");
+    setTab(l.id==="l4"?"gastosfijos":"datos");
     var d=localesDatos[l.id]||{};
     setFormDatos({id:l.id+"_datos",local:l.id,direccion:d.direccion||"",telefono:d.telefono||"",encargado:d.encargado||"",horarios:d.horarios||"",notas:d.notas||""});
   }
@@ -3638,10 +3835,18 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"],["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]].map(function(t){return(
+        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["gastosfijos","💸 Gastos fijos"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
+
+      {/* Tab Gastos fijos (sólo la Oficina) */}
+      {tab==="gastosfijos"&&localSel.id==="l4"&&(
+        <PanelGastosFijosOficina gastos={gastosFijosOf} pagos={pagosFijosOf} usuario={usuario}
+          onSaveGasto={onSaveGastoFijoOf} onDeleteGasto={onDeleteGastoFijoOf}
+          onSavePago={onSavePagoFijoOf} onDeletePago={onDeletePagoFijoOf}
+          onSaveEgreso={onSaveEgreso} onDeleteEgreso={onDeleteEgreso}/>
+      )}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
@@ -20813,6 +21018,23 @@ export default function App() {
     var previo=pautas.find(function(x){return x.id===r.id;});
     guardarPauta({id:r.id,ambito:"dep_sueldo",texto:JSON.stringify({mes:r.mes,concepto:r.concepto,monto:r.monto,pagos:r.pagos||[]}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
   }
+  // Gastos fijos de la Oficina (módulo Locales → Oficina): catálogo y pagos, en pautas.
+  var gastosFijosOf=[], pagosFijosOf=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="of_gasto"&&x.ambito!=="of_pago")return;
+    try{
+      var d=JSON.parse(x.texto||"{}");
+      if(x.ambito==="of_gasto"&&d.nombre)gastosFijosOf.push({...d,id:x.id});
+      if(x.ambito==="of_pago"&&d.gasto_id)pagosFijosOf.push({...d,id:x.id});
+    }catch(e){}
+  });
+  gastosFijosOf.sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
+  function guardarOfPauta(ambito,obj){
+    var ahora=new Date().toISOString();
+    var previo=pautas.find(function(x){return x.id===obj.id;});
+    var datos={...obj}; delete datos.id;
+    guardarPauta({id:obj.id,ambito:ambito,texto:JSON.stringify(datos),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+  }
   function guardarCajaInicial(local,mes,monto){
     var ahora=new Date().toISOString();
     guardarPauta({id:"caja_ini_"+local+"_"+mes,ambito:"caja_inicial",texto:String(monto),usuario:(cu&&cu.usuario)||"",created_at:ahora,updated_at:ahora});
@@ -21678,6 +21900,10 @@ export default function App() {
                 setGastos(function(prev){return prev.filter(function(g){return g.id!==egresoId;});});
               }}
               onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              onDeleteEgreso={borrarEgresoSolo}
+              gastosFijosOf={gastosFijosOf} pagosFijosOf={pagosFijosOf}
+              onSaveGastoFijoOf={function(g){guardarOfPauta("of_gasto",g);}} onDeleteGastoFijoOf={borrarPauta}
+              onSavePagoFijoOf={function(x){guardarOfPauta("of_pago",x);}} onDeletePagoFijoOf={borrarPauta}
             />
           )}
 

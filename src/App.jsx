@@ -17160,7 +17160,7 @@ function PanelCuit(props){
                     <div style={{fontSize:15,fontWeight:800,color:cuitObj.color,fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
                     <button onClick={function(){abrirRegistro(c,false);}} title="Editar" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
                     {c.estado!=="pagado"&&<button onClick={function(){abrirRegistro(c,true);}} title="Marcar como pagado y elegir los medios" style={{background:"#3A7D4422",border:"1px solid #3A7D4466",borderRadius:6,padding:"3px 9px",color:"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer"}}>💸 Pagar</button>}
-                    <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
+                    <button onClick={function(){if(window.confirm("¿Eliminar este F.931? También se borran los egresos que generó en cada local."))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                   </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
@@ -17515,7 +17515,7 @@ function PanelSueldos(p){
                               <div style={{display:"flex",alignItems:"center",gap:6}}>
                                 <div style={{fontSize:14,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
                                 <button onClick={function(){setCargaEdit(c);setFormCarga({cuit:c.cuit,periodo:c.periodo,estado:c.estado,seg_social:String(c.seg_social),obra_social:String(c.obra_social),art:String(c.art),seguro_vida:String(c.seguro_vida),fecha_pago:c.fecha_pago,notas:c.notas||""});setShowFormCarga(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
-                                <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
+                                <button onClick={function(){if(window.confirm("¿Eliminar este F.931? También se borran los egresos que generó en cada local."))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                               </div>
                             </div>
                             {/* Desglose */}
@@ -20944,6 +20944,14 @@ export default function App() {
     });
     return salida;
   }
+  // Un F.931 pagado genera un egreso por local (id "f931_<id>_<local>"): al borrar el F.931
+  // se borran también esos egresos, si no quedan sueltos en Egresos y en Resultados.
+  function borrarCargaSocial(id){
+    sbDeleteCargaSocial(id);
+    setCargasSociales(function(prev){return prev.filter(function(c){return c.id!==id;});});
+    var prefijo="f931_"+id+"_";
+    gastos.filter(function(g){return String(g.id).indexOf(prefijo)===0;}).forEach(function(g){borrarEgresoSolo(g.id);});
+  }
   function borrarEgresoSolo(id){
     sbDeleteGasto(id);
     setGastos(function(p){return p.filter(function(g){return g.id!==id;});});
@@ -21344,7 +21352,7 @@ export default function App() {
                 onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
                 onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
                 onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
-                onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+                onDeleteCargaSocial={borrarCargaSocial}
                 onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onSaveEgresoSueldo={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
                 onDeleteEgresoSueldo={borrarEgreso}
@@ -21663,7 +21671,7 @@ export default function App() {
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
-              onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+              onDeleteCargaSocial={borrarCargaSocial}
             />
           )}
 
@@ -21721,7 +21729,7 @@ export default function App() {
               onSaveAporte={function(a){var r=sbSaveAporte(a);setAportes(function(p){var f=p.filter(function(x){return x.id!==a.id;});return[a,...f];});return r;}}
               onDeleteAporte={function(id){sbDeleteAporte(id);setAportes(function(p){return p.filter(function(a){return a.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
-              onDeleteCargaSocial={function(id){sbDeleteCargaSocial(id);setCargasSociales(function(p){return p.filter(function(c){return c.id!==id;});});}}
+              onDeleteCargaSocial={borrarCargaSocial}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}

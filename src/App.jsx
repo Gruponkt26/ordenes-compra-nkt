@@ -4918,7 +4918,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var pago=sueldosMes.find(function(s){return s.empleado_id===pl.empleado_id;});
     var pagosPrev=pago&&pago.pagos&&pago.pagos.length>0
       ?pago.pagos.map(function(pg){return{medio:pg.medio||pg.tipo||"",monto:String(pg.monto||"")};})
-      :[{medio:pago?pago.medio_pago||"":"",monto:""}];
+      :[{medio:pago?pago.medio_pago||"":(CAJA_MAYOR_POR_LOCAL[pl.local]||""),monto:""}];
     setModalPl(pl);
     setModalForm({
       estado:pago?pago.estado:"pagado",
@@ -4939,6 +4939,24 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
     var totalAdel=adelantosDe(modalPl.empleado_id).reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
     return Math.max(0,base-totalAdel);
+  }
+  // Los medios se ofrecen ordenados: primero los del local del empleado, después los de los otros
+  // locales (que dejan el pago como cruzado) y al final los que no son de ningún local.
+  function duenoMedio(v){ var d=localDeCajaMayor(v)||getLocalFromMedio(v); return (d==="l1"||d==="l2"||d==="l3")?d:null; }
+  function opcionesMedios(localRef){
+    var propios=MEDIOS.filter(function(m){return duenoMedio(m.v)===localRef;});
+    var otros=MEDIOS.filter(function(m){var d=duenoMedio(m.v);return d&&d!==localRef;});
+    var libres=MEDIOS.filter(function(m){return !duenoMedio(m.v);});
+    var l=getLocal(localRef);
+    function grupo(titulo,lista){
+      if(lista.length===0)return null;
+      return <optgroup key={titulo} label={titulo}>{lista.map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>;
+    }
+    return [
+      grupo("── Medios de "+(l?l.nombre:"este local")+" ──",propios),
+      grupo("── Otros locales (queda como cruzado) ──",otros),
+      grupo("── Sin local ──",libres)
+    ];
   }
   // Empleada de la Oficina: el pago se arma por local (50% Bodegón, 30% Colantonio's, 20% Kusama),
   // cada parte con el medio que se elija; por defecto, la Caja Mayor de ese local.
@@ -5281,9 +5299,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                         <input type="number" placeholder={String(x.monto)} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
                       </div>
                       <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
-                        {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
-                          <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
-                        );})}
+                        {opcionesMedios(x.local)}
                       </select>
                     </div>
                   );
@@ -5309,9 +5325,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 <div key={idx} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
                   <select value={pago.medio} onChange={function(e){setPagoModal(idx,"medio",e.target.value);}} style={{...INP,fontSize:11}}>
                     <option value="">-- Seleccioná --</option>
-                    {GRUPOS_MEDIOS_SUELDOS.map(function(g){return(
-                      <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS.filter(function(m){return m.g===g;}).map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</optgroup>
-                    );})}
+                    {opcionesMedios(modalPl.local)}
                   </select>
                   <input type="number" placeholder={(modalForm.pagos||[]).length===1?"Todo":"Monto"} value={pago.monto} onChange={function(e){setPagoModal(idx,"monto",e.target.value);}} style={{...INP,width:90,flex:"none"}}/>
                   {(modalForm.pagos||[]).length>1&&<button onClick={function(){setModalForm(function(f){return{...f,pagos:f.pagos.filter(function(_,i){return i!==idx;})};});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
@@ -5326,6 +5340,13 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               {(modalForm.pagos||[]).length===1&&(
                 <div style={{fontSize:9,color:"#7E7E7E"}}>Dejá el monto vacío si todo se paga con ese medio. Usá “+ Agregar” para dividirlo.</div>
               )}
+              {(function(){
+                var cruzados=(modalForm.pagos||[]).map(function(pg){return duenoMedio(pg.medio);}).filter(function(d){return d&&d!==modalPl.local;});
+                if(cruzados.length===0)return null;
+                var quien=cruzados.map(function(d){return (getLocal(d)||{}).nombre;}).filter(function(n,i,a){return a.indexOf(n)===i;}).join(" y ");
+                var suyo=(getLocal(modalPl.local)||{}).nombre||"este local";
+                return <div style={{fontSize:10,color:"#E07B00",marginTop:6,background:"#1A1000",border:"1px solid #E07B0044",borderRadius:6,padding:"6px 9px",lineHeight:1.5}}>↔️ Pago cruzado: parte de la plata sale de {quien} y el costo queda en {suyo}.</div>;
+              })()}
             </div>}
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de pago</label>

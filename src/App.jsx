@@ -3735,7 +3735,121 @@ function PanelGastosFijosOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso}){
+// ─── RESUMEN DE EGRESOS DE LA OFICINA ─────────────────────────────────────────
+// Junta todo lo que se pagó por la Oficina (gastos fijos, sueldo, obras, mantenimiento y gastos
+// sueltos): cuánto le tocaba a cada local (50/30/20) y cuánto puso realmente de su cuenta, para ver
+// quién puso de más o de menos. Se reconocen por el subrubro "Oficina X%" que llevan los egresos
+// partidos; los egresos viejos con local Oficina que no se partieron se muestran aparte.
+function PanelResumenOficina(p){
+  var gastos=p.gastos||[];
+  var hoy=new Date().toISOString().split("T")[0];
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var [mes,setMes]=useState(hoy.slice(0,7));
+  var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
+  function esParteOficina(g){ return g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
+  var partes=gastos.filter(esParteOficina);
+  var viejos=gastos.filter(function(g){return g.local==="l4";});
+  var meses=[];
+  partes.concat(viejos).forEach(function(g){var m=String(g.fecha||"").substring(0,7); if(m&&meses.indexOf(m)===-1)meses.push(m);});
+  if(meses.indexOf(hoy.slice(0,7))===-1)meses.push(hoy.slice(0,7));
+  meses.sort().reverse();
+  function delMes(g){ return mes==="todos"||String(g.fecha||"").substring(0,7)===mes; }
+  function dueno(medio){ var d=localDeCajaMayor(medio)||getLocalFromMedio(medio); return (d==="l1"||d==="l2"||d==="l3")?d:null; }
+  var costo={l1:0,l3:0,l2:0}, puso={l1:0,l3:0,l2:0};
+  var grupos={};
+  partes.filter(delMes).forEach(function(g){
+    costo[g.local]+=parseFloat(g.monto)||0;
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:g.monto}];
+    pagos.forEach(function(pg){
+      var d=dueno(String(pg.medio||pg.tipo||""))||g.local; // sin dueño conocido: se asume del propio local
+      puso[d]+=parseFloat(pg.monto)||0;
+    });
+    var k=String(g.id).replace(/_l[123]$/,"");
+    var gr=grupos[k]||(grupos[k]={id:k,concepto:g.concepto,fecha:g.fecha,area:g.area||g.categoria||"",total:0,porLocal:{l1:0,l3:0,l2:0}});
+    gr.total+=parseFloat(g.monto)||0; gr.porLocal[g.local]+=parseFloat(g.monto)||0;
+    if(String(g.fecha||"")>String(gr.fecha||""))gr.fecha=g.fecha;
+  });
+  var lista=Object.keys(grupos).map(function(k){return grupos[k];}).sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
+  var total=lista.reduce(function(a,x){return a+x.total;},0);
+  var viejosMes=viejos.filter(delMes);
+  var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
+  var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          <option value="todos">📅 Todos los meses</option>
+          {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <div style={{fontSize:12,color:"#8C8C8C"}}>Total de la Oficina: <b style={{color:"#F0EDE8",fontSize:15}}>{fmt(total)}</b></div>
+      </div>
+
+      <div style={{overflowX:"auto",border:"1px solid #171717",borderRadius:12,background:"#0C0C0C",marginBottom:12}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:380}}>
+          <thead><tr>
+            <th style={{...th,textAlign:"left"}}>Local</th><th style={th}>Le correspondía</th><th style={th}>Puso de su cuenta</th><th style={th}>Diferencia</th>
+          </tr></thead>
+          <tbody>
+            {LOC.map(function(t){
+              var l=getLocal(t[0]), dif=puso[t[0]]-costo[t[0]];
+              return(
+                <tr key={t[0]}>
+                  <td style={{...td,textAlign:"left",color:l?l.color:"#F0EDE8",fontWeight:700}}>{l?l.emoji+" "+l.nombre:t[1]} <span style={{color:"#6E6E6E",fontWeight:400,fontSize:10}}>{t[2]}%</span></td>
+                  <td style={{...td,color:"#F0EDE8"}}>{fmt(costo[t[0]])}</td>
+                  <td style={{...td,color:"#F0EDE8",fontWeight:700}}>{fmt(puso[t[0]])}</td>
+                  <td style={{...td,fontWeight:700,color:Math.abs(dif)<1?"#6E6E6E":(dif>0?"#E07B00":"#4C9A5A")}}>{Math.abs(dif)<1?"—":(dif>0?"puso "+fmt(dif)+" de más":"puso "+fmt(-dif)+" de menos")}</td>
+                </tr>
+              );
+            })}
+            <tr>
+              <td style={{...td,textAlign:"left",fontWeight:800,borderBottom:"none"}}>Total</td>
+              <td style={{...td,fontWeight:800,color:"#F0EDE8",borderBottom:"none"}}>{fmt(costo.l1+costo.l3+costo.l2)}</td>
+              <td style={{...td,fontWeight:800,color:"#F0EDE8",borderBottom:"none"}}>{fmt(puso.l1+puso.l3+puso.l2)}</td>
+              <td style={{...td,borderBottom:"none"}}></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:14}}>
+        "Le correspondía" es la parte del costo de cada local (50/30/20). "Puso de su cuenta" es la plata que salió de las cuentas de ese local. Si no coinciden, la diferencia son los gastos cruzados: quien puso de más está cubriendo a quien puso de menos.
+      </div>
+
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Lo que se pagó</div>
+      {lista.length===0?(
+        <div style={{textAlign:"center",padding:"20px 0",color:"#6E6E6E",fontSize:12}}>No hay egresos de la Oficina {mes==="todos"?"todavía":"en "+mes}.</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {lista.map(function(x){
+            return(
+              <div key={x.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{x.concepto}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E"}}>{x.area?x.area+" · ":""}{fmtDate(x.fecha)}</div>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.total)}</div>
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#8C8C8C",marginTop:4}}>
+                  {LOC.map(function(t){var l=getLocal(t[0]);return <span key={t[0]} style={{color:l?l.color:"#8C8C8C"}}>{l?l.emoji:""} {fmt(x.porLocal[t[0]])}</span>;})}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {viejosMes.length>0&&(
+        <div style={{marginTop:14,background:"#1A1000",border:"1px solid #E07B0044",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#E07B00",marginBottom:4}}>⚠️ {viejosMes.length} egreso{viejosMes.length===1?"":"s"} de antes, sin repartir entre los locales</div>
+          <div style={{fontSize:10,color:"#B8963A",marginBottom:6,lineHeight:1.5}}>Están cargados a nombre de la Oficina y no entran en la tabla de arriba. Abrilos desde Egresos y guardalos de nuevo para que se partan 50/30/20.</div>
+          {viejosMes.map(function(g){return <div key={g.id} style={{fontSize:10,color:"#C8C8C8",display:"flex",justifyContent:"space-between",gap:8}}><span>{g.concepto} · {fmtDate(g.fecha)}</span><span>{fmt(parseFloat(g.monto)||0)}</span></div>;})}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -3845,7 +3959,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["gastosfijos","💸 Gastos fijos"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["gastosfijos","💸 Gastos fijos"],["resumen","📊 Resumen"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -3857,6 +3971,9 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
           onSavePago={onSavePagoFijoOf} onDeletePago={onDeletePagoFijoOf}
           onSaveEgreso={onSaveEgreso} onDeleteEgreso={onDeleteEgreso}/>
       )}
+
+      {/* Tab Resumen de egresos (sólo la Oficina) */}
+      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos}/>}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
@@ -21952,6 +22069,7 @@ export default function App() {
               }}
               onSaveEgreso={guardarEgresoConOficina}
               onDeleteEgreso={borrarEgresoSolo}
+              gastosTodos={gastos}
               gastosFijosOf={gastosFijosOf} pagosFijosOf={pagosFijosOf}
               onSaveGastoFijoOf={function(g){guardarOfPauta("of_gasto",g);}} onDeleteGastoFijoOf={borrarPauta}
               onSavePagoFijoOf={function(x){guardarOfPauta("of_pago",x);}} onDeletePagoFijoOf={borrarPauta}

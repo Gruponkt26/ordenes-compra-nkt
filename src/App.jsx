@@ -5430,7 +5430,7 @@ var DEP_RUBROS=[
   {id:"mantenimiento",label:"🔧 Mantenimiento del predio", corto:"Mantenimiento"},
   {id:"servicios",    label:"💡 Servicios",                corto:"Servicios"},
   {id:"obras",        label:"🏗️ Obras",                    corto:"Obras"},
-  {id:"canchero",     label:"👷 Sueldo canchero",          corto:"Canchero"},
+  {id:"canchero",     label:"💼 Sueldo Marcos Bracamonte", corto:"Sueldo Marcos"},
   {id:"otros",        label:"📦 Otros",                    corto:"Otros"},
 ];
 
@@ -5592,7 +5592,6 @@ var DEP_ORIGENES=[
 var DEP_ORIGENES_SALIDA=[
   {id:"mantenimiento",label:"🔧 Mantenimiento",  desc:"Arreglos del predio",   tipo:"salida",rubro:"mantenimiento"},
   {id:"servicios",    label:"💡 Servicios",      desc:"Luz, agua, gas...",     tipo:"salida",rubro:"servicios"},
-  {id:"canchero",     label:"👷 Sueldo canchero",desc:"El sueldo del mes",     tipo:"salida",rubro:"canchero"},
   {id:"obra",         label:"🏗️ Obra",           desc:"Una obra en el predio", tipo:"obra"},
   {id:"otros",        label:"📦 Otra salida",    desc:"Cualquier otro gasto",  tipo:"salida",rubro:"otros"},
 ];
@@ -5640,6 +5639,9 @@ function PanelSueldoDeportes(p){
     var n=(rec.pagos||[]).length+1;
     var pid=rec.id+"_p"+Date.now();
     var pago={id:pid,monto:monto,fecha:fecha,medio:medio};
+    // Y también una salida de Deportes, para que el total de salidas del predio la cuente.
+    p.onSaveSalida({id:"depsal_"+pid,disciplina:"caja",tipo:"salida",estado:"pagado",nombre:"Sueldo "+DEP_EMPLEADO+" — "+rec.concepto+" "+rec.mes,rubro:"canchero",
+      fecha:fecha,monto:monto,medio_pago:null,notas:"Pagado desde "+((DEP_MEDIOS_PAGO.find(function(m){return m[0]===medio;})||[0,medio])[1])+" (retiro de Nicolás)",usuario:p.usuario||"",created_at:new Date().toISOString()});
     p.onSaveRetiro({id:"retdep_"+pid,socio:"Nicolás",local:"l1",local_cuenta:"l1",monto:monto,tipo_retiro:medio,clase:"dinero",bien:"",cotizacion:0,usd:0,
       notas:"Pago sueldo y/o aguinaldo "+DEP_EMPLEADO+" — "+rec.concepto+" "+rec.mes,fecha:fecha,usuario:p.usuario||"",created_at:new Date().toISOString()});
     return {...rec,pagos:(rec.pagos||[]).concat([pago])};
@@ -5668,11 +5670,12 @@ function PanelSueldoDeportes(p){
   function borrarPago(rec,pago){
     if(!window.confirm("¿Eliminar este pago? También se borra el retiro de Nicolás que generó."))return;
     p.onDeleteRetiro("retdep_"+pago.id);
+    p.onDeleteSalida("depsal_"+pago.id);
     p.onSave({...rec,pagos:(rec.pagos||[]).filter(function(x){return x.id!==pago.id;})});
   }
   function borrarRegistro(rec){
     if(!window.confirm("¿Eliminar este sueldo? Se borran también sus pagos y los retiros de Nicolás que generaron."))return;
-    (rec.pagos||[]).forEach(function(pg){p.onDeleteRetiro("retdep_"+pg.id);});
+    (rec.pagos||[]).forEach(function(pg){p.onDeleteRetiro("retdep_"+pg.id);p.onDeleteSalida("depsal_"+pg.id);});
     p.onDelete(rec.id);
   }
   return(
@@ -5680,7 +5683,7 @@ function PanelSueldoDeportes(p){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
         <div>
           <div style={{fontSize:13,fontWeight:700,color:"#B07AE0"}}>💼 Sueldo {DEP_EMPLEADO}</div>
-          <div style={{fontSize:10,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Cada pago sale de la Caja Mayor del Bodegón como retiro de socio de Nicolás: baja la disponibilidad, no el Resultado.</div>
+          <div style={{fontSize:10,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Cada pago sale de la Caja Mayor del Bodegón como retiro de socio de Nicolás (baja la disponibilidad, no el Resultado) y cuenta como salida de Deportes.</div>
         </div>
         {!form&&<button onClick={function(){setForm({mes:hoy.slice(0,7),concepto:"Sueldo",monto:"",modo:"ninguno",parcial:"",fecha:hoy,medio:"Caja Mayor - Bodegón"});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#8B2FC9",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar sueldo</button>}
       </div>
@@ -6003,7 +6006,7 @@ function PanelDeportes(p){
           <button onClick={function(){setVerSueldo(!verSueldo);}} style={{width:"100%",textAlign:"left",padding:"9px 13px",borderRadius:10,border:"1px solid "+(verSueldo?"#8B2FC9":"#1E1E1E"),background:verSueldo?"#8B2FC911":"#111",color:verSueldo?"#B07AE0":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
             💼 Sueldo {DEP_EMPLEADO} {verSueldo?"▲":"▼"}
           </button>
-          {verSueldo&&<div style={{marginTop:8}}><PanelSueldoDeportes registros={p.sueldosDep} usuario={p.usuario} onSave={p.onSaveSueldoDep} onDelete={p.onDeleteSueldoDep} onSaveRetiro={p.onSaveRetiroDep} onDeleteRetiro={p.onDeleteRetiroDep}/></div>}
+          {verSueldo&&<div style={{marginTop:8}}><PanelSueldoDeportes registros={p.sueldosDep} usuario={p.usuario} onSave={p.onSaveSueldoDep} onDelete={p.onDeleteSueldoDep} onSaveRetiro={p.onSaveRetiroDep} onDeleteRetiro={p.onDeleteRetiroDep} onSaveSalida={p.onSave} onDeleteSalida={p.onDelete}/></div>}
         </div>
       )}
 

@@ -16956,6 +16956,16 @@ function PanelCuit(props){
     }
   }
 
+  // Abrir un F.931 ya cargado en el formulario, para editarlo o para pagarlo. Al guardarlo se
+  // pisa el mismo registro (mismo id) y los egresos de cada local se generan con los medios elegidos.
+  function abrirRegistro(c,pagar){
+    var medios={};
+    (c.distribucion||[]).forEach(function(d){ if(d.medio)medios[d.local]=d.medio; });
+    setEditReg(c);
+    setForm({cuit:c.cuit,periodo:c.periodo,estado:pagar?"pagado":c.estado,seg_social:String(c.seg_social||""),obra_social:String(c.obra_social||""),art:String(c.art||""),seguro_vida:String(c.seguro_vida||""),fecha_pago:pagar?hoy:(c.fecha_pago||hoy),notas:c.notas||"",medios:medios});
+    setShowModal(true);
+  }
+
   // Con qué medio paga cada local su parte. Por defecto, la Caja Mayor de ese local.
   function medioDeLocal(localId){
     return ((form.medios||{})[localId])||CAJA_MAYOR_POR_LOCAL[localId]||"";
@@ -17148,7 +17158,8 @@ function PanelCuit(props){
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <div style={{fontSize:15,fontWeight:800,color:cuitObj.color,fontFamily:"'Playfair Display',serif"}}>{fmt(c.total)}</div>
-                    <button onClick={function(){setCargaEdit(c);setFormCarga({cuit:c.cuit,periodo:c.periodo,estado:c.estado,seg_social:String(c.seg_social),obra_social:String(c.obra_social),art:String(c.art),seguro_vida:String(c.seguro_vida),fecha_pago:c.fecha_pago,notas:c.notas||""});setShowFormCarga(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){abrirRegistro(c,false);}} title="Editar" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
+                    {c.estado!=="pagado"&&<button onClick={function(){abrirRegistro(c,true);}} title="Marcar como pagado y elegir los medios" style={{background:"#3A7D4422",border:"1px solid #3A7D4466",borderRadius:6,padding:"3px 9px",color:"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer"}}>💸 Pagar</button>}
                     <button onClick={function(){if(window.confirm("¿Eliminar?"))onDeleteCargaSocial(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                   </div>
                 </div>

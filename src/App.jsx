@@ -3785,9 +3785,13 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
   function doSaveObra(){
     if(!formObra.titulo.trim())return;
-    var pagosValidos=(formObra.pagos||[]).filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
-    var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:"";
     var totalObraVal=(parseFloat(formObra.mano_obra)||0)+(parseFloat(formObra.materiales)||0)+(parseFloat(formObra.servicios)||0);
+    // Un solo medio sin monto cubre todo el total de la obra, como en el resto de los pagos.
+    var filasConMedio=(formObra.pagos||[]).filter(function(p){return p.medio;});
+    var pagosValidos=(filasConMedio.length===1&&!(parseFloat(filasConMedio[0].monto)>0)&&totalObraVal>0)
+      ?[{medio:filasConMedio[0].medio,monto:totalObraVal}]
+      :(formObra.pagos||[]).filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
+    var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:"";
     var obra={id:editObra?editObra.id:"obra_"+String(Date.now()),local:localSel.id,titulo:formObra.titulo.trim(),descripcion:formObra.descripcion,mano_obra:parseFloat(formObra.mano_obra)||0,materiales:parseFloat(formObra.materiales)||0,servicios:parseFloat(formObra.servicios)||0,fecha:formObra.fecha,estado:formObra.estado,notas:formObra.notas,forma_pago:fpLegacy,pagos:pagosValidos,usuario:usuario,created_at:editObra?editObra.created_at:new Date().toISOString()};
     onSaveObra(obra);
     // Generar/actualizar egreso automático en Obras solo si está en curso o finalizada (no pendiente)
@@ -3797,6 +3801,12 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       var egresoId="egr_obra_"+obraIdBase;
       var egreso={id:egresoId,local:localSel.id,concepto:formObra.titulo.trim(),subramo:formObra.descripcion||"",detalle:"Mano de obra: "+fmt(parseFloat(formObra.mano_obra)||0)+", Materiales: "+fmt(parseFloat(formObra.materiales)||0)+", Servicios: "+fmt(parseFloat(formObra.servicios)||0),monto:totalObraVal,forma_pago:fpLegacy,facturado:false,facturacion:"",categoria:"Obras",area:"Obras",notas:formObra.notas||"",fecha:formObra.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
       onSaveEgreso(egreso);
+    }
+    // Si no se generó el egreso, avisarlo: antes la obra se guardaba y el gasto no aparecía sin decir por qué.
+    if(formObra.estado!=="pendiente"&&totalObraVal>0&&pagosValidos.length===0){
+      window.setTimeout(function(){alert("La obra se guardó, pero NO se generó el egreso porque falta el medio de pago. Editala, elegí con qué se pagó y volvé a guardar.");},100);
+    } else if(formObra.estado==="pendiente"&&totalObraVal>0){
+      window.setTimeout(function(){alert("La obra quedó como pendiente: el egreso se genera cuando la pases a \"en curso\" o \"finalizada\".");},100);
     }
     setShowFormObra(false);setEditObra(null);
     setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]});
@@ -3880,7 +3890,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:11,color:"#8C8C8C"}}>Total invertido: <span style={{color:localSel.color,fontWeight:700}}>{fmt(totalObras)}</span></div>
-            <button onClick={function(){setShowFormObra(true);setEditObra(null);setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:""}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:localSel.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nueva obra</button>
+            <button onClick={function(){setShowFormObra(true);setEditObra(null);setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:localSel.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nueva obra</button>
           </div>
           {obrasFiltradas.length===0?(
             <div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Sin obras registradas</div>

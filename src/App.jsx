@@ -16805,6 +16805,42 @@ function PanelCuit(props){
         </div>
       </div>
 
+      {/* Empleados que aportan por este CUIT: lista fija, no depende del mes */}
+      {(function(){
+        var asign=props.cuitAportes||{};
+        var enCuit=empleados.filter(function(e){return asign[e.id]===cuitActivo;}).sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));});
+        var disponibles=empleados.filter(function(e){return e.activo!==false&&!asign[e.id];}).sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));});
+        var activos=enCuit.filter(function(e){return e.activo!==false;}).length;
+        return(
+          <div style={{background:"#0F0F0F",border:"1px solid "+cuitObj.color+"33",borderRadius:10,padding:"11px 13px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:enCuit.length>0?8:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:cuitObj.color}}>👥 Empleados que aportan por este CUIT <span style={{color:"#7E7E7E",fontWeight:400}}>· {activos} activo{activos===1?"":"s"}</span></div>
+              {props.onAsignarCuit&&(
+                <select value="" onChange={function(e){if(e.target.value)props.onAsignarCuit(e.target.value,cuitActivo);}} style={{padding:"6px 9px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,maxWidth:220}}>
+                  <option value="">+ Agregar empleado…</option>
+                  {disponibles.map(function(e){var l=getLocal(e.local);return <option key={e.id} value={e.id}>{e.nombre}{l?" · "+l.nombre:""}</option>;})}
+                </select>
+              )}
+            </div>
+            {enCuit.length===0?(
+              <div style={{fontSize:10,color:"#6E6E6E",marginTop:6}}>Todavía no hay nadie asignado a este CUIT.</div>
+            ):(
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {enCuit.map(function(e){
+                  var l=getLocal(e.local);
+                  return(
+                    <span key={e.id} style={{display:"inline-flex",alignItems:"center",gap:6,background:"#141414",border:"1px solid #1E1E1E",borderRadius:20,padding:"4px 6px 4px 10px",fontSize:11,color:e.activo===false?"#6E6E6E":"#F0EDE8"}}>
+                      {l?l.emoji+" ":""}{e.nombre}{e.activo===false?" (inactivo)":""}
+                      {props.onAsignarCuit&&<button onClick={function(){props.onAsignarCuit(e.id,"");}} title="Sacar de este CUIT" style={{background:"none",border:"none",color:"#8C8C8C",cursor:"pointer",fontSize:12,padding:"0 3px"}}>✕</button>}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Botón nuevo */}
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
         <button onClick={function(){setShowModal(true);setEditReg(null);setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
@@ -17332,6 +17368,8 @@ function PanelSueldos(p){
       {tab==="cuit"&&<PanelCuit
         cargasSociales={cargasSociales}
         empleados={empleados}
+        cuitAportes={p.cuitAportes||{}}
+        onAsignarCuit={p.onAsignarCuitAporte}
         mesCurrent={mesCurrent}
         showFormCarga={showFormCarga} setShowFormCarga={setShowFormCarga}
         cargaEdit={cargaEdit} setCargaEdit={setCargaEdit}
@@ -20341,6 +20379,22 @@ export default function App() {
     var previo=pautas.find(function(x){return x.id===c.id;});
     guardarPauta({id:c.id,ambito:"credito_fiscal",texto:JSON.stringify({cuit:c.cuit,mes:c.mes,monto:c.monto,detalle:c.detalle,fecha_factura:c.fecha_factura}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
   }
+  // A qué CUIT aporta cada empleado (módulo Personal → CUIT): una pauta por empleado, ámbito
+  // "cuit_aportes", id fijo "cuit_ap_"+id del empleado y el CUIT en texto. Sin columnas nuevas
+  // en la tabla de empleados. Asignarlo de nuevo lo cambia de CUIT; sacarlo borra la pauta.
+  var cuitAportes={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="cuit_aportes")return;
+    var m=String(x.id).match(/^cuit_ap_(.+)$/);
+    if(m&&x.texto)cuitAportes[m[1]]=x.texto;
+  });
+  function asignarCuitAporte(empId,cuitId){
+    var id="cuit_ap_"+empId;
+    if(!cuitId){borrarPauta(id);return;}
+    var ahora=new Date().toISOString();
+    var previo=pautas.find(function(x){return x.id===id;});
+    guardarPauta({id:id,ambito:"cuit_aportes",texto:cuitId,usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+  }
   function guardarCajaInicial(local,mes,monto){
     var ahora=new Date().toISOString();
     guardarPauta({id:"caja_ini_"+local+"_"+mes,ambito:"caja_inicial",texto:String(monto),usuario:(cu&&cu.usuario)||"",created_at:ahora,updated_at:ahora});
@@ -21022,6 +21076,7 @@ export default function App() {
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
                 gastos={gastos}
+                cuitAportes={cuitAportes} onAsignarCuitAporte={asignarCuitAporte}
                 cargasSociales={cargasSociales}
                 onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
                 onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}

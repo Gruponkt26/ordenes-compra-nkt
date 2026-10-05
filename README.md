@@ -1362,6 +1362,9 @@ empezadas: si alguien retoma el proyecto, esto es lo que falta.
 2. **Crédito por POS del banco: ya espera 8 días hábiles** en Provincia y Patagonia
    (`DIAS_ACREDITACION_CREDITO`), igual que el débito espera 48 hs. Entra en el mismo bloque
    «Débito y crédito pendientes». Galicia (Kusama) y Mercado Pago acreditan al instante.
+   Lo cobrado con tarjeta a fines del mes anterior y todavía sin acreditar se muestra aparte
+   («Pendiente de acreditar del mes anterior»), sólo como dato: no suma a la caja del mes,
+   porque lo que sobra del mes anterior entra por el traspaso, que se carga a mano.
 
 3. **El impuesto al cheque en Mercado Pago, y en los sueldos.** Las dos mitades ya están:
    0,6% sobre lo que entra y sobre lo que sale de las tres cuentas de banco. Quedan dos

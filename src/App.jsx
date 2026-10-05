@@ -16707,6 +16707,22 @@ function PanelResultados(p){
     var pendienteBruto=debitoPendiente+creditoPendiente;
     var pendienteNeto=debitoPendienteNeto+creditoPendienteNeto;
     var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCreditoHoy+dispOtros+dispMp;
+    // Lo cobrado con tarjeta en meses anteriores que todavía no se acreditó (el crédito tarda 8 días
+    // hábiles, así que a principios de mes todavía queda lo de fines del anterior). Es sólo
+    // informativo: NO suma a la disponibilidad ni al pendiente de arriba, porque lo que sobró del
+    // mes anterior entra por el traspaso, que se carga a mano.
+    var arrastreBruto=0, arrastreNeto=0, arrastrePorFecha={};
+    if(!acreditaAlInstante){
+      var desdeArrastre=fechaLocal(new Date(Date.now()-35*86400000));
+      cierres.forEach(function(c){
+        if(c.local!==lid||!c.fecha||c.fecha<desdeArrastre||c.fecha.substring(0,7)>=mesFiltro)return;
+        var md=medioConHermanos(c,"tarjeta_debito"), mc=medioConHermanos(c,"tarjeta_credito");
+        var fd=fechaAcreditacionDebito(c.fecha), fc=fechaAcreditacionCredito(c.fecha);
+        if(md>0&&fd&&!debitoYaAcreditado(fd)){arrastreBruto+=md;arrastreNeto+=md*(1-fDebito);arrastrePorFecha[fd]=(arrastrePorFecha[fd]||0)+md*(1-fDebito);}
+        if(mc>0&&fc&&!debitoYaAcreditado(fc)){arrastreBruto+=mc;arrastreNeto+=mc*(1-fCredito);arrastrePorFecha[fc]=(arrastrePorFecha[fc]||0)+mc*(1-fCredito);}
+      });
+    }
+    var arrastrePendientePorFecha=Object.keys(arrastrePorFecha).sort().map(function(f){return {fecha:f,monto:arrastrePorFecha[f]};});
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas de los cierres + diferencia de las correcciones manuales.
@@ -16715,7 +16731,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,arrastrePendienteBruto:arrastreBruto,arrastrePendienteNeto:arrastreNeto,arrastrePendientePorFecha,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -17350,6 +17366,20 @@ function PanelResultados(p){
                     <div style={{fontSize:9,color:"#9A9A9A",marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
                       💰 Disponible HOY en electrónico (sin el pendiente): <b style={{color:"#F0EDE8"}}>{fmt(d.dispElectronicoHoy)}</b>
                     </div>
+                  </div>
+                )}
+                {d.arrastrePendienteNeto>0&&(
+                  <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Pendiente de acreditar del mes anterior</span>
+                      <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.arrastrePendienteNeto)}</span>
+                    </div>
+                    {(d.arrastrePendientePorFecha||[]).map(function(t){return(
+                      <div key={t.fecha} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#B8963A",marginTop:2}}>
+                        <span>📅 {new Date(t.fecha+"T00:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"numeric",month:"short"})}</span><span>{fmt(t.monto)}</span>
+                      </div>
+                    );})}
+                    <div style={{fontSize:9,color:"#8A7040",marginTop:4}}>Débito y crédito cobrados con tarjeta el mes pasado. Informativo: no suma a la caja de este mes, va por el traspaso.</div>
                   </div>
                 )}
               </div>

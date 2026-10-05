@@ -3977,6 +3977,7 @@ function PanelResumenOficina(p){
 function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
+  var [egSub,setEgSub]=useState("fijos"); // dentro de Egresos de la Oficina: gastos fijos o cargar uno
   var hoy=new Date().toISOString().split("T")[0];
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
@@ -4011,7 +4012,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
   function abrirLocal(l){
     setLocalSel(l);
-    setTab(l.id==="l4"?"gastosfijos":"datos");
+    setTab(l.id==="l4"?"egresos":"datos");
     var d=localesDatos[l.id]||{};
     setFormDatos({id:l.id+"_datos",local:l.id,direccion:d.direccion||"",telefono:d.telefono||"",encargado:d.encargado||"",horarios:d.horarios||"",notas:d.notas||""});
   }
@@ -4093,21 +4094,28 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["gastosfijos","💸 Gastos fijos"],["cargar","➕ Cargar gasto"],["resumen","📊 Resumen"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["egresos","💸 Egresos"],["resumen","📊 Resumen"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
 
-      {/* Tab Gastos fijos (sólo la Oficina) */}
-      {tab==="gastosfijos"&&localSel.id==="l4"&&(
-        <PanelGastosFijosOficina gastos={gastosFijosOf} pagos={pagosFijosOf} usuario={usuario}
-          onSaveGasto={onSaveGastoFijoOf} onDeleteGasto={onDeleteGastoFijoOf}
-          onSavePago={onSavePagoFijoOf} onDeletePago={onDeletePagoFijoOf}
-          onSaveEgreso={onSaveEgreso} onDeleteEgreso={onDeleteEgreso}/>
+      {/* Tab Egresos (sólo la Oficina): los gastos fijos del mes, o cargar uno diario / con vencimiento */}
+      {tab==="egresos"&&localSel.id==="l4"&&(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {[["fijos","💸 Gastos fijos"],["cargar","➕ Cargar gasto"]].map(function(t){var on=egSub===t[0];return(
+              <button key={t[0]} onClick={function(){setEgSub(t[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#3A7D44":"#1E1E1E"),background:on?"#3A7D4422":"#111",color:on?"#4C9A5A":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
+            );})}
+          </div>
+          {egSub==="fijos"&&(
+            <PanelGastosFijosOficina gastos={gastosFijosOf} pagos={pagosFijosOf} usuario={usuario}
+              onSaveGasto={onSaveGastoFijoOf} onDeleteGasto={onDeleteGastoFijoOf}
+              onSavePago={onSavePagoFijoOf} onDeletePago={onDeletePagoFijoOf}
+              onSaveEgreso={onSaveEgreso} onDeleteEgreso={onDeleteEgreso}/>
+          )}
+          {egSub==="cargar"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
+        </div>
       )}
-
-      {/* Tab Cargar gasto (sólo la Oficina): diario o con vencimiento, siempre a nombre de la Oficina */}
-      {tab==="cargar"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso}/>}

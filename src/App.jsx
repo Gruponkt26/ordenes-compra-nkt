@@ -7007,6 +7007,7 @@ var FERIADOS_AR={
   "2026-04-02":1,"2026-04-03":1,"2026-05-01":1,"2026-05-25":1,"2026-06-17":1,
   "2026-06-20":1,"2026-07-09":1,"2026-07-10":1,"2026-08-17":1,"2026-10-12":1,
   "2026-11-23":1,"2026-12-07":1,"2026-12-08":1,"2026-12-25":1,
+  "2027-01-01":1,
 };
 // Suma n días hábiles (salta sábados, domingos y feriados) a una fecha "YYYY-MM-DD".
 function addBusinessDays(fechaStr,n){
@@ -7017,10 +7018,10 @@ function addBusinessDays(fechaStr,n){
   while(restantes>0){
     d.setDate(d.getDate()+1);
     var dow=d.getDay(); // 0=domingo, 6=sábado
-    var fechaDia=d.toISOString().slice(0,10);
+    var fechaDia=fechaLocal(d);
     if(dow!==0&&dow!==6&&!FERIADOS_AR[fechaDia])restantes--;
   }
-  return d.toISOString().slice(0,10);
+  return fechaLocal(d);
 }
 // Fecha en que se acredita en el banco una venta con débito (2 días hábiles después del cierre).
 function fechaAcreditacionDebito(fechaCierre){
@@ -16630,7 +16631,7 @@ function PanelResultados(p){
     // como ya confirmada, sin filtrar por fecha.
     // El débito cobrado por Mercado Pago no pasa por acá: va en la caja de MP, que se cuenta
     // disponible al momento —que es justamente lo que se paga con esa comisión—.
-    var hoyStr=new Date().toISOString().slice(0,10);
+    var hoyStr=fechaLocal(); // hora de Argentina, no UTC: pasadas las 21 hs UTC ya es el día siguiente
     var acreditaAlInstante=lid==="l2";
     var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
       var fa=fechaAcreditacionDebito(c.fecha);

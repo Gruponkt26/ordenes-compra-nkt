@@ -3893,7 +3893,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -3934,6 +3934,15 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     var d=localesDatos[l.id]||{};
     setFormDatos({id:l.id+"_datos",local:l.id,direccion:d.direccion||"",telefono:d.telefono||"",encargado:d.encargado||"",horarios:d.horarios||"",notas:d.notas||""});
   }
+
+  // Se entró desde otro módulo pidiendo un local puntual (los gastos fijos de la Oficina sin pagar,
+  // desde Vencimientos): se abre directo ahí.
+  useEffect(function(){
+    if(!localInicial)return;
+    var l=(locales||[]).find(function(x){return x.id===localInicial;});
+    if(l)abrirLocal(l);
+    if(onLocalInicialUsado)onLocalInicialUsado();
+  },[]);
 
   function doSaveDatos(){
     setGuardandoDatos(true);
@@ -12200,6 +12209,31 @@ function PanelVencimientos(p){
                 </div>
               );
             })}
+          </div>
+        );
+      })()}
+
+      {/* Los gastos fijos de la Oficina (alquiler, luz, internet…) no tienen fecha de vencimiento, pero
+          hay que pagarlos todos los meses: los que todavía no se pagaron en el mes elegido se listan
+          acá para que no dependan de acordarse de entrar a Locales → Oficina. */}
+      {!verTodos&&(!grupoFiltro||grupoFiltro==="all")&&(function(){
+        var pend=(p.gastosFijosOf||[]).filter(function(g){
+          return !(p.pagosFijosOf||[]).some(function(x){return x.gasto_id===g.id&&x.mes===mesFiltro;});
+        });
+        if(pend.length===0)return null;
+        return(
+          <div style={{background:"#0A0F14",border:"1px solid #1A6B8A66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7}}>
+              <div style={{fontSize:11,color:"#1A6B8A",fontWeight:800}}>🏢 Gastos fijos de la Oficina sin pagar · {mesFiltro}</div>
+              {p.onIrOficina&&<button onClick={p.onIrOficina} style={{background:"none",border:"1px solid #1A6B8A66",borderRadius:8,color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>💸 Ir a pagar</button>}
+            </div>
+            {pend.map(function(g,i){return(
+              <div key={g.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
+                <span><span style={{color:"#F0EDE8"}}>{g.nombre}</span> · {g.rubro}</span>
+                <span style={{color:"#D4A017",fontWeight:700}}>{g.monto_habitual>0?"habitual "+fmt(g.monto_habitual):"sin monto"}</span>
+              </div>
+            );})}
+            <div style={{fontSize:9,color:"#6E6E6E",marginTop:6}}>Se reparten 50% Bodegón, 30% Colantonio's y 20% Kusama al pagarlos.</div>
           </div>
         );
       })()}
@@ -21156,6 +21190,7 @@ export default function App() {
   var [vacaciones,setVacaciones]=useState([]);
   var [fichajes,setFichajes]=useState([]);
   var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
+  var [locInicial,setLocInicial]=useState(null); // local con el que abrir Locales
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
   var [deportes,setDeportes]=useState([]);
@@ -22168,6 +22203,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
+              localInicial={locInicial} onLocalInicialUsado={function(){setLocInicial(null);}}
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}
@@ -22432,6 +22468,8 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
             <PanelVencimientos grupoInicial={vencGrupo}
+              gastosFijosOf={gastosFijosOf} pagosFijosOf={pagosFijosOf}
+              onIrOficina={function(){setLocInicial("l4");abrirModulo("locales","loc_inicio");}}
               vencimientos={vencimientos}
               faltanColumnas={faltanColsVenc}
               usuario={cu.nombre}

@@ -693,7 +693,7 @@ var INIT_PRODUCTOS = {
   p11: [],
 };
 
-var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa","penca","atado","pack","pieza entera","bidón","tacho","botella","frasco","lata","cajón"];
+var UNIDADES = ["kg","gr","lt","ml","unid","caja","docena","bolsa","penca","atado","pack","pieza entera","bidón","tacho","botella","frasco","lata","cajón","sachet"];
 var CATEGORIAS = ["Carnes & Aves","Frutas & Verduras","Lácteos & Fiambres","Bebidas","Mariscos & Pescados","Limpieza","Secos & Almacén","Descartables","Especias & Frutos secos","Insumos & Salsas","Otro"];
 
 var _oc = 1, _pc = 10, _uc = 100; // _uc arranca en 100 para no chocar con los ids u1-u11 ya usados en INIT_USERS
@@ -7027,7 +7027,7 @@ function fechaAcreditacionDebito(fechaCierre){
   return addBusinessDays(fechaCierre,2);
 }
 
-var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa","penca","balde","pieza entera","bidón","tacho","botella","frasco","lata","cajón"];
+var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa","penca","balde","pieza entera","bidón","tacho","botella","frasco","lata","cajón","sachet"];
 
 function GestProveedores(p) {
   var [provs,setProvs]=useState(p.proveedores);

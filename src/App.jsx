@@ -8248,7 +8248,9 @@ function PanelEgresos(p){
                                     {s.monto_sin_convenio>0&&<span style={{color:"#1A6B8A",fontSize:9}}>💼 S/conv: {fmt(s.monto_sin_convenio)}</span>}
                                   </div>
                                 )}
-                                {s.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total del sueldo: {fmt(s.monto)} · falta {fmt(Math.max(0,(parseFloat(s.monto)||0)-(parseFloat(s.monto_parcial)||0)))}</div>}
+                                {s.estado==="parcial"&&((parseFloat(s.monto)||0)>(parseFloat(s.monto_parcial)||0)
+                                  ?<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total del sueldo: {fmt(s.monto)} · falta {fmt((parseFloat(s.monto)||0)-(parseFloat(s.monto_parcial)||0))}</div>
+                                  :<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Falta cargar el sueldo total en la planilla de Sueldos para saber cuánto falta pagar.</div>)}
                               </div>
                             );
                           })}

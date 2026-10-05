@@ -3977,7 +3977,6 @@ function PanelResumenOficina(p){
 function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
-  var [egSub,setEgSub]=useState("fijos"); // dentro de Egresos de la Oficina: gastos fijos o cargar uno
   var hoy=new Date().toISOString().split("T")[0];
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
@@ -4099,23 +4098,8 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
         );})}
       </div>
 
-      {/* Tab Egresos (sólo la Oficina): los gastos fijos del mes, o cargar uno diario / con vencimiento */}
-      {tab==="egresos"&&localSel.id==="l4"&&(
-        <div>
-          <div style={{display:"flex",gap:8,marginBottom:12}}>
-            {[["fijos","💸 Gastos fijos"],["cargar","➕ Cargar gasto"]].map(function(t){var on=egSub===t[0];return(
-              <button key={t[0]} onClick={function(){setEgSub(t[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#3A7D44":"#1E1E1E"),background:on?"#3A7D4422":"#111",color:on?"#4C9A5A":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
-            );})}
-          </div>
-          {egSub==="fijos"&&(
-            <PanelGastosFijosOficina gastos={gastosFijosOf} pagos={pagosFijosOf} usuario={usuario}
-              onSaveGasto={onSaveGastoFijoOf} onDeleteGasto={onDeleteGastoFijoOf}
-              onSavePago={onSavePagoFijoOf} onDeletePago={onDeletePagoFijoOf}
-              onSaveEgreso={onSaveEgreso} onDeleteEgreso={onDeleteEgreso}/>
-          )}
-          {egSub==="cargar"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
-        </div>
-      )}
+      {/* Tab Egresos (sólo la Oficina): cargar un gasto diario o con vencimiento */}
+      {tab==="egresos"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso}/>}
@@ -12307,31 +12291,6 @@ function PanelVencimientos(p){
                 </div>
               );
             })}
-          </div>
-        );
-      })()}
-
-      {/* Los gastos fijos de la Oficina (alquiler, luz, internet…) no tienen fecha de vencimiento, pero
-          hay que pagarlos todos los meses: los que todavía no se pagaron en el mes elegido se listan
-          acá para que no dependan de acordarse de entrar a Locales → Oficina. */}
-      {!verTodos&&(!grupoFiltro||grupoFiltro==="all")&&(function(){
-        var pend=(p.gastosFijosOf||[]).filter(function(g){
-          return !(p.pagosFijosOf||[]).some(function(x){return x.gasto_id===g.id&&x.mes===mesFiltro;});
-        });
-        if(pend.length===0)return null;
-        return(
-          <div style={{background:"#0A0F14",border:"1px solid #1A6B8A66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7}}>
-              <div style={{fontSize:11,color:"#1A6B8A",fontWeight:800}}>🏢 Gastos fijos de la Oficina sin pagar · {mesFiltro}</div>
-              {p.onIrOficina&&<button onClick={p.onIrOficina} style={{background:"none",border:"1px solid #1A6B8A66",borderRadius:8,color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 10px"}}>💸 Ir a pagar</button>}
-            </div>
-            {pend.map(function(g,i){return(
-              <div key={g.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#888",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
-                <span><span style={{color:"#F0EDE8"}}>{g.nombre}</span> · {g.rubro}</span>
-                <span style={{color:"#D4A017",fontWeight:700}}>{g.monto_habitual>0?"habitual "+fmt(g.monto_habitual):"sin monto"}</span>
-              </div>
-            );})}
-            <div style={{fontSize:9,color:"#6E6E6E",marginTop:6}}>Se reparten 50% Bodegón, 30% Colantonio's y 20% Kusama al pagarlos.</div>
           </div>
         );
       })()}
@@ -22575,8 +22534,6 @@ export default function App() {
 
           {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
             <PanelVencimientos grupoInicial={vencGrupo}
-              gastosFijosOf={gastosFijosOf} pagosFijosOf={pagosFijosOf}
-              onIrOficina={function(){setLocInicial("l4");abrirModulo("locales","loc_inicio");}}
               vencimientos={vencimientos}
               faltanColumnas={faltanColsVenc}
               usuario={cu.nombre}

@@ -5300,6 +5300,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [verAplicados,setVerAplicados]=useState(false);
   var [showAdelantoForm,setShowAdelantoForm]=useState(false);
   var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
+  var [editAdelantoId,setEditAdelantoId]=useState(null); // adelanto pendiente que se está editando
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var fmtFechaCorta=function(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});};
   var adelantos=(p&&p.adelantos)||[];
@@ -5327,13 +5328,24 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     setAdelantoForm(function(f){var n=[...(f.pagos||[])];n[idx]={...n[idx],[campo]:valor};return{...f,pagos:n};});
   }
 
+  // Editar un adelanto pendiente: el formulario se llena con sus datos y al guardar se reemplaza.
+  function abrirEditarAdelanto(a){
+    var pagos=(Array.isArray(a.pagos)&&a.pagos.length>0)?a.pagos.map(function(pg){return {medio:pg.medio||"",monto:String(pg.monto||"")};}):[{medio:a.medio_pago||"",monto:String(a.monto||"")}];
+    setAdelantoForm({empleado_id:a.empleado_id||"",monto:String(a.monto||""),pagos:pagos,fecha:a.fecha||hoy,notas:a.notas||""});
+    setEditAdelantoId(a.id); setShowAdelantoForm(true); setShowAdelantos(true);
+  }
+  function cerrarFormAdelanto(){
+    setShowAdelantoForm(false); setEditAdelantoId(null);
+    setAdelantoForm({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
+  }
   function doGuardarAdelanto(){
     if(!adelantoForm.empleado_id||!adelantoForm.monto)return;
     var pagosValidos=pagosAdelanto();
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     var emp=(empleados||[]).find(function(e){return e.id===adelantoForm.empleado_id;});
+    var anterior=editAdelantoId?adelantos.find(function(x){return x.id===editAdelantoId;}):null;
     var a={
-      id:"adel_"+String(Date.now()),
+      id:editAdelantoId||("adel_"+String(Date.now())),
       empleado_id:adelantoForm.empleado_id,
       empleado_nombre:emp?emp.nombre:"",
       local:emp?emp.local:null,
@@ -5342,14 +5354,13 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       pagos:pagosValidos,
       fecha:adelantoForm.fecha,
       notas:adelantoForm.notas||"",
-      usuario:usuario||"",
+      usuario:(anterior&&anterior.usuario)||usuario||"",
       aplicado:false,
       sueldo_id:null,
-      created_at:new Date().toISOString()
+      created_at:(anterior&&anterior.created_at)||new Date().toISOString()
     };
     if(p&&p.onSaveAdelanto)p.onSaveAdelanto(a);
-    setAdelantoForm({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
-    setShowAdelantoForm(false);
+    cerrarFormAdelanto();
   }
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var ESTADOS_S=[["pagado","✅ Pagado","#3A7D44"],["parcial","🔸 Pago parcial","#E07B00"]];
@@ -5562,7 +5573,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
           <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>⏳ Adelantos pendientes {showAdelantos?"▾":"▸"}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:11,color:"#888"}}>{fmt(adelantosPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0))}</span>
-            <button onClick={function(e){e.stopPropagation();setShowAdelantoForm(true);setShowAdelantos(true);}} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+            <button onClick={function(e){e.stopPropagation();cerrarFormAdelanto();setShowAdelantoForm(true);setShowAdelantos(true);}} style={{padding:"5px 10px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
           </div>
         </div>
         {showAdelantos&&(
@@ -5613,8 +5624,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                   <input value={adelantoForm.notas} onChange={function(e){setAdelantoForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={doGuardarAdelanto} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar adelanto</button>
-                  <button onClick={function(){setShowAdelantoForm(false);}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
+                  <button onClick={doGuardarAdelanto} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{editAdelantoId?"💾 Guardar cambios":"💾 Guardar adelanto"}</button>
+                  <button onClick={cerrarFormAdelanto} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>Cancelar</button>
                 </div>
               </div>
             )}
@@ -5628,6 +5639,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(a.monto)}</span>
+                  <button onClick={function(){abrirEditarAdelanto(a);}} title="Editar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar este adelanto?")&&p&&p.onDeleteAdelanto)p.onDeleteAdelanto(a.id);}} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
                 </div>
               </div>

@@ -5534,7 +5534,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             var parte=rep[t[0]];
             if(!parte||parte.monto<=0)return;
             onSaveEgresoSueldo({id:idBase+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
-              subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · Oficina "+t[2]+"%",
+              subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+(modalForm.estado==="parcial"?" · pago parcial":"")+" · Oficina "+t[2]+"%",
               detalle:"Parte de la Oficina ("+t[2]+"% de "+fmt(montoEgreso)+")"+(modalForm.estado==="parcial"?" · pago parcial de "+fmt(montoFinal):""),
               monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
               notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
@@ -5544,7 +5544,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       }
       if(montoEgreso>0){
         var detalleAdel=totalAdel>0?" (neto de "+fmt(totalAdel)+" en adelantos ya dados)":"";
-        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro,detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos};
+        var eg={id:"egr_sueldo_"+(pagoExistente?pagoExistente.id:sid),local:modalPl.local,concepto:modalPl.empleado_nombre,subramo:(esAguinaldo?"Aguinaldo "+mesFiltro:"Sueldo "+mesFiltro)+(modalForm.estado==="parcial"?" · pago parcial":""),detalle:(modalForm.estado==="parcial"?"Pago parcial de "+fmt(montoFinal):"")+detalleAdel,monto:montoEgreso,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos};
         onSaveEgresoSueldo(eg);
       }
     }
@@ -8239,7 +8239,7 @@ function PanelEgresos(p){
                             return(
                               <div key={s.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
                                 <div style={{display:"flex",justifyContent:"space-between"}}>
-                                  <span style={{color:"#888"}}>{est} {s.empleado_nombre}</span>
+                                  <span style={{color:"#888"}}>{est} {s.empleado_nombre}{s.estado==="parcial"&&<span style={{color:"#E07B00",fontWeight:700}}> · pago parcial</span>}</span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
                                 </div>
                                 {esMixto&&(
@@ -8248,7 +8248,7 @@ function PanelEgresos(p){
                                     {s.monto_sin_convenio>0&&<span style={{color:"#1A6B8A",fontSize:9}}>💼 S/conv: {fmt(s.monto_sin_convenio)}</span>}
                                   </div>
                                 )}
-                                {s.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total: {fmt(s.monto)}</div>}
+                                {s.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total del sueldo: {fmt(s.monto)} · falta {fmt(Math.max(0,(parseFloat(s.monto)||0)-(parseFloat(s.monto_parcial)||0)))}</div>}
                               </div>
                             );
                           })}

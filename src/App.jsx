@@ -3859,6 +3859,13 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
+  // Un egreso de antes, cargado entero a nombre de la Oficina, se parte en tres como los nuevos
+  // (guardarEgresoConOficina borra el entero y deja una parte por local).
+  function repartirViejos(lista){
+    var tot=lista.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+    if(!window.confirm("¿Repartir "+lista.length+" egreso"+(lista.length===1?"":"s")+" por "+fmt(tot)+" entre los tres locales (50% Bodegón, 30% Colantonio's, 20% Kusama)?\n\nEl egreso entero se reemplaza por una parte en cada local."))return;
+    lista.forEach(function(g){ p.onRepartir(g); });
+  }
   var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
   var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
   return(
@@ -3955,8 +3962,12 @@ function PanelResumenOficina(p){
       {viejosMes.length>0&&(
         <div style={{marginTop:14,background:"#1A1000",border:"1px solid #E07B0044",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#E07B00",marginBottom:4}}>⚠️ {viejosMes.length} egreso{viejosMes.length===1?"":"s"} de antes, sin repartir entre los locales</div>
-          <div style={{fontSize:10,color:"#B8963A",marginBottom:6,lineHeight:1.5}}>Están cargados a nombre de la Oficina y no entran en la tabla de arriba. Abrilos desde Egresos y guardalos de nuevo para que se partan 50/30/20.</div>
-          {viejosMes.map(function(g){return <div key={g.id} style={{fontSize:10,color:"#C8C8C8",display:"flex",justifyContent:"space-between",gap:8}}><span>{g.concepto} · {fmtDate(g.fecha)}</span><span>{fmt(parseFloat(g.monto)||0)}</span></div>;})}
+          <div style={{fontSize:10,color:"#B8963A",marginBottom:6,lineHeight:1.5}}>Están cargados a nombre de la Oficina y no entran en la tabla de arriba. Repartilos para que se partan 50% Bodegón, 30% Colantonio's y 20% Kusama y pasen a figurar en cada local.</div>
+          {viejosMes.map(function(g){return <div key={g.id} style={{fontSize:10,color:"#C8C8C8",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:3}}>
+            <span style={{flex:1}}>{g.concepto} · {fmtDate(g.fecha)}</span><span>{fmt(parseFloat(g.monto)||0)}</span>
+            {p.onRepartir&&<button onClick={function(){repartirViejos([g]);}} style={{background:"none",border:"1px solid #E07B0066",borderRadius:6,color:"#E07B00",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 8px"}}>Repartir</button>}
+          </div>;})}
+          {p.onRepartir&&viejosMes.length>1&&<button onClick={function(){repartirViejos(viejosMes);}} style={{marginTop:8,width:"100%",background:"#E07B0022",border:"1px solid #E07B0066",borderRadius:8,color:"#E07B00",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"8px"}}>Repartir los {viejosMes.length} 50/30/20</button>}
         </div>
       )}
     </div>
@@ -4099,7 +4110,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="cargar"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
-      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos}/>}
+      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso}/>}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(

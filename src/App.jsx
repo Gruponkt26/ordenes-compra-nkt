@@ -9311,6 +9311,9 @@ function fechasDeAviso(a){
   }
   return a.fecha?[{et:"", f:a.fecha}]:[];
 }
+// Primer mes que muestra 📅 Vencimientos: se arrancó de cero en octubre 2026. Lo anterior no se
+// borra —sigue en «Todo lo cargado» y en los egresos que ya generó—, sólo deja de listarse ni avisar.
+var VENC_DESDE="2026-10";
 function avisosVencimientos(vencimientos, diasAviso){
   var dias=diasAviso===undefined?7:diasAviso;
   var hoy=new Date().toISOString().split("T")[0];
@@ -9318,6 +9321,7 @@ function avisosVencimientos(vencimientos, diasAviso){
   var out=[];
   function agregar(v,cuota,fecha,pago){
     if(!fecha||pago)return;
+    if(fecha.substring(0,7)<VENC_DESDE)return; // de antes de que se empezara: no se avisa
     if(fecha>limite)return; // todavía falta: no es un aviso
     out.push({v:v,cuota:cuota,fecha:fecha,
       dias:Math.round((new Date(fecha+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),
@@ -11713,7 +11717,7 @@ function PanelVencimientos(p){
   var [mesTodos,setMesTodos]=useState(""); // filtro de mes de la vista general; "" = todos
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
-  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [mesFiltro,setMesFiltro]=useState(mesCurrent<VENC_DESDE?VENC_DESDE:mesCurrent);
   // null = portada con los submódulos. Si se entró desde Novedades tocando un rubro, se
   // abre directo ahí: el que hizo clic en "Servicios" ya dijo a dónde quería ir. El panel
   // se re-monta al cambiar de módulo, así que alcanza con tomarlo del arranque.
@@ -11898,7 +11902,8 @@ function PanelVencimientos(p){
   var meses=[];
   for(var i=-6;i<=6;i++){
     var d=new Date(parseInt(mesCurrent.slice(0,4),10),parseInt(mesCurrent.slice(5,7),10)-1+i,1);
-    meses.push(d.toISOString().slice(0,7));
+    var mm=d.toISOString().slice(0,7);
+    if(mm>=VENC_DESDE)meses.push(mm);
   }
 
   // Los del mes elegido: los recurrentes siempre, los únicos sólo si caen ahí.

@@ -7037,6 +7037,11 @@ function debitoYaAcreditado(fechaAcred){
 function fechaAcreditacionDebito(fechaCierre){
   return addBusinessDays(fechaCierre,2);
 }
+// El crédito del POS de Provincia y Patagonia se acredita a los 8 días hábiles (misma hora que el débito).
+var DIAS_ACREDITACION_CREDITO=8;
+function fechaAcreditacionCredito(fechaCierre){
+  return addBusinessDays(fechaCierre,DIAS_ACREDITACION_CREDITO);
+}
 
 var UNIDADES_MEDIDA=["kg","g","litro","ml","unidad","caja","docena","atado","pack","bandeja","bolsa","penca","balde","pieza entera","bidón","tacho","botella","frasco","lata","cajón","sachet","paquete","horma"];
 
@@ -16673,7 +16678,35 @@ function PanelResultados(p){
     // e impuesto, que es como entra en dispDebito. Así Total caja mayor − pendiente = Caja mayor HOY.
     var fDebito=tasaIIBB+comisionTasa(lid,"tarjeta_debito")*factorCom+impCreditoTasa(lid,"tarjeta_debito")*factorImpCred;
     var debitoPendienteNeto=debitoPendiente*(1-fDebito);
-    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCredito+dispOtros+dispMp;
+    // Crédito del POS: igual que el débito pero a 8 días hábiles. Se suma al mismo "pendiente":
+    // las tandas y el total quedan netos de IIBB, comisión e impuesto de cada medio.
+    var creditoAcreditadoHoy=hasCorrCredito||acreditaAlInstante?(hasCorrCredito?corrCredito:ventaCredito):cl.reduce(function(a,c){
+      var fa=fechaAcreditacionCredito(c.fecha);
+      if(fa&&debitoYaAcreditado(fa))return a+medioConHermanos(c,"tarjeta_credito");
+      return a;
+    },0);
+    var creditoPendiente=hasCorrCredito||acreditaAlInstante?0:Math.max(0,ventaCredito-creditoAcreditadoHoy);
+    var fCredito=tasaIIBB+comisionTasa(lid,"tarjeta_credito")*factorCom+impCreditoTasa(lid,"tarjeta_credito")*factorImpCred;
+    var creditoPendienteNeto=creditoPendiente*(1-fCredito);
+    var dispCreditoHoy=creditoAcreditadoHoy-(creditoAcreditadoHoy*fCredito)-idCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
+    if(creditoPendiente>0){
+      var tandasCred={};
+      cl.forEach(function(c){
+        var fa=fechaAcreditacionCredito(c.fecha), m=medioConHermanos(c,"tarjeta_credito");
+        if(fa&&!debitoYaAcreditado(fa)&&m>0)tandasCred[fa]=(tandasCred[fa]||0)+m;
+      });
+      var porFechaTotal={};
+      debitoPendientePorFecha.forEach(function(t){porFechaTotal[t.fecha]=(porFechaTotal[t.fecha]||0)+t.monto*(1-fDebito);});
+      Object.keys(tandasCred).forEach(function(f){porFechaTotal[f]=(porFechaTotal[f]||0)+tandasCred[f]*(1-fCredito);});
+      debitoPendientePorFecha=Object.keys(porFechaTotal).sort().map(function(f){return {fecha:f,monto:porFechaTotal[f]};});
+      var primeraCred=Object.keys(tandasCred).sort()[0];
+      if(primeraCred&&(!proximaAcreditacionDebito||primeraCred<proximaAcreditacionDebito))proximaAcreditacionDebito=primeraCred;
+    } else if(debitoPendiente>0){
+      debitoPendientePorFecha=debitoPendientePorFecha.map(function(t){return {fecha:t.fecha,monto:t.monto*(1-fDebito)};});
+    }
+    var pendienteBruto=debitoPendiente+creditoPendiente;
+    var pendienteNeto=debitoPendienteNeto+creditoPendienteNeto;
+    var dispElectronicoHoy=dispTransferencia+dispDebitoHoy+dispCreditoHoy+dispOtros+dispMp;
 
     var corrMonto=(ingrEfectivo-ventaEfectivoBruto)+(ingrTransferencia-ventaTransferencia)+(ingrDebito-ventaDebito)+(ingrCredito-ventaCredito)+(ingrOtros-ventaOtros);
     // Ventas corregidas = ventas de los cierres + diferencia de las correcciones manuales.
@@ -16682,7 +16715,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{debitoPendientePorFecha,debitoPendienteNeto,factorDebitoPend:1-fDebito,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -17065,7 +17098,7 @@ function PanelResultados(p){
                 {/* Débito pendiente de acreditar */}
                 {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
                   <tr style={{background:"#14100A"}}>
-                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito pendiente <span style={{color:"#8A7040",fontSize:9,fontWeight:400}}>(neto de IIBB, comisión e impuestos)</span></td>
+                    <td style={{padding:"8px",color:"#D4A017",fontWeight:700,fontSize:11}}>⏳ Débito y crédito pendientes <span style={{color:"#8A7040",fontSize:9,fontWeight:400}}>(neto de IIBB, comisión e impuestos)</span></td>
                     {localesFiltro.map(function(l){
                       var pend=datos[l.id].debitoPendienteNeto||0;
                       var fNeto=datos[l.id].factorDebitoPend!==undefined?datos[l.id].factorDebitoPend:1;
@@ -17298,11 +17331,11 @@ function PanelResultados(p){
                   );
                 })()}
 
-                {/* Débito pendiente de acreditar (2 días hábiles) */}
+                {/* Débito (2 días hábiles) y crédito (8 días hábiles) pendientes de acreditar */}
                 {d.debitoPendiente>0&&(
                   <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                      <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Débito pendiente de acreditar</span>
+                      <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Débito y crédito pendientes de acreditar</span>
                       <span style={{fontSize:12,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(d.debitoPendienteNeto)}</span>
                     </div>
                     <div style={{fontSize:9,color:"#888"}}>
@@ -17313,7 +17346,7 @@ function PanelResultados(p){
                         <span>📅 {new Date(t.fecha+"T00:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"numeric",month:"short"})}</span><span>{fmt(t.monto*(d.factorDebitoPend!==undefined?d.factorDebitoPend:1))}</span>
                       </div>
                     );})}
-                    <div style={{fontSize:9,color:"#8A7040",marginTop:4}}>Neto de IIBB, comisión e impuestos. Cobrado con débito: {fmt(d.debitoPendiente)}.</div>
+                    <div style={{fontSize:9,color:"#8A7040",marginTop:4}}>Neto de IIBB, comisión e impuestos. Cobrado con débito y crédito: {fmt(d.debitoPendiente)}.</div>
                     <div style={{fontSize:9,color:"#9A9A9A",marginTop:5,paddingTop:5,borderTop:"1px solid #2A2416"}}>
                       💰 Disponible HOY en electrónico (sin el pendiente): <b style={{color:"#F0EDE8"}}>{fmt(d.dispElectronicoHoy)}</b>
                     </div>

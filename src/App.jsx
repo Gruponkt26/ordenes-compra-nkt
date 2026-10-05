@@ -8979,11 +8979,17 @@ function esCredito(v){ return v.tipo==="credito"; }
 // Un egreso queda huérfano cuando el vencimiento que lo generó se borró sin llevárselo:
 // pasaba antes de que borrar un vencimiento borrara sus egresos, y el gasto queda cargado
 // sin nada que lo respalde. Se reconocen por el id, que la app arma al generarlos.
+// Un vencimiento de la Oficina se paga en tres egresos, uno por local, con el id del pago más
+// "_l1", "_l3" o "_l2". El vencimiento guarda sólo el id base: esto devuelve el base de cualquiera.
+function baseEgresoVenc(id){
+  var m=/^(egr_venc_.+)_l[1-4]$/.exec(String(id||""));
+  return m?m[1]:id;
+}
 function egresosHuerfanos(gastos, vencimientos){
   var vivos={};
   (vencimientos||[]).forEach(function(v){ egresosDe(v).forEach(function(id){ vivos[id]=true; }); });
   return (gastos||[]).filter(function(g){
-    return String(g.id||"").indexOf("egr_venc_")===0 && !vivos[g.id];
+    return String(g.id||"").indexOf("egr_venc_")===0 && !vivos[g.id] && !vivos[baseEgresoVenc(g.id)];
   });
 }
 function egresosDe(v){
@@ -21654,8 +21660,10 @@ export default function App() {
     });
   }
   function borrarEgresoSolo(id){
-    sbDeleteGasto(id);
-    setGastos(function(p){return p.filter(function(g){return g.id!==id;});});
+    // Si el egreso era de la Oficina y se partió en tres (id_l1, id_l3, id_l2), se van los tres.
+    var ids=[id].concat(["_l1","_l3","_l2"].map(function(suf){return id+suf;}).filter(function(h){return gastos.some(function(g){return g.id===h;});}));
+    ids.forEach(function(x){sbDeleteGasto(x);});
+    setGastos(function(p){return p.filter(function(g){return ids.indexOf(g.id)===-1;});});
   }
   function despagarPorEgreso(egresoId){
     if(!egresoId)return;
@@ -21699,8 +21707,11 @@ export default function App() {
     }
   }
   function borrarEgreso(id){
-    borrarEgresoSolo(id);
-    despagarPorEgreso(id);
+    // Borrar una parte de un pago de vencimiento partido entre los tres locales borra el pago entero:
+    // si no, al volver a pagarlo las otras dos partes contarían el gasto dos veces.
+    var base=baseEgresoVenc(id);
+    borrarEgresoSolo(base);
+    despagarPorEgreso(base);
   }
   function updOrden(id,ch){sbPatch(id,{status:ch.status});setOrdenes(function(p){return p.map(function(o){return o.id===id?{...o,...ch}:o;});});}
   function delOrden(id){if(window.confirm("¿Eliminar esta orden? No se puede deshacer.")){sbDelete(id);setOrdenes(function(p){return p.filter(function(o){return o.id!==id;});});}}
@@ -22484,7 +22495,7 @@ export default function App() {
                 (egresos||[]).forEach(function(eid){ borrarEgresoSolo(eid); });
                 await sbDeleteVencimiento(id);
               }}
-              onSaveEgreso={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+              onSaveEgreso={guardarEgresoConOficina}
               onDeleteEgreso={borrarEgresoSolo}
               gastos={gastos}
             />

@@ -5720,7 +5720,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     {est?<div style={{fontSize:10,color:est[2]}}>{est[1]}</div>:<div style={{fontSize:10,color:"#D4A017"}}>⏳ Pendiente</div>}
                     {pago&&pago.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00"}}>Abonado: {fmt(pago.monto_parcial)}</div>}
                     {pago&&textoMedios(pago)&&<div style={{fontSize:9,color:"#8C8C8C",maxWidth:190}}>{textoMedios(pago)}</div>}
-                    {adelFilaTot>0&&<div style={{fontSize:9,color:"#D4A017",marginTop:2}}>⏳ Adelantos {fmt(adelFilaTot)} · <span style={{color:"#3A7D44",fontWeight:700}}>falta {fmt(faltaFila)}</span></div>}
+                    {(adelFilaTot>0||(pago&&pago.estado==="parcial"))&&faltaFila>0&&<div style={{fontSize:9,color:"#D4A017",marginTop:2}}>{adelFilaTot>0?"⏳ Adelantos "+fmt(adelFilaTot)+" · ":""}<span style={{color:"#3A7D44",fontWeight:700}}>falta {fmt(faltaFila)}</span></div>}
                   </div>
                   <button onClick={function(){abrirModal(pl);}} style={{padding:"6px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>{pago?"✏️":"💳 Pagar"}</button>
                 </div>
@@ -8248,7 +8248,17 @@ function PanelEgresos(p){
                                     {s.monto_sin_convenio>0&&<span style={{color:"#1A6B8A",fontSize:9}}>💼 S/conv: {fmt(s.monto_sin_convenio)}</span>}
                                   </div>
                                 )}
-                                {s.estado==="parcial"&&<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total del sueldo: {fmt(s.monto)} · falta {fmt(Math.max(0,(parseFloat(s.monto)||0)-(parseFloat(s.monto_parcial)||0)))}</div>}
+                                {s.estado==="parcial"&&(function(){
+                                  // El sueldo guardado conserva el monto que tenía la planilla al pagar: si después se cargó o
+                                  // corrigió el total en la planilla anual, manda ese.
+                                  var perP=String(s.periodo||"").split("-");
+                                  var plan=(p.planillaSueldos||[]).find(function(x){return x.empleado_id===s.empleado_id&&parseInt(x.mes)===parseInt(perP[1])-1&&parseInt(x.anio)===parseInt(perP[0]);});
+                                  var totalS=Math.max(parseFloat(s.monto)||0,plan?(parseFloat(plan.monto)||0):0);
+                                  var faltaS=totalS-(parseFloat(s.monto_parcial)||0);
+                                  return faltaS>0
+                                    ?<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Total del sueldo: {fmt(totalS)} · falta {fmt(faltaS)}</div>
+                                    :<div style={{fontSize:9,color:"#E07B00",paddingLeft:14}}>Falta cargar el sueldo total en la planilla de Sueldos para saber cuánto falta pagar.</div>;
+                                })()}
                               </div>
                             );
                           })}

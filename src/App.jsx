@@ -3847,7 +3847,7 @@ function PanelResumenOficina(p){
     var tipoG=/^egr_sueldo_/.test(k)?"👤 Sueldo":/^egr_of_/.test(k)?"💸 Gasto fijo":/^egr_obra_/.test(k)?"🏗️ Obra":"📄 Egreso";
     var sub=String(g.subramo||"").replace(/\s*·?\s*Oficina (50|30|20)%\s*·?\s*/g," ").replace(/\s+/g," ").trim().replace(/^·\s*|\s*·$/g,"");
     var det=String(g.detalle||"").replace(/\s*·?\s*Parte de la Oficina \([^)]*\)/g,"").replace(/^\s*·\s*/,"").trim();
-    var gr=grupos[k]||(grupos[k]={id:k,concepto:g.concepto,fecha:g.fecha,area:g.area||g.categoria||"",tipo:tipoG,sub:sub,detalle:det,notas:g.notas||"",total:0,porLocal:{l1:0,l3:0,l2:0},medios:{}});
+    var gr=grupos[k]||(grupos[k]={id:k,concepto:g.concepto,fecha:g.fecha,area:g.area||g.categoria||"",tipo:tipoG,sub:sub,detalle:det,notas:g.notas||"",total:0,porLocal:{l1:0,l3:0,l2:0},medios:{},clave:k});
     gr.total+=parseFloat(g.monto)||0; gr.porLocal[g.local]+=parseFloat(g.monto)||0;
     pagos.forEach(function(pg){ var mm=String(pg.medio||pg.tipo||"")||"Sin medio"; gr.medios[mm]=(gr.medios[mm]||0)+(parseFloat(pg.monto)||0); });
     if(String(g.fecha||"")>String(gr.fecha||""))gr.fecha=g.fecha;
@@ -3859,6 +3859,15 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
+  // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
+  // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
+  // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
+  // limpia lo que dejaron marcado.
+  function sePuedeBorrar(x){ return x.tipo==="📄 Egreso"; }
+  function borrarOficina(clave,concepto,total){
+    if(!window.confirm("¿Borrar \""+concepto+"\" ("+fmt(total)+")?\n\nSe borra de la Oficina y de los tres locales."))return;
+    p.onBorrar(clave);
+  }
   // Un egreso de antes, cargado entero a nombre de la Oficina, se parte en tres como los nuevos
   // (guardarEgresoConOficina borra el entero y deja una parte por local).
   function repartirViejos(lista){
@@ -3940,7 +3949,10 @@ function PanelResumenOficina(p){
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{x.concepto}</div>
                     <div style={{fontSize:10,color:"#7E7E7E"}}>{x.tipo} · {x.area?x.area+" · ":""}{x.sub?x.sub+" · ":""}{fmtDate(x.fecha)}</div>
                   </div>
-                  <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.total)}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.total)}</div>
+                    {p.onBorrar&&sePuedeBorrar(x)&&<button title="Borrar de la Oficina y de los tres locales" onClick={function(e){e.stopPropagation();borrarOficina(x.clave,x.concepto,x.total);}} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:13}}>🗑️</button>}
+                  </div>
                 </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#8C8C8C",marginTop:4}}>
                   {LOC.map(function(t){var l=getLocal(t[0]);return <span key={t[0]} style={{color:l?l.color:"#8C8C8C"}}>{l?l.emoji:""} {fmt(x.porLocal[t[0]])}</span>;})}
@@ -3965,6 +3977,7 @@ function PanelResumenOficina(p){
           <div style={{fontSize:10,color:"#B8963A",marginBottom:6,lineHeight:1.5}}>Están cargados a nombre de la Oficina y no entran en la tabla de arriba. Repartilos para que se partan 50% Bodegón, 30% Colantonio's y 20% Kusama y pasen a figurar en cada local.</div>
           {viejosMes.map(function(g){return <div key={g.id} style={{fontSize:10,color:"#C8C8C8",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:3}}>
             <span style={{flex:1}}>{g.concepto} · {fmtDate(g.fecha)}</span><span>{fmt(parseFloat(g.monto)||0)}</span>
+            {p.onBorrar&&<button title="Borrar" onClick={function(){borrarOficina(g.id,g.concepto,parseFloat(g.monto)||0);}} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>}
             {p.onRepartir&&<button onClick={function(){repartirViejos([g]);}} style={{background:"none",border:"1px solid #E07B0066",borderRadius:6,color:"#E07B00",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 8px"}}>Repartir</button>}
           </div>;})}
           {p.onRepartir&&viejosMes.length>1&&<button onClick={function(){repartirViejos(viejosMes);}} style={{marginTop:8,width:"100%",background:"#E07B0022",border:"1px solid #E07B0066",borderRadius:8,color:"#E07B00",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"8px"}}>Repartir los {viejosMes.length} 50/30/20</button>}
@@ -3974,7 +3987,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento, onBorrarEgresoOficina}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4102,7 +4115,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="egresos"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
-      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso}/>}
+      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
@@ -22270,6 +22283,7 @@ export default function App() {
                 setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
                 await sbSaveVencimiento(v);
               }}
+              onBorrarEgresoOficina={borrarEgreso}
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}

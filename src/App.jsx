@@ -7024,6 +7024,16 @@ function addBusinessDays(fechaStr,n){
   return fechaLocal(d);
 }
 // Fecha en que se acredita en el banco una venta con débito (2 días hábiles después del cierre).
+// El débito no se acredita al empezar el día sino a las 10:30 hs del día que corresponde: antes
+// de esa hora sigue como pendiente aunque ya sea la fecha. Hora de Argentina.
+var HORA_ACREDITACION_DEBITO=10*60+30;
+function debitoYaAcreditado(fechaAcred){
+  if(!fechaAcred)return false;
+  var ahora=new Date(), hoy=fechaLocal(ahora);
+  if(fechaAcred<hoy)return true;
+  if(fechaAcred>hoy)return false;
+  return ahora.getHours()*60+ahora.getMinutes()>=HORA_ACREDITACION_DEBITO;
+}
 function fechaAcreditacionDebito(fechaCierre){
   return addBusinessDays(fechaCierre,2);
 }
@@ -16115,6 +16125,9 @@ function PanelVentasEgresos(p){
 }
 
 function PanelResultados(p){
+  // Cada minuto se vuelve a calcular, para que el débito pase a acreditado solo a las 10:30.
+  var [, setTickDeb]=useState(0);
+  useEffect(function(){ var t=setInterval(function(){setTickDeb(function(x){return x+1;});},60000); return function(){clearInterval(t);}; },[]);
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
   // Sólo los movimientos en plata: un bien mueble aportado o retirado no mueve ninguna caja
@@ -16635,7 +16648,7 @@ function PanelResultados(p){
     var acreditaAlInstante=lid==="l2";
     var debitoAcreditadoHoy=hasCorrDebito||acreditaAlInstante?(hasCorrDebito?corrDebito:ventaDebito):cl.reduce(function(a,c){
       var fa=fechaAcreditacionDebito(c.fecha);
-      if(fa&&fa<=hoyStr)return a+medioConHermanos(c,"tarjeta_debito");
+      if(fa&&debitoYaAcreditado(fa))return a+medioConHermanos(c,"tarjeta_debito");
       return a;
     },0);
     var debitoPendiente=hasCorrDebito||acreditaAlInstante?0:Math.max(0,ventaDebito-debitoAcreditadoHoy);
@@ -16646,12 +16659,12 @@ function PanelResultados(p){
       var porFechaAc={};
       cl.forEach(function(c){
         var fa=fechaAcreditacionDebito(c.fecha), m=medioConHermanos(c,"tarjeta_debito");
-        if(fa&&fa>hoyStr&&m>0)porFechaAc[fa]=(porFechaAc[fa]||0)+m;
+        if(fa&&!debitoYaAcreditado(fa)&&m>0)porFechaAc[fa]=(porFechaAc[fa]||0)+m;
       });
       debitoPendientePorFecha=Object.keys(porFechaAc).sort().map(function(f){return {fecha:f,monto:porFechaAc[f]};});
       var fechasPend=cl.filter(function(c){
         var fa=fechaAcreditacionDebito(c.fecha);
-        return fa&&fa>hoyStr&&medioConHermanos(c,"tarjeta_debito")>0;
+        return fa&&!debitoYaAcreditado(fa)&&medioConHermanos(c,"tarjeta_debito")>0;
       }).map(function(c){return fechaAcreditacionDebito(c.fecha);}).sort();
       proximaAcreditacionDebito=fechasPend.length>0?fechasPend[0]:null;
     }

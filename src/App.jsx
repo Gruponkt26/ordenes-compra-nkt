@@ -3742,76 +3742,6 @@ function PanelGastosFijosOficina(p){
   );
 }
 
-// ─── CARGAR UN GASTO DE LA OFICINA ───────────────────────────────────────────
-// Un gasto que no es de los fijos de la lista: uno diario, ya pagado (egreso) o uno con
-// vencimiento, que queda en 📅 Vencimientos hasta pagarlo. De cualquiera de las dos formas sale
-// siempre a nombre de la Oficina (local l4) y se reparte 50/30/20 entre los tres locales:
-// el egreso lo parte guardarEgresoConOficina al guardarlo, y el vencimiento al pagarse.
-function PanelCargarGastoOficina(p){
-  var hoy=fechaLocal();
-  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
-  var VACIO={tipo:"pagado",concepto:"",monto:"",rubro:"Servicios",fecha:hoy,medio:"Efectivo - Oficina",recurrente:false,dia:String(parseInt(hoy.substring(8,10),10)||10),notas:""};
-  var [f,setF]=useState(VACIO);
-  var [ok,setOk]=useState("");
-  var INPo={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
-  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
-  function set(k,v){ setOk(""); setF(function(x){var n={...x}; n[k]=v; return n;}); }
-  function guardar(){
-    var monto=parseFloat(f.monto)||0;
-    if(!f.concepto.trim()){alert("Poné qué es el gasto.");return;}
-    if(monto<=0){alert("Poné el monto.");return;}
-    var ahora=new Date().toISOString();
-    if(f.tipo==="pagado"){
-      if(!f.medio){alert("Elegí con qué medio se pagó.");return;}
-      p.onSaveEgreso({id:"egr_ofx_"+Date.now(),local:"l4",concepto:f.concepto.trim(),subramo:"",monto:monto,
-        forma_pago:f.medio,pagos:[{medio:f.medio,monto:monto}],detalle:"",facturado:false,facturacion:"",
-        categoria:f.rubro,area:f.rubro,notas:f.notas||"Gasto de la Oficina",fecha:f.fecha,usuario:p.usuario||"",created_at:ahora});
-      setOk("✅ Guardado: "+fmt(monto)+" repartido 50/30/20 entre los tres locales.");
-    }else{
-      p.onSaveVencimiento({id:"venc_"+Date.now(),local:"l4",cuit:"",debito_cuenta:"",debito_cbu:"",concepto:f.concepto.trim(),
-        area:f.rubro,subramo:"",monto:monto,recurrente:!!f.recurrente,dia:f.recurrente?(parseInt(f.dia,10)||1):null,
-        fecha:f.recurrente?null:f.fecha,activo:true,notas:f.notas||"",referencia:"",grupo:"otros",cuotas:0,cuotas_previas:0,pagos:[],
-        usuario:p.usuario||"",created_at:ahora});
-      setOk("✅ Guardado en 📅 Vencimientos"+(f.recurrente?" (se repite todos los meses)":"")+". Al pagarlo se reparte 50/30/20.");
-    }
-    setF({...VACIO,rubro:f.rubro,tipo:f.tipo});
-  }
-  var btnTipo=function(id,txt){var on=f.tipo===id;return <button onClick={function(){set("tipo",id);}} style={{flex:1,padding:"9px",borderRadius:8,border:"2px solid "+(on?"#3A7D44":"#1E1E1E"),background:on?"#3A7D4422":"#111",color:on?"#4C9A5A":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{txt}</button>;};
-  return(
-    <div>
-      <div style={{background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#8C8C8C",lineHeight:1.6,marginBottom:12}}>
-        Todo lo que se cargue acá es de la <b style={{color:"#F0EDE8"}}>Oficina</b> y se reparte <b style={{color:"#F0EDE8"}}>50% Bodegón, 30% Colantonio's y 20% Kusama</b>.
-      </div>
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        {btnTipo("pagado","💵 Ya pagado (egreso diario)")}
-        {btnTipo("venc","📅 Con vencimiento (a pagar)")}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
-        <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Gasto</label><input value={f.concepto} onChange={function(e){set("concepto",e.target.value);}} placeholder="Ej: Librería, Limpieza, Seguro" style={INPo}/></div>
-        <div><label style={lbl}>Monto</label><input type="number" value={f.monto} onChange={function(e){set("monto",e.target.value);}} placeholder="0" style={INPo}/></div>
-        <div><label style={lbl}>Rubro</label>
-          <select value={f.rubro} onChange={function(e){set("rubro",e.target.value);}} style={INPo}>{OF_RUBROS.map(function(r){return <option key={r}>{r}</option>;})}</select></div>
-        {f.tipo==="pagado"?(
-          <div><label style={lbl}>Fecha</label><input type="date" value={f.fecha} onChange={function(e){set("fecha",e.target.value);}} style={INPo}/></div>
-        ):(f.recurrente?(
-          <div><label style={lbl}>Día del mes que vence</label><input type="number" min="1" max="31" value={f.dia} onChange={function(e){set("dia",e.target.value);}} style={INPo}/></div>
-        ):(
-          <div><label style={lbl}>Vence el</label><input type="date" value={f.fecha} onChange={function(e){set("fecha",e.target.value);}} style={INPo}/></div>
-        ))}
-        {f.tipo==="pagado"?(
-          <div><label style={lbl}>Pagado con</label>
-            <select value={f.medio} onChange={function(e){set("medio",e.target.value);}} style={INPo}>{MEDIOS_SUELDOS.map(function(m){return <option key={m.v} value={m.v}>{m.v}</option>;})}</select></div>
-        ):(
-          <div style={{display:"flex",alignItems:"flex-end"}}><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#C8C8C8",cursor:"pointer",paddingBottom:9}}><input type="checkbox" checked={f.recurrente} onChange={function(e){set("recurrente",e.target.checked);}}/> Se repite todos los meses</label></div>
-        )}
-        <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Notas (opcional)</label><input value={f.notas} onChange={function(e){set("notas",e.target.value);}} style={INPo}/></div>
-      </div>
-      <button onClick={guardar} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{f.tipo==="pagado"?"Guardar egreso":"Guardar en Vencimientos"}</button>
-      {ok&&<div style={{marginTop:10,fontSize:12,color:"#4C9A5A"}}>{ok}</div>}
-    </div>
-  );
-}
-
 // ─── RESUMEN POR MES DE UN LOCAL ─────────────────────────────────────────────
 // Para Bodegón, Kusama y Colantonio's: mes por mes, lo que ingresó (ventas de los cierres con la
 // corrección manual de Resultados) en un solo renglón, lo que se gastó y la diferencia. Tocando un
@@ -4069,7 +3999,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4106,7 +4036,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
   function abrirLocal(l){
     setLocalSel(l);
-    setTab(l.id==="l4"?"egresos":"datos");
+    setTab(l.id==="l4"?"resumen":"datos");
     var d=localesDatos[l.id]||{};
     setFormDatos({id:l.id+"_datos",local:l.id,direccion:d.direccion||"",telefono:d.telefono||"",encargado:d.encargado||"",horarios:d.horarios||"",notas:d.notas||""});
   }
@@ -4188,13 +4118,10 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["egresos","💸 Egresos"],["resumen","📊 Resumen"]]:[["resumen","📊 Resumen"]]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
-
-      {/* Tab Egresos (sólo la Oficina): cargar un gasto diario o con vencimiento */}
-      {tab==="egresos"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}
@@ -22395,10 +22322,6 @@ export default function App() {
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
               localInicial={locInicial} onLocalInicialUsado={function(){setLocInicial(null);}}
-              onSaveVencimiento={async function(v){
-                setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
-                await sbSaveVencimiento(v);
-              }}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
               locales={LOCALES}

@@ -6722,6 +6722,27 @@ function PanelDeportes(p){
         var aCobrarTotal=entradas.reduce(function(a,e){return a+e.pendiente;},0);
         var aPagarTotal=salidas.reduce(function(a,e){return a+e.pendiente;},0);
 
+        // Mes por mes: una tarjeta por cada mes con movimiento, con lo que entró por concepto y lo
+        // que salió por rubro. Sólo plata que se movió de verdad (cobrado / pagado).
+        var tarjetasMes=mesesGlobal.map(function(m){
+          function deMes(f){ return registros.filter(function(x){return String(x.fecha||"").slice(0,7)===m&&f(x);}); }
+          var ent=DEP_CONCEPTOS.map(function(c){
+            var l=deMes(c.test).filter(function(x){return x.estado==="cobrado";});
+            return {label:c.label,monto:suma(l),n:l.length};
+          }).filter(function(f){return f.n>0;});
+          function esSalida(x){ return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"; }
+          var sal=DEP_RUBROS.map(function(r){
+            var l=deMes(function(x){return esSalida(x)&&x.rubro===r.id;});
+            return {label:r.label,monto:suma(l),n:l.length};
+          });
+          var sr=deMes(function(x){return esSalida(x)&&!x.rubro;});
+          if(sr.length)sal.push({label:"❓ Sin rubro",monto:suma(sr),n:sr.length});
+          sal=sal.filter(function(f){return f.n>0;});
+          var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
+          return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
+        }).filter(function(t){return t.ent.length>0||t.sal.length>0;});
+        function pesos(n){ return "$"+Math.round(n).toLocaleString("es-AR"); }
+
         function Bloque(props){
           var hay=props.filas.some(function(f){return f.cuantas>0;});
           return(
@@ -6760,6 +6781,32 @@ function PanelDeportes(p){
               </div>
               <div style={{fontSize:26,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
             </div>
+
+            {tarjetasMes.length>0&&(
+              <div style={{marginTop:18}}>
+                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>📅 Mes por mes</div>
+                {tarjetasMes.map(function(t){return(
+                  <div key={t.m} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 13px",marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                      <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8",textTransform:"capitalize"}}>{nombreMesDep(t.m)}</div>
+                      <div style={{fontSize:15,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{pesos(Math.abs(t.saldo))}</div>
+                    </div>
+                    <div style={{fontSize:10,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between"}}><span>📥 Entró</span><span>{pesos(t.totE)}</span></div>
+                    {t.ent.map(function(f){return(
+                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
+                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
+                      </div>
+                    );})}
+                    <div style={{fontSize:10,color:"#C1440E",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between",marginTop:8}}><span>📤 Salió</span><span>{pesos(t.totS)}</span></div>
+                    {t.sal.map(function(f){return(
+                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
+                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
+                      </div>
+                    );})}
+                  </div>
+                );})}
+              </div>
+            )}
           </div>
         );
       })()}

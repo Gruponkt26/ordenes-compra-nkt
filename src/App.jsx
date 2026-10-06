@@ -3885,6 +3885,26 @@ function PanelResumenOficina(p){
     vencOf.push({id:v.id,concepto:v.concepto,vence:fechaVencimiento(v,mes),monto:parseFloat(v.monto)||0,pago:pagoDelPeriodo(v,mes)});
   });
   vencOf.sort(function(a,b){return String(a.vence||"").localeCompare(String(b.vence||""));});
+  // La deuda de la Oficina es lo que ya venció y no se pagó, venga del mes que venga. Mismo criterio
+  // que la tarjeta Deuda de Novedades: de una cuota, la que ya pasó todas sus fechas; de un
+  // vencimiento suelto, lo vencido del mes en curso.
+  var hoyOf=fechaLocal();
+  var deudaOf=[];
+  (p.vencimientos||[]).filter(function(v){return v.activo!==false&&esDeOficina(v);}).forEach(function(v){
+    if(tieneCuotas(v)){
+      cuotasPlan(v).forEach(function(c){
+        if(c.pago||!c.vence||!estaVencida(c,hoyOf))return;
+        deudaOf.push({id:v.id+"_"+c.nro,concepto:v.concepto+(c.nro===0?" · anticipo":" · cuota "+c.nro),vence:venceFinal(c),monto:parseFloat(c.monto)||0});
+      });
+      return;
+    }
+    var cu=cuotasDe(v);
+    if(cu&&cu.completo)return;
+    var mm=hoyOf.substring(0,7), f=fechaVencimiento(v,mm);
+    if(f&&f<hoyOf&&!pagoDelPeriodo(v,mm))deudaOf.push({id:v.id,concepto:v.concepto,vence:f,monto:parseFloat(v.monto)||0});
+  });
+  deudaOf.sort(function(a,b){return String(a.vence||"").localeCompare(String(b.vence||""));});
+  var totalDeudaOf=deudaOf.reduce(function(a,x){return a+x.monto;},0);
   // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
   // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
   // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
@@ -3994,6 +4014,20 @@ function PanelResumenOficina(p){
               </div>
             );
           })}
+        </div>
+      )}
+
+      {deudaOf.length>0&&(
+        <div style={{background:"#1A0808",border:"1px solid #C1440E55",borderRadius:12,padding:"11px 13px",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#C1440E"}}>⚠️ Deuda de la Oficina <span style={{fontWeight:400,color:"#8A5A5A"}}>· vencido sin pagar</span></div>
+            <div style={{fontSize:16,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(totalDeudaOf)}</div>
+          </div>
+          {deudaOf.map(function(x){return(
+            <div key={x.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,padding:"3px 0",color:"#B08080"}}>
+              <span>{x.concepto}{x.vence?" · venció "+fmtDate(x.vence):""}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(x.monto)}</span>
+            </div>
+          );})}
         </div>
       )}
 
@@ -11078,7 +11112,7 @@ function PanelNovedades(p){
       sumarEn(deudaLocal,m.local||"_s",(m.tipo==="pago"?-1:1)*(parseFloat(m.monto)||0));
     });
   });
-  var desgloseDeuda=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+  var desgloseDeuda=LOCALES.map(function(l){
     return {txt:l.emoji+" "+l.nombre,monto:deudaLocal[l.id]||0,color:l.color};
   });
   if((deudaLocal._s||0)>0.5)desgloseDeuda.push({txt:"Sin local asignado",monto:deudaLocal._s,color:"#8C8C8C"});

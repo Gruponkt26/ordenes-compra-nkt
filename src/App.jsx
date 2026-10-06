@@ -13571,9 +13571,6 @@ function PanelVencimientos(p){
 }
 
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
-// A qué hora abre cada local, para el cartel que recuerda controlar la caja apenas
-// arranca el turno.
-var HORA_APERTURA_CAJA={l1:{h:20,m:0},l2:{h:19,m:30},l3:{h:19,m:30}};
 var MEDIOS_POR_LOCAL={
   "l1":[
     "Efectivo","Efectivo - Bodegón","Efectivo - El Bodegón","Caja Mayor - Bodegón",
@@ -14676,13 +14673,7 @@ function PanelCierre(p) {
   var fechaSospechosa=!editId&&!diaFaltante&&form.fecha&&form.fecha!==hoy;
 
   var datosEfectivo={cierres:cierres,gastos:p.gastos||[],retiros:p.retiros||[],aportes:p.aportes||[],cajaInicial:p.cajaInicial||{}};
-  // Un día antes del día de NEGOCIO (no de la fecha real): si son las 00:45 y "hoy" para
-  // la caja sigue siendo ayer, "el día anterior" tiene que ser antes de ayer.
-  var ayer=fechaLocal(new Date(new Date(hoy+"T00:00:00").getTime()-86400000));
-  // A la hora de abrir, el cartel avisa cuánto debería tener la caja arrancando: lo que
-  // quedó hasta ayer, porque la venta de hoy todavía no pasó por ningún lado.
-  var efectivoAlAbrir=efectivoTeoricoCaja(localId,ayer,datosEfectivo);
-  // El de la puerta de entrada es otro: se puede tocar Caja en cualquier momento del día,
+  // La puerta de entrada: se puede tocar Caja en cualquier momento del día,
   // no sólo al abrir, así que mira hasta hoy —sin contar la venta de hoy, que todavía no
   // se cargó— para reflejar lo que hay que encontrar en la caja en este mismo momento.
   // Usa la fecha REAL, no el día de negocio: de madrugada el día de negocio retrocede a
@@ -14690,13 +14681,6 @@ function PanelCierre(p) {
   // negocio lo dejaría afuera de la cuenta —el efectivo mostrado se vería incompleto o
   // negativo hasta que amanezca, aunque esa plata ya esté anotada—.
   var efectivoActual=efectivoTeoricoCaja(localId,fechaLocal(),datosEfectivo);
-  var [bannerApVisto,setBannerApVisto]=useState(false);
-  var horaApertura=HORA_APERTURA_CAJA[localId];
-  var ahora=new Date();
-  var yaEsHoraDeAbrir=horaApertura&&(ahora.getHours()>horaApertura.h||(ahora.getHours()===horaApertura.h&&ahora.getMinutes()>=horaApertura.m));
-  // No tiene sentido pedir que controlen la caja si todavía falta cerrar un día de antes
-  // —ese cartel ya está diciendo lo más urgente— ni después de que hoy ya se cargó.
-  var mostrarCartelApertura=!!horaApertura&&yaEsHoraDeAbrir&&!diaFaltante&&!hoyData&&!bannerApVisto&&abreEseDia(localId,hoy);
 
   var MESES_NOMBRE=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   function labelMes(m){
@@ -14921,20 +14905,6 @@ function PanelCierre(p) {
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Falta cerrar el {fmtDate(diaFaltante)}</div>
           <div style={{fontSize:13,color:"#C88888",marginTop:6}}>No se puede cargar el cierre de hoy hasta cerrar ese día. Al cerrarlo, te pedimos verificar el efectivo.</div>
           <button onClick={abrirNuevo} style={{background:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Cerrar el {fmtDate(diaFaltante)}</button>
-        </div>
-      )}
-
-      {/* Apenas arranca el turno, antes de que entre la primera venta del día: lo único
-          que puede haber en la caja es lo que quedó de antes. Es el momento de controlarlo,
-          no a la noche cuando ya se mezcló con lo de hoy. */}
-      {mostrarCartelApertura&&(
-        <div style={{background:"#0A140A",border:"2px solid #3A7D44",borderRadius:16,padding:"22px 20px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:36,marginBottom:6}}>💵</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#3A7D44",lineHeight:1.3}}>
-            Controlá que en la caja menor haya ${Math.round(efectivoAlAbrir).toLocaleString("es-AR")}
-          </div>
-          <div style={{fontSize:13,color:"#6A9A72",marginTop:6}}>Es lo que debería haber quedado, antes de la venta de hoy.</div>
-          <button onClick={function(){setBannerApVisto(true);}} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 20px",marginTop:14}}>Ya la controlé</button>
         </div>
       )}
 

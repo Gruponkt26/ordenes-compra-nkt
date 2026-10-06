@@ -3812,6 +3812,88 @@ function PanelCargarGastoOficina(p){
   );
 }
 
+// ─── RESUMEN POR MES DE UN LOCAL ─────────────────────────────────────────────
+// Para Bodegón, Kusama y Colantonio's: mes por mes, lo que ingresó (ventas de los cierres con la
+// corrección manual de Resultados) en un solo renglón, lo que se gastó y la diferencia. Tocando un
+// mes se abre en qué se gastó, por rubro. Usa los mismos cálculos que Resultados y que Ventas y
+// Egresos (egresosOperativos), así que los totales coinciden.
+function PanelResumenLocal(p){
+  var lid=p.localId;
+  var gastos=p.gastos||[], cierres=p.cierres||[], sueldos=p.sueldos||[], adelantos=p.adelantos||[];
+  var retiros=(p.retiros||[]).filter(esMovDinero);
+  var corrResultados=p.corrResultados||{};
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var mesCurrent=fechaLocal().substring(0,7);
+  var [abierto,setAbierto]=useState(mesCurrent);
+  var meses=[...new Set([].concat(
+    cierres.filter(function(c){return c.local===lid;}).map(function(c){return c.fecha?c.fecha.substring(0,7):null;}),
+    gastos.filter(function(g){return g.local===lid;}).map(function(g){return g.fecha?g.fecha.substring(0,7):null;})
+  ).filter(Boolean).concat([mesCurrent]))].sort().reverse();
+  function datosMes(m){
+    var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===m;});
+    var corr=correccionVentas(cierres,lid,m,corrResultados);
+    var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
+    var eg=egresosOperativos(gastos,sueldos,adelantos,lid,m,cierres,retiros,true);
+    return {m:m,ventas:ventas,eg:eg,egresos:eg.total,dif:ventas-eg.total};
+  }
+  // En qué se gastó un mes: por rubro lo cargado en Egresos, y aparte lo que no pasa por Egresos
+  // (sueldos de planilla sin egreso, adelantos, impuestos y comisiones que calcula la app).
+  function desglose(d){
+    var eg=d.eg, porRubro={};
+    eg.gl.forEach(function(g){
+      var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim().split(" - ")[0])||"Otros";
+      if(a==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))a="Aguinaldos";
+      porRubro[a]=(porRubro[a]||0)+(parseFloat(g.monto)||0);
+    });
+    var filas=Object.keys(porRubro).map(function(r){return {rubro:r,monto:porRubro[r]};});
+    var sueldosPlanilla=(eg.sueldosADescontar||[]).reduce(function(a,x){return a+(x.estado==="parcial"?parseFloat(x.monto_parcial||0):parseFloat(x.monto||0));},0);
+    if(sueldosPlanilla>0)filas.push({rubro:"Sueldos (de la planilla)",monto:sueldosPlanilla});
+    if(eg.adelantosMonto>0)filas.push({rubro:"Adelantos de sueldo",monto:eg.adelantosMonto});
+    var costos=(eg.iibbEgreso||0)+(eg.impCredEgreso||0)+(eg.impDebEgreso||0)+(eg.comisionEgreso||0);
+    if(costos>0)filas.push({rubro:"Impuestos y comisiones (los calcula la app)",monto:costos});
+    var suma=filas.reduce(function(a,f){return a+f.monto;},0);
+    // Los pagos de deuda se cargan como egreso pero no son gasto del mes: se sacan del total.
+    if(Math.abs(suma-d.egresos)>0.5)filas.push({rubro:"Pagos de deuda (no cuentan como gasto)",monto:d.egresos-suma});
+    return filas.sort(function(a,b){return b.monto-a.monto;});
+  }
+  var TH={padding:"7px 6px",color:"#8C8C8C",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A",textAlign:"right"};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
+        Mes por mes: lo que ingresó (ventas de los cierres, con la corrección de Resultados), lo que se gastó y la diferencia. Tocá un mes para ver en qué se gastó. Es el mismo cálculo de Resultados y de Ventas y Egresos.
+      </div>
+      <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"4px 12px 12px",overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:320}}>
+          <thead><tr><th style={{...TH,textAlign:"left"}}>Mes</th><th style={TH}>Ingresó</th><th style={TH}>Egresos</th><th style={TH}>Diferencia</th></tr></thead>
+          <tbody>
+            {meses.map(function(m){
+              var d=datosMes(m), abre=abierto===m;
+              var td={padding:"9px 6px",fontSize:12,fontWeight:700,textAlign:"right",borderBottom:abre?"none":"1px solid #0F0F0F",fontFamily:"'Playfair Display',serif"};
+              return [
+                <tr key={m} onClick={function(){setAbierto(abre?null:m);}} style={{cursor:"pointer"}}>
+                  <td style={{...td,textAlign:"left",fontFamily:"'Inter',sans-serif",color:"#F0EDE8"}}>{abre?"▾":"▸"} {m}</td>
+                  <td style={{...td,color:"#3A7D44"}}>{fmt(d.ventas)}</td>
+                  <td style={{...td,color:"#C1440E"}}>{fmt(d.egresos)}</td>
+                  <td style={{...td,color:d.dif>=0?"#3A7D44":"#C1440E"}}>{d.dif<0?"−":""}{fmt(Math.abs(d.dif))}</td>
+                </tr>,
+                abre&&<tr key={m+"_d"}><td colSpan={4} style={{padding:"0 6px 10px",borderBottom:"1px solid #0F0F0F"}}>
+                  <div style={{background:"#0A0A0A",borderRadius:8,padding:"8px 10px"}}>
+                    {desglose(d).length===0?<div style={{fontSize:11,color:"#6E6E6E"}}>Sin egresos en {m}.</div>:desglose(d).map(function(f){return(
+                      <div key={f.rubro} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0",color:"#9A9A9A"}}>
+                        <span>{f.rubro}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f.monto)}</span>
+                      </div>
+                    );})}
+                  </div>
+                </td></tr>
+              ];
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── RESUMEN DE EGRESOS DE LA OFICINA ─────────────────────────────────────────
 // Junta todo lo que se pagó por la Oficina (gastos fijos, sueldo, obras, mantenimiento y gastos
 // sueltos): cuánto le tocaba a cada local (50/30/20) y cuánto puso realmente de su cuenta, para ver
@@ -3987,7 +4069,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento, onBorrarEgresoOficina}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onSaveVencimiento, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4106,13 +4188,16 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["egresos","💸 Egresos"],["resumen","📊 Resumen"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat(localSel.id==="l4"?[["egresos","💸 Egresos"],["resumen","📊 Resumen"]]:[["resumen","📊 Resumen"]]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
 
       {/* Tab Egresos (sólo la Oficina): cargar un gasto diario o con vencimiento */}
       {tab==="egresos"&&localSel.id==="l4"&&<PanelCargarGastoOficina usuario={usuario} onSaveEgreso={onSaveEgreso} onSaveVencimiento={onSaveVencimiento}/>}
+
+      {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
+      {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
@@ -22315,6 +22400,7 @@ export default function App() {
                 await sbSaveVencimiento(v);
               }}
               onBorrarEgresoOficina={borrarEgreso}
+              cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}

@@ -7214,6 +7214,28 @@ function GestProveedores(p) {
   function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{...(typeof p==="string"?{}:p),nombre:edProd.nombre,unidad:edProd.unidad}:p;});return n;});setEdProd(null);}
   function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
   function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
+  // Recuperar los productos de un proveedor desde las órdenes que ya se le hicieron: en cada orden
+  // quedó el nombre y la unidad de lo que se pidió. Sólo se agregan los que no están; no se
+  // guarda nada hasta tocar ✓ Guardar, así se puede revisar la lista antes.
+  function recuperarDeOrdenes(){
+    if(!sel)return;
+    var vistos={}; (prods[sel]||[]).forEach(function(x){ vistos[String(getProdNombre(x)||"").trim().toLowerCase()]=true; });
+    var nuevos=[];
+    (p.ordenes||[]).forEach(function(o){
+      (o.provSections||[]).forEach(function(sec){
+        if(sec.provId!==sel)return;
+        (sec.items||[]).forEach(function(it){
+          var n=String(it.nombre||"").trim(), k=n.toLowerCase();
+          if(!n||vistos[k])return;
+          vistos[k]=true; nuevos.push({nombre:n,unidad:it.unidad||"unidad"});
+        });
+      });
+    });
+    if(nuevos.length===0){alert("No encontré productos nuevos en las órdenes anteriores de este proveedor.");return;}
+    nuevos.sort(function(a,b){return a.nombre.localeCompare(b.nombre);});
+    if(!window.confirm("Encontré "+nuevos.length+" producto"+(nuevos.length===1?"":"s")+" en órdenes anteriores:\n\n"+nuevos.slice(0,15).map(function(x){return "· "+x.nombre+" ("+x.unidad+")";}).join("\n")+(nuevos.length>15?"\n· …y "+(nuevos.length-15)+" más":"")+"\n\n¿Los agrego a la lista? Después tocá ✓ Guardar."))return;
+    setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),...nuevos];return n;});
+  }
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
   var sp=provs.find(function(x){return x.id===sel;})||null;
   return(
@@ -7269,7 +7291,10 @@ function GestProveedores(p) {
                     </div>
                   )}
                 </div>
-                <div style={{fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Productos ({(prods[sel]||[]).length})</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+                  <div style={{fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase"}}>Productos ({(prods[sel]||[]).length})</div>
+                  <button onClick={recuperarDeOrdenes} title="Busca en las órdenes ya hechas a este proveedor los productos que falten en la lista" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"4px 9px"}}>↩️ Recuperar de órdenes anteriores</button>
+                </div>
                 {/* Agregar producto */}
                 <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>
                   <input placeholder="Producto..." value={newProd.nombre} onChange={function(e){setNewProd(function(n){return{...n,nombre:e.target.value};});}} onKeyDown={function(e){if(e.key==="Enter")addProd();}} style={{...INP,flex:1}}/>
@@ -21773,6 +21798,10 @@ export default function App() {
         var nombre=pv?pv.nombre:provId;
         if(!window.confirm("Vas a dejar a \""+nombre+"\" sin ningún producto (tenía "+tenia+").\n\n¿Es lo que querés? Si no, cancelá y no se toca."))return;
       }
+      // Un proveedor cuya lista no cambió no se reescribe: borrar y volver a guardar lo que ya estaba
+      // sólo arriesga perderlo si algo falla en el medio, o pisarlo con una lista vieja.
+      function firma(l){return JSON.stringify((l||[]).map(function(x){return typeof x==="string"?[x,"unidad",null]:[x.nombre,x.unidad||"unidad",parseFloat(x.contenido)||null];}));}
+      if(firma(pd[provId])===firma((productos||{})[provId]))return;
       salida.push(provId);
     });
     return salida;

@@ -3871,56 +3871,6 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
-  // Los vencimientos de la Oficina del mes elegido, pagados o por pagar: se cargan y se pagan en
-  // 📅 Vencimientos, pero acá se ven junto al resto de la Oficina. Son de la Oficina los que tienen
-  // local Oficina y los de un CUIT que va a Oficina (la SRL).
-  function esDeOficina(v){ return porCuit(grupoIdDe(v))?cuitVenc(cuitIdDe(v)).local==="l4":v.local==="l4"; }
-  var vencOf=[];
-  if(mes!=="todos")(p.vencimientos||[]).filter(function(v){return v.activo!==false&&esDeOficina(v);}).forEach(function(v){
-    if(tieneCuotas(v)){
-      cuotasDelMes(v,mes).forEach(function(c){ vencOf.push({id:v.id+"_"+c.nro,concepto:v.concepto+" · cuota "+c.nro,vence:c.vence,monto:parseFloat(c.monto)||0,pago:c.pago||null}); });
-      return;
-    }
-    if(!v.recurrente&&periodoDe(v.fecha)!==mes)return;
-    vencOf.push({id:v.id,concepto:v.concepto,vence:fechaVencimiento(v,mes),monto:parseFloat(v.monto)||0,pago:pagoDelPeriodo(v,mes)});
-  });
-  vencOf.sort(function(a,b){return String(a.vence||"").localeCompare(String(b.vence||""));});
-  // La deuda de la Oficina es lo que ya venció y no se pagó, venga del mes que venga. Mismo criterio
-  // que la tarjeta Deuda de Novedades: de una cuota, la que ya pasó todas sus fechas; de un
-  // vencimiento suelto, lo vencido del mes en curso.
-  var hoyOf=fechaLocal();
-  var deudaOf=[];
-  (p.vencimientos||[]).filter(function(v){return v.activo!==false&&esDeOficina(v);}).forEach(function(v){
-    if(tieneCuotas(v)){
-      cuotasPlan(v).forEach(function(c){
-        if(c.pago||!c.vence||!estaVencida(c,hoyOf))return;
-        deudaOf.push({id:v.id+"_"+c.nro,concepto:v.concepto+(c.nro===0?" · anticipo":" · cuota "+c.nro),vence:venceFinal(c),monto:parseFloat(c.monto)||0});
-      });
-      return;
-    }
-    var cu=cuotasDe(v);
-    if(cu&&cu.completo)return;
-    var mm=hoyOf.substring(0,7), f=fechaVencimiento(v,mm);
-    if(f&&f<hoyOf&&!pagoDelPeriodo(v,mm))deudaOf.push({id:v.id,concepto:v.concepto,vence:f,monto:parseFloat(v.monto)||0});
-  });
-  deudaOf.sort(function(a,b){return String(a.vence||"").localeCompare(String(b.vence||""));});
-  var totalDeudaOf=deudaOf.reduce(function(a,x){return a+x.monto;},0);
-  // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
-  // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
-  // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
-  // limpia lo que dejaron marcado.
-  function sePuedeBorrar(x){ return x.tipo==="📄 Egreso"; }
-  function borrarOficina(clave,concepto,total){
-    if(!window.confirm("¿Borrar \""+concepto+"\" ("+fmt(total)+")?\n\nSe borra de la Oficina y de los tres locales."))return;
-    p.onBorrar(clave);
-  }
-  // Un egreso de antes, cargado entero a nombre de la Oficina, se parte en tres como los nuevos
-  // (guardarEgresoConOficina borra el entero y deja una parte por local).
-  function repartirViejos(lista){
-    var tot=lista.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
-    if(!window.confirm("¿Repartir "+lista.length+" egreso"+(lista.length===1?"":"s")+" por "+fmt(tot)+" entre los tres locales (50% Bodegón, 30% Colantonio's, 20% Kusama)?\n\nEl egreso entero se reemplaza por una parte en cada local."))return;
-    lista.forEach(function(g){ p.onRepartir(g); });
-  }
   var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
   var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
   return(
@@ -4017,37 +3967,6 @@ function PanelResumenOficina(p){
         </div>
       )}
 
-      {deudaOf.length>0&&(
-        <div style={{background:"#1A0808",border:"1px solid #C1440E55",borderRadius:12,padding:"11px 13px",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
-            <div style={{fontSize:11,fontWeight:800,color:"#C1440E"}}>⚠️ Deuda de la Oficina <span style={{fontWeight:400,color:"#8A5A5A"}}>· vencido sin pagar</span></div>
-            <div style={{fontSize:16,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(totalDeudaOf)}</div>
-          </div>
-          {deudaOf.map(function(x){return(
-            <div key={x.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,padding:"3px 0",color:"#B08080"}}>
-              <span>{x.concepto}{x.vence?" · venció "+fmtDate(x.vence):""}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(x.monto)}</span>
-            </div>
-          );})}
-        </div>
-      )}
-
-      {vencOf.length>0&&(
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>📅 Vencimientos de la Oficina <span style={{color:"#6E6E6E",textTransform:"none",letterSpacing:0}}>· se pagan en Vencimientos</span></div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {vencOf.map(function(x){return(
-              <div key={x.id} style={{background:"#0F0F0F",border:"1px solid "+(x.pago?"#3A7D4433":"#D4A01733"),borderRadius:10,padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                <div>
-                  <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{x.concepto}</div>
-                  <div style={{fontSize:10,color:x.pago?"#4C9A5A":"#D4A017"}}>{x.pago?"✅ Pagado":"⏳ Por pagar"}{x.vence?" · vence "+fmtDate(x.vence):""}</div>
-                </div>
-                <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.monto)}</div>
-              </div>
-            );})}
-          </div>
-        </div>
-      )}
-
       {viejosMes.length>0&&(
         <div style={{marginTop:14,background:"#1A1000",border:"1px solid #E07B0044",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#E07B00",marginBottom:4}}>⚠️ {viejosMes.length} egreso{viejosMes.length===1?"":"s"} de antes, sin repartir entre los locales</div>
@@ -4064,7 +3983,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onBorrarEgresoOficina, vencimientosRL, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4192,7 +4111,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
-      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} vencimientos={vencimientosRL} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
+      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
@@ -22435,7 +22354,7 @@ export default function App() {
             <PanelLocales
               localInicial={locInicial} onLocalInicialUsado={function(){setLocInicial(null);}}
               onBorrarEgresoOficina={borrarEgreso}
-              vencimientosRL={vencimientos} cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
+              cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}

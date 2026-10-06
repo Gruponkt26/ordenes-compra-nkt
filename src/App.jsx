@@ -7231,9 +7231,15 @@ function GestProveedores(p) {
         });
       });
     });
-    if(nuevos.length===0){alert("No encontré productos nuevos en las órdenes anteriores de este proveedor.");return;}
+    // También los que alguna vez tuvieron precio cargado: el nombre del producto es la clave de ese precio.
+    Object.keys((p.precios||{})[sel]||{}).forEach(function(nombre){
+      var n=String(nombre||"").trim(), k=n.toLowerCase();
+      if(!n||vistos[k])return;
+      vistos[k]=true; nuevos.push({nombre:n,unidad:"unidad"});
+    });
+    if(nuevos.length===0){alert("No encontré productos nuevos en las órdenes ni en los precios de este proveedor.");return;}
     nuevos.sort(function(a,b){return a.nombre.localeCompare(b.nombre);});
-    if(!window.confirm("Encontré "+nuevos.length+" producto"+(nuevos.length===1?"":"s")+" en órdenes anteriores:\n\n"+nuevos.slice(0,15).map(function(x){return "· "+x.nombre+" ("+x.unidad+")";}).join("\n")+(nuevos.length>15?"\n· …y "+(nuevos.length-15)+" más":"")+"\n\n¿Los agrego a la lista? Después tocá ✓ Guardar."))return;
+    if(!window.confirm("Encontré "+nuevos.length+" producto"+(nuevos.length===1?"":"s")+" en órdenes y precios anteriores:\n\n"+nuevos.slice(0,15).map(function(x){return "· "+x.nombre+" ("+x.unidad+")";}).join("\n")+(nuevos.length>15?"\n· …y "+(nuevos.length-15)+" más":"")+"\n\n¿Los agrego a la lista? Después tocá ✓ Guardar."))return;
     setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),...nuevos];return n;});
   }
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}
@@ -7293,7 +7299,7 @@ function GestProveedores(p) {
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
                   <div style={{fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase"}}>Productos ({(prods[sel]||[]).length})</div>
-                  <button onClick={recuperarDeOrdenes} title="Busca en las órdenes ya hechas a este proveedor los productos que falten en la lista" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"4px 9px"}}>↩️ Recuperar de órdenes anteriores</button>
+                  <button onClick={recuperarDeOrdenes} title="Busca en las órdenes ya hechas a este proveedor los productos que falten en la lista" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:"4px 9px"}}>↩️ Recuperar de órdenes y precios</button>
                 </div>
                 {/* Agregar producto */}
                 <div style={{display:"flex",gap:6,marginBottom:10,alignItems:"center"}}>

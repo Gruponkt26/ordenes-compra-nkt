@@ -12635,7 +12635,7 @@ function PanelVencimientos(p){
             )}
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Rubro</label>
-              {grupoFiltro&&grupoFiltro!=="all"?(
+              {grupoFiltro&&grupoFiltro!=="all"&&!editId?(
                 <div style={{...INP,display:"flex",alignItems:"center",color:grupoDe(form.grupo).color,fontWeight:700,background:"#0A0A0A"}}>{grupoDe(form.grupo).label}</div>
               ):(
                 <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>

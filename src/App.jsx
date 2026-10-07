@@ -12483,7 +12483,9 @@ function PanelVencimientos(p){
   function abrirPago(x){
     var monto=(x.cuota?x.cuota.monto:x.v.monto)||"";
     setPagando(x);
-    setFormPago({...FORM_PAGO,fecha:x.fecha||hoy,monto:monto,total:monto});
+    // La fecha del pago arranca en hoy, no en la del vencimiento: lo que se paga en un mes tiene que
+    // quedar en ese mes en Egresos, aunque corresponda a un vencimiento de antes. Se puede cambiar.
+    setFormPago({...FORM_PAGO,fecha:hoy,monto:monto,total:monto});
     // Si se debita solo, el medio ya se sabe: es la cuenta de la que sale.
     setPagosPago([{medio:x.v.debito_cuenta||"",monto:monto===""?"":String(monto)}]);
   }

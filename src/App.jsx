@@ -4365,7 +4365,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4412,7 +4412,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
   useEffect(function(){
     if(!localInicial)return;
     var l=(locales||[]).find(function(x){return x.id===localInicial;});
-    if(l)abrirLocal(l);
+    if(l){ abrirLocal(l); if(tabInicial)setTab(tabInicial); }
     if(onLocalInicialUsado)onLocalInicialUsado();
   },[]);
 
@@ -11958,7 +11958,10 @@ function PanelNovedades(p){
             var res=x.ventas-x.egresos;
             return(
               <div key={x.local.id} style={{padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
-                <div style={{fontSize:12.5,fontWeight:700,color:x.local.color,marginBottom:3}}>{x.local.emoji} {x.local.nombre}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+                  <div style={{fontSize:12.5,fontWeight:700,color:x.local.color}}>{x.local.emoji} {x.local.nombre}</div>
+                  {p.irMetricas&&<button onClick={function(){p.irMetricas(x.local.id);}} style={{background:"none",border:"none",color:x.local.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.85}}>📈 Métricas →</button>}
+                </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Ventas</span><span style={{color:"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{fmt(x.ventas)}</span></div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Egresos</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(x.egresos)}</span></div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#9A9A9A"}}><span>Diferencia</span><span style={{color:res<0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(res)}</span></div>
@@ -21957,6 +21960,7 @@ export default function App() {
   var [fichajes,setFichajes]=useState([]);
   var [vencGrupo,setVencGrupo]=useState(null); // rubro con el que abrir Vencimientos
   var [locInicial,setLocInicial]=useState(null); // local con el que abrir Locales
+  var [locTab,setLocTab]=useState(null); // pestaña con la que abrir ese local
   var [planillaSueldos,setPlanillaSueldos]=useState([]);
   var [ideas,setIdeas]=useState([]);
   var [deportes,setDeportes]=useState([]);
@@ -22945,6 +22949,7 @@ export default function App() {
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
+              irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />
           )}
 
@@ -22978,7 +22983,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
-              localInicial={locInicial} onLocalInicialUsado={function(){setLocInicial(null);}}
+              localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
               locales={LOCALES}

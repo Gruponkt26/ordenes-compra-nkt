@@ -3750,6 +3750,8 @@ var METRICAS_DESDE="2026-08";
 function PanelMetricasLocal(p){
   var lid=p.localId;
   var gastos=p.gastos||[], cierres=p.cierres||[], adelantos=p.adelantos||[];
+  // Los retiros de socios no son gasto, pero el banco cobra el impuesto al débito igual: ese costo sí cuenta.
+  var retirosCuenta=(p.retiros||[]).filter(esMovDinero).filter(function(r){return (r.local_cuenta||r.local)===lid&&r.fecha;});
   var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
   var [vista,setVista]=useState("ingreso");
   var [mesMedios,setMesMedios]=useState(mesActual);
@@ -3812,13 +3814,14 @@ function PanelMetricasLocal(p){
   gastos.forEach(function(g){ if(g.fecha)fechasPagos[g.fecha]=true; });
   adelantosDelLocal.forEach(function(a){ fechasPagos[a.fecha]=true; });
   sueldosSinEgreso.forEach(function(x){ fechasPagos[x.dia]=true; });
+  retirosCuenta.forEach(function(r){ fechasPagos[r.fecha]=true; });
   Object.keys(fechasPagos).forEach(function(f){
     var m=f.substring(0,7); if(!calculaAutomatico(m))return;
     var imp=salidasPorMedio(
       gastos.filter(function(g){return g.fecha===f;}),
       sueldosSinEgreso.filter(function(x){return x.dia===f;}).map(function(x){return x.s;}),
       adelantosDelLocal.filter(function(a){return a.fecha===f;}),
-      [],lid,m).impDebito;
+      retirosCuenta.filter(function(r){return r.fecha===f;}),lid,m).impDebito;
     if(imp)sumaEgreso(f,imp);
   });
   function valor(fecha){
@@ -3875,7 +3878,7 @@ function PanelMetricasLocal(p){
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       {vista!=="medios"&&<div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
         Cada columna es un mes, desde agosto, y cada fila un día: así se compara el mismo día entre meses. Lo más oscuro es el día con más movimiento.
-        Los egresos incluyen todo lo que sale del local —gastos, pagos de deuda, adelantos, sueldos e impuestos y comisiones— menos los retiros y aportes de socios.
+        Los egresos incluyen todo lo que sale del local —gastos, pagos de deuda, adelantos, sueldos e impuestos y comisiones— menos los retiros y aportes de socios (sólo cuenta el impuesto al débito que cobra el banco por los retiros).
       </div>}
       <div style={{display:"flex",gap:8,marginBottom:10}}>
         {botones.map(function(b){var on=vista===b[0];return(
@@ -4333,7 +4336,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       </div>
 
       {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
-      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL}/>}
+      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}

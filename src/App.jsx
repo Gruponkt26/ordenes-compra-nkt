@@ -12443,7 +12443,9 @@ function PanelVencimientos(p){
       usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
     });
     setShowFactura(false); setEditFacturaId(null);
-    setMesFiltro(periodoDe(cuotas[0].vence));
+    // Si la factura ya venció en un mes anterior al que muestra el módulo, no se mueve el filtro: queda en
+    // «Vencidas sin pagar», que junta lo vencido de cualquier mes.
+    if(periodoDe(cuotas[0].vence)>=VENC_DESDE)setMesFiltro(periodoDe(cuotas[0].vence));
   }
 
   var meses=[];
@@ -12797,8 +12799,10 @@ function PanelVencimientos(p){
     if(x.cuota){
       guardarCuota(x.v,x.cuota.nro,{pago:datosPago});
     }else{
-      var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==mesFiltro;});
-      pagos.push({periodo:mesFiltro,...datosPago});
+      // Un vencimiento de una sola vez se paga en el período de su fecha, aunque se pague desde otro mes.
+      var periodoPago=(!x.v.recurrente&&x.v.fecha)?periodoDe(x.v.fecha):mesFiltro;
+      var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==periodoPago;});
+      pagos.push({periodo:periodoPago,...datosPago});
       onSave({...x.v,pagos:pagos});
     }
     setPagando(null);
@@ -12902,7 +12906,7 @@ function PanelVencimientos(p){
             style={{background:"none",border:"1px solid "+(faltanColumnas.length>0?"#D4A01766":"#2A2A2A"),borderRadius:8,color:faltanColumnas.length>0?"#D4A017":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 12px"}}>
             🩺{faltanColumnas.length>0?" "+faltanColumnas.length:""}
           </button>
-          {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros")&&(
+          {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros"||grupoFiltro==="sistemas")&&(
             <button onClick={abrirFactura} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Factura</button>
           )}
           {grupoFiltro&&!verTodos&&grupoFiltro==="alquileres"&&(
@@ -14146,6 +14150,53 @@ function PanelVencimientos(p){
       })()}
 
       {/* Lista */}
+      {/* Lo vencido y sin pagar de meses anteriores al que se mira: facturas, cuotas y vencimientos de una sola
+          vez. Sin esto, algo que venció en septiembre no aparece en ningún mes del selector. */}
+      {!verTodos&&(function(){
+        var items=[];
+        vencimientos.forEach(function(v){
+          if(v.activo===false)return;
+          if(grupoFiltro&&grupoFiltro!=="all"&&grupoIdDe(v)!==grupoFiltro)return;
+          if(!pasaFiltro(v))return;
+          if(tieneCuotas(v)){
+            cuotasPlan(v).forEach(function(c){
+              if(c.pago||!c.vence||!estaVencida(c,hoy)||periodoDe(venceFinal(c))===mesFiltro)return;
+              items.push({v:v,cuota:c,fecha:venceFinal(c),pago:null,dias:Math.round((new Date(venceFinal(c)+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),
+                txt:v.concepto+(c.nro===0?" · anticipo":(cuotasPlan(v).length>1?" · cuota "+c.nro:""))});
+            });
+            return;
+          }
+          if(v.recurrente||!v.fecha||v.fecha>=hoy||periodoDe(v.fecha)===mesFiltro||pagoDelPeriodo(v,periodoDe(v.fecha)))return;
+          items.push({v:v,cuota:null,fecha:v.fecha,pago:null,dias:Math.round((new Date(v.fecha+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),txt:v.concepto});
+        });
+        if(items.length===0)return null;
+        items.sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+        var total=items.reduce(function(a,x){return a+(parseFloat(x.cuota?x.cuota.monto:x.v.monto)||0);},0);
+        return(
+          <div style={{background:"#140807",border:"1px solid #C1440E55",borderRadius:12,padding:"11px 13px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#E0714A"}}>🚨 Vencidas sin pagar <span style={{fontWeight:400,color:"#8A5A5A"}}>· de otros meses</span></div>
+              <div style={{fontSize:15,fontWeight:800,color:"#E0714A",fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</div>
+            </div>
+            {items.map(function(x,i){
+              var g=grupoDe(x.v.grupo);
+              return(
+                <div key={x.v.id+"_"+(x.cuota?x.cuota.nro:"s")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"5px 0",borderTop:i===0?"none":"1px solid #2A1410"}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12,color:"#F0EDE8",fontWeight:600}}>{x.txt}</div>
+                    <div style={{fontSize:10,color:"#8A5A5A"}}>{g.corto} · venció {fmtDate(x.fecha)} · hace {Math.abs(x.dias)} día{Math.abs(x.dias)===1?"":"s"}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.cuota?x.cuota.monto:x.v.monto)}</span>
+                    <button onClick={function(){abrirPago(x);}} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Las tarjetas de los alquileres: los datos del contrato de cada local. El pago de cada mes
           está en la lista de abajo, como cualquier otro vencimiento. */}
       {grupoFiltro==="alquileres"&&!verTodos&&(function(){

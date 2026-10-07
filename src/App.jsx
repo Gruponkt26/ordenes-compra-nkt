@@ -3753,6 +3753,7 @@ function PanelMetricasLocal(p){
   var gastos=p.gastos||[], cierres=p.cierres||[], adelantos=p.adelantos||[];
   var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
   var [vista,setVista]=useState("ingreso");
+  var [mesMedios,setMesMedios]=useState(mesActual);
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   // Los meses, de agosto al mes en curso.
   var meses=[];
@@ -3805,20 +3806,88 @@ function PanelMetricasLocal(p){
   meses.forEach(function(m){ for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; maximo=Math.max(maximo,Math.abs(valor(f))); } });
   var color=vista==="ingreso"?"58,125,68":vista==="egreso"?"193,68,14":"26,107,138";
   var TH={padding:"7px 8px",color:"#8C8C8C",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A",textAlign:"right",whiteSpace:"nowrap",background:"#0F0F0F",position:"sticky",top:0};
-  var botones=[["ingreso","📥 Ingresó"],["egreso","📤 Egresó"],["dif","⚖️ Diferencia"]];
+  var botones=[["ingreso","📥 Ingresó"],["egreso","📤 Egresó"],["dif","⚖️ Diferencia"],["medios","💳 Medios de pago"]];
+  // Medios de pago: qué porcentaje de lo vendido cada día entró por cada medio. El Bodegón cobra por
+  // dos cuentas de banco: lo que entra por la segunda se suma a su medio de siempre.
+  var GRUPOS_MEDIOS=[
+    {id:"efectivo",label:"💵 Efectivo",     de:function(c){return parseFloat(c.efectivo||0);}},
+    {id:"transf",  label:"📲 Transf.",      de:function(c){return medioConHermanos(c,"transferencia");}},
+    {id:"debito",  label:"💳 Débito",       de:function(c){return medioConHermanos(c,"tarjeta_debito");}},
+    {id:"credito", label:"💳 Crédito",      de:function(c){return medioConHermanos(c,"tarjeta_credito");}},
+    {id:"qr",      label:"🔳 QR / otros",   de:function(c){return medioConHermanos(c,"otros");}},
+    {id:"mp",      label:"🟦 Mercado Pago", de:function(c){return sumaMedios(c,MEDIOS_MP);}}
+  ];
+  var porDiaMedios={}, totMedios={}, totalMesMedios=0;
+  GRUPOS_MEDIOS.forEach(function(g){totMedios[g.id]=0;});
+  cierres.forEach(function(c){
+    if(c.local!==lid||!c.fecha||c.fecha.substring(0,7)!==mesMedios)return;
+    var dia=porDiaMedios[c.fecha]||(porDiaMedios[c.fecha]={total:0});
+    GRUPOS_MEDIOS.forEach(function(g){
+      var v=g.de(c);
+      dia[g.id]=(dia[g.id]||0)+v; dia.total+=v;
+      totMedios[g.id]+=v; totalMesMedios+=v;
+    });
+  });
+  function pct(v,tot){ return tot>0?Math.round(v/tot*1000)/10:0; }
+  var mediosColumnas=GRUPOS_MEDIOS.filter(function(g){return totMedios[g.id]>0;});
   var mesesAtras=meses.length===0;
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
-      <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
+      {vista!=="medios"&&<div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
         Cada columna es un mes, desde agosto, y cada fila un día: así se compara el mismo día entre meses. Lo más oscuro es el día con más movimiento.
         Los egresos son los cargados día a día y los adelantos de sueldo: no incluyen sueldos de planilla ni impuestos que calcula la app.
-      </div>
+      </div>}
       <div style={{display:"flex",gap:8,marginBottom:10}}>
         {botones.map(function(b){var on=vista===b[0];return(
           <button key={b[0]} onClick={function(){setVista(b[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#8B6BB8":"#1E1E1E"),background:on?"#8B6BB822":"#111",color:on?"#B79CE0":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{b[1]}</button>
         );})}
       </div>
-      {mesesAtras?<div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"20px 0"}}>Todavía no hay meses para comparar.</div>:(
+      {vista==="medios"&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <select value={mesMedios} onChange={function(e){setMesMedios(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+              {meses.slice().reverse().map(function(m){return <option key={m} value={m}>{nombreMes(m)}</option>;})}
+            </select>
+            <span style={{fontSize:10,color:"#6E6E6E"}}>Qué porcentaje de lo vendido cada día entró por cada medio.</span>
+          </div>
+          {mediosColumnas.length===0?<div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"20px 0"}}>No hay ventas cargadas en {nombreMes(mesMedios)}.</div>:(
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,overflow:"auto",maxHeight:"70vh"}}>
+              <table style={{borderCollapse:"collapse",width:"100%",minWidth:120+mediosColumnas.length*86}}>
+                <thead>
+                  <tr>
+                    <th style={{...TH,textAlign:"left",left:0,zIndex:3}}>Día</th>
+                    {mediosColumnas.map(function(g){return <th key={g.id} style={{...TH,zIndex:2}}>{g.label}</th>;})}
+                    <th style={{...TH,zIndex:2}}>Vendió</th>
+                  </tr>
+                  <tr>
+                    <th style={{...TH,textAlign:"left",left:0,zIndex:3,top:30,color:"#F0EDE8"}}>Mes</th>
+                    {mediosColumnas.map(function(g){return <th key={g.id} style={{...TH,top:30,zIndex:2,color:"#F0EDE8",fontSize:11}}>{pct(totMedios[g.id],totalMesMedios)}%</th>;})}
+                    <th style={{...TH,top:30,zIndex:2,color:"#F0EDE8",fontSize:11}}>{fmt(totalMesMedios)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({length:diasDe(mesMedios)},function(_,i){return i+1;}).map(function(d){
+                    var f=fechaDe(mesMedios,d), dia=porDiaMedios[f];
+                    if(f>hoy)return null;
+                    return(
+                      <tr key={d}>
+                        <td style={{padding:"5px 8px",fontSize:11,color:"#9A9A9A",fontWeight:700,borderBottom:"1px solid #121212",position:"sticky",left:0,background:"#0F0F0F"}}>{d}</td>
+                        {mediosColumnas.map(function(g){
+                          if(!dia||dia.total<=0)return <td key={g.id} style={{padding:"5px 8px",fontSize:11,textAlign:"right",color:"#3A3A3A",borderBottom:"1px solid #121212"}}>·</td>;
+                          var pc=pct(dia[g.id]||0,dia.total);
+                          return <td key={g.id} style={{padding:"5px 8px",fontSize:11,textAlign:"right",color:pc===0?"#3A3A3A":"#F0EDE8",background:pc===0?"transparent":"rgba(26,107,138,"+(Math.min(0.5,pc/100*0.5))+")",borderBottom:"1px solid #121212",fontVariantNumeric:"tabular-nums"}}>{pc===0?"·":pc+"%"}</td>;
+                        })}
+                        <td style={{padding:"5px 8px",fontSize:11,textAlign:"right",color:dia?"#9A9A9A":"#3A3A3A",borderBottom:"1px solid #121212",fontVariantNumeric:"tabular-nums"}}>{dia&&dia.total>0?fmt(dia.total):"·"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+      {vista!=="medios"&&(mesesAtras?<div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"20px 0"}}>Todavía no hay meses para comparar.</div>:(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,overflow:"auto",maxHeight:"70vh"}}>
           <table style={{borderCollapse:"collapse",minWidth:90+meses.length*92,width:"100%"}}>
             <thead>
@@ -3853,7 +3922,7 @@ function PanelMetricasLocal(p){
             </tbody>
           </table>
         </div>
-      )}
+      ))}
     </div>
   );
 }

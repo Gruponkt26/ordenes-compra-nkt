@@ -3840,7 +3840,6 @@ function PanelMetricasLocal(p){
   var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
   var [vista,setVista]=useState("ingreso");
   var [mesMedios,setMesMedios]=useState(mesActual);
-  var [mesGraf,setMesGraf]=useState(mesActual);
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   // Los meses, de agosto al mes en curso.
   var meses=[];
@@ -3942,17 +3941,18 @@ function PanelMetricasLocal(p){
     for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; ing+=ingreso[f]||0; egr+=egreso[f]||0; }
     return {id:m,label:nombreMes(m),valores:[{serie:"Ingresó",valor:ing,color:C_ING},{serie:"Egresó",valor:egr,color:C_EGR}],extra:"Diferencia: "+pesosTip(ing-egr)};
   });
-  var mesPrevGraf=mesAnteriorDe(mesGraf);
-  var hayPrevGraf=meses.indexOf(mesPrevGraf)!==-1;
-  var colorActual=vista==="egreso"?C_EGR:C_ING;
   var etiquetaVista=vista==="ingreso"?"Ingresó":vista==="egreso"?"Egresó":"Diferencia";
+  // Día por día, todos los meses lado a lado: para cada día del 1 al 31, una barra por mes. Un color
+  // por mes, en orden fijo (los de la paleta, validados en modo oscuro); si pasan de 8 se muestran los
+  // últimos 8 para no inventar colores.
+  var COLORES_MESES=["#3987e5","#d95926","#199e70","#c98500","#d55181","#008300","#9085e9","#e66767"];
+  var mesesGraf=meses.slice(-8);
   var gruposDia=[];
-  for(var dd=1;dd<=diasDe(mesGraf);dd++){
-    var fAct=fechaDe(mesGraf,dd);
-    if(fAct>hoy)break;
-    var vals=[{serie:nombreMes(mesGraf),valor:valor(fAct),color:colorActual}];
-    if(hayPrevGraf)vals.push({serie:nombreMes(mesPrevGraf),valor:dd<=diasDe(mesPrevGraf)?valor(fechaDe(mesPrevGraf,dd)):null,color:C_PREV});
-    gruposDia.push({id:"d"+dd,label:"Día "+dd,corto:String(dd),valores:vals});
+  for(var dd=1;dd<=31;dd++){
+    gruposDia.push({id:"d"+dd,label:"Día "+dd,corto:String(dd),valores:mesesGraf.map(function(m,mi){
+      var ok=dd<=diasDe(m)&&fechaDe(m,dd)<=hoy;
+      return {serie:nombreMes(m),valor:ok?valor(fechaDe(m,dd)):null,color:COLORES_MESES[mi]};
+    })});
   }
   var TH={padding:"7px 8px",color:"#8C8C8C",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A",textAlign:"right",whiteSpace:"nowrap",background:"#0F0F0F",position:"sticky",top:0};
   var botones=[["ingreso","📥 Ingresó"],["egreso","📤 Egresó"],["dif","⚖️ Diferencia"],["medios","💳 Medios de pago"]];
@@ -4019,14 +4019,13 @@ function PanelMetricasLocal(p){
               leyenda={[{label:"Ingresó",color:C_ING},{label:"Egresó",color:C_EGR}]}/>
           </div>
           <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 12px 8px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#C3C2B7"}}>{etiquetaVista} día por día{hayPrevGraf?", contra el mes anterior":""}</div>
-              <select value={mesGraf} onChange={function(e){setMesGraf(e.target.value);}} style={{padding:"5px 8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
-                {meses.slice().reverse().map(function(m){return <option key={m} value={m}>{nombreMes(m)}</option>;})}
-              </select>
+            <div style={{fontSize:11,fontWeight:700,color:"#C3C2B7",marginBottom:6}}>{etiquetaVista} día por día, todos los meses</div>
+            <div style={{overflowX:"auto"}}>
+              <div style={{minWidth:46+31*(mesesGraf.length*7+6)}}>
+                <GraficoBarras grupos={gruposDia} alto={150} cadaN={2} gapGrupos={2}
+                  leyenda={mesesGraf.map(function(m,mi){return {label:nombreMes(m),color:COLORES_MESES[mi]};})}/>
+              </div>
             </div>
-            <GraficoBarras grupos={gruposDia} alto={150} cadaN={3} gapGrupos={2}
-              leyenda={hayPrevGraf?[{label:nombreMes(mesGraf),color:colorActual},{label:nombreMes(mesPrevGraf),color:C_PREV}]:[]}/>
           </div>
         </div>
       )}

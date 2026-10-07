@@ -3745,8 +3745,7 @@ function PanelGastosFijosOficina(p){
 // ─── MÉTRICAS DE UN LOCAL ─────────────────────────────────────────────────────
 // Día por día, todos los meses lado a lado: una fila por día del mes y una columna por mes, así se ve
 // de un vistazo cómo viene cada día contra el mismo día de los otros meses. Tres miradas: lo que
-// ingresó (ventas de los cierres), lo que egresó (egresos cargados y adelantos de sueldo, sin los
-// pagos de deuda) y la diferencia. Arranca en agosto 2026.
+// ingresó (ventas de los cierres), lo que egresó (todo menos los retiros de socios) y la diferencia. Arranca en agosto 2026.
 var METRICAS_DESDE="2026-08";
 function PanelMetricasLocal(p){
   var lid=p.localId;
@@ -3773,13 +3772,54 @@ function PanelMetricasLocal(p){
     if(c.local!==lid||!c.fecha)return;
     ingreso[c.fecha]=(ingreso[c.fecha]||0)+ventasDeCierre(c);
   });
-  gastos.forEach(function(g){
-    if(g.local!==lid||!g.fecha)return;
-    egreso[g.fecha]=(egreso[g.fecha]||0)+(parseFloat(g.monto)||0)-montoDeudaDeGasto(g);
+  function sumaEgreso(f,v){ egreso[f]=(egreso[f]||0)+v; }
+  // Todo lo que egresa el local menos los retiros y aportes de socios, que son capital y no gasto:
+  // lo cargado en Egresos (con los pagos de deuda), los adelantos, los sueldos de planilla que no
+  // generaron su egreso y los impuestos y comisiones que calcula la app, cada uno en su día.
+  var gastosDelLocal=gastos.filter(function(g){return g.local===lid&&g.fecha;});
+  gastosDelLocal.forEach(function(g){
+    var area=String(g.area||g.categoria||"").split(" - ")[0].trim();
+    if(esAreaSocios(area))return;
+    sumaEgreso(g.fecha,parseFloat(g.monto)||0);
   });
-  adelantos.forEach(function(a){
-    if(a.local!==lid||!a.fecha)return;
-    egreso[a.fecha]=(egreso[a.fecha]||0)+(parseFloat(a.monto)||0);
+  var adelantosDelLocal=adelantos.filter(function(a){return a.local===lid&&a.fecha;});
+  adelantosDelLocal.forEach(function(a){ sumaEgreso(a.fecha,parseFloat(a.monto)||0); });
+  // Sueldos y aguinaldos pagados que no generaron su egreso: cuentan el día que se pagaron.
+  var sueldosSinEgreso=[];
+  meses.forEach(function(m){
+    var delMes=gastosDelLocal.filter(function(g){return g.fecha.substring(0,7)===m;});
+    var esSueldoG=function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";};
+    var hayS=delMes.some(function(g){return esSueldoG(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+    var hayA=delMes.some(function(g){return esSueldoG(g)&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
+    (p.sueldos||[]).filter(function(x){return x.local===lid&&x.periodo===mesAnteriorDe(m)&&(x.estado==="pagado"||x.estado==="parcial");}).forEach(function(x){
+      var esAg=!!(x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="");
+      if(esAg?hayA:hayS)return;
+      var dia=(x.fecha_pago&&x.fecha_pago.substring(0,7)===m)?x.fecha_pago:m+"-01";
+      sueldosSinEgreso.push({s:x,dia:dia,mes:m});
+      sumaEgreso(dia,x.estado==="parcial"?parseFloat(x.monto_parcial||0):parseFloat(x.monto||0));
+    });
+  });
+  // Impuestos y comisiones calculados, día por día (desde que la app los calcula sola).
+  var cierresDelDia={};
+  cierres.forEach(function(c){ if(c.local===lid&&c.fecha){ (cierresDelDia[c.fecha]=cierresDelDia[c.fecha]||[]).push(c); } });
+  Object.keys(cierresDelDia).forEach(function(f){
+    var m=f.substring(0,7); if(!calculaAutomatico(m))return;
+    var dc=cierresDelDia[f];
+    sumaEgreso(f,iibbDeCierres(dc,lid,m)+comisionDeCierres(dc,lid,m)+impCreditoDeCierres(dc,lid,m));
+  });
+  // Impuesto al débito de lo que se pagó ese día desde las cuentas del local.
+  var fechasPagos={};
+  gastos.forEach(function(g){ if(g.fecha)fechasPagos[g.fecha]=true; });
+  adelantosDelLocal.forEach(function(a){ fechasPagos[a.fecha]=true; });
+  sueldosSinEgreso.forEach(function(x){ fechasPagos[x.dia]=true; });
+  Object.keys(fechasPagos).forEach(function(f){
+    var m=f.substring(0,7); if(!calculaAutomatico(m))return;
+    var imp=salidasPorMedio(
+      gastos.filter(function(g){return g.fecha===f;}),
+      sueldosSinEgreso.filter(function(x){return x.dia===f;}).map(function(x){return x.s;}),
+      adelantosDelLocal.filter(function(a){return a.fecha===f;}),
+      [],lid,m).impDebito;
+    if(imp)sumaEgreso(f,imp);
   });
   function valor(fecha){
     if(vista==="ingreso")return ingreso[fecha]||0;
@@ -3835,7 +3875,7 @@ function PanelMetricasLocal(p){
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       {vista!=="medios"&&<div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
         Cada columna es un mes, desde agosto, y cada fila un día: así se compara el mismo día entre meses. Lo más oscuro es el día con más movimiento.
-        Los egresos son los cargados día a día y los adelantos de sueldo: no incluyen sueldos de planilla ni impuestos que calcula la app.
+        Los egresos incluyen todo lo que sale del local —gastos, pagos de deuda, adelantos, sueldos e impuestos y comisiones— menos los retiros y aportes de socios.
       </div>}
       <div style={{display:"flex",gap:8,marginBottom:10}}>
         {botones.map(function(b){var on=vista===b[0];return(
@@ -4293,7 +4333,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       </div>
 
       {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
-      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL}/>}
+      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}

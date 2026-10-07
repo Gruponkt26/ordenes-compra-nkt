@@ -283,8 +283,8 @@ genera queda con esos mismos medios, que es lo que después mira el impuesto al 
 - El **identificador** es texto libre: el número de cliente del servicio, el contrato del
   alquiler, lo que sirva para encontrar la boleta. Aparece al lado del concepto.
 
-**Un submódulo por organismo.** El módulo abre en una portada con siete tarjetas —🏛️ AFIP,
-🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio, 🏦 Créditos y 📦 Otros—, cada una con lo que le falta
+**Un submódulo por organismo.** El módulo abre en una portada con una tarjeta por rubro —🏛️ AFIP,
+🏙️ ARBA, 🏘️ Municipalidad, 💡 Servicios, 👥 Gremio, 🏦 Créditos, 🏠 Alquileres, 💻 Sistemas de gestión y 📦 Otros—, cada una con lo que le falta
 pagar este mes, cuántos vencieron o en cuántos días cae el próximo. Se entra a uno y adentro
 pasa todo: el listado, los totales, el alta y el pago, siempre de ese rubro —adentro de AFIP
 no aparece nada de ARBA ni de los otros—. Arriba queda sólo el ← para volver a la portada.

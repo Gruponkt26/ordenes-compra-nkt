@@ -9142,7 +9142,9 @@ var GRUPOS_VENC=[
   {id:"gremio",    label:"👥 Gremio",        corto:"Gremio",        color:"#3A7D44", area:"Sueldos",        detalle:"Cuota sindical y aportes al gremio"},
   {id:"obra_social",label:"🏥 Obra Social",  corto:"Obra Social",   color:"#00BCD4", area:"Sueldos",        detalle:"Aportes y contribuciones de la obra social"},
   {id:"creditos",  label:"🏦 Créditos",      corto:"Créditos",      color:"#1A8A7B", area:"Administrativo", detalle:"Préstamos y créditos bancarios"},
-  {id:"otros",     label:"📦 Otros",         corto:"Otros",         color:"#C1440E", area:"Administrativo", detalle:"Alquiler, cuotas, el resto"},
+  {id:"alquileres",label:"🏠 Alquileres",   corto:"Alquileres",    color:"#8B6BB8", area:"Alquileres",     detalle:"Alquiler de locales, oficina y predio"},
+  {id:"sistemas",  label:"💻 Sistemas de gestión",corto:"Sistemas",  color:"#2E86DE", area:"Administrativo", detalle:"Software, licencias y sistemas de gestión"},
+  {id:"otros",     label:"📦 Otros",         corto:"Otros",         color:"#C1440E", area:"Administrativo", detalle:"Cuotas, el resto"},
 ];
 // "iibb" era el rubro viejo, de cuando ARBA y Municipalidad iban juntos: lo ya cargado con
 // ese id sigue entrando por ARBA, que es donde se declara Ingresos Brutos.

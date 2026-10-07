@@ -12688,6 +12688,28 @@ function PanelVencimientos(p){
     onSave({...v,cuotas_plan:cs});
   }
 
+  // Pasar un vencimiento (o una factura, un plan) a otro rubro, sin tener que abrirlo. Los egresos de
+  // lo ya pagado conservan su área: sólo cambia a dónde se mira de acá en adelante.
+  function moverRubro(v,gid){
+    if(!gid||gid===grupoIdDe(v))return;
+    var g=grupoDe(gid);
+    if(!window.confirm("¿Pasar \""+v.concepto+"\" a "+g.label+"?\n\nLo que ya se pagó no cambia: sus egresos siguen como estaban."))return;
+    var nuevo={...v,grupo:gid,area:g.area};
+    // Los rubros que van por CUIT necesitan uno; el resto va por local, que el vencimiento ya tiene.
+    if(porCuit(gid)){ var c=cuitVenc(cuitIdDe(v)); nuevo.cuit=c.id; nuevo.local=c.local; }
+    else nuevo.cuit="";
+    onSave(nuevo);
+  }
+  function SelectorRubro(sp){
+    var v=sp.v;
+    return(
+      <select value="" onChange={function(e){moverRubro(v,e.target.value);}} title="Pasar a otro rubro"
+        style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#9A9A9A",fontSize:10,cursor:"pointer",padding:"4px 6px",fontFamily:"'Inter',sans-serif",maxWidth:110}}>
+        <option value="">↪ Mover a…</option>
+        {GRUPOS_VENC.filter(function(g){return g.id!==grupoIdDe(v);}).map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
+      </select>
+    );
+  }
   function borrar(v){
     var eg=egresosDe(v);
     var que=esFactura(v)?"la factura":(esPlan(v)?"el plan":"el vencimiento");
@@ -13887,6 +13909,7 @@ function PanelVencimientos(p){
                               :esFactura(v)
                               ?<button onClick={function(){abrirEditarFactura(v);}} style={{background:"none",border:"1px solid #1A8A7B44",borderRadius:6,color:"#1A8A7B",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar factura</button>
                               :<button onClick={function(){abrirEditarPlan(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar plan</button>}
+                            <SelectorRubro v={v}/>
                             <button onClick={function(){agregarCuota(v);}} style={{background:"none",border:"1px solid #8B2FC944",borderRadius:6,color:"#A855F7",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>+ Cuota</button>
                             <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar {esFactura(v)?"factura":(esCredito(v)?"crédito":"plan")}</button>
                           </div>
@@ -14232,6 +14255,7 @@ function PanelVencimientos(p){
                         <button onClick={function(){abrirPago(x);}} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
                       )}
                       <button onClick={function(){ if(tieneCuotas(x.v))setPlanAbierto(x.v.id); else abrirEditar(x.v); }} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#9A9A9A",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>{tieneCuotas(x.v)?"📋":"✏️"}</button>
+                      <SelectorRubro v={x.v}/>
                       <button onClick={function(){borrar(x.v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"4px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️</button>
                     </div>
                   </div>

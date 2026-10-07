@@ -12482,8 +12482,8 @@ function PanelVencimientos(p){
           {grupoFiltro&&!verTodos&&grupoFiltro==="creditos"&&(
             <button onClick={abrirCredito} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Crédito</button>
           )}
-          {/* Un crédito bancario no es un plan de facilidades: en Créditos esa opción confunde. */}
-          {grupoFiltro&&!verTodos&&grupoFiltro!=="creditos"&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
+          {/* Un crédito bancario no es un plan de facilidades, ni un alquiler: ahí esa opción confunde. */}
+          {grupoFiltro&&!verTodos&&grupoFiltro!=="creditos"&&grupoFiltro!=="alquileres"&&<button onClick={abrirPlan} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:8,color:"#A855F7",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Plan de pago</button>}
           {grupoFiltro&&!verTodos&&<button onClick={abrirNuevo} style={{background:"#D4A017",border:"none",borderRadius:8,color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Nuevo</button>}
         </div>
       </div>

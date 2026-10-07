@@ -3746,6 +3746,91 @@ function PanelGastosFijosOficina(p){
 // Día por día, todos los meses lado a lado: una fila por día del mes y una columna por mes, así se ve
 // de un vistazo cómo viene cada día contra el mismo día de los otros meses. Tres miradas: lo que
 // ingresó (ventas de los cierres), lo que egresó (todo menos los retiros de socios) y la diferencia. Arranca en agosto 2026.
+// ─── GRÁFICO DE BARRAS ────────────────────────────────────────────────────────
+// Columnas agrupadas sobre una sola línea de base (con valores negativos hacia abajo). Una serie por
+// color, fijas en orden; el valor exacto está en el tooltip (también con foco de teclado) y en la
+// tabla de abajo. Barras finas con el extremo redondeado, grilla de una línea fina.
+function fmtCortoPesos(n){
+  var a=Math.abs(n), sg=n<0?"−":"";
+  if(a>=1000000)return sg+"$"+(Math.round(a/100000)/10).toString().replace(".",",")+"M";
+  if(a>=1000)return sg+"$"+Math.round(a/1000)+"K";
+  return sg+"$"+Math.round(a);
+}
+function GraficoBarras(p){
+  var grupos=p.grupos||[], alto=p.alto||170, gutter=46;
+  var [hov,setHov]=useState(null);
+  var todos=[];
+  grupos.forEach(function(g){ g.valores.forEach(function(v){ if(v.valor!==null&&v.valor!==undefined)todos.push(v.valor); }); });
+  var max=Math.max.apply(null,[0].concat(todos)), min=Math.min.apply(null,[0].concat(todos));
+  var rango=(max-min)||1, esc=alto/rango;
+  var ticks=[max,0].concat(min<0?[min]:[]).filter(function(t,i,a){return a.indexOf(t)===i;});
+  var n=grupos.length||1;
+  var cadaN=p.cadaN||1;
+  var tip=hov!==null&&grupos[hov]?grupos[hov]:null;
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {p.titulo&&<div style={{fontSize:11,fontWeight:700,color:"#C3C2B7",marginBottom:6}}>{p.titulo}</div>}
+      {(p.leyenda||[]).length>1&&(
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:8}}>
+          {p.leyenda.map(function(l){return(
+            <span key={l.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#C3C2B7"}}>
+              <span style={{width:10,height:10,borderRadius:2,background:l.color,display:"inline-block"}}/>{l.label}
+            </span>
+          );})}
+        </div>
+      )}
+      <div style={{position:"relative",paddingLeft:gutter,paddingTop:6}}>
+        {ticks.map(function(t){return(
+          <div key={"t"+t} style={{position:"absolute",left:0,right:0,top:6+(max-t)*esc,height:0,pointerEvents:"none"}}>
+            <span style={{position:"absolute",left:0,top:-6,fontSize:9,color:"#898781",fontVariantNumeric:"tabular-nums"}}>{fmtCortoPesos(t)}</span>
+            <div style={{position:"absolute",left:gutter,right:0,top:0,borderTop:"1px solid "+(t===0?"#3A3A38":"#2C2C2A")}}/>
+          </div>
+        );})}
+        <div style={{display:"flex",gap:p.gapGrupos!==undefined?p.gapGrupos:6,height:alto,position:"relative"}}>
+          {grupos.map(function(g,gi){
+            return(
+              <div key={g.id} tabIndex={0} role="img" aria-label={g.label+": "+g.valores.map(function(v){return v.serie+" "+fmtCortoPesos(v.valor||0);}).join(", ")}
+                onMouseEnter={function(){setHov(gi);}} onMouseLeave={function(){setHov(null);}}
+                onFocus={function(){setHov(gi);}} onBlur={function(){setHov(null);}}
+                onTouchStart={function(){setHov(gi);}}
+                style={{flex:1,minWidth:0,position:"relative",display:"flex",justifyContent:"center",gap:2,background:hov===gi?"rgba(255,255,255,0.05)":"transparent",borderRadius:4,outline:"none"}}>
+                {g.valores.map(function(v,vi){
+                  if(v.valor===null||v.valor===undefined)return <div key={vi} style={{flex:1,maxWidth:24}}/>;
+                  var top=(max-Math.max(v.valor,0))*esc, h=v.valor===0?0:Math.max(Math.abs(v.valor)*esc,2);
+                  return(
+                    <div key={vi} style={{flex:1,maxWidth:24,position:"relative"}}>
+                      <div style={{position:"absolute",left:0,right:0,top:top,height:h,background:v.color,borderRadius:v.valor>=0?"4px 4px 0 0":"0 0 4px 4px",opacity:hov===null||hov===gi?1:0.55}}/>
+                      {p.etiquetas&&v.valor!==0&&(
+                        <div style={{position:"absolute",left:"50%",transform:"translateX(-50%)",top:v.valor>0?top-14:top+h+2,fontSize:9,color:"#C3C2B7",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{fmtCortoPesos(v.valor)}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:p.gapGrupos!==undefined?p.gapGrupos:6,marginTop:5}}>
+          {grupos.map(function(g,gi){return <div key={g.id} style={{flex:1,minWidth:0,textAlign:"center",fontSize:9,color:"#898781",whiteSpace:"nowrap",overflow:"visible"}}>{gi%cadaN===0?g.corto||g.label:""}</div>;})}
+        </div>
+        {tip&&(
+          <div style={{position:"absolute",top:-4,left:"calc("+gutter+"px + (100% - "+gutter+"px) * "+((hov+0.5)/n)+")",transform:hov<2?"translateX(-10%)":(hov>n-3?"translateX(-90%)":"translateX(-50%)"),background:"#0B0B0B",border:"1px solid #2C2C2A",borderRadius:8,padding:"7px 10px",zIndex:5,pointerEvents:"none",minWidth:120}}>
+            <div style={{fontSize:10,color:"#C3C2B7",marginBottom:4}}>{tip.label}</div>
+            {tip.valores.filter(function(v){return v.valor!==null&&v.valor!==undefined;}).map(function(v,i){return(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:7,fontSize:11,padding:"1px 0"}}>
+                <span style={{width:10,height:3,background:v.color,borderRadius:2,display:"inline-block"}}/>
+                <span style={{color:"#FFFFFF",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{(v.valor<0?"−":"")+"$"+Math.round(Math.abs(v.valor)).toLocaleString("es-AR")}</span>
+                <span style={{color:"#C3C2B7"}}>{v.serie}</span>
+              </div>
+            );})}
+            {tip.extra&&<div style={{fontSize:10,color:"#C3C2B7",marginTop:3,borderTop:"1px solid #2C2C2A",paddingTop:3}}>{tip.extra}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 var METRICAS_DESDE="2026-08";
 function PanelMetricasLocal(p){
   var lid=p.localId;
@@ -3755,6 +3840,7 @@ function PanelMetricasLocal(p){
   var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
   var [vista,setVista]=useState("ingreso");
   var [mesMedios,setMesMedios]=useState(mesActual);
+  var [mesGraf,setMesGraf]=useState(mesActual);
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   // Los meses, de agosto al mes en curso.
   var meses=[];
@@ -3848,6 +3934,26 @@ function PanelMetricasLocal(p){
   var maximo=0;
   meses.forEach(function(m){ for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; maximo=Math.max(maximo,Math.abs(valor(f))); } });
   var color=vista==="ingreso"?"58,125,68":vista==="egreso"?"193,68,14":"26,107,138";
+  // Gráficos. Ingresó y egresó siempre con su color (azul / naranja); el mes anterior, en gris.
+  var C_ING="#3987e5", C_EGR="#d95926", C_PREV="#898781";
+  var pesosTip=function(n){return (n<0?"−":"")+"$"+Math.round(Math.abs(n)).toLocaleString("es-AR");};
+  var gruposMes=meses.map(function(m){
+    var ing=0, egr=0;
+    for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; ing+=ingreso[f]||0; egr+=egreso[f]||0; }
+    return {id:m,label:nombreMes(m),valores:[{serie:"Ingresó",valor:ing,color:C_ING},{serie:"Egresó",valor:egr,color:C_EGR}],extra:"Diferencia: "+pesosTip(ing-egr)};
+  });
+  var mesPrevGraf=mesAnteriorDe(mesGraf);
+  var hayPrevGraf=meses.indexOf(mesPrevGraf)!==-1;
+  var colorActual=vista==="egreso"?C_EGR:C_ING;
+  var etiquetaVista=vista==="ingreso"?"Ingresó":vista==="egreso"?"Egresó":"Diferencia";
+  var gruposDia=[];
+  for(var dd=1;dd<=diasDe(mesGraf);dd++){
+    var fAct=fechaDe(mesGraf,dd);
+    if(fAct>hoy)break;
+    var vals=[{serie:nombreMes(mesGraf),valor:valor(fAct),color:colorActual}];
+    if(hayPrevGraf)vals.push({serie:nombreMes(mesPrevGraf),valor:dd<=diasDe(mesPrevGraf)?valor(fechaDe(mesPrevGraf,dd)):null,color:C_PREV});
+    gruposDia.push({id:"d"+dd,label:"Día "+dd,corto:String(dd),valores:vals});
+  }
   var TH={padding:"7px 8px",color:"#8C8C8C",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A",textAlign:"right",whiteSpace:"nowrap",background:"#0F0F0F",position:"sticky",top:0};
   var botones=[["ingreso","📥 Ingresó"],["egreso","📤 Egresó"],["dif","⚖️ Diferencia"],["medios","💳 Medios de pago"]];
   // Medios de pago: qué porcentaje de lo vendido cada día entró por cada medio. El Bodegón cobra por
@@ -3885,6 +3991,24 @@ function PanelMetricasLocal(p){
           <button key={b[0]} onClick={function(){setVista(b[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#8B6BB8":"#1E1E1E"),background:on?"#8B6BB822":"#111",color:on?"#B79CE0":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{b[1]}</button>
         );})}
       </div>
+      {vista!=="medios"&&!mesesAtras&&(
+        <div style={{display:"flex",flexDirection:"column",gap:18,marginBottom:14}}>
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 12px 8px"}}>
+            <GraficoBarras titulo="Ingresó y egresó por mes" grupos={gruposMes} alto={170} etiquetas={true} gapGrupos={14}
+              leyenda={[{label:"Ingresó",color:C_ING},{label:"Egresó",color:C_EGR}]}/>
+          </div>
+          <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 12px 8px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#C3C2B7"}}>{etiquetaVista} día por día{hayPrevGraf?", contra el mes anterior":""}</div>
+              <select value={mesGraf} onChange={function(e){setMesGraf(e.target.value);}} style={{padding:"5px 8px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+                {meses.slice().reverse().map(function(m){return <option key={m} value={m}>{nombreMes(m)}</option>;})}
+              </select>
+            </div>
+            <GraficoBarras grupos={gruposDia} alto={150} cadaN={3} gapGrupos={2}
+              leyenda={hayPrevGraf?[{label:nombreMes(mesGraf),color:colorActual},{label:nombreMes(mesPrevGraf),color:C_PREV}]:[]}/>
+          </div>
+        </div>
+      )}
       {vista==="medios"&&(
         <div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>

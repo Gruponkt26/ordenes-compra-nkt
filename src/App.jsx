@@ -9175,6 +9175,7 @@ function diasHabilesNo(){ return null; }
 function fechaVencimiento(v, mes){
   if(!v.recurrente) return v.fecha||null;
   if(!mes) return null;
+  if(!vigenteEnMes(v,mes)) return null;
   var pr=mes.split("-");
   var anio=parseInt(pr[0],10), m=parseInt(pr[1],10);
   var ultimo=new Date(anio,m,0).getDate();
@@ -9195,6 +9196,30 @@ function esFactura(v){ return v.tipo==="factura"; }
 // son del préstamo, y las cuotas se arman de una vez como en un plan. Tampoco caduca: un
 // crédito impago se reclama y se informa al Veraz, no se "cae".
 function esCredito(v){ return v.tipo==="credito"; }
+// Un alquiler: se paga todos los meses mientras dure el contrato. Guarda sus datos en `alquiler`
+// (columna jsonb): el locador, lo que se paga de alquiler, de expensas, de agua y de otros
+// cargos, las fechas del contrato, cada cuánto se ajusta y el depósito. `monto` es el total
+// mensual, así que se lista y se paga como cualquier vencimiento que se repite.
+function esAlquiler(v){ return v.tipo==="alquiler"; }
+function totalAlquiler(a){ a=a||{}; return (parseFloat(a.alquiler)||0)+(parseFloat(a.expensas)||0)+(parseFloat(a.agua)||0)+(parseFloat(a.otros)||0); }
+// Fuera de las fechas del contrato no vence nada: antes de que empiece o después de que termine.
+function vigenteEnMes(v, mes){
+  if(!esAlquiler(v)||!v.alquiler)return true;
+  var a=v.alquiler;
+  if(a.desde&&String(mes)<String(a.desde).substring(0,7))return false;
+  if(a.hasta&&String(mes)>String(a.hasta).substring(0,7))return false;
+  return true;
+}
+// La próxima fecha de ajuste: desde el inicio del contrato, cada N meses.
+function proximoAjusteAlquiler(a, hoy){
+  var n=parseInt(a&&a.ajuste_meses,10);
+  if(!a||!a.desde||!(n>0))return null;
+  var d=new Date(a.desde+"T00:00:00");
+  if(isNaN(d.getTime()))return null;
+  for(var i=0;i<400&&fechaLocal(d)<=hoy;i++)d.setMonth(d.getMonth()+n);
+  var f=fechaLocal(d);
+  return (a.hasta&&f>a.hasta)?null:f;
+}
 // Los egresos que generó un vencimiento al pagarse: los de sus cuotas y los de sus pagos
 // sueltos. Borrar el vencimiento sin borrarlos deja gasto fantasma inflando el rubro.
 // Un egreso queda huérfano cuando el vencimiento que lo generó se borró sin llevárselo:
@@ -11842,6 +11867,47 @@ function PanelVencimientos(p){
   var [formCredito,setFormCredito]=useState(FORM_CREDITO);
   var [showCredito,setShowCredito]=useState(false);
   var [editCreditoId,setEditCreditoId]=useState(null);
+  // Alquiler: la tarjeta con los datos del contrato.
+  var FORM_ALQ={local:"l1",concepto:"",locador:"",alquiler:"",expensas:"",agua:"",otros:"",otros_nombre:"",desde:"",hasta:"",dia:"10",
+    ajuste_meses:"",ajuste_indice:"",deposito:"",notas:""};
+  var [formAlq,setFormAlq]=useState(FORM_ALQ);
+  var [showAlq,setShowAlq]=useState(false);
+  var [editAlqId,setEditAlqId]=useState(null);
+  function abrirAlquiler(){
+    setFormAlq({...FORM_ALQ}); setEditAlqId(null);
+    setShowAlq(true); setShowForm(false); setShowPlan(false); setShowFactura(false); setShowCredito(false);
+  }
+  function abrirEditarAlquiler(v){
+    var a=v.alquiler||{};
+    setFormAlq({local:v.local||"l1",concepto:v.concepto||"",locador:a.locador||"",alquiler:String(a.alquiler!==undefined?a.alquiler:(v.monto||"")),
+      expensas:String(a.expensas||""),agua:String(a.agua||""),otros:String(a.otros||""),otros_nombre:a.otros_nombre||"",
+      desde:a.desde||"",hasta:a.hasta||"",dia:String(v.dia||10),ajuste_meses:String(a.ajuste_meses||""),ajuste_indice:a.ajuste_indice||"",
+      deposito:String(a.deposito||""),notas:v.notas||""});
+    setEditAlqId(v.id);
+    setShowAlq(true); setShowForm(false); setShowPlan(false); setShowFactura(false); setShowCredito(false);
+  }
+  function doSaveAlquiler(){
+    var f=formAlq;
+    var total=totalAlquiler(f);
+    if(!(parseFloat(f.alquiler)>0)){alert("Poné el monto del alquiler.");return;}
+    if(f.desde&&f.hasta&&f.hasta<f.desde){alert("El contrato termina antes de empezar: revisá las fechas.");return;}
+    var loc=getLocal(f.local);
+    var anterior=vencimientos.find(function(x){return x.id===editAlqId;});
+    var v={
+      id:editAlqId||("alq_"+String(Date.now())),
+      tipo:"alquiler", grupo:"alquileres", area:"Alquileres",
+      local:f.local, cuit:"",
+      concepto:f.concepto.trim()||("Alquiler "+(loc?loc.nombre:"")),
+      monto:total, recurrente:true, dia:parseInt(f.dia,10)||1, fecha:null, activo:true,
+      notas:f.notas||"", subramo:"", referencia:"", cuotas:0, cuotas_previas:0,
+      pagos:(anterior&&anterior.pagos)||[],
+      alquiler:{locador:f.locador.trim(),alquiler:parseFloat(f.alquiler)||0,expensas:parseFloat(f.expensas)||0,agua:parseFloat(f.agua)||0,
+        otros:parseFloat(f.otros)||0,otros_nombre:f.otros_nombre.trim(),desde:f.desde||null,hasta:f.hasta||null,
+        ajuste_meses:parseInt(f.ajuste_meses,10)||0,ajuste_indice:f.ajuste_indice.trim(),deposito:parseFloat(f.deposito)||0},
+      usuario:usuario, created_at:(anterior&&anterior.created_at)||new Date().toISOString()
+    };
+    onSave(v); setShowAlq(false); setEditAlqId(null);
+  }
 
   function abrirCredito(){
     setFormCredito({...FORM_CREDITO,mesInicio:mesFiltro});
@@ -11995,7 +12061,7 @@ function PanelVencimientos(p){
   var delMes=vencimientos.filter(function(v){
     if(v.activo===false)return false;
     if(tieneCuotas(v))return false; // planes y facturas entran por su cuota del mes
-    if(v.recurrente)return true;
+    if(v.recurrente)return vigenteEnMes(v,mesFiltro);
     return periodoDe(v.fecha)===mesFiltro;
   }).filter(function(v){
     var cu=cuotasDe(v);
@@ -12039,6 +12105,7 @@ function PanelVencimientos(p){
     setEditId(null); setShowForm(true);
   }
   function abrirEditar(v){
+    if(esAlquiler(v)){abrirEditarAlquiler(v);return;}
     setForm({local:v.local||"l1",cuit:cuitIdDe(v),debito_cuenta:v.debito_cuenta||"",debito_cbu:v.debito_cbu||"",concepto:v.concepto||"",area:v.area||"Administrativo",subramo:v.subramo||"",monto:v.monto||"",recurrente:v.recurrente!==false,dia:String(v.dia||10),fecha:v.fecha||hoy,notas:v.notas||"",cuotas:v.cuotas||"",cuotas_previas:v.cuotas_previas||"",referencia:v.referencia||"",grupo:v.grupo||"otros"});
     setEditId(v.id); setShowForm(true);
   }
@@ -12408,6 +12475,9 @@ function PanelVencimientos(p){
           </button>
           {grupoFiltro&&!verTodos&&(grupoFiltro==="servicios"||grupoFiltro==="otros")&&(
             <button onClick={abrirFactura} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Factura</button>
+          )}
+          {grupoFiltro&&!verTodos&&grupoFiltro==="alquileres"&&(
+            <button onClick={abrirAlquiler} style={{background:"none",border:"1px solid #8B6BB866",borderRadius:8,color:"#8B6BB8",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Alquiler</button>
           )}
           {grupoFiltro&&!verTodos&&grupoFiltro==="creditos"&&(
             <button onClick={abrirCredito} style={{background:"none",border:"1px solid #1A8A7B66",borderRadius:8,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",padding:"8px 14px"}}>+ Crédito</button>
@@ -12831,6 +12901,87 @@ function PanelVencimientos(p){
           <div style={{display:"flex",gap:8}}>
             <button onClick={function(){setShowCredito(false);setEditCreditoId(null);}} style={{...GH,flex:1,padding:"11px"}}>Cancelar</button>
             <button onClick={doSaveCredito} style={{...BS("#1A8A7B"),flex:2,padding:"11px"}}>{editCreditoId?"Guardar cambios":"Guardar crédito"}</button>
+          </div>
+        </div>
+      )}
+
+      {showAlq&&(
+        <div style={{background:"#0F0A14",border:"1px solid #8B6BB855",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#8B6BB8",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>
+            🏠 {editAlqId?"Editar alquiler":"Nuevo alquiler"}
+          </div>
+          <div style={{fontSize:11,color:"#5A4A72",marginBottom:12}}>
+            Se paga todos los meses mientras dure el contrato. El total mensual es la suma de alquiler, expensas, agua y otros cargos.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
+              <select value={formAlq.local} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,local:v};});}} style={INP}>
+                {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Inmueble (opcional)</label>
+              <input value={formAlq.concepto} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,concepto:v};});}} placeholder="Ej: Alquiler del salón" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Locador / inmobiliaria</label>
+              <input value={formAlq.locador} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,locador:v};});}} placeholder="A quién se le paga" style={INP}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:9,marginBottom:10}}>
+            {[["alquiler","Alquiler $"],["expensas","Expensas $"],["agua","Agua $"],["otros","Otros cargos $"]].map(function(c){return(
+              <div key={c[0]}>
+                <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>{c[1]}</label>
+                <input type="number" value={formAlq[c[0]]} onChange={function(e){var v=e.target.value;setFormAlq(function(f){var n={...f};n[c[0]]=v;return n;});}} placeholder="0" style={INP}/>
+              </div>
+            );})}
+          </div>
+          {parseFloat(formAlq.otros)>0&&(
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Qué son los otros cargos</label>
+              <input value={formAlq.otros_nombre} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,otros_nombre:v};});}} placeholder="Ej: ABL, seguro, estacionamiento" style={INP}/>
+            </div>
+          )}
+          {totalAlquiler(formAlq)>0&&(
+            <div style={{fontSize:12,color:"#8B6BB8",marginBottom:10}}>Total por mes: <strong>{fmt(totalAlquiler(formAlq))}</strong></div>
+          )}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Inicio del contrato</label>
+              <input type="date" value={formAlq.desde} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,desde:v};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fin del contrato</label>
+              <input type="date" value={formAlq.hasta} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,hasta:v};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Vence el día</label>
+              <input type="number" min="1" max="31" value={formAlq.dia} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,dia:v};});}} style={INP}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Se ajusta cada (meses)</label>
+              <input type="number" min="0" value={formAlq.ajuste_meses} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,ajuste_meses:v};});}} placeholder="Ej: 3, 6, 12" style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Con qué índice</label>
+              <input list="alq-indices" value={formAlq.ajuste_indice} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,ajuste_indice:v};});}} placeholder="IPC, ICL, fijo…" style={INP}/>
+              <datalist id="alq-indices">{["IPC","ICL","Porcentaje fijo","Monto fijo","Sin ajuste"].map(function(x){return <option key={x} value={x}/>;})}</datalist>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Depósito / garantía $</label>
+              <input type="number" value={formAlq.deposito} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,deposito:v};});}} placeholder="0" style={INP}/>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Notas</label>
+            <input value={formAlq.notas} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,notas:v};});}} placeholder="Opcional" style={INP}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function(){setShowAlq(false);setEditAlqId(null);}} style={{...GH,flex:1,padding:"11px"}}>Cancelar</button>
+            <button onClick={doSaveAlquiler} style={{...BS("#8B6BB8"),flex:2,padding:"11px"}}>{editAlqId?"Guardar cambios":"Guardar alquiler"}</button>
           </div>
         </div>
       )}
@@ -13565,6 +13716,56 @@ function PanelVencimientos(p){
       })()}
 
       {/* Lista */}
+      {/* Las tarjetas de los alquileres: los datos del contrato de cada local. El pago de cada mes
+          está en la lista de abajo, como cualquier otro vencimiento. */}
+      {grupoFiltro==="alquileres"&&!verTodos&&(function(){
+        var alqs=vencimientos.filter(function(v){return v.activo!==false&&esAlquiler(v)&&pasaFiltro(v);});
+        if(alqs.length===0)return null;
+        function dias(f){ return f?Math.round((new Date(f+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000):null; }
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:10,marginBottom:14}}>
+            {alqs.map(function(v){
+              var a=v.alquiler||{}, loc=getLocal(v.local), dFin=dias(a.hasta), dIni=dias(a.desde);
+              var estado=dIni!==null&&dIni>0?{txt:"Empieza en "+dIni+" días",color:"#9A9A9A"}
+                :dFin===null?{txt:"Sin fecha de fin",color:"#9A9A9A"}
+                :dFin<0?{txt:"🚨 Contrato vencido hace "+Math.abs(dFin)+" días",color:"#C1440E"}
+                :dFin<=90?{txt:"⚠️ El contrato vence en "+dFin+" día"+(dFin===1?"":"s"),color:"#D4A017"}
+                :{txt:"Vigente · faltan "+dFin+" días",color:"#3A7D44"};
+              var ajuste=proximoAjusteAlquiler(a,hoy);
+              var items=[["Alquiler",a.alquiler],["Expensas",a.expensas],["Agua",a.agua],[a.otros_nombre||"Otros",a.otros]].filter(function(x){return parseFloat(x[1])>0;});
+              return(
+                <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B6BB844",borderRadius:12,padding:"13px 14px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{v.concepto}</div>
+                      <div style={{fontSize:10,color:loc?loc.color:"#8C8C8C",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:v.local}{a.locador?" · "+a.locador:""}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:16,fontWeight:800,color:"#8B6BB8",fontFamily:"'Playfair Display',serif"}}>{fmt(v.monto)}</div>
+                      <div style={{fontSize:9,color:"#6E6E6E"}}>por mes · vence el {v.dia||1}</div>
+                    </div>
+                  </div>
+                  {items.map(function(x){return(
+                    <div key={x[0]} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#999",padding:"2px 0"}}><span>{x[0]}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(x[1])}</span></div>
+                  );})}
+                  <div style={{borderTop:"1px solid #1E1730",marginTop:8,paddingTop:8,fontSize:11,color:"#9A9A9A",lineHeight:1.6}}>
+                    <div>📅 Contrato: {a.desde?fmtDate(a.desde):"—"} → {a.hasta?fmtDate(a.hasta):"—"}</div>
+                    <div style={{color:estado.color,fontWeight:700}}>{estado.txt}</div>
+                    {parseInt(a.ajuste_meses,10)>0&&<div>📈 Se ajusta cada {a.ajuste_meses} meses{a.ajuste_indice?" ("+a.ajuste_indice+")":""}{ajuste?" · próximo ajuste "+fmtDate(ajuste):""}</div>}
+                    {parseFloat(a.deposito)>0&&<div>🔒 Depósito / garantía: {fmt(a.deposito)}</div>}
+                    {v.notas&&<div style={{color:"#7E7E7E",fontStyle:"italic"}}>{v.notas}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:6,marginTop:9}}>
+                    <button onClick={function(){abrirEditarAlquiler(v);}} style={{background:"none",border:"1px solid #8B6BB844",borderRadius:6,color:"#8B6BB8",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>✏️ Editar</button>
+                    <button onClick={function(){borrar(v);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,color:"#C1440E99",fontSize:10,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>🗑️ Borrar</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {grupoFiltro&&!verTodos&&(sueltosDelMes.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
           <div style={{fontSize:13,color:"#8C8C8C"}}>{delMes2.length>0?"Este mes sólo hay cuotas.":"No hay vencimientos cargados para este mes."}</div>
@@ -20394,6 +20595,7 @@ var SQL_VENCIMIENTOS={
   forma_pago:"alter table vencimientos add column if not exists forma_pago     text;",
   monto_inicial:"alter table vencimientos add column if not exists monto_inicial  numeric default 0;",
   nro_credito:"alter table vencimientos add column if not exists nro_credito    text;",
+  alquiler:"alter table vencimientos add column if not exists alquiler        jsonb;",
   local:"alter table vencimientos add column if not exists local          text;",
   concepto:"alter table vencimientos add column if not exists concepto       text;",
   area:"alter table vencimientos add column if not exists area           text;",

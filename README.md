@@ -1952,3 +1952,22 @@ compras-pro/
     ├── main.jsx        ← punto de entrada React
     └── App.jsx         ← toda la aplicación
 ```
+
+## 🏠 Alquileres (Vencimientos)
+
+En 📅 Vencimientos → 🏠 Alquileres, **+ Alquiler** arma la tarjeta de un contrato: el local (cualquiera de
+los cuatro), el locador o inmobiliaria, lo que se paga de **alquiler, expensas, agua y otros
+cargos** (con su nombre), el **inicio y el fin del contrato**, el día que vence el pago, cada
+cuántos meses se ajusta y con qué índice, y el depósito. El total mensual es la suma de los
+cargos y se paga desde la lista de abajo como cualquier vencimiento que se repite.
+
+La tarjeta dice cuánto falta para que termine el contrato —en amarillo desde los 90 días, en
+rojo si ya venció— y cuándo toca el próximo ajuste. Fuera de las fechas del contrato no vence
+nada: antes de que empiece o después de que termine no aparece en la lista ni avisa.
+
+Hace falta una columna nueva en Supabase (una sola vez):
+
+```sql
+alter table vencimientos add column if not exists alquiler jsonb;
+```
+

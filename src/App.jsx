@@ -3978,6 +3978,27 @@ function PanelMetricasLocal(p){
     });
   });
   function pct(v,tot){ return tot>0?Math.round(v/tot*1000)/10:0; }
+  // Gráficos: efectivo contra todo lo demás, que es electrónico (transferencia, débito, crédito, QR y Mercado Pago).
+  var C_EFE="#c98500", C_ELE="#3987e5";
+  var efe={}, ele={};
+  cierres.forEach(function(c){
+    if(c.local!==lid||!c.fecha)return;
+    efe[c.fecha]=(efe[c.fecha]||0)+parseFloat(c.efectivo||0);
+    ele[c.fecha]=(ele[c.fecha]||0)+sumaMedios(c,MEDIOS_ELECTRONICOS);
+  });
+  function dosPartes(e,l){ var t=e+l; return "Efectivo "+pct(e,t)+"% · Electrónico "+pct(l,t)+"%"; }
+  var gruposMedMes=meses.map(function(m){
+    var e=0,l=0;
+    for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; e+=efe[f]||0; l+=ele[f]||0; }
+    return {id:m,label:nombreMes(m),valores:[{serie:"Efectivo",valor:e,color:C_EFE},{serie:"Electrónico",valor:l,color:C_ELE}],extra:dosPartes(e,l)};
+  });
+  var gruposMedDia=[];
+  for(var dm=1;dm<=diasDe(mesMedios);dm++){
+    var fm=fechaDe(mesMedios,dm);
+    if(fm>hoy)break;
+    gruposMedDia.push({id:"d"+dm,label:"Día "+dm,corto:String(dm),
+      valores:[{serie:"Efectivo",valor:efe[fm]||0,color:C_EFE},{serie:"Electrónico",valor:ele[fm]||0,color:C_ELE}],extra:dosPartes(efe[fm]||0,ele[fm]||0)});
+  }
   var mediosColumnas=GRUPOS_MEDIOS.filter(function(g){return totMedios[g.id]>0;});
   var mesesAtras=meses.length===0;
   return(
@@ -4016,6 +4037,16 @@ function PanelMetricasLocal(p){
               {meses.slice().reverse().map(function(m){return <option key={m} value={m}>{nombreMes(m)}</option>;})}
             </select>
             <span style={{fontSize:10,color:"#6E6E6E"}}>Qué porcentaje de lo vendido cada día entró por cada medio.</span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:18,marginBottom:14}}>
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 12px 8px"}}>
+              <GraficoBarras titulo="Efectivo y electrónico por mes" grupos={gruposMedMes} alto={170} etiquetas={true} gapGrupos={14}
+                leyenda={[{label:"Efectivo",color:C_EFE},{label:"Electrónico (todo lo demás)",color:C_ELE}]}/>
+            </div>
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 12px 8px"}}>
+              <GraficoBarras titulo={"Efectivo y electrónico, día por día · "+nombreMes(mesMedios)} grupos={gruposMedDia} alto={150} cadaN={3} gapGrupos={2}
+                leyenda={[{label:"Efectivo",color:C_EFE},{label:"Electrónico",color:C_ELE}]}/>
+            </div>
           </div>
           {mediosColumnas.length===0?<div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"20px 0"}}>No hay ventas cargadas en {nombreMes(mesMedios)}.</div>:(
             <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,overflow:"auto",maxHeight:"70vh"}}>

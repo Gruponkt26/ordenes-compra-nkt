@@ -11170,7 +11170,7 @@ function PanelOrdenesPorMes(p){
 // Avisos de Prioridad en Novedades: un cierre que vendió más que esto es noticia (buena), y un egreso suelto
 // de este monto o más es algo para mirar. Por local, porque cada uno vende y gasta en otra escala.
 var UMBRAL_VENTA_CIERRE={l1:1400000,l3:800000,l2:400000};
-var UMBRAL_EGRESO_IMPORTANTE={l1:1000000,l3:600000,l2:300000,l4:1000000};
+var UMBRAL_EGRESO_IMPORTANTE={l1:1000000,l3:600000,l2:700000,l4:300000};
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];

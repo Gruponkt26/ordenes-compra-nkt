@@ -3742,6 +3742,122 @@ function PanelGastosFijosOficina(p){
   );
 }
 
+// ─── MÉTRICAS DE UN LOCAL ─────────────────────────────────────────────────────
+// Día por día, todos los meses lado a lado: una fila por día del mes y una columna por mes, así se ve
+// de un vistazo cómo viene cada día contra el mismo día de los otros meses. Tres miradas: lo que
+// ingresó (ventas de los cierres), lo que egresó (egresos cargados y adelantos de sueldo, sin los
+// pagos de deuda) y la diferencia. Arranca en agosto 2026.
+var METRICAS_DESDE="2026-08";
+function PanelMetricasLocal(p){
+  var lid=p.localId;
+  var gastos=p.gastos||[], cierres=p.cierres||[], adelantos=p.adelantos||[];
+  var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
+  var [vista,setVista]=useState("ingreso");
+  var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  // Los meses, de agosto al mes en curso.
+  var meses=[];
+  (function(){
+    var pr=METRICAS_DESDE.split("-"), y=parseInt(pr[0],10), m=parseInt(pr[1],10);
+    var tope=mesActual;
+    for(var i=0;i<60;i++){
+      var k=y+"-"+String(m).padStart(2,"0");
+      if(k>tope)break;
+      meses.push(k);
+      m++; if(m>12){m=1;y++;}
+    }
+  })();
+  // Plata por día: ingreso[fecha], egreso[fecha].
+  var ingreso={}, egreso={};
+  cierres.forEach(function(c){
+    if(c.local!==lid||!c.fecha)return;
+    ingreso[c.fecha]=(ingreso[c.fecha]||0)+ventasDeCierre(c);
+  });
+  gastos.forEach(function(g){
+    if(g.local!==lid||!g.fecha)return;
+    egreso[g.fecha]=(egreso[g.fecha]||0)+(parseFloat(g.monto)||0)-montoDeudaDeGasto(g);
+  });
+  adelantos.forEach(function(a){
+    if(a.local!==lid||!a.fecha)return;
+    egreso[a.fecha]=(egreso[a.fecha]||0)+(parseFloat(a.monto)||0);
+  });
+  function valor(fecha){
+    if(vista==="ingreso")return ingreso[fecha]||0;
+    if(vista==="egreso")return egreso[fecha]||0;
+    return (ingreso[fecha]||0)-(egreso[fecha]||0);
+  }
+  function diasDe(m){ var pr=m.split("-"); return new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate(); }
+  function fechaDe(m,d){ return m+"-"+String(d).padStart(2,"0"); }
+  function nombreMes(m){
+    var n=["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][parseInt(m.split("-")[1],10)];
+    return n+" "+m.split("-")[0].slice(2);
+  }
+  // Total de cada mes, y cuántos días tuvo movimiento (para el promedio).
+  var totales=meses.map(function(m){
+    var tot=0, conMov=0;
+    for(var d=1;d<=diasDe(m);d++){
+      var f=fechaDe(m,d); if(f>hoy)break;
+      var v=valor(f); tot+=v;
+      if((ingreso[f]||0)!==0||(egreso[f]||0)!==0)conMov++;
+    }
+    return {m:m,tot:tot,conMov:conMov};
+  });
+  var maximo=0;
+  meses.forEach(function(m){ for(var d=1;d<=diasDe(m);d++){ var f=fechaDe(m,d); if(f>hoy)break; maximo=Math.max(maximo,Math.abs(valor(f))); } });
+  var color=vista==="ingreso"?"58,125,68":vista==="egreso"?"193,68,14":"26,107,138";
+  var TH={padding:"7px 8px",color:"#8C8C8C",fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #1A1A1A",textAlign:"right",whiteSpace:"nowrap",background:"#0F0F0F",position:"sticky",top:0};
+  var botones=[["ingreso","📥 Ingresó"],["egreso","📤 Egresó"],["dif","⚖️ Diferencia"]];
+  var mesesAtras=meses.length===0;
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:10}}>
+        Cada columna es un mes, desde agosto, y cada fila un día: así se compara el mismo día entre meses. Lo más oscuro es el día con más movimiento.
+        Los egresos son los cargados día a día y los adelantos de sueldo: no incluyen sueldos de planilla ni impuestos que calcula la app.
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        {botones.map(function(b){var on=vista===b[0];return(
+          <button key={b[0]} onClick={function(){setVista(b[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#8B6BB8":"#1E1E1E"),background:on?"#8B6BB822":"#111",color:on?"#B79CE0":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{b[1]}</button>
+        );})}
+      </div>
+      {mesesAtras?<div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"20px 0"}}>Todavía no hay meses para comparar.</div>:(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,overflow:"auto",maxHeight:"70vh"}}>
+          <table style={{borderCollapse:"collapse",minWidth:90+meses.length*92,width:"100%"}}>
+            <thead>
+              <tr>
+                <th style={{...TH,textAlign:"left",left:0,zIndex:3}}>Día</th>
+                {meses.map(function(m){return <th key={m} style={{...TH,zIndex:2}}>{nombreMes(m)}</th>;})}
+              </tr>
+              <tr>
+                <th style={{...TH,textAlign:"left",left:0,zIndex:3,top:30,color:"#F0EDE8"}}>Total</th>
+                {totales.map(function(t){return <th key={t.m} style={{...TH,top:30,zIndex:2,color:vista==="dif"&&t.tot<0?"#C1440E":"#F0EDE8",fontSize:11}}>{vista==="dif"&&t.tot<0?"−":""}{fmt(Math.abs(t.tot))}</th>;})}
+              </tr>
+              <tr>
+                <th style={{...TH,textAlign:"left",left:0,zIndex:3,top:60,color:"#8C8C8C",fontWeight:500,textTransform:"none",letterSpacing:0}}>Por día con mov.</th>
+                {totales.map(function(t){return <th key={t.m} style={{...TH,top:60,zIndex:2,color:"#8C8C8C",fontWeight:500,textTransform:"none",letterSpacing:0}}>{t.conMov>0?fmt(t.tot/t.conMov):"—"}</th>;})}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({length:31},function(_,i){return i+1;}).map(function(d){return(
+                <tr key={d}>
+                  <td style={{padding:"5px 8px",fontSize:11,color:"#9A9A9A",fontWeight:700,borderBottom:"1px solid #121212",position:"sticky",left:0,background:"#0F0F0F"}}>{d}</td>
+                  {meses.map(function(m){
+                    if(d>diasDe(m))return <td key={m} style={{borderBottom:"1px solid #121212"}}></td>;
+                    var f=fechaDe(m,d);
+                    if(f>hoy)return <td key={m} style={{borderBottom:"1px solid #121212"}}></td>;
+                    var v=valor(f);
+                    var alfa=maximo>0?Math.min(0.45,Math.abs(v)/maximo*0.45):0;
+                    var txt=v===0?"·":(vista==="dif"&&v<0?"−":"")+fmt(Math.abs(v));
+                    return <td key={m} style={{padding:"5px 8px",fontSize:11,textAlign:"right",color:v===0?"#3A3A3A":(vista==="dif"&&v<0?"#C1440E":"#F0EDE8"),background:v===0?"transparent":"rgba("+color+","+alfa+")",borderBottom:"1px solid #121212",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{txt}</td>;
+                  })}
+                </tr>
+              );})}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── RESUMEN POR MES DE UN LOCAL ─────────────────────────────────────────────
 // Para Bodegón, Kusama y Colantonio's: mes por mes, lo que ingresó (ventas de los cierres con la
 // corrección manual de Resultados) en un solo renglón, lo que se gastó y la diferencia. Tocando un
@@ -4102,10 +4218,13 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
+
+      {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
+      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}

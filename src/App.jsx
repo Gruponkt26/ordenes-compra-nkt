@@ -14188,6 +14188,7 @@ function PanelVencimientos(p){
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                     <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.cuota?x.cuota.monto:x.v.monto)}</span>
+                    <SelectorRubro v={x.v}/>
                     <button onClick={function(){abrirPago(x);}} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
                   </div>
                 </div>

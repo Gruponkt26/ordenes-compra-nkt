@@ -11195,6 +11195,7 @@ function PanelNovedades(p){
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
+  var [notaEdit,setNotaEdit]=useState(null); // {id, texto} de la nota que se está editando
   var [notasAbierto,setNotasAbierto]=useState(false);
   var [iniAbierto,setIniAbierto]=useState(false);
   // Egresos que el cajero anotó al cerrar y que todavía nadie cargó como gasto oficial. El
@@ -11241,6 +11242,12 @@ function PanelNovedades(p){
     var ahora=new Date().toISOString();
     guardarNota({id:"pau_nota_"+Date.now(),ambito:"nota_sofia",texto:t,usuario:"sofia",created_at:ahora,updated_at:ahora});
     setNotaNueva("");
+  }
+  function guardarEdicionNota(n){
+    var t=(notaEdit&&notaEdit.texto||"").trim();
+    if(!t){alert("La nota no puede quedar vacía. Si ya no sirve, borrala.");return;}
+    guardarNota({...n,texto:t,updated_at:new Date().toISOString()});
+    setNotaEdit(null);
   }
   function borrarNota(id){
     sbDeletePauta(id);
@@ -11823,10 +11830,24 @@ function PanelNovedades(p){
                   return(
                     <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12.5,color:esRes(n)?"#5A5A5A":"#C8C8C8",textDecoration:esRes(n)?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
-                        {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
+                        {notaEdit&&notaEdit.id===n.id?(
+                          <div>
+                            <textarea value={notaEdit.texto} autoFocus rows={3} onChange={function(e){var v=e.target.value;setNotaEdit(function(x){return {...x,texto:v};});}}
+                              style={{width:"100%",boxSizing:"border-box",padding:"8px 10px",borderRadius:8,border:"1px solid #D4A01766",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5,resize:"vertical"}}/>
+                            <div style={{display:"flex",gap:6,marginTop:5}}>
+                              <button onClick={function(){guardarEdicionNota(n);}} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+                              <button onClick={function(){setNotaEdit(null);}} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+                            </div>
+                          </div>
+                        ):(
+                          <div>
+                            <div style={{fontSize:12.5,color:esRes(n)?"#5A5A5A":"#C8C8C8",textDecoration:esRes(n)?"line-through":"none",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{n.texto}</div>
+                            {n.created_at&&<div style={{fontSize:9.5,color:"#5A5A5A",marginTop:1}}>{fmtDate(String(n.created_at).substring(0,10))}</div>}
+                          </div>
+                        )}
                       </div>
                       <button onClick={function(){guardarNota({...n,ambito:esRes(n)?"nota_sofia":"nota_sofia_ok",updated_at:new Date().toISOString()});}} style={{background:esRes(n)?"none":"#3A7D4422",border:"1px solid "+(esRes(n)?"#2A2A2A":"#3A7D4466"),borderRadius:6,color:esRes(n)?"#8C8C8C":"#4C9A5A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>{esRes(n)?"↩ Reabrir":"✓ Resuelta"}</button>
+                      {!(notaEdit&&notaEdit.id===n.id)&&<button onClick={function(){setNotaEdit({id:n.id,texto:n.texto||""});}} title="Editar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:12,cursor:"pointer",padding:"0 2px"}}>✏️</button>}
                       <button onClick={function(){if(confirm("¿Borrar esta nota?"))borrarNota(n.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6A6A6A",fontSize:13,cursor:"pointer",padding:"0 2px"}}>✕</button>
                     </div>
                   );

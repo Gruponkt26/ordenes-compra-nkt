@@ -3904,7 +3904,11 @@ function PanelMetricasLocal(p){
   TRANSF_PROPIAS.filter(function(x){return x.fecha;}).forEach(function(x){
     var m=parseFloat(x.monto)||0;
     if(localDelMedio(x.desde)===lid)sumaEgreso(x.fecha,m*impDebitoTasaDeMedio(lid,x.desde));
-    if(localDelMedio(x.hasta)===lid)sumaEgreso(x.fecha,m*impCreditoTasa(lid,esCuentaMP(x.hasta)?"mp_qr":"transferencia"));
+    if(localDelMedio(x.hasta)===lid){
+      sumaEgreso(x.fecha,m*impCreditoTasa(lid,esCuentaMP(x.hasta)?"mp_qr":"transferencia"));
+      var cD=CUIT_DE_LOCAL_IVA[localDelMedio(x.desde)], cH=CUIT_DE_LOCAL_IVA[lid];
+      if(cD&&cH&&cD!==cH)sumaEgreso(x.fecha,m*ALICUOTA_IIBB);
+    }
   });
   IMP_EXTRA.filter(function(x){return x.local===lid&&x.fecha;}).forEach(function(x){ sumaEgreso(x.fecha,parseFloat(x.monto)||0); });
   // Impuesto al débito de lo que se pagó ese día desde las cuentas del local.
@@ -14483,7 +14487,7 @@ function esCuentaMP(m){ var k=(m||"").toLowerCase(); return k.includes("mercado 
 // Lo que mueven las transferencias propias de un local en un mes: entra/sale por cada bucket de
 // disponibilidad y el impuesto al débito (origen) y al crédito (destino) que pagan.
 function transfPropiasDe(lid, mes){
-  var out={debito:0,credito:0,mov:{transferencia:0,mp:0},id:{transferencia:0,mp:0},ic:{transferencia:0,mp:0}};
+  var out={debito:0,credito:0,iibb:0,mov:{transferencia:0,mp:0},id:{transferencia:0,mp:0},ic:{transferencia:0,mp:0},ib:{transferencia:0,mp:0}};
   TRANSF_PROPIAS.forEach(function(x){
     if(!x.fecha||x.fecha.substring(0,7)!==mes)return;
     var m=parseFloat(x.monto)||0; if(m<=0)return;
@@ -14494,6 +14498,9 @@ function transfPropiasDe(lid, mes){
     if(localDelMedio(x.hasta)===lid){
       var b2=esCuentaMP(x.hasta)?"mp":"transferencia", t2=m*impCreditoTasa(lid,b2==="mp"?"mp_qr":"transferencia");
       out.mov[b2]+=m; out.ic[b2]+=t2; out.credito+=t2;
+      // Entre CUIT distintos la plata entra como una venta/aporte: paga IIBB en la cuenta que recibe.
+      var cD=CUIT_DE_LOCAL_IVA[localDelMedio(x.desde)], cH=CUIT_DE_LOCAL_IVA[lid];
+      if(cD&&cH&&cD!==cH){ var ti=m*ALICUOTA_IIBB; out.ib[b2]+=ti; out.iibb+=ti; }
     }
   });
   return out;
@@ -17151,7 +17158,8 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var transfP=transfPropiasDe(lid,mes);
   impDebEgreso+=transfP.debito;
   impCredEgreso+=transfP.credito;
-  total+=impDebEgreso+impExtra.credito+transfP.credito;
+  iibbEgreso+=transfP.iibb;
+  total+=impDebEgreso+impExtra.credito+transfP.credito+transfP.iibb;
   return{total:total,transfP:transfP,impExtra:impExtra,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
@@ -17853,11 +17861,11 @@ function PanelResultados(p){
     var comOtros=ingrOtros*comisionTasa(lid,"otros")*factorCom;
     var comisionElectronico=comTransferencia+comDebito+comCredito+comOtros+comMp;
     var impCreditoElectronico=icTransferencia+icDebito+icCredito+icOtros+icMp;
-    var iibbTransferencia=ingrTransferencia*tasaIIBB+(auto?impAp.b.transferencia.iibb:0);
+    var iibbTransferencia=ingrTransferencia*tasaIIBB+(auto?impAp.b.transferencia.iibb:0)+(eg.transfP?eg.transfP.ib.transferencia:0);
     var iibbDebito=ingrDebito*tasaIIBB+(auto?impAp.b.debito.iibb:0);
     var iibbCredito=ingrCredito*tasaIIBB+(auto?impAp.b.credito.iibb:0);
     var iibbOtros=ingrOtros*tasaIIBB+(auto?impAp.b.otros.iibb:0);
-    iibbMp=ingrMp*tasaIIBB;
+    iibbMp=ingrMp*tasaIIBB+(eg.transfP?eg.transfP.ib.mp:0);
     var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros+iibbMp;
 
     // Disponibilidad = ingreso corregido − IIBB retenido − gastos + traspaso + aportes de socios.
@@ -17882,7 +17890,7 @@ function PanelResultados(p){
     },0)*factorCom;
     var icMpCuenta=ingrMpCuenta*impCreditoTasa(lid,"mp_qr")*factorImpCred;
     var iibbMpCuenta=ingrMpCuenta*tasaIIBB;
-    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp+(eg.transfP?eg.transfP.mov.mp-eg.transfP.ic.mp:0);
+    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp+(eg.transfP?eg.transfP.mov.mp-eg.transfP.ic.mp-eg.transfP.ib.mp:0);
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,

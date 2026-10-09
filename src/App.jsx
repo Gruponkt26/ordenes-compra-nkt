@@ -22111,6 +22111,125 @@ function guardarSesion(id){
   try{ if(id)window.localStorage.setItem(CLAVE_SESION,id); else window.localStorage.removeItem(CLAVE_SESION); }catch(e){}
 }
 
+// ── Chat de IA (solo Sofía) ──────────────────────────────────────────────────
+// Arma un resumen compacto de los números del mes en curso y del anterior para que el
+// modelo conteste con datos reales. Se calcula en el navegador y viaja a /api/chat.
+function resumenParaChat(d) {
+  var hoy = diaDeNegocio();
+  var mesAct = hoy.substring(0, 7);
+  var pm = new Date(parseInt(mesAct.substring(0, 4), 10), parseInt(mesAct.substring(5, 7), 10) - 2, 1);
+  var mesAnt = pm.getFullYear() + "-" + String(pm.getMonth() + 1).padStart(2, "0");
+  var num = function(x) { return parseFloat(x) || 0; };
+  var $ = function(x) { return Math.round(x).toLocaleString("es-AR"); };
+  var nombre = function(id) { var l = getLocal(id); return l ? l.nombre : id; };
+  var out = ["Hoy es " + hoy + ". Mes en curso: " + mesAct + ". Mes anterior: " + mesAnt + "."];
+  [mesAct, mesAnt].forEach(function(mes) {
+    out.push("", "=== " + mes + " ===");
+    LOCALES.forEach(function(l) {
+      var cs = (d.cierres || []).filter(function(c) { return c.local === l.id && String(c.fecha || "").substring(0, 7) === mes; });
+      var gs = (d.gastos || []).filter(function(g) { return g.local === l.id && String(g.fecha || "").substring(0, 7) === mes; });
+      if (!cs.length && !gs.length) return;
+      var ventas = cs.reduce(function(a, c) { return a + num(c.total_ventas); }, 0);
+      var efec = cs.reduce(function(a, c) { return a + num(c.efectivo); }, 0);
+      var tarj = cs.reduce(function(a, c) { return a + num(c.tarjeta_debito) + num(c.tarjeta_credito); }, 0);
+      var transf = cs.reduce(function(a, c) { return a + num(c.transferencia); }, 0);
+      var retiros = cs.reduce(function(a, c) { return a + num(c.retiro_socio); }, 0);
+      var totG = gs.reduce(function(a, g) { return a + num(g.monto); }, 0);
+      var porCat = {};
+      gs.forEach(function(g) { var k = g.categoria || g.area || "Sin categoría"; porCat[k] = (porCat[k] || 0) + num(g.monto); });
+      var cats = Object.keys(porCat).sort(function(a, b) { return porCat[b] - porCat[a]; }).slice(0, 12)
+        .map(function(k) { return k + " $" + $(porCat[k]); }).join("; ");
+      out.push(nombre(l.id) + ": " + cs.length + " cierres. Ventas $" + $(ventas) + " (efectivo $" + $(efec) + ", tarjetas $" + $(tarj) + ", transferencias $" + $(transf) + "). Retiros de socios en cierres $" + $(retiros) + ". Gastos cargados $" + $(totG) + (cats ? ". Por categoría: " + cats : "") + ".");
+    });
+  });
+  // Saldos de proveedores (cuenta corriente) por proveedor: saldo inicial + compras − pagos.
+  var movs = d.saldosProveedores || [];
+  var porProv = {};
+  movs.forEach(function(m) {
+    var s = m.tipo === "pago" ? -num(m.monto) : num(m.monto);
+    porProv[m.prov_id] = (porProv[m.prov_id] || 0) + s;
+  });
+  var deudas = Object.keys(porProv).map(function(id) {
+    var pv = (d.proveedores || []).find(function(x) { return x.id === id; });
+    return { n: pv ? pv.nombre : id, s: porProv[id] };
+  }).filter(function(x) { return Math.abs(x.s) >= 1; }).sort(function(a, b) { return b.s - a.s; }).slice(0, 25);
+  if (deudas.length) {
+    out.push("", "=== Saldos con proveedores (positivo = se les debe) ===");
+    deudas.forEach(function(x) { out.push(x.n + ": $" + $(x.s)); });
+  }
+  return out.join("\n");
+}
+
+function ChatIA(p) {
+  var [abierto, setAbierto] = useState(false);
+  var [msgs, setMsgs] = useState([]);
+  var [texto, setTexto] = useState("");
+  var [cargando, setCargando] = useState(false);
+  var fin = useRef(null);
+  useEffect(function() {
+    if (fin.current && fin.current.scrollIntoView) fin.current.scrollIntoView({ block: "end" });
+  }, [msgs, cargando, abierto]);
+
+  async function enviar(t) {
+    var q = String(t || texto).trim();
+    if (!q || cargando) return;
+    var nuevos = msgs.concat([{ role: "user", texto: q }]);
+    setMsgs(nuevos);
+    setTexto("");
+    setCargando(true);
+    try {
+      var r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensajes: nuevos, resumen: resumenParaChat(p.datos) })
+      });
+      var d = await r.json().catch(function() { return null; });
+      if (!r.ok) throw new Error((d && d.error) || ("Falló la consulta (error " + r.status + ")"));
+      setMsgs(nuevos.concat([{ role: "assistant", texto: d.respuesta }]));
+    } catch (e) {
+      setMsgs(nuevos.concat([{ role: "assistant", texto: "⚠️ " + e.message, error: true }]));
+    }
+    setCargando(false);
+  }
+
+  var sugeridas = ["¿Cómo viene el mes comparado con el anterior?", "¿A qué proveedores les debemos más?", "¿En qué categoría gastamos más este mes?"];
+  if (!abierto) {
+    return <button onClick={function() { setAbierto(true); }} title="Preguntale a la IA"
+      style={{ position: "fixed", right: 16, bottom: 16, zIndex: 900, width: 52, height: 52, borderRadius: 26, border: "none", background: "#C1440E", color: "#fff", fontSize: 24, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,.5)" }}>💬</button>;
+  }
+  return (
+    <div style={{ position: "fixed", right: 12, bottom: 12, zIndex: 900, width: "min(420px, calc(100vw - 24px))", height: "min(560px, calc(100vh - 24px))", background: "#111", border: "1px solid #2A2A2A", borderRadius: 14, display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,.6)", fontFamily: "'Inter',sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid #222" }}>
+        <div style={{ flex: 1, color: "#F0F0F0", fontWeight: 700, fontSize: 14 }}>💬 Asistente NKT</div>
+        {msgs.length > 0 && <button onClick={function() { setMsgs([]); }} style={{ ...GH, padding: "4px 9px", fontSize: 11 }}>Nueva</button>}
+        <button onClick={function() { setAbierto(false); }} style={{ ...GH, padding: "4px 9px", fontSize: 12 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        {msgs.length === 0 && (
+          <div>
+            <div style={{ color: "#9A9A9A", fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>Conozco los números del mes en curso y del anterior (ventas, gastos y saldos de proveedores). Preguntame lo que quieras.</div>
+            {sugeridas.map(function(s) {
+              return <button key={s} onClick={function() { enviar(s); }} style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 6, padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#161616", color: "#CFCFCF", fontSize: 12, cursor: "pointer" }}>{s}</button>;
+            })}
+          </div>
+        )}
+        {msgs.map(function(m, i) {
+          var yo = m.role === "user";
+          return <div key={i} style={{ alignSelf: yo ? "flex-end" : "flex-start", maxWidth: "88%", padding: "8px 11px", borderRadius: 10, background: yo ? "#C1440E" : (m.error ? "#3A1414" : "#1C1C1C"), color: "#F0F0F0", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.texto}</div>;
+        })}
+        {cargando && <div style={{ alignSelf: "flex-start", color: "#9A9A9A", fontSize: 12 }}>Pensando…</div>}
+        <div ref={fin} />
+      </div>
+      <div style={{ display: "flex", gap: 6, padding: 10, borderTop: "1px solid #222" }}>
+        <input value={texto} onChange={function(e) { setTexto(e.target.value); }}
+          onKeyDown={function(e) { if (e.key === "Enter") enviar(); }}
+          placeholder="Escribí tu pregunta…" style={{ ...INP, flex: 1, fontSize: 16 }} />
+        <button onClick={function() { enviar(); }} disabled={cargando || !texto.trim()} style={{ ...BS, padding: "8px 14px", opacity: (cargando || !texto.trim()) ? 0.5 : 1 }}>Enviar</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
   var [cu,setCu]=useState(null);
@@ -23760,6 +23879,7 @@ export default function App() {
       {showUsers&&<GestUsuarios users={users} empleados={empleados} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
+      {esSofia&&<ChatIA datos={{cierres:cierres,gastos:gastos,saldosProveedores:saldosProveedores,proveedores:proveedores}}/>}
     </div>
   );
 }

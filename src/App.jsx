@@ -3837,6 +3837,8 @@ function PanelMetricasLocal(p){
   var gastos=p.gastos||[], cierres=p.cierres||[], adelantos=p.adelantos||[];
   // Los retiros de socios no son gasto, pero el banco cobra el impuesto al débito igual: ese costo sí cuenta.
   var retirosCuenta=(p.retiros||[]).filter(esMovDinero).filter(function(r){return (r.local_cuenta||r.local)===lid&&r.fecha;});
+  // Los aportes tampoco son ingreso, pero el IIBB y el impuesto al crédito que pagan al entrar sí son costo.
+  var aportesCuenta=(p.aportes||[]).filter(esMovDinero).filter(function(a){return (a.local_cuenta||a.local)===lid&&a.fecha;});
   var hoy=fechaLocal(), mesActual=hoy.substring(0,7);
   var [vista,setVista]=useState("ingreso");
   var [mesMedios,setMesMedios]=useState(mesActual);
@@ -3893,6 +3895,11 @@ function PanelMetricasLocal(p){
     var m=f.substring(0,7); if(!calculaAutomatico(m))return;
     var dc=cierresDelDia[f];
     sumaEgreso(f,iibbDeCierres(dc,lid,m)+comisionDeCierres(dc,lid,m)+impCreditoDeCierres(dc,lid,m));
+  });
+  aportesCuenta.forEach(function(a){
+    if(!calculaAutomatico(a.fecha.substring(0,7)))return;
+    var t=impuestosDeAporte(a,lid);
+    sumaEgreso(a.fecha,t.iibb+t.ic);
   });
   // Impuesto al débito de lo que se pagó ese día desde las cuentas del local.
   var fechasPagos={};
@@ -4133,6 +4140,7 @@ function PanelResumenLocal(p){
   var lid=p.localId;
   var gastos=p.gastos||[], cierres=p.cierres||[], sueldos=p.sueldos||[], adelantos=p.adelantos||[];
   var retiros=(p.retiros||[]).filter(esMovDinero);
+  var aportes=(p.aportes||[]).filter(esMovDinero);
   var corrResultados=p.corrResultados||{};
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var mesCurrent=fechaLocal().substring(0,7);
@@ -4145,7 +4153,7 @@ function PanelResumenLocal(p){
     var cl=cierres.filter(function(c){return c.local===lid&&c.fecha&&c.fecha.substring(0,7)===m;});
     var corr=correccionVentas(cierres,lid,m,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
-    var eg=egresosOperativos(gastos,sueldos,adelantos,lid,m,cierres,retiros,true);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,lid,m,cierres,retiros,true,aportes);
     return {m:m,ventas:ventas,eg:eg,egresos:eg.total,dif:ventas-eg.total};
   }
   // En qué se gastó un mes: por rubro lo cargado en Egresos, y aparte lo que no pasa por Egresos
@@ -4365,7 +4373,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4490,10 +4498,10 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       </div>
 
       {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
-      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL}/>}
+      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
-      {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} corrResultados={corrRL}/>}
+      {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
@@ -8534,7 +8542,7 @@ function PanelEgresos(p){
   // (desde que corre el cálculo automático). Se muestran acá en solo lectura para que el total
   // de Egresos coincida con el de Ventas y Egresos.
   function costosCalc(lid, mes){
-    var eg=egresosOperativos(gastos,p.sueldos,p.adelantos||[],lid,mes,p.cierres||[],(p.retiros||[]).filter(esMovDinero));
+    var eg=egresosOperativos(gastos,p.sueldos,p.adelantos||[],lid,mes,p.cierres||[],(p.retiros||[]).filter(esMovDinero),false,p.aportes||[]);
     var filas=[["IIBB retenido ("+pctIIBB()+"% de lo electrónico)",eg.iibbEgreso||0],["Impuesto al crédito (0,6%)",eg.impCredEgreso||0],["Impuesto al débito (0,6%)",eg.impDebEgreso||0],["Comisiones del procesador",eg.comisionEgreso||0]];
     return {filas:filas,total:filas.reduce(function(a,f){return a+f[1];},0)};
   }
@@ -16955,12 +16963,38 @@ function iibbDeCierres(cierres, lid, mes){
   }).reduce(function(a,c){return a+iibbRetenido(c);},0);
 }
 
+// Un aporte de socio por un medio electrónico paga igual que una venta: IIBB (la misma alícuota
+// que las ventas, en todos los medios) e impuesto al crédito (los bancos; Mercado Pago, no). El
+// aporte no es un ingreso —no suma a las ventas ni a Resultados—, pero esos impuestos sí son un
+// egreso del local por cuya cuenta entró la plata. Efectivo, Caja Mayor y cheque no pagan nada.
+function impuestosDeAporte(a, lid){
+  var cero={iibb:0,ic:0,bucket:""};
+  var m=(a.tipo_aporte||"").toLowerCase();
+  var monto=parseFloat(a.monto||0)||0;
+  if(!m||monto<=0||esEfectivoOCajaMayor(m)||m.includes("cheque"))return cero;
+  var mp=m.includes("mercado pago")||/\bmp\b/.test(m);
+  var bucket=m.includes("transferencia")?"transferencia":(m.includes("débito")||m.includes("debito"))?"debito":(m.includes("crédito")||m.includes("credito"))?"credito":"otros";
+  return {iibb:monto*ALICUOTA_IIBB, ic:mp?0:monto*impCreditoTasa(lid,"transferencia"), bucket:bucket};
+}
+function impuestosDeAportes(aportes, lid, mes){
+  var out={iibb:0,ic:0,b:{transferencia:{iibb:0,ic:0},debito:{iibb:0,ic:0},credito:{iibb:0,ic:0},otros:{iibb:0,ic:0}}};
+  (aportes||[]).filter(function(a){
+    return esMovDinero(a)&&(a.local_cuenta||a.local)===lid&&a.fecha&&a.fecha.substring(0,7)===mes;
+  }).forEach(function(a){
+    var t=impuestosDeAporte(a,lid);
+    if(!t.bucket)return;
+    out.iibb+=t.iibb; out.ic+=t.ic;
+    out.b[t.bucket].iibb+=t.iibb; out.b[t.bucket].ic+=t.ic;
+  });
+  return out;
+}
+
 // Egresos operativos de un local en un mes. Además de lo cargado en el módulo
 // Egresos entran los adelantos de sueldo (viven en su propia tabla y no generan
 // gasto) y los sueldos o aguinaldos del período anterior marcados pagados que
 // todavía no tienen su egreso cargado — si ya lo tienen, no se suman dos veces.
 // Devuelve también las piezas intermedias, que Resultados usa para el desglose.
-function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros, sinDeuda){
+function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros, sinDeuda, aportes){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
@@ -16983,7 +17017,8 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   // automático corre siempre. Lo que quedó cargado de antes no se ignora: se sigue midiendo
   // para avisar en pantalla que ese mes puede estar contando el impuesto dos veces.
   var auto=calculaAutomatico(mes);
-  var iibbEgreso=auto?iibbCalc:0;
+  var impAp=impuestosDeAportes(aportes,lid,mes);
+  var iibbEgreso=auto?iibbCalc+impAp.iibb:0;
   total+=iibbEgreso;
   // La comisión del procesador es otro costo de vender, y se trata igual: si está cargada
   // a mano manda esa, si no la calcula la app.
@@ -16993,7 +17028,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   total+=comisionEgreso;
   var impCredManual=impCreditoCargadoAMano(gastos,lid,mes);
   var impCredCalc=impCreditoDeCierres(cierres,lid,mes);
-  var impCredEgreso=auto?impCredCalc:0;
+  var impCredEgreso=auto?impCredCalc+impAp.ic:0;
   total+=impCredEgreso;
   var esAguinaldoS=function(x){return x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="";};
   var sueldosADescontar=[];
@@ -17008,7 +17043,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var impDebCalc=pagosMedio.impDebito;
   var impDebEgreso=auto?impDebCalc:0;
   total+=impDebEgreso;
-  return{total:total,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  return{total:total,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -17042,6 +17077,7 @@ function PanelVentasEgresos(p){
   // Los retiros de socios no son gasto, pero su impuesto al débito sí: hacen falta acá para
   // que este cuadro y Resultados den el mismo número.
   var retiros=(p.retiros||[]).filter(esMovDinero);
+  var aportes=(p.aportes||[]).filter(esMovDinero);
   var mesCurrent=new Date().toISOString().slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -17058,7 +17094,7 @@ function PanelVentasEgresos(p){
   // operativos (módulo Egresos + adelantos + sueldos que no generaron su egreso).
   var filas=localesFiltro.map(function(l){
     var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.substring(0,7)===mesFiltro;});
-    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros,true);
+    var eg=egresosOperativos(gastos,sueldos,adelantos,l.id,mesFiltro,cierres,retiros,true,aportes);
     var corr=correccionVentas(cierres,l.id,mesFiltro,corrResultados);
     var ventas=cl.reduce(function(a,c){return a+ventasDeCierre(c);},0)+corr;
     return {local:l,cierres:cl.length,gastos:eg.gl.length,ventas:ventas,corr:corr,egresos:eg.total,dif:ventas-eg.total,iibb:eg.iibbEgreso,iibbManual:eg.iibbManual,comision:eg.comisionEgreso,comisionManual:eg.comisionManual,impCred:eg.impCredEgreso,impCredManual:eg.impCredManual,impDeb:eg.impDebEgreso};
@@ -17381,7 +17417,7 @@ function PanelResultados(p){
     });
 
     // Egresos operativos del mes — mismo cálculo que usa el cuadro de Ventas y Egresos
-    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro,cierres,retirosSocios);
+    var eg=egresosOperativos(gastos,p.sueldos,adelantosSueldo,lid,mesFiltro,cierres,retirosSocios,false,aportesSocios);
     var gl=eg.gl, periodoAnterior=eg.periodoAnterior, sueldosTabla=eg.sueldosTabla;
     var hasSueldosGastos=eg.hasSueldosGastos, hasAguinaldosGastos=eg.hasAguinaldosGastos;
     var totalGastos=eg.total;
@@ -17580,6 +17616,9 @@ function PanelResultados(p){
       detIngresos.push({fecha:a.fecha,concepto:"🤝 Aporte — "+(a.socio||"")+(a.local!==lid?" ("+((getLocal(a.local)||{}).nombre||"")+")":""),medio:a.tipo_aporte||"",monto:am,tipo:esEf?"efectivo":"electronico",aporte:true,cruzado:a.local!==lid});
     });
     var aporteElectronico=aporteTransferencia+aporteDebito+aporteCredito+aporteOtros;
+    // Impuestos que paga el aporte al entrar a la cuenta (IIBB e impuesto al crédito): descuentan de
+    // la disponibilidad del medio por el que entró, y suman a los egresos del mes (egresosOperativos).
+    var impAp=eg.impAportes||impuestosDeAportes([],lid,mesFiltro);
 
 
     // Gastos desglosados por medio — usar pagos[] si existe, sino forma_pago legacy
@@ -17693,20 +17732,20 @@ function PanelResultados(p){
     var idOtros=pagosMedio.otros*impDebitoTasaDeMedio(lid,"otros")*factorImpCred;
     var idMp=pagosMedio.mp*impDebitoTasaDeMedio(lid,"mercado pago")*factorImpCred;
     var impDebitoElectronico=idTransferencia+idDebito+idCredito+idOtros+idMp;
-    var icTransferencia=ingrTransferencia*impCreditoTasa(lid,"transferencia")*factorImpCred;
-    var icDebito=ingrDebito*impCreditoTasa(lid,"tarjeta_debito")*factorImpCred;
-    var icCredito=ingrCredito*impCreditoTasa(lid,"tarjeta_credito")*factorImpCred;
-    var icOtros=ingrOtros*impCreditoTasa(lid,"otros")*factorImpCred;
+    var icTransferencia=(ingrTransferencia*impCreditoTasa(lid,"transferencia")+impAp.b.transferencia.ic)*factorImpCred;
+    var icDebito=(ingrDebito*impCreditoTasa(lid,"tarjeta_debito")+impAp.b.debito.ic)*factorImpCred;
+    var icCredito=(ingrCredito*impCreditoTasa(lid,"tarjeta_credito")+impAp.b.credito.ic)*factorImpCred;
+    var icOtros=(ingrOtros*impCreditoTasa(lid,"otros")+impAp.b.otros.ic)*factorImpCred;
     var comTransferencia=ingrTransferencia*comisionTasa(lid,"transferencia")*factorCom;
     var comDebito=ingrDebito*comisionTasa(lid,"tarjeta_debito")*factorCom;
     var comCredito=ingrCredito*comisionTasa(lid,"tarjeta_credito")*factorCom;
     var comOtros=ingrOtros*comisionTasa(lid,"otros")*factorCom;
     var comisionElectronico=comTransferencia+comDebito+comCredito+comOtros+comMp;
     var impCreditoElectronico=icTransferencia+icDebito+icCredito+icOtros+icMp;
-    var iibbTransferencia=ingrTransferencia*tasaIIBB;
-    var iibbDebito=ingrDebito*tasaIIBB;
-    var iibbCredito=ingrCredito*tasaIIBB;
-    var iibbOtros=ingrOtros*tasaIIBB;
+    var iibbTransferencia=ingrTransferencia*tasaIIBB+(auto?impAp.b.transferencia.iibb:0);
+    var iibbDebito=ingrDebito*tasaIIBB+(auto?impAp.b.debito.iibb:0);
+    var iibbCredito=ingrCredito*tasaIIBB+(auto?impAp.b.credito.iibb:0);
+    var iibbOtros=ingrOtros*tasaIIBB+(auto?impAp.b.otros.iibb:0);
     iibbMp=ingrMp*tasaIIBB;
     var iibbElectronico=iibbTransferencia+iibbDebito+iibbCredito+iibbOtros+iibbMp;
 
@@ -23417,7 +23456,7 @@ export default function App() {
             <PanelLocales
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
-              cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} corrRL={corrResultados}
+              cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}
               locales={LOCALES}
               localesDatos={localesDatos}
               localesObras={localesObras}
@@ -23751,7 +23790,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="ventasegresos"&&(
-            <PanelVentasEgresos gastos={gastos} cierres={cierres} sueldos={sueldos} adelantos={adelantos} retiros={retiros} corrResultados={corrResultados}/>
+            <PanelVentasEgresos gastos={gastos} cierres={cierres} sueldos={sueldos} adelantos={adelantos} retiros={retiros} aportes={aportes} corrResultados={corrResultados}/>
           )}
 
           {enStockCompras&&vista==="stockmp"&&(function(){

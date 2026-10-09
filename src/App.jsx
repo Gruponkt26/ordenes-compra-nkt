@@ -11982,7 +11982,7 @@ function PanelNovedades(p){
 
         {(function(){
           var mesIva=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
-          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIva,p.creditosFiscales||[]);
+          var pos=posicionIVAPorCuit(p.gastos||[],cierres,mesIva,p.creditosFiscales||[],aportes);
           var chip=function(act){return {padding:"3px 9px",borderRadius:20,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"none",color:act?"#B07AE0":"#7E7E7E",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"};};
           var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
           return(
@@ -14989,7 +14989,7 @@ function percepcionesCocaCola(g){
   var neto=monto/(1+alicuotaIVACompra(g));
   return {iva:neto*PERCEPCION_IVA_COCA, iibb:neto*PERCEPCION_IIBB_COCA};
 }
-function posicionIVAPorCuit(gastos, cierres, mes, creditosExtra){
+function posicionIVAPorCuit(gastos, cierres, mes, creditosExtra, aportes){
   var out={};
   FACTURACION.forEach(function(f){ out[f.id]={df:0,cfFacturas:0,cfAtrasado:0,cfComisiones:0,iibbRetenido:0,iibbAFavor:0,percIVA:0,ventasTotal:0,ventasElec:0,facturas:0}; });
   (cierres||[]).forEach(function(c){
@@ -15015,6 +15015,13 @@ function posicionIVAPorCuit(gastos, cierres, mes, creditosExtra){
     o.iibbAFavor+=perc.iibb;
     o.percIVA+=perc.iva;
     o.facturas++;
+  });
+  // Aportes de socios por medio electrónico: débito fiscal al CUIT de la cuenta.
+  ivaDeAportesElectronicos(aportes,mes).forEach(function(x){
+    var o=out[CUIT_DE_LOCAL_IVA[x.local]];
+    if(!o)return;
+    o.df+=x.iva;
+    o.ventasElec+=x.monto;
   });
   // Crédito fiscal de facturas que llegaron tarde, cargado a mano en el módulo IVA: entra en el
   // mes en que se decidió computarlo, no en el de la factura.
@@ -17010,6 +17017,20 @@ function impuestosDeAporte(a, lid){
   var mp=m.includes("mercado pago")||/\bmp\b/.test(m);
   var bucket=m.includes("transferencia")?"transferencia":(m.includes("débito")||m.includes("debito"))?"debito":(m.includes("crédito")||m.includes("credito"))?"credito":"otros";
   return {iibb:monto*ALICUOTA_IIBB, ic:mp?0:monto*impCreditoTasa(lid,"transferencia"), bucket:bucket};
+}
+// Los aportes por medio electrónico también llevan IVA débito fiscal (el IVA que viene adentro
+// del monto, como en una venta facturada), al CUIT de la cuenta por la que entró la plata.
+function ivaDeAportesElectronicos(aportes, mes){
+  var out=[];
+  (aportes||[]).forEach(function(a){
+    if(!esMovDinero(a)||!a.fecha||a.fecha.substring(0,7)!==mes)return;
+    var lid=a.local_cuenta||a.local;
+    if(lid==="l4"||!CUIT_DE_LOCAL_IVA[lid])return;
+    if(!impuestosDeAporte(a,lid).bucket)return; // efectivo, Caja Mayor o cheque: no es electrónico
+    var monto=parseFloat(a.monto||0)||0;
+    out.push({fecha:a.fecha,local:lid,monto:monto,neto:monto/1.21,iva:monto-monto/1.21,socio:a.socio||""});
+  });
+  return out;
 }
 function impuestosDeAportes(aportes, lid, mes){
   var out={iibb:0,ic:0,b:{transferencia:{iibb:0,ic:0},debito:{iibb:0,ic:0},credito:{iibb:0,ic:0},otros:{iibb:0,ic:0}}};
@@ -19644,6 +19665,7 @@ function PanelSueldos(p){
 function PanelIVA(p) {
   var gastos=p.gastos, cierres=p.cierres||[];
   var creditosFiscales=p.creditosFiscales||[];
+  var aportesIVA=p.aportes||[];
   var [formCred,setFormCred]=useState(null); // crédito que se está cargando o editando, o null
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
@@ -19707,6 +19729,13 @@ function PanelIVA(p) {
     ventasPorLocal[c.local].ivaDF+=v.iva;
     ventasPorLocal[c.local].base+=v.neto;
   });
+  // Aportes de socios por medio electrónico: suman débito fiscal en el local (CUIT) de la cuenta.
+  var aportesIvaMes=ivaDeAportesElectronicos(aportesIVA,mesFiltro);
+  aportesIvaMes.forEach(function(x){
+    if(!ventasPorLocal[x.local])return;
+    ventasPorLocal[x.local].ivaDF+=x.iva;
+    ventasPorLocal[x.local].base+=x.neto;
+  });
 
   // ── Reserva diaria: cuánto guardar de cada cierre ──────────────────────────
   // El IVA de una venta ya está adentro del precio, así que no es el 21% de lo
@@ -19725,6 +19754,15 @@ function PanelIVA(p) {
     var v=calcIVAVenta(montoElect);
     diario[c.fecha][c.local].base+=montoElect;
     diario[c.fecha][c.local].iva+=v.iva;
+  });
+  aportesIvaMes.forEach(function(x){
+    if(LOCALES_DIARIO.indexOf(x.local)===-1)return;
+    if(!diario[x.fecha]){
+      diario[x.fecha]={};
+      LOCALES_DIARIO.forEach(function(l){diario[x.fecha][l]={base:0,iva:0};});
+    }
+    diario[x.fecha][x.local].base+=x.monto;
+    diario[x.fecha][x.local].iva+=x.iva;
   });
   var diasDiario=Object.keys(diario).sort().reverse();
   var totalDiarioPorLocal={};
@@ -23843,7 +23881,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iva"&&(
-            <PanelIVA gastos={gastos} cierres={cierres} creditosFiscales={creditosFiscales} onSaveCredito={guardarCreditoFiscal} onDeleteCredito={borrarPauta}/>
+            <PanelIVA gastos={gastos} cierres={cierres} aportes={aportes} creditosFiscales={creditosFiscales} onSaveCredito={guardarCreditoFiscal} onDeleteCredito={borrarPauta}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iibb"&&(

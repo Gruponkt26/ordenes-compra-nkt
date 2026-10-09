@@ -3901,6 +3901,7 @@ function PanelMetricasLocal(p){
     var t=impuestosDeAporte(a,lid);
     sumaEgreso(a.fecha,t.iibb+t.ic);
   });
+  IMP_EXTRA.filter(function(x){return x.local===lid&&x.fecha;}).forEach(function(x){ sumaEgreso(x.fecha,parseFloat(x.monto)||0); });
   // Impuesto al débito de lo que se pagó ese día desde las cuentas del local.
   var fechasPagos={};
   gastos.forEach(function(g){ if(g.fecha)fechasPagos[g.fecha]=true; });
@@ -14458,6 +14459,20 @@ function PanelVencimientos(p){
 // efectivo de la caja los leen sin pasar la lista por todas las pantallas.
 var SALDOS_CRUZADOS=[];
 var SALDOS_CRUZADOS_DESDE="2026-10";
+// Impuesto al débito y al crédito cargados a mano, por afuera del cálculo automático (lo que el
+// banco cobró de más o por movimientos que la app no ve). Pautas "imp_extra"; App las deja acá.
+// Cuentan como egreso del local en el mes de su fecha y descuentan de su cuenta bancaria.
+var IMP_EXTRA=[];
+function impExtraDe(lid, mes){
+  var out={debito:0,credito:0,total:0};
+  IMP_EXTRA.forEach(function(x){
+    if(x.local!==lid||!x.fecha||x.fecha.substring(0,7)!==mes)return;
+    var m=parseFloat(x.monto)||0;
+    if(x.tipo==="credito")out.credito+=m; else out.debito+=m;
+    out.total+=m;
+  });
+  return out;
+}
 // Lo que suma (+) o resta (−) a un local en un mes por devoluciones entre locales, por tipo de medio.
 function saldoCruzadoDe(lid, mes, hastaFecha){
   var out={efectivo:0,transferencia:0};
@@ -17062,8 +17077,12 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var pagosMedio=salidasPorMedio(gastos,sueldosADescontar,adelantosMesLocal,retirosCuenta,lid,mes);
   var impDebCalc=pagosMedio.impDebito;
   var impDebEgreso=auto?impDebCalc:0;
-  total+=impDebEgreso;
-  return{total:total,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  // Lo cargado a mano por afuera cuenta siempre, también en meses sin cálculo automático.
+  var impExtra=impExtraDe(lid,mes);
+  impDebEgreso+=impExtra.debito;
+  impCredEgreso+=impExtra.credito;
+  total+=impDebEgreso+impExtra.credito;
+  return{total:total,impExtra:impExtra,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -17293,6 +17312,7 @@ function PanelResultados(p){
   var [corrLocal,setCorrLocal]=useState({});
   var [vistaComparativa,setVistaComparativa]=useState(false);
   var [traspLocal,setTraspLocal]=useState({});
+  var [formImp,setFormImp]=useState(null); // impuesto cargado a mano que se está escribiendo: {local,tipo,fecha,monto,detalle}
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
   var [detalleAbierto,setDetalleAbierto]=useState(null); // null | "lid_efectivo" | "lid_electronico"
@@ -17746,13 +17766,13 @@ function PanelResultados(p){
     // El impuesto al débito se calcula sobre los pagos, no sobre las ventas, y sale de la
     // misma caja por la que se pagó.
     var pagosMedio=eg.pagosMedio;
-    var idTransferencia=pagosMedio.transferencia*impDebitoTasaDeMedio(lid,"transferencia")*factorImpCred;
+    var idTransferencia=pagosMedio.transferencia*impDebitoTasaDeMedio(lid,"transferencia")*factorImpCred+(eg.impExtra?eg.impExtra.debito:0);
     var idDebito=pagosMedio.debito*impDebitoTasaDeMedio(lid,"debito")*factorImpCred;
     var idCredito=pagosMedio.credito*impDebitoTasaDeMedio(lid,"credito")*factorImpCred;
     var idOtros=pagosMedio.otros*impDebitoTasaDeMedio(lid,"otros")*factorImpCred;
     var idMp=pagosMedio.mp*impDebitoTasaDeMedio(lid,"mercado pago")*factorImpCred;
     var impDebitoElectronico=idTransferencia+idDebito+idCredito+idOtros+idMp;
-    var icTransferencia=(ingrTransferencia*impCreditoTasa(lid,"transferencia")+impAp.b.transferencia.ic)*factorImpCred;
+    var icTransferencia=(ingrTransferencia*impCreditoTasa(lid,"transferencia")+impAp.b.transferencia.ic)*factorImpCred+(eg.impExtra?eg.impExtra.credito:0);
     var icDebito=(ingrDebito*impCreditoTasa(lid,"tarjeta_debito")+impAp.b.debito.ic)*factorImpCred;
     var icCredito=(ingrCredito*impCreditoTasa(lid,"tarjeta_credito")+impAp.b.credito.ic)*factorImpCred;
     var icOtros=(ingrOtros*impCreditoTasa(lid,"otros")+impAp.b.otros.ic)*factorImpCred;
@@ -18559,6 +18579,46 @@ function PanelResultados(p){
                 </div>
                 <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
                 <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
+              </div>
+
+              {/* Impuesto al débito / crédito por afuera del cálculo automático */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
+                  <div style={{fontSize:9,color:"#8A6A2A",textTransform:"uppercase",letterSpacing:1}}>🏦 Impuesto al débito / crédito por afuera</div>
+                  {!(formImp&&formImp.local===l.id)&&<button onClick={function(){setFormImp({local:l.id,tipo:"debito",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",detalle:""});}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #8A6A2A66",background:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>+ Cargar</button>}
+                </div>
+                {formImp&&formImp.local===l.id&&(function(){
+                  var INPi={padding:"7px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"};
+                  function setI(k,v){setFormImp(function(f){var n={...f};n[k]=v;return n;});}
+                  function guardarI(){
+                    var monto=parseFloat(formImp.monto)||0;
+                    if(monto<=0){alert("Cargá el monto, mayor a cero.");return;}
+                    if(!formImp.fecha){alert("Elegí la fecha.");return;}
+                    p.onSaveImpExtra({id:"impx_"+Date.now(),local:formImp.local,tipo:formImp.tipo,fecha:formImp.fecha,monto:monto,detalle:formImp.detalle.trim()});
+                    setFormImp(null);
+                  }
+                  return(
+                    <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:8,padding:"9px",marginBottom:6}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                        <select value={formImp.tipo} onChange={function(e){setI("tipo",e.target.value);}} style={INPi}><option value="debito">Impuesto al débito</option><option value="credito">Impuesto al crédito</option></select>
+                        <input type="date" value={formImp.fecha} onChange={function(e){setI("fecha",e.target.value);}} style={INPi}/>
+                        <input type="number" placeholder="Monto $" value={formImp.monto} onChange={function(e){setI("monto",e.target.value);}} style={INPi}/>
+                        <input placeholder="Detalle (opcional)" value={formImp.detalle} onChange={function(e){setI("detalle",e.target.value);}} style={INPi}/>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={guardarI} style={{flex:2,padding:"7px",borderRadius:7,border:"none",background:"#8A6A2A",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Guardar</button>
+                        <button onClick={function(){setFormImp(null);}} style={{flex:1,padding:"7px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {(p.impExtra||[]).filter(function(x){return x.local===l.id&&x.fecha&&x.fecha.substring(0,7)===mesFiltro;}).map(function(x){return(
+                  <div key={x.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,color:"#8A6A2A",padding:"2px 0",gap:6}}>
+                    <span>{x.tipo==="credito"?"Crédito":"Débito"} · {fmtFecha(x.fecha)}{x.detalle?" · "+x.detalle:""}</span>
+                    <span style={{display:"flex",alignItems:"center",gap:6}}>−{fmt(parseFloat(x.monto)||0)}<button onClick={function(){if(window.confirm("¿Eliminar este impuesto cargado?"))p.onDeleteImpExtra(x.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11}}>🗑️</button></span>
+                  </div>
+                );})}
+                <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Suma al impuesto del mes (egreso en Administrativo) y descuenta de la cuenta bancaria. No reemplaza el cálculo automático.</div>
               </div>
 
               {/* Corrección manual: la carga se sacó de la UI (no se usaba), pero si algún
@@ -22593,6 +22653,14 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  // Impuesto al débito/crédito cargado a mano (Resultados): una pauta por carga, ámbito "imp_extra".
+  var impExtra=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="imp_extra")return;
+    try{ var d=JSON.parse(x.texto||"{}"); if(d.local&&d.fecha&&d.monto)impExtra.push({...d,id:x.id}); }catch(e){}
+  });
+  impExtra.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
+  IMP_EXTRA=impExtra;
   function guardarOfPauta(ambito,obj){
     var ahora=new Date().toISOString();
     var previo=pautas.find(function(x){return x.id===obj.id;});
@@ -23785,6 +23853,7 @@ export default function App() {
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+              impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

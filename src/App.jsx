@@ -11027,6 +11027,8 @@ function PanelFichajes(p){
 function BloquesIIBBPorCuit(props){
   var fmt=props.fmt;
   var pos=posicionIVAPorCuit(props.gastos||[],props.cierres||[],props.mes);
+  // IIBB a favor cargado a mano (percepciones o retenciones que no vienen de una factura de Egresos)
+  var extraCuit=function(id){return (props.creditosIIBB||[]).filter(function(c){return c.mes===props.mes&&c.cuit===id;}).reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0);};
   var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
   return(
     <div>
@@ -11035,7 +11037,8 @@ function BloquesIIBBPorCuit(props){
                 var alic=ALICUOTA_IIBB_CUIT[f.id]||0;
                 var base=o.ventasTotal/1.21;
                 var devengado=base*alic;
-                var saldo=devengado-o.iibbRetenido-o.iibbAFavor;
+                var extra=extraCuit(f.id);
+                var saldo=devengado-o.iibbRetenido-o.iibbAFavor-extra;
                 return(
                   <div key={f.id} style={{padding:"8px 0",borderTop:i===0?"none":"1px solid #141414"}}>
                     <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{f.razonSocial}</div>
@@ -11044,6 +11047,7 @@ function BloquesIIBBPorCuit(props){
                     {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
                     {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
                     {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola / Pepsi / La Serenísima",o.iibbAFavor,"#4C9A5A",true)}
+                    {extra>0.5&&linea("IIBB a favor cargado a mano",extra,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>
@@ -11070,6 +11074,19 @@ function PanelIIBB(p){
   ].filter(Boolean))].sort().reverse();
   if(mesesDisp.indexOf(mesCurrent)===-1)mesesDisp.unshift(mesCurrent);
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
+  var creditosIIBB=p.creditosIIBB||[];
+  var [formCred,setFormCred]=useState(null);
+  var creditosMes=creditosIIBB.filter(function(c){return c.mes===mesFiltro;});
+  var INPc={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lblc={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  function setC(k,v){setFormCred(function(f){var n={...f};n[k]=v;return n;});}
+  function guardarC(){
+    var monto=parseFloat(formCred.monto)||0;
+    if(monto<=0){alert("Cargá el monto de IIBB, mayor a cero.");return;}
+    if(!/^\d{4}-\d{2}$/.test(formCred.mes)){alert("Elegí el mes en que se computa.");return;}
+    p.onSaveCredito({id:formCred.id||("credibb_"+Date.now()),cuit:formCred.cuit,mes:formCred.mes,monto:monto,detalle:formCred.detalle.trim()});
+    setFormCred(null);
+  }
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{marginBottom:14}}>
@@ -11082,7 +11099,62 @@ function PanelIIBB(p){
         </select>
       </div>
       <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"8px 14px 12px"}}>
-        <BloquesIIBBPorCuit gastos={gastos} cierres={cierres} mes={mesFiltro} fmt={fmt}/>
+        <BloquesIIBBPorCuit gastos={gastos} cierres={cierres} mes={mesFiltro} fmt={fmt} creditosIIBB={creditosIIBB}/>
+      </div>
+
+      {/* IIBB a favor por fuera de las facturas: se carga acá, sin tocar Egresos */}
+      <div style={{background:"#0F0F0F",border:"1px solid #3A7D4444",borderRadius:12,padding:"13px 14px",marginTop:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:creditosMes.length>0||formCred?10:0}}>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>➕ IIBB por fuera de las facturas</div>
+            <div style={{fontSize:10,color:"#7E7E7E",marginTop:3,lineHeight:1.5}}>Percepciones o retenciones de IIBB a favor que no vienen de una factura cargada. Se restan del IIBB a pagar del CUIT y el mes que elijas. No crea ningún egreso.</div>
+          </div>
+          {!formCred&&<button onClick={function(){setFormCred({id:"",cuit:FACTURACION[0].id,mes:mesFiltro,monto:"",detalle:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar IIBB</button>}
+        </div>
+        {formCred&&(
+          <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:creditosMes.length>0?10:0}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+              <div>
+                <label style={lblc}>CUIT</label>
+                <select value={formCred.cuit} onChange={function(e){setC("cuit",e.target.value);}} style={INPc}>
+                  {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}
+                </select>
+              </div>
+              <div>
+                <label style={lblc}>Mes en que se computa</label>
+                <input type="month" value={formCred.mes} onChange={function(e){setC("mes",e.target.value);}} style={INPc}/>
+              </div>
+              <div style={{gridColumn:"1 / -1"}}>
+                <label style={lblc}>IIBB a favor ($)</label>
+                <input type="number" placeholder="0" value={formCred.monto} onChange={function(e){setC("monto",e.target.value);}} style={INPc}/>
+              </div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={lblc}>Detalle</label>
+              <input value={formCred.detalle} onChange={function(e){setC("detalle",e.target.value);}} placeholder="Ej: Percepción IIBB de Disproal" style={INPc}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={guardarC} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{formCred.id?"Guardar cambios":"Cargar IIBB"}</button>
+              <button onClick={function(){setFormCred(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        )}
+        {creditosMes.map(function(c){
+          var f=FACTURACION.find(function(x){return x.id===c.cuit;});
+          return(
+            <div key={c.id} style={{borderTop:"1px solid #1A1A1A",padding:"7px 0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:"#F0EDE8"}}>{c.detalle||"IIBB a favor"}</div>
+                <div style={{fontSize:10,color:"#7E7E7E"}}>{f?f.razonSocial:c.cuit}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>{fmt(parseFloat(c.monto||0))}</span>
+                <button onClick={function(){setFormCred({id:c.id,cuit:c.cuit,mes:c.mes,monto:String(c.monto),detalle:c.detalle||""});}} title="Editar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>✏️</button>
+                <button onClick={function(){if(window.confirm("¿Eliminar este IIBB a favor?"))p.onDeleteCredito(c.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12}}>🗑️</button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -11918,7 +11990,7 @@ function PanelNovedades(p){
         })()}
 
         <Seccion titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
-          <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} nota="Mismo mes que la tarjeta de IVA. "/>
+          <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} creditosIIBB={p.creditosIIBB||[]} nota="Mismo mes que la tarjeta de IVA. "/>
         </Seccion>
 
         {(function(){
@@ -22398,6 +22470,20 @@ export default function App() {
     var previo=pautas.find(function(x){return x.id===c.id;});
     guardarPauta({id:c.id,ambito:"credito_fiscal",texto:JSON.stringify({cuit:c.cuit,mes:c.mes,monto:c.monto,detalle:c.detalle,fecha_factura:c.fecha_factura}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
   }
+  // IIBB a favor por fuera de las facturas (módulo IIBB): mismo esquema, ámbito "credito_iibb".
+  var creditosIIBB=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="credito_iibb")return;
+    try{
+      var d=JSON.parse(x.texto||"{}");
+      if(d&&d.cuit&&d.mes)creditosIIBB.push({...d,id:x.id});
+    }catch(e){}
+  });
+  function guardarCreditoIIBB(c){
+    var ahora=new Date().toISOString();
+    var previo=pautas.find(function(x){return x.id===c.id;});
+    guardarPauta({id:c.id,ambito:"credito_iibb",texto:JSON.stringify({cuit:c.cuit,mes:c.mes,monto:c.monto,detalle:c.detalle}),usuario:(cu&&cu.usuario)||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+  }
   // A qué CUIT aporta cada empleado (módulo Personal → CUIT): una pauta por empleado, ámbito
   // "cuit_aportes", id fijo "cuit_ap_"+id del empleado y el CUIT en texto. Sin columnas nuevas
   // en la tabla de empleados. Asignarlo de nuevo lo cambia de CUIT; sacarlo borra la pauta.
@@ -23287,7 +23373,7 @@ export default function App() {
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
-              creditosFiscales={creditosFiscales}
+              creditosFiscales={creditosFiscales} creditosIIBB={creditosIIBB}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
               onCargarEgresoCaja={cargarEgresoDeCaja}
               irCierres={function(){abrirModulo("admin","cierres");}}
@@ -23634,7 +23720,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="iibb"&&(
-            <PanelIIBB gastos={gastos} cierres={cierres}/>
+            <PanelIIBB gastos={gastos} cierres={cierres} creditosIIBB={creditosIIBB} onSaveCredito={guardarCreditoIIBB} onDeleteCredito={borrarPauta}/>
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(

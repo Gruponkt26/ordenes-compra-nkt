@@ -11703,16 +11703,25 @@ function PanelNovedades(p){
           var l=getLocal(g.local);
           avisos.push({rojo:false,txt:"Egreso importante en "+(l?l.nombre:g.local)+" ("+fmtDate(g.fecha)+") — "+(g.concepto||"sin concepto")+" · "+fmt(m)});
         });
+        // Aportes y retiros de socios del período: cada uno con quién, cuánto y de dónde.
+        aportes.filter(function(a){return enRango(a.fecha);}).forEach(function(a){
+          var l=getLocal(a.local);
+          avisos.push({socio:true,txt:"Aporte de "+(a.socio||"socio")+" — "+fmt(parseFloat(a.monto)||0)+(a.tipo_aporte?" · "+a.tipo_aporte:"")+(l?" · "+l.nombre:"")+" ("+fmtDate(a.fecha)+")"});
+        });
+        retiros.filter(function(r){return enRango(r.fecha);}).forEach(function(r){
+          var l=getLocal(r.local);
+          avisos.push({socio:true,txt:"Retiro de "+(r.socio||"socio")+" — "+fmt(parseFloat(r.monto)||0)+(r.tipo_retiro?" · "+r.tipo_retiro:"")+(l?" · "+l.nombre:"")+" ("+fmtDate(r.fecha)+")"});
+        });
         if(avisos.length===0)return null;
         var hayRojo=avisos.some(function(a){return a.rojo;});
-        var soloVerde=avisos.every(function(a){return a.verde;});
+        var soloVerde=avisos.every(function(a){return a.verde||a.socio;});
         return(
           <div style={{border:"1px solid "+(hayRojo?"#C1440E44":(soloVerde?"#3A7D4455":"#D4A01733")),background:hayRojo?"#140807":(soloVerde?"#08120A":"#12100A"),borderRadius:12,padding:"11px 14px",marginBottom:14}}>
             <div style={{fontSize:10,color:hayRojo?"#E0714A":(soloVerde?"#4C9A5A":"#D4A017"),textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Prioridad</div>
             {avisos.map(function(a,i){
               return (
-                <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.verde?"#4C9A5A":"#D4A017"),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
-                  <span>{a.rojo?"🚨":(a.verde?"🎉":"⚠️")} {a.txt}</span>
+                <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.socio?"#B07AE0":(a.verde?"#4C9A5A":"#D4A017")),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
+                  <span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span>
                   {a.cargarEg&&(
                     <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
                   )}

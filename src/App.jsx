@@ -3901,6 +3901,11 @@ function PanelMetricasLocal(p){
     var t=impuestosDeAporte(a,lid);
     sumaEgreso(a.fecha,t.iibb+t.ic);
   });
+  TRANSF_PROPIAS.filter(function(x){return x.fecha;}).forEach(function(x){
+    var m=parseFloat(x.monto)||0;
+    if(localDelMedio(x.desde)===lid)sumaEgreso(x.fecha,m*impDebitoTasaDeMedio(lid,x.desde));
+    if(localDelMedio(x.hasta)===lid)sumaEgreso(x.fecha,m*impCreditoTasa(lid,esCuentaMP(x.hasta)?"mp_qr":"transferencia"));
+  });
   IMP_EXTRA.filter(function(x){return x.local===lid&&x.fecha;}).forEach(function(x){ sumaEgreso(x.fecha,parseFloat(x.monto)||0); });
   // Impuesto al débito de lo que se pagó ese día desde las cuentas del local.
   var fechasPagos={};
@@ -14463,6 +14468,36 @@ var SALDOS_CRUZADOS_DESDE="2026-10";
 // banco cobró de más o por movimientos que la app no ve). Pautas "imp_extra"; App las deja acá.
 // Cuentan como egreso del local en el mes de su fecha y descuentan de su cuenta bancaria.
 var IMP_EXTRA=[];
+// Transferencias entre cuentas propias: la plata sale de una cuenta (impuesto al débito) y entra a
+// otra (impuesto al crédito). No es ingreso ni gasto: sólo mueve la disponibilidad y el impuesto
+// cuenta como egreso del local de cada cuenta. Pautas "transf_propia"; App las deja acá.
+var TRANSF_PROPIAS=[];
+function cuentasPropias(){
+  var out=[];
+  Object.keys(MEDIOS_POR_LOCAL).forEach(function(lid){
+    MEDIOS_POR_LOCAL[lid].forEach(function(m){ if(m.indexOf("Transferencia - ")===0&&out.indexOf(m)===-1)out.push(m); });
+  });
+  return out;
+}
+function esCuentaMP(m){ var k=(m||"").toLowerCase(); return k.includes("mercado pago")||/\bmp\b/.test(k); }
+// Lo que mueven las transferencias propias de un local en un mes: entra/sale por cada bucket de
+// disponibilidad y el impuesto al débito (origen) y al crédito (destino) que pagan.
+function transfPropiasDe(lid, mes){
+  var out={debito:0,credito:0,mov:{transferencia:0,mp:0},id:{transferencia:0,mp:0},ic:{transferencia:0,mp:0}};
+  TRANSF_PROPIAS.forEach(function(x){
+    if(!x.fecha||x.fecha.substring(0,7)!==mes)return;
+    var m=parseFloat(x.monto)||0; if(m<=0)return;
+    if(localDelMedio(x.desde)===lid){
+      var b=esCuentaMP(x.desde)?"mp":"transferencia", t=m*impDebitoTasaDeMedio(lid,x.desde);
+      out.mov[b]-=m; out.id[b]+=t; out.debito+=t;
+    }
+    if(localDelMedio(x.hasta)===lid){
+      var b2=esCuentaMP(x.hasta)?"mp":"transferencia", t2=m*impCreditoTasa(lid,b2==="mp"?"mp_qr":"transferencia");
+      out.mov[b2]+=m; out.ic[b2]+=t2; out.credito+=t2;
+    }
+  });
+  return out;
+}
 function impExtraDe(lid, mes){
   var out={debito:0,credito:0,total:0};
   IMP_EXTRA.forEach(function(x){
@@ -17102,8 +17137,11 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var impExtra=impExtraDe(lid,mes);
   impDebEgreso+=impExtra.debito;
   impCredEgreso+=impExtra.credito;
-  total+=impDebEgreso+impExtra.credito;
-  return{total:total,impExtra:impExtra,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
+  var transfP=transfPropiasDe(lid,mes);
+  impDebEgreso+=transfP.debito;
+  impCredEgreso+=transfP.credito;
+  total+=impDebEgreso+impExtra.credito+transfP.credito;
+  return{total:total,transfP:transfP,impExtra:impExtra,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
 // Corrección manual de ventas de un local en un mes: cuánto se despega de los
@@ -17333,6 +17371,7 @@ function PanelResultados(p){
   var [corrLocal,setCorrLocal]=useState({});
   var [vistaComparativa,setVistaComparativa]=useState(false);
   var [traspLocal,setTraspLocal]=useState({});
+  var [formTr,setFormTr]=useState(null); // transferencia propia que se está escribiendo: {local,desde,hasta,monto,fecha,detalle}
   var [formImp,setFormImp]=useState(null); // impuesto cargado a mano que se está escribiendo: {local,tipo,fecha,monto,detalle}
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
@@ -17782,18 +17821,18 @@ function PanelResultados(p){
     var comMp=cl.reduce(function(a,c){
       return a+MEDIOS_MP.reduce(function(b,m){return b+parseFloat(c[m]||0)*comisionTasa(lid,m);},0);
     },0)*factorCom;
-    var icMp=ingrMp*impCreditoTasa(lid,"mp_qr")*factorImpCred;
+    var icMp=ingrMp*impCreditoTasa(lid,"mp_qr")*factorImpCred+(eg.transfP?eg.transfP.ic.mp:0);
     var iibbMp=ingrMp*0;
     // El impuesto al débito se calcula sobre los pagos, no sobre las ventas, y sale de la
     // misma caja por la que se pagó.
     var pagosMedio=eg.pagosMedio;
-    var idTransferencia=pagosMedio.transferencia*impDebitoTasaDeMedio(lid,"transferencia")*factorImpCred+(eg.impExtra?eg.impExtra.debito:0);
+    var idTransferencia=pagosMedio.transferencia*impDebitoTasaDeMedio(lid,"transferencia")*factorImpCred+(eg.impExtra?eg.impExtra.debito:0)+(eg.transfP?eg.transfP.id.transferencia:0);
     var idDebito=pagosMedio.debito*impDebitoTasaDeMedio(lid,"debito")*factorImpCred;
     var idCredito=pagosMedio.credito*impDebitoTasaDeMedio(lid,"credito")*factorImpCred;
     var idOtros=pagosMedio.otros*impDebitoTasaDeMedio(lid,"otros")*factorImpCred;
-    var idMp=pagosMedio.mp*impDebitoTasaDeMedio(lid,"mercado pago")*factorImpCred;
+    var idMp=pagosMedio.mp*impDebitoTasaDeMedio(lid,"mercado pago")*factorImpCred+(eg.transfP?eg.transfP.id.mp:0);
     var impDebitoElectronico=idTransferencia+idDebito+idCredito+idOtros+idMp;
-    var icTransferencia=(ingrTransferencia*impCreditoTasa(lid,"transferencia")+impAp.b.transferencia.ic)*factorImpCred+(eg.impExtra?eg.impExtra.credito:0);
+    var icTransferencia=(ingrTransferencia*impCreditoTasa(lid,"transferencia")+impAp.b.transferencia.ic)*factorImpCred+(eg.impExtra?eg.impExtra.credito:0)+(eg.transfP?eg.transfP.ic.transferencia:0);
     var icDebito=(ingrDebito*impCreditoTasa(lid,"tarjeta_debito")+impAp.b.debito.ic)*factorImpCred;
     var icCredito=(ingrCredito*impCreditoTasa(lid,"tarjeta_credito")+impAp.b.credito.ic)*factorImpCred;
     var icOtros=(ingrOtros*impCreditoTasa(lid,"otros")+impAp.b.otros.ic)*factorImpCred;
@@ -17817,7 +17856,7 @@ function PanelResultados(p){
     // todavía está en la caja física de cada local.
     var scz=saldoCruzadoDe(lid,mesFiltro);
     var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo;
-    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia;
+    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0);
     var dispDebito=ingrDebito-iibbDebito-comDebito-icDebito-idDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispCredito=ingrCredito-iibbCredito-comCredito-icCredito-idCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
     var dispOtros=ingrOtros-iibbOtros-comOtros-icOtros-idOtros-gastoOtros+aporteOtros;
@@ -17832,7 +17871,7 @@ function PanelResultados(p){
     },0)*factorCom;
     var icMpCuenta=ingrMpCuenta*impCreditoTasa(lid,"mp_qr")*factorImpCred;
     var iibbMpCuenta=ingrMpCuenta*tasaIIBB;
-    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp;
+    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp+(eg.transfP?eg.transfP.mov.mp-eg.transfP.ic.mp:0);
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,
@@ -18640,6 +18679,52 @@ function PanelResultados(p){
                   </div>
                 );})}
                 <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Suma al impuesto del mes (egreso en Administrativo) y descuenta de la cuenta bancaria. No reemplaza el cálculo automático.</div>
+              </div>
+
+              {/* Transferencias entre cuentas propias: pagan impuesto al débito y al crédito */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
+                  <div style={{fontSize:9,color:"#8A6A2A",textTransform:"uppercase",letterSpacing:1}}>🔁 Transferencias entre cuentas propias</div>
+                  {!(formTr&&formTr.local===l.id)&&<button onClick={function(){var cs=cuentasPropias(),mias=cs.filter(function(c){return localDelMedio(c)===l.id;});setFormTr({local:l.id,desde:mias[0]||cs[0]||"",hasta:cs.filter(function(c){return c!==(mias[0]||cs[0]);})[0]||"",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",detalle:""});}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #8A6A2A66",background:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>+ Cargar</button>}
+                </div>
+                {formTr&&formTr.local===l.id&&(function(){
+                  var INPt={padding:"7px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"};
+                  var cs=cuentasPropias();
+                  function setT(k,v){setFormTr(function(f){var n={...f};n[k]=v;return n;});}
+                  var mt=parseFloat(formTr.monto)||0;
+                  var impD=mt*impDebitoTasaDeMedio(localDelMedio(formTr.desde),formTr.desde);
+                  var impC=mt*impCreditoTasa(localDelMedio(formTr.hasta),esCuentaMP(formTr.hasta)?"mp_qr":"transferencia");
+                  function guardarT(){
+                    if(mt<=0){alert("Cargá el monto, mayor a cero.");return;}
+                    if(!formTr.desde||!formTr.hasta||formTr.desde===formTr.hasta){alert("Elegí dos cuentas distintas.");return;}
+                    if(!formTr.fecha){alert("Elegí la fecha.");return;}
+                    p.onSaveTransfPropia({id:"trp_"+Date.now(),desde:formTr.desde,hasta:formTr.hasta,monto:mt,fecha:formTr.fecha,detalle:formTr.detalle.trim()});
+                    setFormTr(null);
+                  }
+                  return(
+                    <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:8,padding:"9px",marginBottom:6}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                        <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",marginBottom:3}}>Sale de</label><select value={formTr.desde} onChange={function(e){setT("desde",e.target.value);}} style={INPt}>{cs.map(function(c){return <option key={c} value={c}>{c.replace("Transferencia - ","")}</option>;})}</select></div>
+                        <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",marginBottom:3}}>Entra a</label><select value={formTr.hasta} onChange={function(e){setT("hasta",e.target.value);}} style={INPt}>{cs.map(function(c){return <option key={c} value={c}>{c.replace("Transferencia - ","")}</option>;})}</select></div>
+                        <input type="number" placeholder="Monto $" value={formTr.monto} onChange={function(e){setT("monto",e.target.value);}} style={INPt}/>
+                        <input type="date" value={formTr.fecha} onChange={function(e){setT("fecha",e.target.value);}} style={INPt}/>
+                      </div>
+                      <input placeholder="Detalle (opcional)" value={formTr.detalle} onChange={function(e){setT("detalle",e.target.value);}} style={{...INPt,marginBottom:6}}/>
+                      {mt>0&&<div style={{fontSize:10,color:"#8A6A2A",marginBottom:6,lineHeight:1.4}}>Impuesto al débito {fmt(impD)} (origen) · impuesto al crédito {fmt(impC)} (destino). Mercado Pago no paga.</div>}
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={guardarT} style={{flex:2,padding:"7px",borderRadius:7,border:"none",background:"#8A6A2A",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Guardar</button>
+                        <button onClick={function(){setFormTr(null);}} style={{flex:1,padding:"7px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {(p.transfPropias||[]).filter(function(x){return x.fecha&&x.fecha.substring(0,7)===mesFiltro&&(localDelMedio(x.desde)===l.id||localDelMedio(x.hasta)===l.id);}).map(function(x){return(
+                  <div key={x.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,color:"#8A6A2A",padding:"2px 0",gap:6}}>
+                    <span>{fmtFecha(x.fecha)} · {x.desde.replace("Transferencia - ","")} → {x.hasta.replace("Transferencia - ","")}{x.detalle?" · "+x.detalle:""}</span>
+                    <span style={{display:"flex",alignItems:"center",gap:6}}>{fmt(parseFloat(x.monto)||0)}<button onClick={function(){if(window.confirm("¿Eliminar esta transferencia?"))p.onDeleteImpExtra(x.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11}}>🗑️</button></span>
+                  </div>
+                );})}
+                <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Mueve la plata de una cuenta a otra (no es ingreso ni gasto) y suma el impuesto al débito del origen y al crédito del destino como egreso de cada local.</div>
               </div>
 
               {/* Corrección manual: la carga se sacó de la UI (no se usaba), pero si algún
@@ -22699,6 +22784,14 @@ export default function App() {
   });
   impExtra.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   IMP_EXTRA=impExtra;
+  // Transferencias entre cuentas propias (Resultados): una pauta por transferencia, ámbito "transf_propia".
+  var transfPropias=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="transf_propia")return;
+    try{ var d=JSON.parse(x.texto||"{}"); if(d.desde&&d.hasta&&d.fecha&&d.monto)transfPropias.push({...d,id:x.id}); }catch(e){}
+  });
+  transfPropias.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
+  TRANSF_PROPIAS=transfPropias;
   function guardarOfPauta(ambito,obj){
     var ahora=new Date().toISOString();
     var previo=pautas.find(function(x){return x.id===obj.id;});
@@ -23891,7 +23984,7 @@ export default function App() {
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
             <PanelResultados cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
-              impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
+              transfPropias={transfPropias} onSaveTransfPropia={function(x){guardarOfPauta("transf_propia",x);}} impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){
                 sbSaveCorrResultado(corr);
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});

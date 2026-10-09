@@ -22161,14 +22161,13 @@ function resumenParaChat(d) {
 }
 
 function ChatIA(p) {
-  var [abierto, setAbierto] = useState(false);
   var [msgs, setMsgs] = useState([]);
   var [texto, setTexto] = useState("");
   var [cargando, setCargando] = useState(false);
   var fin = useRef(null);
   useEffect(function() {
     if (fin.current && fin.current.scrollIntoView) fin.current.scrollIntoView({ block: "end" });
-  }, [msgs, cargando, abierto]);
+  }, [msgs, cargando]);
 
   async function enviar(t) {
     var q = String(t || texto).trim();
@@ -22193,16 +22192,11 @@ function ChatIA(p) {
   }
 
   var sugeridas = ["¿Cómo viene el mes comparado con el anterior?", "¿A qué proveedores les debemos más?", "¿En qué categoría gastamos más este mes?"];
-  if (!abierto) {
-    return <button onClick={function() { setAbierto(true); }} title="Preguntale a la IA"
-      style={{ position: "fixed", right: 16, bottom: 16, zIndex: 900, width: 52, height: 52, borderRadius: 26, border: "none", background: "#C1440E", color: "#fff", fontSize: 24, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,.5)" }}>💬</button>;
-  }
   return (
-    <div style={{ position: "fixed", right: 12, bottom: 12, zIndex: 900, width: "min(420px, calc(100vw - 24px))", height: "min(560px, calc(100vh - 24px))", background: "#111", border: "1px solid #2A2A2A", borderRadius: 14, display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,.6)", fontFamily: "'Inter',sans-serif" }}>
+    <div style={{ width: "100%", height: "calc(100vh - 190px)", minHeight: 380, background: "#111", border: "1px solid #2A2A2A", borderRadius: 14, display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,.6)", fontFamily: "'Inter',sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: "1px solid #222" }}>
         <div style={{ flex: 1, color: "#F0F0F0", fontWeight: 700, fontSize: 14 }}>💬 Asistente NKT</div>
         {msgs.length > 0 && <button onClick={function() { setMsgs([]); }} style={{ ...GH, padding: "4px 9px", fontSize: 11 }}>Nueva</button>}
-        <button onClick={function() { setAbierto(false); }} style={{ ...GH, padding: "4px 9px", fontSize: 12 }}>✕</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
         {msgs.length === 0 && (
@@ -22878,6 +22872,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
+              {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
@@ -22912,6 +22907,7 @@ export default function App() {
                   {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
+                  {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -23265,6 +23261,11 @@ export default function App() {
           {esSofia&&modulo==="info"&&(
             <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={true}
               onSave={guardarInfoCajero} onDelete={borrarInfoCajero}/>
+          )}
+
+          {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}
+          {esSofia&&modulo==="chat"&&(
+            <ChatIA datos={{cierres:cierres,gastos:gastos,saldosProveedores:saldosProveedores,proveedores:proveedores}}/>
           )}
 
           {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}
@@ -23879,7 +23880,6 @@ export default function App() {
       {showUsers&&<GestUsuarios users={users} empleados={empleados} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
-      {esSofia&&<ChatIA datos={{cierres:cierres,gastos:gastos,saldosProveedores:saldosProveedores,proveedores:proveedores}}/>}
     </div>
   );
 }

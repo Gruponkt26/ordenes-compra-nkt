@@ -17065,6 +17065,17 @@ function ivaDeAportesElectronicos(aportes, mes){
     var monto=parseFloat(a.monto||0)||0;
     out.push({fecha:a.fecha,local:lid,monto:monto,neto:monto/1.21,iva:monto-monto/1.21,socio:a.socio||""});
   });
+  // Transferencias entre cuentas propias de CUIT distintos (mi CUIT ↔ Calzon Gitano): la plata que
+  // entra al otro CUIT suma débito fiscal ahí, igual que un aporte. Dentro del mismo CUIT, nada.
+  TRANSF_PROPIAS.forEach(function(x){
+    if(!x.fecha||x.fecha.substring(0,7)!==mes)return;
+    var lDesde=localDelMedio(x.desde), lHasta=localDelMedio(x.hasta);
+    if(!CUIT_DE_LOCAL_IVA[lDesde]||!CUIT_DE_LOCAL_IVA[lHasta])return;
+    if(CUIT_DE_LOCAL_IVA[lDesde]===CUIT_DE_LOCAL_IVA[lHasta])return;
+    var monto=parseFloat(x.monto||0)||0;
+    if(monto<=0)return;
+    out.push({fecha:x.fecha,local:lHasta,monto:monto,neto:monto/1.21,iva:monto-monto/1.21,socio:"Transferencia propia"});
+  });
   return out;
 }
 function impuestosDeAportes(aportes, lid, mes){

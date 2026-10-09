@@ -4203,6 +4203,17 @@ function PanelResumenLocal(p){
                         <span>{f.rubro}</span><span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(f.monto)}</span>
                       </div>
                     );})}
+                    {(function(){
+                      // Informativo: capital de los socios, no entra a ingresos ni a egresos.
+                      var delMesL=function(x){return x.local===lid&&x.fecha&&x.fecha.substring(0,7)===m;};
+                      var ap=aportes.filter(delMesL).reduce(function(t,x){return t+(parseFloat(x.monto)||0);},0);
+                      var re=retiros.filter(delMesL).reduce(function(t,x){return t+(parseFloat(x.monto)||0);},0);
+                      if(ap<=0&&re<=0)return null;
+                      return <div style={{borderTop:"1px solid #1A1A1A",marginTop:6,paddingTop:6,fontSize:11,color:"#B07AE0",display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+                        <span>🤝 Socios (no suma a ingresos ni egresos)</span>
+                        <span>Aportes {fmt(ap)} · Retiros {fmt(re)}</span>
+                      </div>;
+                    })()}
                   </div>
                 </td></tr>
               ];

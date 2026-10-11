@@ -974,6 +974,7 @@ create table if not exists deportes (
   precio      numeric,
   monto       numeric,
   medio_pago  text,      -- efectivo | mp_sofia | belo
+  pagos       jsonb,     -- medios divididos [{medio, monto}]; null si fue un solo medio
   rubro       text,      -- salidas y obras: mantenimiento | servicios | obras | canchero | otros
   base        numeric,   -- sin uso (quedó de cuando las horas de profe eran un porcentaje)
   porcentaje  numeric,   -- sin uso, ídem
@@ -998,6 +999,7 @@ Si la tabla ya estaba creada de antes, sin la columna del medio de pago, alcanza
 
 ```sql
 alter table deportes add column if not exists medio_pago text;
+alter table deportes add column if not exists pagos      jsonb;   -- medios de pago divididos [{medio, monto}]
 alter table deportes add column if not exists rubro      text;
 alter table deportes add column if not exists base       numeric;
 alter table deportes add column if not exists porcentaje numeric;

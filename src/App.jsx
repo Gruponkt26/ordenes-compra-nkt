@@ -4282,6 +4282,22 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
+  // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
+  // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
+  // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
+  // limpia lo que dejaron marcado.
+  function sePuedeBorrar(x){ return x.tipo==="📄 Egreso"; }
+  function borrarOficina(clave,concepto,total){
+    if(!window.confirm("¿Borrar \""+concepto+"\" ("+fmt(total)+")?\n\nSe borra de la Oficina y de los tres locales."))return;
+    p.onBorrar(clave);
+  }
+  // Un egreso de antes, cargado entero a nombre de la Oficina, se parte en tres como los nuevos
+  // (guardarEgresoConOficina borra el entero y deja una parte por local).
+  function repartirViejos(lista){
+    var tot=lista.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+    if(!window.confirm("¿Repartir "+lista.length+" egreso"+(lista.length===1?"":"s")+" por "+fmt(tot)+" entre los tres locales (50% Bodegón, 30% Colantonio's, 20% Kusama)?\n\nEl egreso entero se reemplaza por una parte en cada local."))return;
+    lista.forEach(function(g){ p.onRepartir(g); });
+  }
   var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
   var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
   return(

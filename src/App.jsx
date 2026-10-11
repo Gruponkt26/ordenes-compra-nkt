@@ -14725,8 +14725,8 @@ function efectivoTeoricoCaja(lid, hastaFecha, datos){
   retiros.filter(function(r){return cuentaDe(r)===lid&&delMes(r.fecha)&&esEfectivo(r.tipo_retiro);})
     .forEach(function(r){saldo-=parseFloat(r.monto||0);});
 
-  aportes.filter(function(a){return cuentaDe(a)===lid&&delMes(a.fecha)&&esEfectivo(a.tipo_aporte);})
-    .forEach(function(a){saldo+=parseFloat(a.monto||0);});
+  // Un aporte en efectivo entra directo a la Caja Mayor del local (disponibilidad), no al cajón:
+  // no suma a la caja menor.
 
   // Lo que otro local devolvió en efectivo (o este le devolvió a otro): entra o sale de la caja física.
   saldo+=saldoCruzadoDe(lid,mes,hastaFecha).efectivo;
@@ -16669,7 +16669,7 @@ function PanelAportes(p) {
 
   var TIPOS_APORTE=["Caja Mayor","Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
-    // Caja Mayor: la plata entra a la Caja Mayor del local (disponibilidad). Efectivo: queda en el cajón (caja menor).
+    // Efectivo y Caja Mayor: en los dos casos la plata entra directo a la Caja Mayor del local.
     "Caja Mayor":["Bodegón","Kusama","Colantonio's"],
     "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
     "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
@@ -17841,13 +17841,12 @@ function PanelResultados(p){
     aportesCajaLocal.forEach(function(a){
       var am=parseFloat(a.monto||0);
       var medioStr=(a.tipo_aporte||"").toLowerCase();
-      // Caja Mayor suma a la disponibilidad en efectivo. El "Efectivo" a secas queda en el cajón
-      // (caja menor) y se cuenta allá: sumarlo también acá lo contaba dos veces.
-      var esCM=medioStr.includes("caja mayor");
+      // Todo aporte en efectivo (Efectivo o Caja Mayor) entra a la Caja Mayor del local, no al cajón:
+      // por eso no suma a la caja menor.
+      var esCM=medioStr.includes("caja mayor")||medioStr.includes("efectivo");
       var esEf=esCM;
-      var enCajon=!esCM&&medioStr.includes("efectivo");
+      var enCajon=false;
       if(esCM)aporteEfectivo+=am;
-      else if(enCajon){/* caja menor: no va a la disponibilidad */}
       else if(medioStr.includes("transferencia"))aporteTransferencia+=am;
       else if(medioStr.includes("débito")||medioStr.includes("debito"))aporteDebito+=am;
       else if(medioStr.includes("crédito")||medioStr.includes("credito"))aporteCredito+=am;

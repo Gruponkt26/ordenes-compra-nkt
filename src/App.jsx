@@ -14660,7 +14660,13 @@ function medioEsDelLocal(medio, localMedios){
   if(fp==="Efectivo")return true; // efectivo sin subforma siempre OK
   return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
 }
+// La parte de un local en un gasto de la Oficina (sueldos, gastos fijos, obras...): el costo es 50/30/20,
+// pero en el momento de pagar puede poner más uno que otro. Eso no es una deuda entre locales a saldar:
+// se muestra como "puso de más / de menos" en el Resumen de la Oficina, y la disponibilidad igual
+// descuenta de la cuenta que realmente pagó.
+function esParteOficinaGasto(g){ return !!g&&g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
 function esMedioCorrecto(gasto){
+  if(esParteOficinaGasto(gasto))return true; // no cuenta como pago cruzado
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];
   if(!localMedios)return true; // l4 no se controla
   var lista=mediosDe(gasto);
@@ -14781,6 +14787,7 @@ function PanelCruzados(p){
   function deudasDe(lista){
     var deudas={};
     lista.forEach(function(g){
+      if(esParteOficinaGasto(g))return; // la Oficina no genera deuda entre locales (ver Resumen de la Oficina)
       if(g.pagos&&g.pagos.length>0){
         // Nuevo sistema con pagos[]
         g.pagos.forEach(function(pago){

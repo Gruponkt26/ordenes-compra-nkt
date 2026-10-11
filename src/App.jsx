@@ -6157,8 +6157,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
 
       {/* Modal pago */}
       {showModal&&modalPl&&(
-        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033",maxHeight:"92vh",overflowY:"auto",overscrollBehavior:"contain"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#4CAF50",marginBottom:2}}>{modalPl.empleado_nombre}</div>
             <div style={{fontSize:11,color:"#8C8C8C",marginBottom:6}}>{mesFiltro} · Sueldo {fmt(modalPl.monto)}</div>
             {(function(){
@@ -6279,7 +6279,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Notas</label>
               <input value={modalForm.notas} onChange={function(e){setModalForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
             </div>
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:8,position:"sticky",bottom:-20,margin:"0 -20px -20px",padding:"12px 20px 20px",background:"#111",borderTop:"1px solid #1E1E1E",borderRadius:"0 0 14px 14px"}}>
               <button onClick={doGuardar} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Confirmar pago</button>
               <button onClick={function(){setShowModal(false);}} style={{padding:"10px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer"}}>✕</button>
             </div>

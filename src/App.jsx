@@ -5293,12 +5293,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
 
   if(cargando)return <div style={{textAlign:"center",padding:"30px",color:"#8C8C8C",fontFamily:"'Inter',sans-serif"}}>⏳ Cargando planilla...</div>;
 
-  // "all": todos los sueldos juntos, ordenados por local.
-  var ordenLocal=LOCALES.map(function(l){return l.id;});
-  var emps=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);});
-  if(localFiltro==="all")emps=emps.slice().sort(function(a,b){return (ordenLocal.indexOf(a.local)-ordenLocal.indexOf(b.local))||String(a.nombre).localeCompare(String(b.nombre));});
-  var totalesMes=MESES.map(function(m,i){return emps.reduce(function(a,e){var mi=getMontoDisplay(getPlan(e.id,i));return a+(mi?mi.total:0);},0);});
-  var totalAnualTodos=totalesMes.reduce(function(a,x){return a+x;},0);
+  var emps=empleados.filter(function(e){return e.activo!==false&&e.local===localFiltro;});
 
   // Obtener valor de planilla para empleado/mes
   function getPlan(empId, mes){
@@ -5359,7 +5354,6 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
           <button onClick={function(){setAnio(anio+1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>›</button>
         </div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-          <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#D4A017":"#1A1A1A"),background:localFiltro==="all"?"#D4A01722":"none",color:localFiltro==="all"?"#D4A017":"#7E7E7E",fontSize:11,cursor:"pointer"}}>👥 Todos juntos</button>
           {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return(
             <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
           );})}
@@ -5367,7 +5361,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
       </div>
 
       {emps.length===0?(
-        <div style={{textAlign:"center",padding:"20px 0",color:"#6E6E6E"}}>Sin empleados activos{localFiltro==="all"?"":" en este local"}</div>
+        <div style={{textAlign:"center",padding:"20px 0",color:"#6E6E6E"}}>Sin empleados activos en este local</div>
       ):(
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:10,minWidth:600}}>
@@ -5387,7 +5381,7 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
                   <tr key={emp.id} style={{borderBottom:"1px solid #0F0F0F"}}>
                     <td style={{padding:"8px",color:"#F0EDE8",fontWeight:600,position:"sticky",left:0,background:"#111",fontSize:11}}>
                       <div>{emp.nombre}</div>
-                      <div style={{fontSize:9,color:"#7E7E7E",marginTop:1}}>{localFiltro==="all"&&getLocal(emp.local)?getLocal(emp.local).emoji+" "+getLocal(emp.local).nombre+" · ":""}{emp.convenio||"sin_convenio"}</div>
+                      <div style={{fontSize:9,color:"#7E7E7E",marginTop:1}}>{emp.convenio||"sin_convenio"}</div>
                     </td>
                     {MESES.map(function(m,mesIdx){
                       var plan=getPlan(emp.id,mesIdx);
@@ -5417,13 +5411,6 @@ function PanelPlanillaSueldos({empleados, planilla, onSave, onDelete}){
                   </tr>
                 );
               })}
-              {localFiltro==="all"&&(
-                <tr style={{borderTop:"2px solid #2A2A2A"}}>
-                  <td style={{padding:"8px",color:"#D4A017",fontWeight:800,position:"sticky",left:0,background:"#111",fontSize:11}}>Total</td>
-                  {totalesMes.map(function(t,i){return <td key={i} style={{padding:"6px 4px",textAlign:"center",color:"#D4A017",fontWeight:700,fontSize:10}}>{t>0?"$"+(t/1000).toFixed(1)+"k":"—"}</td>;})}
-                  <td style={{padding:"6px 4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:11,fontFamily:"'Playfair Display',serif"}}>{totalAnualTodos>0?"$"+Math.round(totalAnualTodos/1000)+"k":"—"}</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -5503,7 +5490,10 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
-  var emps=empleados.filter(function(e){return e.activo!==false&&e.local===localFiltro;});
+  // "all": todos los sueldos juntos, ordenados por local.
+  var ordenLocal=LOCALES.map(function(l){return l.id;});
+  var emps=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);});
+  if(localFiltro==="all")emps=emps.slice().sort(function(a,b){return (ordenLocal.indexOf(a.local)-ordenLocal.indexOf(b.local))||String(a.nombre).localeCompare(String(b.nombre));});
 
   function getPlan(empId,mes){
     // mes puede ser número (0-11) o string ('ag_jun', 'ag_dic')
@@ -5572,6 +5562,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:800,color:"#F0EDE8",minWidth:50,textAlign:"center"}}>{anio}</div>
           <button onClick={function(){setAnio(anio+1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>›</button>
         </div>
+        <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#D4A017":"#1A1A1A"),background:localFiltro==="all"?"#D4A01722":"none",color:localFiltro==="all"?"#D4A017":"#7E7E7E",fontSize:11,cursor:"pointer"}}>👥 Todos juntos</button>
         {LOCALES.map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
@@ -5593,7 +5584,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
 
       {/* Tabla */}
       {emps.length===0?(
-        <div style={{textAlign:"center",padding:"20px",color:"#6E6E6E"}}>Sin empleados activos en este local</div>
+        <div style={{textAlign:"center",padding:"20px",color:"#6E6E6E"}}>Sin empleados activos{localFiltro==="all"?"":" en este local"}</div>
       ):(
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
@@ -5614,7 +5605,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
                   <tr key={emp.id} style={{borderBottom:"1px solid #0F0F0F"}}>
                     <td style={{padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:11,position:"sticky",left:0,background:"#111"}}>
                       <div>{emp.nombre}</div>
-                      <div style={{fontSize:9,color:"#7E7E7E"}}>{emp.convenio||"sin_convenio"}</div>
+                      <div style={{fontSize:9,color:"#7E7E7E"}}>{localFiltro==="all"&&getLocal(emp.local)?getLocal(emp.local).emoji+" "+getLocal(emp.local).nombre+" · ":""}{emp.convenio||"sin_convenio"}</div>
                     </td>
                     {MESES.map(function(m,mesIdx){
                       var plan=getPlan(emp.id,mesIdx);
@@ -5677,6 +5668,22 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
                   </tr>
                 );
               })}
+              {localFiltro==="all"&&(function(){
+                var sumaDe=function(mes){return emps.reduce(function(a,e){var pl=getPlan(e.id,mes);return a+(pl?(parseFloat(pl.monto)||0):0);},0);};
+                var cel=function(t,k,color){return <td key={k} style={{padding:"4px",textAlign:"center",color:color||"#D4A017",fontWeight:700,fontSize:9}}>{t>0?"$"+Math.round(t/1000)+"k":"—"}</td>;};
+                var porMes=MESES.map(function(m,i){return sumaDe(i);});
+                var agJul=sumaDe("ag_jul"), agDic=sumaDe("ag_dic");
+                var granTotal=porMes.reduce(function(a,x){return a+x;},0)+agJul+agDic;
+                return(
+                  <tr style={{borderTop:"2px solid #2A2A2A"}}>
+                    <td style={{padding:"6px 8px",color:"#D4A017",fontWeight:800,fontSize:11,position:"sticky",left:0,background:"#111"}}>Total</td>
+                    {porMes.map(function(t,i){return cel(t,i);})}
+                    {cel(agJul,"agj","#8B2FC9")}
+                    {cel(agDic,"agd","#8B2FC9")}
+                    <td style={{padding:"4px",textAlign:"center",fontWeight:800,color:"#D4A017",fontSize:10,fontFamily:"'Playfair Display',serif"}}>{granTotal>0?"$"+Math.round(granTotal/1000)+"k":"—"}</td>
+                  </tr>
+                );
+              })()}
             </tbody>
           </table>
           <div style={{fontSize:9,color:"#7E7E7E",marginTop:8}}>

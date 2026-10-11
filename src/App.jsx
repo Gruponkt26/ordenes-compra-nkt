@@ -3714,7 +3714,7 @@ function PanelGastosFijosOficina(p){
                   );
                 })}
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:ok?"#0A1A0A":"#1A0A0A"}}>
-                  <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · queda un gasto cruzado":""}</span>
+                  <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · un local pone más que su parte":""}</span>
                   <span style={{color:ok?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(suma)} / {fmt(monto)}{ok?" ✓":" ← diferencia"}</span>
                 </div>
               </div>
@@ -6200,7 +6200,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             {esOficinaModal()&&(
               <div style={{marginBottom:10,background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px 12px"}}>
                 <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🏢 Reparto de la Oficina</div>
-                <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>El sueldo se reparte entre los tres locales. Cada uno paga su parte con su Caja Mayor; si elegís el medio de otro local, esa parte queda como gasto cruzado.</div>
+                <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>El costo del sueldo se reparte 50/30/20 entre los tres locales. Cada uno paga su parte con su Caja Mayor; si un local no llega y paga otro, cambiá lo que pone cada uno: el costo no cambia y la diferencia queda a la vista en el Resumen de la Oficina (no es una deuda a saldar).</div>
                 {partesOficinaModal().map(function(x){
                   return(
                     <div key={x.local} style={{marginBottom:8}}>
@@ -6235,7 +6235,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                   var cruzado=partesOficinaModal().some(function(x){return Math.abs(x.paga-x.monto)>0.5;});
                   return(
                     <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:ok?"#0A1A0A":"#1A0A0A"}}>
-                      <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · queda un gasto cruzado":""}</span>
+                      <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · un local pone más que su parte":""}</span>
                       <span style={{color:ok?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(sumaPagaOficina())} / {fmt(netoModal())}{ok?" ✓":" ← diferencia"}</span>
                     </div>
                   );
@@ -14660,7 +14660,13 @@ function medioEsDelLocal(medio, localMedios){
   if(fp==="Efectivo")return true; // efectivo sin subforma siempre OK
   return localMedios.some(function(m){return fp===m||fp.startsWith(m);});
 }
+// La parte de un local en un gasto de la Oficina (sueldos, gastos fijos, obras...): el costo es 50/30/20,
+// pero en el momento de pagar puede poner más uno que otro. Eso no es una deuda entre locales a saldar:
+// se muestra como "puso de más / de menos" en el Resumen de la Oficina, y la disponibilidad igual
+// descuenta de la cuenta que realmente pagó.
+function esParteOficinaGasto(g){ return !!g&&g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
 function esMedioCorrecto(gasto){
+  if(esParteOficinaGasto(gasto))return true; // no cuenta como pago cruzado
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];
   if(!localMedios)return true; // l4 no se controla
   var lista=mediosDe(gasto);
@@ -14781,6 +14787,7 @@ function PanelCruzados(p){
   function deudasDe(lista){
     var deudas={};
     lista.forEach(function(g){
+      if(esParteOficinaGasto(g))return; // la Oficina no genera deuda entre locales (ver Resumen de la Oficina)
       if(g.pagos&&g.pagos.length>0){
         // Nuevo sistema con pagos[]
         g.pagos.forEach(function(pago){

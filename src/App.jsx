@@ -4282,6 +4282,22 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
+  // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
+  // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
+  // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
+  // limpia lo que dejaron marcado.
+  function sePuedeBorrar(x){ return x.tipo==="📄 Egreso"; }
+  function borrarOficina(clave,concepto,total){
+    if(!window.confirm("¿Borrar \""+concepto+"\" ("+fmt(total)+")?\n\nSe borra de la Oficina y de los tres locales."))return;
+    p.onBorrar(clave);
+  }
+  // Un egreso de antes, cargado entero a nombre de la Oficina, se parte en tres como los nuevos
+  // (guardarEgresoConOficina borra el entero y deja una parte por local).
+  function repartirViejos(lista){
+    var tot=lista.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+    if(!window.confirm("¿Repartir "+lista.length+" egreso"+(lista.length===1?"":"s")+" por "+fmt(tot)+" entre los tres locales (50% Bodegón, 30% Colantonio's, 20% Kusama)?\n\nEl egreso entero se reemplaza por una parte en cada local."))return;
+    lista.forEach(function(g){ p.onRepartir(g); });
+  }
   var th={fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,padding:"6px 8px",textAlign:"right",borderBottom:"1px solid #1E1E1E"};
   var td={fontSize:12,padding:"8px",textAlign:"right",borderBottom:"1px solid #141414",fontVariantNumeric:"tabular-nums"};
   return(
@@ -12480,6 +12496,11 @@ function PanelVencimientos(p){
   // Qué planilla está abierta. Sin tocar nada, un plan abre solo si tiene cuotas en el mes
   // que se está mirando: es donde se las paga, así que es lo que se quiere ver.
   var [planTogg,setPlanTogg]=useState({});
+  // Abre la planilla de un plan (sus cuotas) y baja hasta ella.
+  function setPlanAbierto(id){
+    setPlanTogg(function(t){var n={...t};n[id]=true;return n;});
+    window.setTimeout(function(){var el=document.getElementById("plan_"+id);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"start"});},50);
+  }
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   var [editPlan,setEditPlan]=useState(null);   // datos del plan que se está editando
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -13909,7 +13930,7 @@ function PanelVencimientos(p){
                 var l=getLocal(v.local);
                 var cq=porCuit(v.grupo)?cuitVenc(cuitIdDe(v)):null;
                 return(
-                  <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
+                  <div key={v.id} id={"plan_"+v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
                     <div onClick={function(){setPlanTogg(function(t){var n={...t};n[v.id]=!abierto;return n;});}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>

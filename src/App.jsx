@@ -6523,6 +6523,13 @@ var DEP_CAMPOS={
 };
 
 function depNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
+// Los medios con que se pagó un registro: si se dividió, `pagos` ([{medio, monto}]); si no, el
+// medio único de siempre con todo el monto. Así los totales por medio sirven para los dos.
+function depMediosDe(x){
+  var lista=Array.isArray(x.pagos)?x.pagos.filter(function(pg){return pg&&(parseFloat(pg.monto)||0)>0;}):[];
+  if(lista.length>0)return lista.map(function(pg){return {medio:pg.medio||"",monto:parseFloat(pg.monto)||0};});
+  return [{medio:x.medio_pago||"",monto:depNum(x.monto)}];
+}
 function depMedio(id){ return DEP_MEDIOS.find(function(m){return m.id===id;})||null; }
 function depRubro(id){ return DEP_RUBROS.find(function(r){return r.id===id;})||null; }
 // El estado que significa "la plata se movió": cobrado para lo que entra, pagado
@@ -6878,6 +6885,24 @@ function PanelDeportes(p){
     ["fecha","hora","nombre","profe","cancha","duracion","cantidad","precio","monto","medio_pago","rubro","base","porcentaje","contacto"].forEach(function(k){
       if(!fCampos.some(function(c){return c.k===k;}))fila[k]=null;
     });
+    // Medios de pago divididos: se guardan en `pagos`. Con un solo medio todo queda como siempre
+    // (medio_pago) y la columna `pagos` ni se toca, así no hace falta crearla para usar un medio.
+    var tieneMedio=fCampos.some(function(c){return c.k==="medio_pago";});
+    var multi=tieneMedio&&Array.isArray(form.pagos)&&form.pagos.length>1;
+    if(multi){
+      var filasP=form.pagos.filter(function(pg){return pg.medio&&(parseFloat(pg.monto)||0)>0;}).map(function(pg){return {medio:pg.medio,monto:parseFloat(pg.monto)||0};});
+      var sumaP=filasP.reduce(function(a,pg){return a+pg.monto;},0);
+      if(filasP.length>1){
+        if(Math.abs(sumaP-depNum(form.monto))>0.5){
+          alert("Los medios de pago suman $"+Math.round(sumaP).toLocaleString("es-AR")+" y el monto es $"+Math.round(depNum(form.monto)).toLocaleString("es-AR")+". Tienen que dar lo mismo.");
+          return;
+        }
+        fila.pagos=filasP;
+        fila.medio_pago=filasP[0].medio;
+      } else if(base.pagos){ fila.pagos=null; if(filasP[0])fila.medio_pago=filasP[0].medio; }
+      else delete fila.pagos;
+    } else if(base.pagos){ fila.pagos=null; }
+    else delete fila.pagos;
     // Una obra es un gasto del rubro obras: así entra en el desglose de las salidas
     // sin tener que elegirlo a mano cada vez.
     if(fTipo==="obra")fila.rubro="obras";
@@ -6895,6 +6920,7 @@ function PanelDeportes(p){
     (DEP_CAMPOS[tp]||[]).forEach(function(c){ f[c.k]=x[c.k]==null?"":String(x[c.k]); });
     f.estado=x.estado||f.estado;
     f.notas=x.notas||"";
+    if(Array.isArray(x.pagos)&&x.pagos.length>1)f.pagos=x.pagos.map(function(pg){return {medio:pg.medio||"",monto:String(pg.monto==null?"":pg.monto)};});
     setFormTipo(tp);setFormDisciplina(x.disciplina||sec.disciplina);
     setForm(f);
     setEditId(x.id);
@@ -6945,9 +6971,14 @@ function PanelDeportes(p){
   function sumaSi(cond){ return lista.filter(cond).reduce(function(a,x){return a+depNum(x.monto);},0); }
   var cobrado=conCobranza?sumaSi(function(x){return x.estado===estadoOk;}):0;
   var aCobrar=conCobranza?sumaSi(function(x){return x.estado==="pendiente";}):0;
+  function sumaMedio(id){
+    return lista.filter(function(x){return x.estado===estadoOk;}).reduce(function(a,x){
+      return a+depMediosDe(x).filter(function(pg){return (pg.medio||"")===id;}).reduce(function(b,pg){return b+pg.monto;},0);
+    },0);
+  }
   var porMedio=!conCobranza?[]:DEP_MEDIOS.map(function(m){
-    return {id:m.id,corto:m.corto,label:m.label,total:sumaSi(function(x){return x.estado===estadoOk&&x.medio_pago===m.id;})};
-  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaSi(function(x){return x.estado===estadoOk&&!x.medio_pago;})}])
+    return {id:m.id,corto:m.corto,label:m.label,total:sumaMedio(m.id)};
+  }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaMedio("")}])
     .filter(function(m){return m.id!==""||m.total>0;});
 
   // Las salidas, además, por rubro: es la pregunta que se hace uno al mirar los gastos
@@ -7253,13 +7284,38 @@ function PanelDeportes(p){
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
             {fCampos.map(function(c){
               return(
-                <div key={c.k} style={{gridColumn:c.tipo==="text"&&c.req?"1 / -1":"auto"}}>
+                <div key={c.k} style={{gridColumn:(c.tipo==="text"&&c.req)||(c.k==="medio_pago"&&Array.isArray(form.pagos))?"1 / -1":"auto"}}>
                   {LBL(c.label+(c.req?" *":""))}
-                  {c.tipo==="select"?(
+                  {c.k==="medio_pago"&&Array.isArray(form.pagos)?(
+                    <div style={{gridColumn:"1 / -1"}}>
+                      {form.pagos.map(function(pg,i){return(
+                        <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 1fr auto",gap:6,marginBottom:6}}>
+                          <select value={pg.medio||""} onChange={function(e){var v=e.target.value;setForm(function(f){var n=f.pagos.map(function(x,j){return j===i?{...x,medio:v}:x;});return {...f,pagos:n,medio_pago:n[0].medio};});}} style={INP}>
+                            <option value="">— Medio —</option>
+                            {(c.opciones||[]).map(function(o){return <option key={o.id} value={o.id}>{o.label}</option>;})}
+                          </select>
+                          <input type="number" inputMode="decimal" placeholder="Monto $" value={pg.monto||""} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,pagos:f.pagos.map(function(x,j){return j===i?{...x,monto:v}:x;})};});}} style={INP}/>
+                          {form.pagos.length>2?<button type="button" onClick={function(){setForm(function(f){var n=f.pagos.filter(function(x,j){return j!==i;});return {...f,pagos:n,medio_pago:n[0].medio};});}} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:14}}>✕</button>:<span/>}
+                        </div>
+                      );})}
+                      {(function(){
+                        var sumaF=form.pagos.reduce(function(a,pg){return a+(parseFloat(pg.monto)||0);},0), tot=depNum(form.monto);
+                        var ok=Math.abs(sumaF-tot)<0.5;
+                        return <div style={{fontSize:10,color:ok?"#3A7D44":"#D4A017",marginBottom:6}}>{ok?"✓ Suma $"+Math.round(sumaF).toLocaleString("es-AR"):"Suman $"+Math.round(sumaF).toLocaleString("es-AR")+" de $"+Math.round(tot).toLocaleString("es-AR")+(tot>sumaF?" · faltan $"+Math.round(tot-sumaF).toLocaleString("es-AR"):" · sobran $"+Math.round(sumaF-tot).toLocaleString("es-AR"))}</div>;
+                      })()}
+                      <div style={{display:"flex",gap:10}}>
+                        <button type="button" onClick={function(){setForm(function(f){return {...f,pagos:f.pagos.concat([{medio:"",monto:""}])};});}} style={{background:"none",border:"none",color:"#D4A017",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>➕ Otro medio</button>
+                        <button type="button" onClick={function(){setForm(function(f){var m=f.pagos[0]?f.pagos[0].medio:"";return {...f,pagos:null,medio_pago:m};});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer",padding:0}}>Un solo medio</button>
+                      </div>
+                    </div>
+                  ):c.tipo==="select"?(
+                    <div>
                     <select value={form[c.k]||""} onChange={function(e){set(c.k,e.target.value);}} style={INP}>
                       <option value="">— Sin especificar —</option>
                       {(c.opciones||[]).map(function(o){return <option key={o.id} value={o.id}>{o.label}</option>;})}
                     </select>
+                    {c.k==="medio_pago"&&<button type="button" onClick={function(){setForm(function(f){return {...f,pagos:[{medio:f.medio_pago||"",monto:f.monto||""},{medio:"",monto:""}]};});}} style={{background:"none",border:"none",color:"#D4A017",fontSize:11,fontWeight:700,cursor:"pointer",padding:"5px 0 0"}}>➕ Dividir en varios medios</button>}
+                    </div>
                   ):(
                     <input
                       type={c.tipo==="date"?"date":c.tipo==="time"?"time":c.tipo==="num"?"number":"text"}
@@ -7402,6 +7458,9 @@ function PanelDeportes(p){
             var detalle=xCampos.filter(function(c){return c.k!=="nombre"&&x[c.k]!=null&&String(x[c.k])!=="";}).map(function(c){
               var v=x[c.k];
               if(c.tipo==="date")return c.label+": "+fmtDate(String(v));
+              if(c.k==="medio_pago"&&Array.isArray(x.pagos)&&x.pagos.length>1){
+                return x.pagos.map(function(pg){var o=depMedio(pg.medio);return (o?o.label:pg.medio)+" $"+Math.round(parseFloat(pg.monto)||0).toLocaleString("es-AR");}).join(" + ");
+              }
               if(c.tipo==="select"){var op=(c.opciones||[]).find(function(o){return o.id===v;});return op?op.label:c.label+": "+v;}
               if(c.tipo==="num"&&(c.k==="precio"||c.k==="monto"))return c.label.replace(" $","")+": $"+Math.round(depNum(v)).toLocaleString("es-AR");
               return c.label+": "+v;
@@ -22927,7 +22986,7 @@ export default function App() {
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
   }
   function guardarDeporte(x){
-    sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README).");});
+    sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README). Si menciona la columna pagos (medios divididos), corré: alter table deportes add column if not exists pagos jsonb;");});
     setDeportes(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
   }
   function borrarDeporte(id){

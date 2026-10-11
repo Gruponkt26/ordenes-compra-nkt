@@ -12496,6 +12496,11 @@ function PanelVencimientos(p){
   // Qué planilla está abierta. Sin tocar nada, un plan abre solo si tiene cuotas en el mes
   // que se está mirando: es donde se las paga, así que es lo que se quiere ver.
   var [planTogg,setPlanTogg]=useState({});
+  // Abre la planilla de un plan (sus cuotas) y baja hasta ella.
+  function setPlanAbierto(id){
+    setPlanTogg(function(t){var n={...t};n[id]=true;return n;});
+    window.setTimeout(function(){var el=document.getElementById("plan_"+id);if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"start"});},50);
+  }
   var [editCuota,setEditCuota]=useState(null); // {planId, nro} de la cuota que se edita
   var [editPlan,setEditPlan]=useState(null);   // datos del plan que se está editando
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -13925,7 +13930,7 @@ function PanelVencimientos(p){
                 var l=getLocal(v.local);
                 var cq=porCuit(v.grupo)?cuitVenc(cuitIdDe(v)):null;
                 return(
-                  <div key={v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
+                  <div key={v.id} id={"plan_"+v.id} style={{background:"#0F0A14",border:"1px solid #8B2FC933",borderRadius:10,overflow:"hidden"}}>
                     <div onClick={function(){setPlanTogg(function(t){var n={...t};n[v.id]=!abierto;return n;});}} style={{padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>

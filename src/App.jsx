@@ -5876,7 +5876,10 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var medios=modalForm.mediosOf||{}, pagaOf=modalForm.pagaOf||{};
     // "paga" es lo que pone cada local de su cuenta: por defecto su parte, pero se puede cambiar
     // mientras la suma dé el total (la diferencia queda como gasto cruzado).
-    function paga(lid,share){ var v=pagaOf[lid]; return (v===undefined||v==="")?share:(parseFloat(v)||0); }
+    // Si se escribió lo que pone alguno de los locales, los que quedan vacíos no ponen nada (antes
+    // seguían poniendo su parte y la suma nunca daba, aunque el local "no hubiese puesto nada").
+    var algunoEscrito=["l1","l3","l2"].some(function(k){return pagaOf[k]!==undefined&&pagaOf[k]!=="";});
+    function paga(lid,share){ var v=pagaOf[lid]; if(v===undefined||v==="")return algunoEscrito?0:share; return parseFloat(v)||0; }
     return [
       {local:"l1",nombre:"Bodegón",pct:50,monto:bod,paga:paga("l1",bod),medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1},
       {local:"l3",nombre:"Colantonio's",pct:30,monto:col,paga:paga("l3",col),medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3},
@@ -6219,7 +6222,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                       })()}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",flex:"none"}}>Paga $</label>
-                        <input type="number" placeholder={String(x.monto)} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
+                        <input type="number" placeholder={String(Math.round(x.paga))} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
                       </div>
                       <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
                         {opcionesMedios(x.local)}

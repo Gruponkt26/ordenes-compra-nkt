@@ -22962,7 +22962,8 @@ export default function App() {
     setGuardandoRetiroMenor(true);
     // Día de negocio: si Sofía carga esto de madrugada, tiene que caer en el cierre que el
     // cajero todavía tiene abierto de la noche anterior, no en uno nuevo del día siguiente.
-    var hoyRM=diaDeNegocio();
+    // La fecha se puede elegir (por defecto el día de negocio) para anotar un retiro que se olvidó.
+    var hoyRM=f.fecha||diaDeNegocio();
     var existente=cierres.find(function(c){return c.local===f.local&&c.fecha===hoyRM;});
     var notaNueva="Retiro menor — "+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
     var nota=existente&&existente.retiro_caja_nota?existente.retiro_caja_nota+" · "+notaNueva:notaNueva;
@@ -23857,7 +23858,7 @@ export default function App() {
 
                 {/* Retiro de caja menor: lo carga Sofía acá, pero queda anotado en el
                     cierre del local como si lo hubiese puesto el cajero. */}
-                <button onClick={function(){setRetiroMenorForm({local:"l1",monto:"",nota:""});}}
+                <button onClick={function(){setRetiroMenorForm({local:"l1",monto:"",nota:"",fecha:diaDeNegocio()});}}
                   style={{width:"100%",padding:"14px",borderRadius:12,border:"1px solid #8B6BB855",background:"#8B6BB811",color:"#8B6BB8",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"center",marginBottom:12}}>
                   💼 Retiro de caja menor
                 </button>
@@ -23876,7 +23877,7 @@ export default function App() {
                 {retiroMenorForm&&(function(){
                   var localesRM=LOCALES.filter(function(l){return l.id!=="l4";});
                   var lRM=getLocal(retiroMenorForm.local);
-                  var hoyRM=diaDeNegocio();
+                  var hoyRM=retiroMenorForm.fecha||diaDeNegocio();
                   var yaHay=cierres.find(function(c){return c.local===retiroMenorForm.local&&c.fecha===hoyRM;});
                   // El efectivo que hay hoy en cada caja menor, con el mismo cálculo que Novedades.
                   var datosRM={cierres:cierres,gastos:gastos,retiros:retiros,aportes:aportes,cajaInicial:cajaInicial};
@@ -23917,10 +23918,14 @@ export default function App() {
                           onChange={function(e){setRetiroMenorForm(function(f){return{...f,nota:e.target.value};});}}
                           style={{padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:14}}/>
 
+                        <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Fecha del retiro</label>
+                        <input type="date" value={retiroMenorForm.fecha||hoyRM} onChange={function(e){var v=e.target.value;setRetiroMenorForm(function(f){return{...f,fecha:v};});}}
+                          style={{padding:"10px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:14}}/>
+
                         {yaHay?(
-                          <div style={{fontSize:10,color:"#8C8C8C",marginBottom:14}}>Se suma al retiro de caja que {lRM?lRM.nombre:""} ya tiene anotado hoy.</div>
+                          <div style={{fontSize:10,color:"#8C8C8C",marginBottom:14}}>Se suma al retiro de caja que {lRM?lRM.nombre:""} ya tiene anotado ese día.</div>
                         ):(
-                          <div style={{fontSize:10,color:"#8C8C8C",marginBottom:14}}>{lRM?lRM.nombre:""} todavía no cargó el cierre de hoy: se crea con este retiro anotado, y el resto lo completa el cajero al cerrar.</div>
+                          <div style={{fontSize:10,color:"#8C8C8C",marginBottom:14}}>{lRM?lRM.nombre:""} no tiene cierre cargado ese día: se crea con este retiro anotado, y el resto lo completa el cajero al cerrar.</div>
                         )}
 
                         <div style={{display:"flex",gap:8}}>

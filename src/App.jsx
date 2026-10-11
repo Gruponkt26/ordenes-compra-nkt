@@ -5829,9 +5829,22 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   // El pago se puede repartir entre varias cuentas. Los montos se cargan sobre el
   // neto que realmente sale ahora (ya descontados los adelantos). Si hay un solo
   // medio y no se escribe monto, se asume que cubre todo el neto.
+  // Pago parcial de la Oficina por local: cada local pone lo que abonó de su parte (acumulado), y el
+  // monto abonado es la suma. Sólo sin adelantos, que se descuentan del total y no de cada local.
+  function ahoraOficinaActivo(){
+    if(!modalPl||modalPl.local!=="l4"||modalForm.estado!=="parcial")return false;
+    if(adelantosDe(modalPl.empleado_id).length>0)return false;
+    var a=modalForm.ahoraOf||{};
+    return ["l1","l3","l2"].some(function(k){return a[k]!==undefined&&a[k]!=="";});
+  }
+  function ahoraDe(lid){ var v=(modalForm.ahoraOf||{})[lid]; return (v===undefined||v==="")?0:(parseFloat(v)||0); }
+  function mpModal(){
+    if(ahoraOficinaActivo())return ahoraDe("l1")+ahoraDe("l3")+ahoraDe("l2");
+    return parseFloat(modalForm.monto_parcial)||0;
+  }
   function netoModal(){
     if(!modalPl)return 0;
-    var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
+    var base=modalForm.estado==="parcial"?mpModal():(parseFloat(modalPl.monto)||0);
     var totalAdel=adelantosDe(modalPl.empleado_id).reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
     return Math.max(0,base-totalAdel);
   }
@@ -5859,6 +5872,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   function partesOficinaModal(){
     var n=netoModal();
     var bod=Math.round(n*0.5), col=Math.round(n*0.3), kus=n-bod-col;
+    if(ahoraOficinaActivo()){ bod=ahoraDe("l1"); col=ahoraDe("l3"); kus=ahoraDe("l2"); }
     var medios=modalForm.mediosOf||{}, pagaOf=modalForm.pagaOf||{};
     // "paga" es lo que pone cada local de su cuenta: por defecto su parte, pero se puede cambiar
     // mientras la suma dé el total (la diferencia queda como gasto cruzado).
@@ -5892,7 +5906,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     if(esOficinaModal()&&Math.abs(sumaPagaOficina()-netoModal())>0.5){alert("Lo que ponen los tres locales ("+fmt(sumaPagaOficina())+") tiene que sumar el total a pagar ("+fmt(netoModal())+").");return;}
     var montoFinal=parseFloat(modalPl.monto)||0;
-    var montoParcial=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):0;
+    var montoParcial=modalForm.estado==="parcial"?mpModal():0;
+    if(ahoraOficinaActivo()&&montoParcial>montoFinal+0.5){alert("Lo abonado ("+fmt(montoParcial)+") supera el sueldo ("+fmt(montoFinal)+").");return;}
     var sid=String(Date.now());
     var esAguinaldo=modalPl._esAguinaldo||false;
     var pagoExistente=sueldosMes.find(function(s){
@@ -5939,13 +5954,13 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             var factor=montoEgreso/totPag;
             pagosNeto=pagosValidos.map(function(x){return {medio:x.medio,monto:x.monto*factor};});
           }
-          var rep=repartirSueldoOficina(pagosNeto);
+          var rep=repartirSueldoOficina(pagosNeto,ahoraOficinaActivo()?{l1:ahoraDe("l1"),l3:ahoraDe("l3"),l2:ahoraDe("l2")}:null);
           [["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]].forEach(function(t){
             var parte=rep[t[0]];
             if(!parte||parte.monto<=0)return;
             onSaveEgresoSueldo({id:idBase+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
               subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+(modalForm.estado==="parcial"?" · pago parcial":"")+" · Oficina "+t[2]+"%",
-              detalle:"Parte de la Oficina ("+t[2]+"% de "+fmt(montoEgreso)+")"+(modalForm.estado==="parcial"?" · pago parcial de "+fmt(montoFinal):""),
+              detalle:"Parte de la Oficina ("+t[2]+"% de "+fmt(montoEgreso)+")"+(modalForm.estado==="parcial"?" · pago parcial de "+fmt(montoFinal)+(ahoraOficinaActivo()?" · abonó "+fmt(parte.monto)+" de su parte de "+fmt(Math.round(montoFinal*t[2]/100)):""):""),
               monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
               notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
           });
@@ -6150,7 +6165,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               var adelPend=adelantosDe(modalPl.empleado_id);
               var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
               if(totalAdel<=0)return null;
-              var base=modalForm.estado==="parcial"?(parseFloat(modalForm.monto_parcial)||0):(parseFloat(modalPl.monto)||0);
+              var base=modalForm.estado==="parcial"?mpModal():(parseFloat(modalPl.monto)||0);
               var neto=Math.max(0,base-totalAdel);
               return(
                 <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"8px 10px",marginBottom:12}}>
@@ -6176,7 +6191,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             {modalForm.estado==="parcial"&&(
               <div style={{marginBottom:10}}>
                 <label style={{display:"block",fontSize:9,color:"#E07B00",textTransform:"uppercase",marginBottom:4}}>Monto abonado $</label>
-                <input type="number" placeholder="0" value={modalForm.monto_parcial} onChange={function(e){setModalForm(function(f){return{...f,monto_parcial:e.target.value};});}} style={{...INP,color:"#E07B00",border:"1px solid #E07B0033"}}/>
+                <input type="number" placeholder="0" value={ahoraOficinaActivo()?String(mpModal()):modalForm.monto_parcial} readOnly={ahoraOficinaActivo()} onChange={function(e){setModalForm(function(f){return{...f,monto_parcial:e.target.value};});}} style={{...INP,color:"#E07B00",border:"1px solid #E07B0033"}}/>
               </div>
             )}
             {esOficinaModal()&&(
@@ -6190,6 +6205,18 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                         <span style={{color:"#F0EDE8",fontWeight:700}}>{x.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {x.pct}%</span></span>
                         <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)} <span style={{color:"#7E7E7E",fontWeight:400,fontSize:10}}>de costo</span></span>
                       </div>
+                      {modalForm.estado==="parcial"&&adelantosDe(modalPl.empleado_id).length===0&&(function(){
+                        var suParte=Math.round((parseFloat(modalPl.monto)||0)*x.pct/100);
+                        var ab=(modalForm.ahoraOf||{})[x.local];
+                        var abNum=ab===undefined||ab===""?0:(parseFloat(ab)||0);
+                        return(
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                            <label style={{fontSize:9,color:"#E07B00",textTransform:"uppercase",flex:"none"}}>Abonado de su parte</label>
+                            <input type="number" placeholder={"de "+suParte} value={ab===undefined?"":ab} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.ahoraOf||{})};m[x.local]=v;return{...f,ahoraOf:m};});}} style={{...INP,fontSize:11,padding:"5px 8px",color:"#E07B00",border:"1px solid #E07B0033"}}/>
+                            <span style={{fontSize:10,color:"#7E7E7E",whiteSpace:"nowrap"}}>{ab!==undefined&&ab!==""?"queda "+fmt(Math.max(0,suParte-abNum)):"su parte "+fmt(suParte)}</span>
+                          </div>
+                        );
+                      })()}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",flex:"none"}}>Paga $</label>
                         <input type="number" placeholder={String(x.monto)} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
@@ -21931,9 +21958,11 @@ function repartoEfectivoOficina(monto){
 // y la plata sale de los medios con los que se pagó: primero se usa el medio del propio local
 // para su parte; lo que sobra completa las partes que quedaron sin cubrir. Si el medio es de
 // otro local, esa parte queda como gasto cruzado.
-function repartirSueldoOficina(pagos){
+function repartirSueldoOficina(pagos, partes){
   var total=pagos.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
   var bod=Math.round(total*0.5), col=Math.round(total*0.3), kus=total-bod-col; // el resto absorbe el redondeo
+  // Pago parcial por local: cada local puede abonar una parte distinta (no 50/30/20 de lo que se paga).
+  if(partes){ bod=partes.l1||0; col=partes.l3||0; kus=partes.l2||0; }
   var falta={l1:bod,l3:col,l2:kus};
   var orden=["l1","l3","l2"];
   var asignado={l1:[],l3:[],l2:[]};

@@ -3904,10 +3904,10 @@ function PanelMetricasLocal(p){
   TRANSF_PROPIAS.filter(function(x){return x.fecha;}).forEach(function(x){
     var m=parseFloat(x.monto)||0;
     if(localDelMedio(x.desde)===lid)sumaEgreso(x.fecha,m*impDebitoTasaDeMedio(lid,x.desde));
-    if(localDelMedio(x.hasta)===lid){
+    if(localDelMedio(x.hasta)===lid&&!esCajaMayorMedio(x.hasta)){
       sumaEgreso(x.fecha,m*impCreditoTasa(lid,esCuentaMP(x.hasta)?"mp_qr":"transferencia"));
       var cD=CUIT_DE_LOCAL_IVA[localDelMedio(x.desde)], cH=CUIT_DE_LOCAL_IVA[lid];
-      if(cD&&cH&&cD!==cH)sumaEgreso(x.fecha,m*ALICUOTA_IIBB);
+      if(!esCajaMayorMedio(x.desde)&&cD&&cH&&cD!==cH)sumaEgreso(x.fecha,m*ALICUOTA_IIBB);
     }
   });
   IMP_EXTRA.filter(function(x){return x.local===lid&&x.fecha;}).forEach(function(x){ sumaEgreso(x.fecha,parseFloat(x.monto)||0); });
@@ -14537,29 +14537,42 @@ var IMP_EXTRA=[];
 var TRANSF_PROPIAS=[];
 function cuentasPropias(){
   var out=[];
+  // La Caja Mayor de cada local también cuenta: un depósito de efectivo es una transferencia de
+  // la Caja Mayor a una cuenta (y sacar plata del banco en efectivo, al revés).
+  Object.keys(MEDIOS_POR_LOCAL).forEach(function(lid){
+    MEDIOS_POR_LOCAL[lid].forEach(function(m){ if(m.indexOf("Caja Mayor - ")===0&&out.indexOf(m)===-1)out.push(m); });
+  });
   Object.keys(MEDIOS_POR_LOCAL).forEach(function(lid){
     MEDIOS_POR_LOCAL[lid].forEach(function(m){ if(m.indexOf("Transferencia - ")===0&&out.indexOf(m)===-1)out.push(m); });
   });
   return out;
 }
+function esCajaMayorMedio(m){ return (m||"").indexOf("Caja Mayor")===0; }
 function esCuentaMP(m){ var k=(m||"").toLowerCase(); return k.includes("mercado pago")||/\bmp\b/.test(k); }
 // Lo que mueven las transferencias propias de un local en un mes: entra/sale por cada bucket de
 // disponibilidad y el impuesto al débito (origen) y al crédito (destino) que pagan.
 function transfPropiasDe(lid, mes){
-  var out={debito:0,credito:0,iibb:0,mov:{transferencia:0,mp:0},id:{transferencia:0,mp:0},ic:{transferencia:0,mp:0},ib:{transferencia:0,mp:0}};
+  var out={debito:0,credito:0,iibb:0,mov:{transferencia:0,mp:0,efectivo:0},id:{transferencia:0,mp:0},ic:{transferencia:0,mp:0},ib:{transferencia:0,mp:0}};
   TRANSF_PROPIAS.forEach(function(x){
     if(!x.fecha||x.fecha.substring(0,7)!==mes)return;
     var m=parseFloat(x.monto)||0; if(m<=0)return;
     if(localDelMedio(x.desde)===lid){
-      var b=esCuentaMP(x.desde)?"mp":"transferencia", t=m*impDebitoTasaDeMedio(lid,x.desde);
-      out.mov[b]-=m; out.id[b]+=t; out.debito+=t;
+      if(esCajaMayorMedio(x.desde)){ out.mov.efectivo-=m; }
+      else{
+        var b=esCuentaMP(x.desde)?"mp":"transferencia", t=m*impDebitoTasaDeMedio(lid,x.desde);
+        out.mov[b]-=m; out.id[b]+=t; out.debito+=t;
+      }
     }
     if(localDelMedio(x.hasta)===lid){
-      var b2=esCuentaMP(x.hasta)?"mp":"transferencia", t2=m*impCreditoTasa(lid,b2==="mp"?"mp_qr":"transferencia");
-      out.mov[b2]+=m; out.ic[b2]+=t2; out.credito+=t2;
-      // Entre CUIT distintos la plata entra como una venta/aporte: paga IIBB en la cuenta que recibe.
-      var cD=CUIT_DE_LOCAL_IVA[localDelMedio(x.desde)], cH=CUIT_DE_LOCAL_IVA[lid];
-      if(cD&&cH&&cD!==cH){ var ti=m*ALICUOTA_IIBB; out.ib[b2]+=ti; out.iibb+=ti; }
+      if(esCajaMayorMedio(x.hasta)){ out.mov.efectivo+=m; }
+      else{
+        var b2=esCuentaMP(x.hasta)?"mp":"transferencia", t2=m*impCreditoTasa(lid,b2==="mp"?"mp_qr":"transferencia");
+        out.mov[b2]+=m; out.ic[b2]+=t2; out.credito+=t2;
+        // Entre CUIT distintos la plata entra como una venta/aporte: paga IIBB en la cuenta que recibe.
+        // Un depósito de efectivo (sale de una Caja Mayor) no es una venta: no paga IIBB ni IVA.
+        var cD=CUIT_DE_LOCAL_IVA[localDelMedio(x.desde)], cH=CUIT_DE_LOCAL_IVA[lid];
+        if(!esCajaMayorMedio(x.desde)&&cD&&cH&&cD!==cH){ var ti=m*ALICUOTA_IIBB; out.ib[b2]+=ti; out.iibb+=ti; }
+      }
     }
   });
   return out;
@@ -17137,6 +17150,7 @@ function ivaDeAportesElectronicos(aportes, mes){
   // entra al otro CUIT suma débito fiscal ahí, igual que un aporte. Dentro del mismo CUIT, nada.
   TRANSF_PROPIAS.forEach(function(x){
     if(!x.fecha||x.fecha.substring(0,7)!==mes)return;
+    if(esCajaMayorMedio(x.desde)||esCajaMayorMedio(x.hasta))return; // efectivo: no es una venta
     var lDesde=localDelMedio(x.desde), lHasta=localDelMedio(x.hasta);
     if(!CUIT_DE_LOCAL_IVA[lDesde]||!CUIT_DE_LOCAL_IVA[lHasta])return;
     if(CUIT_DE_LOCAL_IVA[lDesde]===CUIT_DE_LOCAL_IVA[lHasta])return;
@@ -17940,7 +17954,7 @@ function PanelResultados(p){
     // Caja Mayor tiene el efectivo que ya salió del cajón (retiros de caja menor), no el que
     // todavía está en la caja física de cada local.
     var scz=saldoCruzadoDe(lid,mesFiltro);
-    var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo;
+    var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo+(eg.transfP?eg.transfP.mov.efectivo:0);
     var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0);
     var dispDebito=ingrDebito-iibbDebito-comDebito-icDebito-idDebito-gastoDebito+(traspaso?traspaso.debito:0)+aporteDebito;
     var dispCredito=ingrCredito-iibbCredito-comCredito-icCredito-idCredito-gastoCredito+(traspaso?traspaso.credito:0)+aporteCredito;
@@ -18769,7 +18783,7 @@ function PanelResultados(p){
               {/* Transferencias entre cuentas propias: pagan impuesto al débito y al crédito */}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
-                  <div style={{fontSize:9,color:"#8A6A2A",textTransform:"uppercase",letterSpacing:1}}>🔁 Transferencias entre cuentas propias</div>
+                  <div style={{fontSize:9,color:"#8A6A2A",textTransform:"uppercase",letterSpacing:1}}>🔁 Transferencias entre cuentas propias · depósitos de efectivo</div>
                   {!(formTr&&formTr.local===l.id)&&<button onClick={function(){var cs=cuentasPropias(),mias=cs.filter(function(c){return localDelMedio(c)===l.id;});setFormTr({local:l.id,desde:mias[0]||cs[0]||"",hasta:cs.filter(function(c){return c!==(mias[0]||cs[0]);})[0]||"",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",detalle:""});}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid #8A6A2A66",background:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>+ Cargar</button>}
                 </div>
                 {formTr&&formTr.local===l.id&&(function(){
@@ -18778,7 +18792,7 @@ function PanelResultados(p){
                   function setT(k,v){setFormTr(function(f){var n={...f};n[k]=v;return n;});}
                   var mt=parseFloat(formTr.monto)||0;
                   var impD=mt*impDebitoTasaDeMedio(localDelMedio(formTr.desde),formTr.desde);
-                  var impC=mt*impCreditoTasa(localDelMedio(formTr.hasta),esCuentaMP(formTr.hasta)?"mp_qr":"transferencia");
+                  var impC=esCajaMayorMedio(formTr.hasta)?0:mt*impCreditoTasa(localDelMedio(formTr.hasta),esCuentaMP(formTr.hasta)?"mp_qr":"transferencia");
                   function guardarT(){
                     if(mt<=0){alert("Cargá el monto, mayor a cero.");return;}
                     if(!formTr.desde||!formTr.hasta||formTr.desde===formTr.hasta){alert("Elegí dos cuentas distintas.");return;}
@@ -18809,7 +18823,7 @@ function PanelResultados(p){
                     <span style={{display:"flex",alignItems:"center",gap:6}}>{fmt(parseFloat(x.monto)||0)}<button onClick={function(){if(window.confirm("¿Eliminar esta transferencia?"))p.onDeleteImpExtra(x.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11}}>🗑️</button></span>
                   </div>
                 );})}
-                <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Mueve la plata de una cuenta a otra (no es ingreso ni gasto) y suma el impuesto al débito del origen y al crédito del destino como egreso de cada local.</div>
+                <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Mueve la plata de una cuenta a otra (no es ingreso ni gasto) y suma el impuesto al débito del origen y al crédito del destino como egreso de cada local. Para un depósito de efectivo, elegí la Caja Mayor como origen: baja el efectivo y sube la cuenta.</div>
               </div>
 
               {/* Corrección manual: la carga se sacó de la UI (no se usaba), pero si algún

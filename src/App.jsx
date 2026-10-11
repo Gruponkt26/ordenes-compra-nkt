@@ -7499,7 +7499,7 @@ function PanelDeportes(p){
 
 // ─── MAPEO MEDIOS DE PAGO POR LOCAL ──────────────────────────────────────────
 var MEDIO_LOCAL_MAP={
-  "efectivo - bodegón":"l1","efectivo - bodegon":"l1",
+  "efectivo - bodegón":"l1","efectivo - bodegon":"l1","efectivo el bodegón nkt":"l1","efectivo kusama":"l2","efectivo colantonio's":"l3",
   "provincia personas":"l1","patagonia personas":"l1","mercado pago nicolás":"l1","mercado pago nicolas":"l1",
   "efectivo - kusama":"l2","galicia empresas":"l2",
   "efectivo - colantonio's":"l3","efectivo - colantonios":"l3",
@@ -16613,8 +16613,10 @@ function PanelAportes(p) {
     }
   },[showForm,editando&&editando.id]);
 
-  var TIPOS_APORTE=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
+  var TIPOS_APORTE=["Caja Mayor","Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
+    // Caja Mayor: la plata entra a la Caja Mayor del local (disponibilidad). Efectivo: queda en el cajón (caja menor).
+    "Caja Mayor":["Bodegón","Kusama","Colantonio's"],
     "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
     "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
     "Tarjeta de débito":["Mastercard ML Calzon Gitano","Mastercard ML Nicolás","Visa Provincia Personas","Visa Patagonia Empresas","Visa Patagonia Personas"],
@@ -16844,7 +16846,7 @@ function PanelAportes(p) {
               <select value={form.subtipo} onChange={function(e){
                 var cta=e.target.value;
                 // La cuenta elegida ya dice de qué local es: la proponemos sola.
-                var locDetectado=getLocalFromMedio(cta);
+                var locDetectado=localDeCajaMayor(form.tipo_aporte+" - "+cta)||getLocalFromMedio(cta);
                 setForm(function(f){return{...f,subtipo:cta,local_cuenta:locDetectado||f.local_cuenta};});
               }} style={{...inputStyle,color:form.subtipo?"#F0EDE8":"#8C8C8C",cursor:"pointer"}}>
                 <option value="">-- Seleccioná cuenta --</option>
@@ -17785,13 +17787,18 @@ function PanelResultados(p){
     aportesCajaLocal.forEach(function(a){
       var am=parseFloat(a.monto||0);
       var medioStr=(a.tipo_aporte||"").toLowerCase();
-      var esEf=medioStr.includes("efectivo");
-      if(esEf)aporteEfectivo+=am;
+      // Caja Mayor suma a la disponibilidad en efectivo. El "Efectivo" a secas queda en el cajón
+      // (caja menor) y se cuenta allá: sumarlo también acá lo contaba dos veces.
+      var esCM=medioStr.includes("caja mayor");
+      var esEf=esCM;
+      var enCajon=!esCM&&medioStr.includes("efectivo");
+      if(esCM)aporteEfectivo+=am;
+      else if(enCajon){/* caja menor: no va a la disponibilidad */}
       else if(medioStr.includes("transferencia"))aporteTransferencia+=am;
       else if(medioStr.includes("débito")||medioStr.includes("debito"))aporteDebito+=am;
       else if(medioStr.includes("crédito")||medioStr.includes("credito"))aporteCredito+=am;
       else aporteOtros+=am;
-      detIngresos.push({fecha:a.fecha,concepto:"🤝 Aporte — "+(a.socio||"")+(a.local!==lid?" ("+((getLocal(a.local)||{}).nombre||"")+")":""),medio:a.tipo_aporte||"",monto:am,tipo:esEf?"efectivo":"electronico",aporte:true,cruzado:a.local!==lid});
+      detIngresos.push({fecha:a.fecha,concepto:"🤝 Aporte — "+(a.socio||"")+(a.local!==lid?" ("+((getLocal(a.local)||{}).nombre||"")+")":""),medio:a.tipo_aporte||"",monto:am,tipo:esEf?"efectivo":(enCajon?"cajon":"electronico"),aporte:true,cruzado:a.local!==lid});
     });
     var aporteElectronico=aporteTransferencia+aporteDebito+aporteCredito+aporteOtros;
     // Impuestos que paga el aporte al entrar a la cuenta (IIBB e impuesto al crédito): descuentan de

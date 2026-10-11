@@ -11401,6 +11401,9 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
+  // Sueldos que faltan pagar (de la planilla anual, hasta el mes en curso), por local.
+  var faltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,fechaLocal().substring(0,7));
+  var totalFaltanSueldos=faltanSueldos.reduce(function(a,i){return a+i.falta;},0);
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
@@ -12434,6 +12437,26 @@ function PanelNovedades(p){
           </div>
         </Seccion>
         )}
+
+        <Seccion titulo="💸 Sueldos que faltan pagar" color="#E07B00" ir={p.irFaltantes} irTxt="Faltantes">
+          {faltanSueldos.length===0?(
+            <div style={vacio}>Todos los sueldos al día.</div>
+          ):(
+            <div>
+              {LOCALES.map(function(l){
+                var delL=faltanSueldos.filter(function(i){return i.emp.local===l.id;});
+                if(delL.length===0)return null;
+                var nEmp=delL.reduce(function(a,i){ if(a.indexOf(i.emp.id)===-1)a.push(i.emp.id); return a; },[]).length;
+                var parciales=delL.filter(function(i){return i.tipo==="parcial";}).length;
+                return <Fila key={l.id} primera={false}
+                  izq={<span>{l.emoji} {l.nombre}<span style={{color:"#7E7E7E"}}> · {nEmp} empleado{nEmp===1?"":"s"}{parciales>0?" · "+parciales+" parcial"+(parciales===1?"":"es"):""}</span></span>}
+                  onClick={p.irFaltantes}
+                  der={fmt(delL.reduce(function(a,i){return a+i.falta;},0))} color="#E07B00"/>;
+              })}
+              <Fila primera={false} izq={<span style={{color:"#8A8A8A"}}>Total</span>} der={fmt(totalFaltanSueldos)} color="#E07B00"/>
+            </div>
+          )}
+        </Seccion>
 
         <Seccion titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(
@@ -19267,12 +19290,7 @@ function PanelCuit(props){
 // Lo que falta pagar de cada liquidación (la de la planilla anual menos adelantos y lo ya abonado),
 // separado por local: una columna por local. "Total" = no se pagó nada; "parcial" = se pagó o se
 // adelantó una parte. Sólo cuentan los meses cargados en la planilla hasta el mes en curso.
-function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos}){
-  var hoyMes=new Date().toISOString().split("T")[0].substring(0,7);
-  var [mes,setMes]=useState("todos");
-  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
-  var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-  var nombrePeriodo=function(per){var pr=per.split("-");return MESES[parseInt(pr[1],10)-1]+" "+pr[0];};
+function faltantesDeSueldos(empleados, planilla, sueldos, adelantos, hoyMes){
   var periodoDe=function(x){return x.anio+"-"+(parseInt(x.mes)+1<10?"0"+(parseInt(x.mes)+1):String(parseInt(x.mes)+1));};
   var activos={};
   (empleados||[]).forEach(function(e){ if(e.activo!==false)activos[e.id]=e; });
@@ -19293,6 +19311,15 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos}){
     var algo=sumaAdelantos(adel)>0||montoAbonadoSueldo(pago)>0;
     items.push({emp:emp,per:per,falta:falta,tipo:algo?"parcial":"total"});
   });
+  return items;
+}
+function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos}){
+  var hoyMes=new Date().toISOString().split("T")[0].substring(0,7);
+  var [mes,setMes]=useState("todos");
+  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  var nombrePeriodo=function(per){var pr=per.split("-");return MESES[parseInt(pr[1],10)-1]+" "+pr[0];};
+  var items=faltantesDeSueldos(empleados,planilla,sueldos,adelantos,hoyMes);
   var periodos=[];
   items.forEach(function(i){ if(periodos.indexOf(i.per)===-1)periodos.push(i.per); });
   periodos.sort().reverse();
@@ -23783,7 +23810,7 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
               </div>
               <PanelSueldos
-                tabInicial={vista==="vacaciones"?"vacaciones":undefined}
+                tabInicial={vista==="vacaciones"?"vacaciones":vista==="faltantes"?"faltantes":undefined}
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
                 gastos={gastos}
@@ -23907,6 +23934,7 @@ export default function App() {
             <PanelNovedades ordenes={ordenes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
+              planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}
               creditosFiscales={creditosFiscales} creditosIIBB={creditosIIBB}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
@@ -23916,6 +23944,7 @@ export default function App() {
               irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
+              irFaltantes={function(){abrirModulo("personal","faltantes");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
               irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />

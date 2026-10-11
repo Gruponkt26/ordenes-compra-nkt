@@ -19263,6 +19263,98 @@ function PanelCuit(props){
   );
 }
 
+// ─── FALTANTES DE SUELDO ─────────────────────────────────────────────────────
+// Lo que falta pagar de cada liquidación (la de la planilla anual menos adelantos y lo ya abonado),
+// separado por local: una columna por local. "Total" = no se pagó nada; "parcial" = se pagó o se
+// adelantó una parte. Sólo cuentan los meses cargados en la planilla hasta el mes en curso.
+function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos}){
+  var hoyMes=new Date().toISOString().split("T")[0].substring(0,7);
+  var [mes,setMes]=useState("todos");
+  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  var nombrePeriodo=function(per){var pr=per.split("-");return MESES[parseInt(pr[1],10)-1]+" "+pr[0];};
+  var periodoDe=function(x){return x.anio+"-"+(parseInt(x.mes)+1<10?"0"+(parseInt(x.mes)+1):String(parseInt(x.mes)+1));};
+  var activos={};
+  (empleados||[]).forEach(function(e){ if(e.activo!==false)activos[e.id]=e; });
+  // Una fila por empleado y mes con algo pendiente.
+  var items=[];
+  (planilla||[]).forEach(function(x){
+    var emp=activos[x.empleado_id];
+    if(!emp||x.mes===null||x.mes===undefined||x.mes===""||String(x.tipo||"").indexOf("ag_")===0)return;
+    if(isNaN(parseInt(x.mes))||isNaN(parseInt(x.anio)))return;
+    var per=periodoDe(x);
+    if(per>hoyMes)return;
+    var tot=parseFloat(x.monto)||0;
+    if(tot<=0)return;
+    var pago=(sueldos||[]).find(function(sd){return sd.empleado_id===emp.id&&sd.periodo===per;});
+    var adel=adelantosDelPeriodo(adelantos,emp.id,per,sueldos);
+    var falta=faltaPagarSueldo(tot,adel,pago);
+    if(falta<=0.5)return;
+    var algo=sumaAdelantos(adel)>0||montoAbonadoSueldo(pago)>0;
+    items.push({emp:emp,per:per,falta:falta,tipo:algo?"parcial":"total"});
+  });
+  var periodos=[];
+  items.forEach(function(i){ if(periodos.indexOf(i.per)===-1)periodos.push(i.per); });
+  periodos.sort().reverse();
+  var vistos=items.filter(function(i){return mes==="todos"||i.per===mes;});
+  var granTotal=vistos.reduce(function(a,i){return a+i.falta;},0);
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          <option value="todos">📅 Todos los meses</option>
+          {periodos.map(function(per){return <option key={per} value={per}>{nombrePeriodo(per)}</option>;})}
+        </select>
+        <div style={{fontSize:12,color:"#8C8C8C"}}>Falta pagar en total: <b style={{color:granTotal>0?"#E07B00":"#4CAF50",fontSize:15}}>{fmt(granTotal)}</b></div>
+      </div>
+      <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:12}}>
+        Lo que falta de cada sueldo según la planilla anual, descontando adelantos y lo ya pagado. <span style={{color:"#C1440E"}}>Total</span> = todavía no se pagó nada; <span style={{color:"#E07B00"}}>parcial</span> = se pagó o se adelantó una parte.
+      </div>
+      {vistos.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:"#4CAF50",fontSize:12,marginBottom:12}}>✅ No falta pagar ningún sueldo{mes==="todos"?"":" en "+nombrePeriodo(mes)}.</div>}
+      <div style={{overflowX:"auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(190px,1fr))",gap:10,minWidth:790,alignItems:"start"}}>
+          {LOCALES.map(function(l){
+            var delLocal=vistos.filter(function(i){return i.emp.local===l.id;});
+            var totalLocal=delLocal.reduce(function(a,i){return a+i.falta;},0);
+            // Un bloque por empleado, con sus meses adentro.
+            var porEmp=[];
+            delLocal.forEach(function(i){
+              var b=porEmp.find(function(x){return x.emp.id===i.emp.id;});
+              if(!b){b={emp:i.emp,meses:[],total:0};porEmp.push(b);}
+              b.meses.push(i); b.total+=i.falta;
+            });
+            porEmp.sort(function(a,b){return String(a.emp.nombre).localeCompare(String(b.emp.nombre));});
+            return(
+              <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:12,padding:"10px 10px 8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,paddingBottom:8,borderBottom:"1px solid #1A1A1A",marginBottom:8}}>
+                  <div style={{fontSize:12,fontWeight:800,color:l.color}}>{l.emoji} {l.nombre}</div>
+                  <div style={{fontSize:13,fontWeight:800,color:totalLocal>0?"#E07B00":"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totalLocal)}</div>
+                </div>
+                {porEmp.length===0?(
+                  <div style={{fontSize:11,color:"#6E6E6E",textAlign:"center",padding:"10px 0"}}>Al día</div>
+                ):porEmp.map(function(b){return(
+                  <div key={b.emp.id} style={{background:"#0A0A0A",borderRadius:8,padding:"7px 9px",marginBottom:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:12}}>
+                      <span style={{color:"#F0EDE8",fontWeight:700}}>{b.emp.nombre}</span>
+                      <span style={{color:"#E07B00",fontWeight:800}}>{fmt(b.total)}</span>
+                    </div>
+                    {b.meses.sort(function(x,y){return x.per.localeCompare(y.per);}).map(function(i){return(
+                      <div key={i.per} style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:10,color:"#8C8C8C",marginTop:3}}>
+                        <span>{nombrePeriodo(i.per)} · <span style={{color:i.tipo==="parcial"?"#E07B00":"#C1440E",fontWeight:700}}>{i.tipo}</span></span>
+                        <span>{fmt(i.falta)}</span>
+                      </div>
+                    );})}
+                  </div>
+                );})}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PanelSueldos(p){
   var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
   var cargasSociales=p.cargasSociales||[], onSaveCargaSocial=p.onSaveCargaSocial, onDeleteCargaSocial=p.onDeleteCargaSocial;
@@ -19396,7 +19488,7 @@ function PanelSueldos(p){
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["empleados","👤 Empleados"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
+        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["empleados","👤 Empleados"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
         <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
@@ -19714,6 +19806,9 @@ function PanelSueldos(p){
         onSave={p.onSavePlanilla}
         onDelete={p.onDeletePlanilla}
       />}
+
+      {/* TAB FALTANTES DE SUELDO */}
+      {tab==="faltantes"&&<PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={sueldos} adelantos={p.adelantos||[]}/>}
 
       {/* TAB VACACIONES */}
       {tab==="vacaciones"&&<PanelVacaciones empleados={empleados} vacaciones={p.vacaciones||[]} onSave={p.onSaveVacacion} onDelete={p.onDeleteVacacion}/>}

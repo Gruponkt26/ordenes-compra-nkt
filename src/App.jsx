@@ -11356,6 +11356,7 @@ function PanelNovedades(p){
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
   var [notaEdit,setNotaEdit]=useState(null); // {id, texto} de la nota que se está editando
+  var [retiroEdit,setRetiroEdit]=useState(null); // {id, monto, nota} del retiro de caja que se está corrigiendo
   var [notasAbierto,setNotasAbierto]=useState(false);
   var [iniAbierto,setIniAbierto]=useState(false);
   // Egresos que el cajero anotó al cerrar y que todavía nadie cargó como gasto oficial. El
@@ -12282,10 +12283,26 @@ function PanelNovedades(p){
                   <Sub>💼 Retiros de caja · {retirosCaja.length}</Sub>
                   {(expandido.retiros?retirosCaja:retirosCaja.slice(0,5)).map(function(c,i){
                     var l=getLocal(c.local);
-                    return <Fila key={"rc"+c.id} primera={i===0}
-                      izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#7E7E7E"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
-                      detalle={c.retiro_caja_nota||null}
-                      der={fmt(parseFloat(c.retiro_caja))} color="#8B6BB8"/>;
+                    var editando=retiroEdit&&retiroEdit.id===c.id;
+                    return <div key={"rc"+c.id}>
+                      <Fila primera={i===0}
+                        izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#7E7E7E"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
+                        detalle={c.retiro_caja_nota||null}
+                        der={<span>{fmt(parseFloat(c.retiro_caja))}{p.onCorregirRetiroCaja&&<button onClick={function(){setRetiroEdit(editando?null:{id:c.id,monto:String(parseFloat(c.retiro_caja)||0),nota:c.retiro_caja_nota||""});}} title="Corregir el retiro" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12,marginLeft:6}}>✏️</button>}</span>} color="#8B6BB8"/>
+                      {editando&&(
+                        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:8,padding:"9px",margin:"4px 0 8px"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:6,marginBottom:6}}>
+                            <input type="number" value={retiroEdit.monto} onChange={function(e){var v=e.target.value;setRetiroEdit(function(r){return {...r,monto:v};});}} placeholder="Monto $" style={{padding:"7px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                            <input value={retiroEdit.nota} onChange={function(e){var v=e.target.value;setRetiroEdit(function(r){return {...r,nota:v};});}} placeholder="Nota" style={{padding:"7px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                          </div>
+                          <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Cargá el monto que realmente se retiró. En 0 se anula el retiro.</div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={function(){var m=parseFloat(retiroEdit.monto);if(isNaN(m)||m<0){alert("Cargá un monto válido (0 o más).");return;}Promise.resolve(p.onCorregirRetiroCaja(c,m,retiroEdit.nota)).then(function(){setRetiroEdit(null);});}} style={{flex:2,padding:"7px",borderRadius:7,border:"none",background:"#8B6BB8",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+                            <button onClick={function(){setRetiroEdit(null);}} style={{flex:1,padding:"7px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>;
                   })}
                   <Mas id="retiros" n={expandido.retiros?0:retirosCaja.length-5}/>
                   <div style={{fontSize:11,color:"#8B6BB8",padding:"7px 0 0",borderTop:"1px solid #141414",marginTop:6}}>
@@ -23719,6 +23736,7 @@ export default function App() {
               creditosFiscales={creditosFiscales} creditosIIBB={creditosIIBB}
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}
               onCargarEgresoCaja={cargarEgresoDeCaja}
+              onCorregirRetiroCaja={function(c,monto,nota){return guardarCierre({...c,retiro_caja:monto,retiro_caja_nota:nota});}}
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}

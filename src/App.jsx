@@ -11405,6 +11405,7 @@ function PanelNovedades(p){
   var mesSueldos=fechaLocal().substring(0,7);
   var faltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,mesSueldos)
     .filter(function(i){return i.per===mesSueldos;});
+  var nEmpFaltan=faltanSueldos.reduce(function(a,i){ if(a.indexOf(i.emp.id)===-1)a.push(i.emp.id); return a; },[]).length;
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
@@ -12439,32 +12440,13 @@ function PanelNovedades(p){
         </Seccion>
         )}
 
-        <Seccion titulo={"💸 Sueldos que faltan pagar · "+mesSueldos} color="#E07B00" ir={p.irFaltantes} irTxt="Faltantes">
+        <Seccion titulo="💸 Sueldos que faltan pagar" color="#E07B00" ir={p.irPersonal} irTxt="Personal">
           {faltanSueldos.length===0?(
             <div style={vacio}>Todos los sueldos de {mesSueldos} al día.</div>
           ):(
-            <div style={{overflowX:"auto"}}>
-              <div onClick={p.irFaltantes} role="button" style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(120px,1fr))",gap:8,minWidth:520,cursor:"pointer"}}>
-                {LOCALES.map(function(l){
-                  var delL=faltanSueldos.filter(function(i){return i.emp.local===l.id;}).sort(function(x,y){return String(x.emp.nombre).localeCompare(String(y.emp.nombre));});
-                  var totL=delL.reduce(function(a,i){return a+i.falta;},0);
-                  return(
-                    <div key={l.id} style={{minWidth:0}}>
-                      <div style={{fontSize:10.5,fontWeight:700,color:l.color,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.emoji} {l.nombre}</div>
-                      <div style={{fontSize:13,fontWeight:800,color:totL>0?"#E07B00":"#4C9A5A",fontFamily:"'Playfair Display',serif",paddingBottom:5,marginBottom:4,borderBottom:"1px solid #141414"}}>{fmt(totL)}</div>
-                      {delL.length===0?(
-                        <div style={{fontSize:10.5,color:"#6E6E6E"}}>Al día</div>
-                      ):delL.map(function(i){return(
-                        <div key={i.emp.id} style={{fontSize:11,color:"#C8C8C8",padding:"2px 0",lineHeight:1.35}}>
-                          <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{i.emp.nombre}</div>
-                          <div style={{fontSize:10,color:i.tipo==="parcial"?"#E07B00":"#C1440E"}}>{fmt(i.falta)} · {i.tipo}</div>
-                        </div>
-                      );})}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <Fila primera={true} onClick={p.irFaltantes}
+              izq={<span>{nEmpFaltan} empleado{nEmpFaltan===1?"":"s"} · sueldos de {mesSueldos}</span>}
+              der={fmt(faltanSueldos.reduce(function(a,i){return a+i.falta;},0))} color="#E07B00"/>
           )}
         </Seccion>
 

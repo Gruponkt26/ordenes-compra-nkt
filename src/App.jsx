@@ -11415,8 +11415,6 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
-  // Sueldos que faltan pagar (planilla anual, hasta el mes en curso): misma cuenta que la solapa Faltantes de Personal.
-  var hayFaltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,fechaLocal().substring(0,7)).length>0;
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
@@ -11819,8 +11817,8 @@ function PanelNovedades(p){
         })}
       </div>
 
-      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal. Sólo aparece si falta pagar algo. */}
-      {hayFaltanSueldos&&(
+      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal, siempre visible. */}
+      {(
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>⚠️ Faltantes de sueldo</div>

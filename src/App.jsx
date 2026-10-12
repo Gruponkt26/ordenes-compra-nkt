@@ -20216,6 +20216,14 @@ function PanelIVA(p) {
     var cf=comprasPorLocal[lid]?comprasPorLocal[lid].ivaCF:0;
     posicionPorLocal[lid]={df,cf,neta:df-cf}; // positivo = a pagar, negativo = a favor
   });
+  // El crédito de facturas atrasadas cargado a mano se declara por CUIT, no por local: acá va al
+  // local de ese CUIT (si lo comparten Kusama y Colantonio's, a Kusama; en el total de la SRL da igual).
+  creditosMes.forEach(function(c){
+    var lid=["l1","l2","l3"].find(function(x){return CUIT_DE_LOCAL[x]===c.cuit;});
+    if(!lid)return;
+    var m=parseFloat(c.monto||0)||0;
+    posicionPorLocal[lid].cf+=m; posicionPorLocal[lid].neta-=m;
+  });
 
   // Posición consolidada SRL (Kusama + Colantonio's)
   var posSRL={

@@ -11415,11 +11415,8 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
-  // Sueldos que faltan pagar del mes en curso (de la planilla anual), por local.
-  var mesSueldos=fechaLocal().substring(0,7);
-  var faltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,mesSueldos)
-    .filter(function(i){return i.per===mesSueldos;});
-  var nEmpFaltan=faltanSueldos.reduce(function(a,i){ if(a.indexOf(i.emp.id)===-1)a.push(i.emp.id); return a; },[]).length;
+  // Sueldos que faltan pagar (planilla anual, hasta el mes en curso): misma cuenta que la solapa Faltantes de Personal.
+  var hayFaltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,fechaLocal().substring(0,7)).length>0;
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
@@ -11821,6 +11818,17 @@ function PanelNovedades(p){
           );
         })}
       </div>
+
+      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal. Sólo aparece si falta pagar algo. */}
+      {hayFaltanSueldos&&(
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>⚠️ Faltantes de sueldo</div>
+            {p.irFaltantes&&<button onClick={p.irFaltantes} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Personal →</button>}
+          </div>
+          <PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={p.sueldos||[]} adelantos={p.adelantos||[]}/>
+        </div>
+      )}
 
       {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
@@ -12451,14 +12459,6 @@ function PanelNovedades(p){
                 der={fmtDate(e.fecha_baja)} color="#C1440E"/>;
             })}
           </div>
-        </Seccion>
-        )}
-
-        {faltanSueldos.length>0&&(
-        <Seccion titulo="💸 Sueldos que faltan pagar" color="#E07B00" ir={p.irPersonal} irTxt="Personal">
-          <Fila primera={true} onClick={p.irFaltantes}
-            izq={<span>{nEmpFaltan} empleado{nEmpFaltan===1?"":"s"} · sueldos de {mesSueldos}</span>}
-            der={fmt(faltanSueldos.reduce(function(a,i){return a+i.falta;},0))} color="#E07B00"/>
         </Seccion>
         )}
 

@@ -11871,11 +11871,14 @@ function PanelNovedades(p){
           var v=ventasDeCierre(c), um=UMBRAL_VENTA_CIERRE[c.local], l=getLocal(c.local);
           if(v>um)avisos.push({verde:true,txt:"Ingresaron "+fmt(v)+" en el cierre de "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — pasó los "+fmt(um)});
         });
-        // Un egreso importante: uno solo que llega al umbral de su local (sin retiros ni aportes de socios, ni sueldos ni aguinaldos).
+        // Un egreso importante: uno solo que llega al umbral de su local (sin retiros ni aportes de socios, ni sueldos ni aguinaldos; gremio y obra social sí).
         (p.gastos||[]).filter(function(g){return enRango(g.fecha)&&UMBRAL_EGRESO_IMPORTANTE[g.local];}).forEach(function(g){
           var m=parseFloat(g.monto)||0, area=String(g.area||g.categoria||"").split(" - ")[0].trim();
-          // Sueldos y aguinaldos no cuentan: son un egreso fijo, no una novedad.
-          if(m<UMBRAL_EGRESO_IMPORTANTE[g.local]||esAreaSocios(area)||area==="Sueldos"||area==="Aguinaldos"||/aguinaldo/i.test(String(g.subramo||"")))return;
+          // Sueldos y aguinaldos no cuentan: son un egreso fijo, no una novedad. Gremio y obra social
+          // sí (también caen en el área Sueldos, pero vienen de un vencimiento).
+          var deVenc=String(g.id||"").indexOf("egr_venc_")===0||String(g.notas||"").indexOf("Pago de vencimiento")===0;
+          var esSueldo=!deVenc&&(area==="Sueldos"||area==="Aguinaldos"||/aguinaldo/i.test(String(g.subramo||"")));
+          if(m<UMBRAL_EGRESO_IMPORTANTE[g.local]||esAreaSocios(area)||esSueldo)return;
           var l=getLocal(g.local);
           avisos.push({rojo:false,txt:"Egreso importante en "+(l?l.nombre:g.local)+" ("+fmtDate(g.fecha)+") — "+(g.concepto||"sin concepto")+" · "+fmt(m)});
         });

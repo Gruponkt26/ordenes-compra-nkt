@@ -11415,9 +11415,9 @@ function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
   var proveedores=p.proveedores||[], saldosProv=p.saldosProveedores||[];
-  // Sueldos del mes en curso que todavía no se terminaron de pagar (si no hay, la tarjeta no se muestra).
-  var mesEnCursoSueldos=fechaLocal().substring(0,7);
-  var hayFaltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,mesEnCursoSueldos).some(function(i){return i.per===mesEnCursoSueldos;});
+  // Los sueldos se pagan mes vencido: en octubre se terminan de pagar los de septiembre. Si no queda nada, la tarjeta no se muestra.
+  var hoyN=fechaLocal(), perSueldos=(parseInt(hoyN.substring(5,7),10)===1?(parseInt(hoyN.substring(0,4),10)-1)+"-12":hoyN.substring(0,4)+"-"+("0"+(parseInt(hoyN.substring(5,7),10)-1)).slice(-2));
+  var hayFaltanSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,hoyN.substring(0,7)).some(function(i){return i.per===perSueldos;});
   var avisosCaja=(p.avisosCaja||[]).filter(function(a){return !a.resuelto;});
   // Día de negocio, no calendario: de madrugada, antes del corte, "hoy" acá tiene que
   // coincidir con el día que el cajero todavía está cerrando en 🧾 Caja.
@@ -11820,14 +11820,14 @@ function PanelNovedades(p){
         })}
       </div>
 
-      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal, pero sólo el mes en curso y los locales que deben. */}
+      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal, pero sólo los sueldos del mes vencido y los locales que deben. */}
       {hayFaltanSueldos&&(
         <div style={{marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>⚠️ Faltantes de sueldo</div>
             {p.irFaltantes&&<button onClick={p.irFaltantes} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Personal →</button>}
           </div>
-          <PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={p.sueldos||[]} adelantos={p.adelantos||[]} soloMesEnCurso={true}/>
+          <PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={p.sueldos||[]} adelantos={p.adelantos||[]} soloPeriodo={perSueldos}/>
         </div>
       )}
 
@@ -19318,37 +19318,37 @@ function faltantesDeSueldos(empleados, planilla, sueldos, adelantos, hoyMes){
   });
   return items;
 }
-// soloMesEnCurso: Novedades, que sólo quiere el mes en curso y sólo los locales que todavía deben algo.
-function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloMesEnCurso}){
+// soloPeriodo ("2026-09"): Novedades, que sólo quiere los sueldos de ese mes y sólo los locales que todavía deben algo.
+function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPeriodo}){
   var hoyMes=new Date().toISOString().split("T")[0].substring(0,7);
   var [mes,setMes]=useState("todos");
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
   var nombrePeriodo=function(per){var pr=per.split("-");return MESES[parseInt(pr[1],10)-1]+" "+pr[0];};
   var items=faltantesDeSueldos(empleados,planilla,sueldos,adelantos,hoyMes);
-  if(soloMesEnCurso)items=items.filter(function(i){return i.per===hoyMes;});
+  if(soloPeriodo)items=items.filter(function(i){return i.per===soloPeriodo;});
   var periodos=[];
   items.forEach(function(i){ if(periodos.indexOf(i.per)===-1)periodos.push(i.per); });
   periodos.sort().reverse();
-  var vistos=items.filter(function(i){return soloMesEnCurso||mes==="todos"||i.per===mes;});
-  if(soloMesEnCurso&&vistos.length===0)return null;
+  var vistos=items.filter(function(i){return soloPeriodo||mes==="todos"||i.per===mes;});
+  if(soloPeriodo&&vistos.length===0)return null;
   var granTotal=vistos.reduce(function(a,i){return a+i.falta;},0);
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
-        {soloMesEnCurso?<div style={{fontSize:12,color:"#8C8C8C"}}>Sueldos de {nombrePeriodo(hoyMes)}</div>:<select value={mes} onChange={function(e){setMes(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+        {soloPeriodo?<div style={{fontSize:12,color:"#8C8C8C"}}>Sueldos de {nombrePeriodo(soloPeriodo)}</div>:<select value={mes} onChange={function(e){setMes(e.target.value);}} style={{padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
           <option value="todos">📅 Todos los meses</option>
           {periodos.map(function(per){return <option key={per} value={per}>{nombrePeriodo(per)}</option>;})}
         </select>}
         <div style={{fontSize:12,color:"#8C8C8C"}}>Falta pagar en total: <b style={{color:granTotal>0?"#E07B00":"#4CAF50",fontSize:15}}>{fmt(granTotal)}</b></div>
       </div>
-      {!soloMesEnCurso&&<div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:12}}>
+      {!soloPeriodo&&<div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5,marginBottom:12}}>
         Lo que falta de cada sueldo según la planilla anual, descontando adelantos y lo ya pagado. <span style={{color:"#C1440E"}}>Total</span> = todavía no se pagó nada; <span style={{color:"#E07B00"}}>parcial</span> = se pagó o se adelantó una parte.
       </div>}
       {vistos.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:"#4CAF50",fontSize:12,marginBottom:12}}>✅ No falta pagar ningún sueldo{mes==="todos"?"":" en "+nombrePeriodo(mes)}.</div>}
       <div style={{overflowX:"auto"}}>
-        <div style={soloMesEnCurso?{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"start"}:{display:"grid",gridTemplateColumns:"repeat(4,minmax(190px,1fr))",gap:10,minWidth:790,alignItems:"start"}}>
-          {LOCALES.filter(function(l){return !soloMesEnCurso||vistos.some(function(i){return i.emp.local===l.id;});}).map(function(l){
+        <div style={soloPeriodo?{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"start"}:{display:"grid",gridTemplateColumns:"repeat(4,minmax(190px,1fr))",gap:10,minWidth:790,alignItems:"start"}}>
+          {LOCALES.filter(function(l){return !soloPeriodo||vistos.some(function(i){return i.emp.local===l.id;});}).map(function(l){
             var delLocal=vistos.filter(function(i){return i.emp.local===l.id;});
             var totalLocal=delLocal.reduce(function(a,i){return a+i.falta;},0);
             // Un bloque por empleado, con sus meses adentro.

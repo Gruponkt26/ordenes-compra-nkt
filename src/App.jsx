@@ -11871,10 +11871,11 @@ function PanelNovedades(p){
           var v=ventasDeCierre(c), um=UMBRAL_VENTA_CIERRE[c.local], l=getLocal(c.local);
           if(v>um)avisos.push({verde:true,txt:"Ingresaron "+fmt(v)+" en el cierre de "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — pasó los "+fmt(um)});
         });
-        // Un egreso importante: uno solo que llega al umbral de su local (sin retiros ni aportes de socios).
+        // Un egreso importante: uno solo que llega al umbral de su local (sin retiros ni aportes de socios, ni sueldos ni aguinaldos).
         (p.gastos||[]).filter(function(g){return enRango(g.fecha)&&UMBRAL_EGRESO_IMPORTANTE[g.local];}).forEach(function(g){
           var m=parseFloat(g.monto)||0, area=String(g.area||g.categoria||"").split(" - ")[0].trim();
-          if(m<UMBRAL_EGRESO_IMPORTANTE[g.local]||esAreaSocios(area))return;
+          // Sueldos y aguinaldos no cuentan: son un egreso fijo, no una novedad.
+          if(m<UMBRAL_EGRESO_IMPORTANTE[g.local]||esAreaSocios(area)||area==="Sueldos"||area==="Aguinaldos"||/aguinaldo/i.test(String(g.subramo||"")))return;
           var l=getLocal(g.local);
           avisos.push({rojo:false,txt:"Egreso importante en "+(l?l.nombre:g.local)+" ("+fmtDate(g.fecha)+") — "+(g.concepto||"sin concepto")+" · "+fmt(m)});
         });

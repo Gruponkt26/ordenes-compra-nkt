@@ -15202,12 +15202,12 @@ var PERCEPCION_IVA_COCA=0.022, PERCEPCION_IIBB_COCA=0.0316;
 // Proveedores que perciben: Coca Cola, Pepsi y La Serenísima. Todos usan las mismas tasas que
 // Coca Cola; si la factura de alguno trae otras, hay que separarlas acá.
 var PERCIBEN_IVA_IIBB=/coca[\s-]*cola|pepsi|seren[ií]sima/i;
-// Alícuota de IVA de una factura de compra: la verdura (La Finca y el resto de las verdulerías)
-// va al 10,5 %; lo demás, al 21 %. Se mira la categoría, el subrubro y el proveedor, porque en
+// Alícuota de IVA de una factura de compra: la verdura (La Finca y el resto de las verdulerías) y la carne (El Centro de la Carne, La Boutique de la Carne)
+// van al 10,5 %; lo demás, al 21 %. Se mira la categoría, el subrubro y el proveedor, porque en
 // los egresos de Proveedores la categoría es solo "Proveedores".
 function alicuotaIVACompra(g){
   var txt=((g&&g.categoria)||"")+" "+((g&&g.subramo)||"")+" "+((g&&g.concepto)||"");
-  return /verduler[ií]a|la finca/i.test(txt)?0.105:0.21;
+  return /verduler[ií]a|la finca|el centro de la carne|la boutique de la carne/i.test(txt)?0.105:0.21;
 }
 function percepcionesCocaCola(g){
   var cero={iva:0,iibb:0};

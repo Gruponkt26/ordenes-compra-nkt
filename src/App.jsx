@@ -6483,7 +6483,7 @@ var DEP_TIPOS={
   // Un turno es alquilar la cancha a quien venga; esto es lo que paga un profe por las
   // horas que usa para sus clases, a su tarifa. Entra plata en los dos casos, pero por
   // motivos distintos, y mezclarlos haría imposible saber de dónde viene cada peso.
-  uso:{label:"🤝 Horas de profes",singular:"uso",articulo:"el",color:"#8B2FC9",vacio:"Sin horas de profes cargadas",ok:"cobrado"},
+  uso:{label:"🏓 Clases de pádel",singular:"clase de pádel",articulo:"la",color:"#8B2FC9",vacio:"Sin clases de pádel cargadas",ok:"cobrado"},
 };
 
 // En qué se gasta la plata del predio. Los cuatro primeros son los rubros reales;
@@ -6609,11 +6609,14 @@ function depEstadoDe(tipo,estado){
   return lista.find(function(e){return e.id===estado;})||lista[0];
 }
 var DEP_PROFE_CLASES="Sofia Mazzeo";
+var DEP_PROFE_PADEL="Beiman Matias";
 function depFormVacio(tipo){
   var f={estado:(DEP_ESTADOS[tipo]||[{}])[0].id||"",notas:""};
   (DEP_CAMPOS[tipo]||[]).forEach(function(c){ f[c.k]=c.tipo==="date"?new Date().toISOString().split("T")[0]:""; });
   // Las clases de tenis las da siempre la misma profe: viene puesta, y se puede cambiar si un día da otra.
   if(tipo==="clase")f.profe=DEP_PROFE_CLASES;
+  // Las clases de pádel las da siempre el mismo profe: viene puesto, y se puede cambiar.
+  if(tipo==="uso")f.nombre=DEP_PROFE_PADEL;
   return f;
 }
 
@@ -6654,7 +6657,7 @@ var DEP_ORIGENES=[
   {id:"tenis_turno",label:"🎾 Turno de tenis",desc:"Alquiler de cancha",      disciplina:"tenis",tipo:"turno"},
   {id:"padel_turno",label:"🏓 Turno de pádel",desc:"Alquiler de cancha",      disciplina:"padel",tipo:"turno"},
   {id:"tenis_clase",label:"🎾 Clase de tenis",desc:"Clase con un alumno",     disciplina:"tenis",tipo:"clase"},
-  {id:"uso",        label:"🤝 Horas de un profe",desc:"Lo que paga por las que usó", disciplina:"caja", tipo:"uso"},
+  {id:"uso",        label:"🏓 Clases de pádel",desc:"Las horas que da el profe en la cancha", disciplina:"caja", tipo:"uso"},
   {id:"otra",       label:"💰 Otra entrada",  desc:"Torneo, kiosco, seña...", disciplina:"caja", tipo:"entrada"},
   {id:"galpon",     label:"🏚️ Ingreso al galpón",desc:"Un artículo que entró", disciplina:"galpon",tipo:"articulo"},
 ];
@@ -6674,7 +6677,7 @@ var DEP_CONCEPTOS=[
   {id:"turno_tenis", label:"🎾 Turnos de tenis",  test:function(x){return x.tipo==="turno"&&x.disciplina==="tenis";}},
   {id:"turno_padel", label:"🏓 Turnos de pádel",  test:function(x){return x.tipo==="turno"&&x.disciplina==="padel";}},
   {id:"clases",      label:"📘 Clases",           test:function(x){return x.tipo==="clase";}},
-  {id:"uso",         label:"🤝 Horas de profes",  test:function(x){return x.tipo==="uso";}},
+  {id:"uso",         label:"🏓 Clases de pádel",  test:function(x){return x.tipo==="uso";}},
   {id:"otras",       label:"💰 Otras entradas",   test:function(x){return x.tipo==="entrada";}},
 ];
 
@@ -6684,7 +6687,7 @@ function depQueEs(x){
   if(x.tipo==="entrada")return "💰 Entrada";
   if(x.tipo==="salida"){var r=depRubro(x.rubro);return r?r.label:"📤 Salida";}
   if(x.tipo==="obra")return "🏗️ Obra";
-  if(x.tipo==="uso")return "🤝 Horas de profe";
+  if(x.tipo==="uso")return "🏓 Clase de pádel";
   var d=DEP_DISCIPLINAS.find(function(y){return y.id===x.disciplina;});
   var n=x.tipo==="clase"?"Clase":x.tipo==="turno"?"Turno":"";
   if(!n)return "";
@@ -6896,7 +6899,15 @@ function PanelDeportes(p){
   }
   function abrirForm(disc,tp,previo){
     setFormDisciplina(disc);setFormTipo(tp);
-    setForm({...depFormVacio(tp),...(previo||{})});
+    var inicial={...depFormVacio(tp),...(previo||{})};
+    // Con el profe ya puesto, su tarifa se trae de la ficha igual que si lo hubieran elegido a mano.
+    if(tp==="uso"&&!String(inicial.precio||"").trim()){
+      var fichaP=registros.find(function(x){
+        return x.tipo==="profe"&&String(x.nombre||"").trim().toLowerCase()===String(inicial.nombre||"").trim().toLowerCase();
+      });
+      if(fichaP&&fichaP.precio)inicial.precio=String(fichaP.precio);
+    }
+    setForm(inicial);
     setEditId(null);setAbierto(true);setEligiendo(false);
   }
   function cerrarForm(){

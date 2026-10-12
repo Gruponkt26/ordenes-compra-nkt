@@ -6608,9 +6608,12 @@ function depEstadoDe(tipo,estado){
   var lista=DEP_ESTADOS[tipo]||[];
   return lista.find(function(e){return e.id===estado;})||lista[0];
 }
+var DEP_PROFE_CLASES="Sofia Mazzeo";
 function depFormVacio(tipo){
   var f={estado:(DEP_ESTADOS[tipo]||[{}])[0].id||"",notas:""};
   (DEP_CAMPOS[tipo]||[]).forEach(function(c){ f[c.k]=c.tipo==="date"?new Date().toISOString().split("T")[0]:""; });
+  // Las clases de tenis las da siempre la misma profe: viene puesta, y se puede cambiar si un día da otra.
+  if(tipo==="clase")f.profe=DEP_PROFE_CLASES;
   return f;
 }
 

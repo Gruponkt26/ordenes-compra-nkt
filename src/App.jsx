@@ -12454,15 +12454,13 @@ function PanelNovedades(p){
         </Seccion>
         )}
 
+        {faltanSueldos.length>0&&(
         <Seccion titulo="💸 Sueldos que faltan pagar" color="#E07B00" ir={p.irPersonal} irTxt="Personal">
-          {faltanSueldos.length===0?(
-            <div style={vacio}>Todos los sueldos de {mesSueldos} al día.</div>
-          ):(
-            <Fila primera={true} onClick={p.irFaltantes}
-              izq={<span>{nEmpFaltan} empleado{nEmpFaltan===1?"":"s"} · sueldos de {mesSueldos}</span>}
-              der={fmt(faltanSueldos.reduce(function(a,i){return a+i.falta;},0))} color="#E07B00"/>
-          )}
+          <Fila primera={true} onClick={p.irFaltantes}
+            izq={<span>{nEmpFaltan} empleado{nEmpFaltan===1?"":"s"} · sueldos de {mesSueldos}</span>}
+            der={fmt(faltanSueldos.reduce(function(a,i){return a+i.falta;},0))} color="#E07B00"/>
         </Seccion>
+        )}
 
         <Seccion titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(

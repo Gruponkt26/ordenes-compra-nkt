@@ -211,7 +211,6 @@ export function PanelCompetencia() {
 
   var salon = LOCALES_COMPETENCIA.map(function (id) { return { local: localDe(id), r: resumen(id, "salon") }; });
   var ranking = salon.slice().sort(function (a, b) { return (b.r.general === null ? -1 : b.r.general) - (a.r.general === null ? -1 : a.r.general); });
-  var delivery = resumen("l2", "delivery");
 
   var comentarios = lista.filter(function (o) { return (o.comentario || "").trim() && (filtroLocal === "todos" || o.local === filtroLocal); }).slice(0, 40);
 
@@ -275,28 +274,36 @@ export function PanelCompetencia() {
             );
           })}
 
-          <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, margin: "16px 0 6px" }}>🌸 Kusama · delivery (aparte)</div>
-          <div style={{ ...tarjeta, borderColor: "#8B2FC944" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 10.5, color: "#7E7E7E" }}>{delivery.cantidad} opinion{delivery.cantidad === 1 ? "" : "es"}</div>
-              <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "'Playfair Display',serif", marginRight: 8 }}>{fmtNota(delivery.general)}</span>
-                <Estrellas valor={delivery.general} />
-              </div>
-            </div>
-            {delivery.porPregunta.map(function (q) {
-              return (
-                <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                  <div style={{ width: 150, fontSize: 11.5, color: "#B8B8B8" }}>{q.nombre}</div>
-                  <div style={{ flex: 1, height: 6, background: "#1A1A1A", borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ width: (q.prom === null ? 0 : (q.prom / 5) * 100) + "%", height: "100%", background: "#8B2FC9" }} />
+          <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, margin: "16px 0 6px" }}>🛵 Delivery (aparte)</div>
+          {LOCALES_COMPETENCIA.map(function (id) {
+            var l = localDe(id), d = resumen(id, "delivery");
+            return (
+              <div key={id} style={{ ...tarjeta, borderColor: l.color + "44" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: l.color }}>{l.emoji} {l.nombre}</div>
+                    <div style={{ fontSize: 10.5, color: "#7E7E7E", marginTop: 2 }}>{d.cantidad} opinion{d.cantidad === 1 ? "" : "es"}</div>
                   </div>
-                  <div style={{ width: 34, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{fmtNota(q.prom)}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "'Playfair Display',serif", marginRight: 8 }}>{fmtNota(d.general)}</span>
+                    <Estrellas valor={d.general} />
+                  </div>
                 </div>
-              );
-            })}
-            <div style={{ fontSize: 10.5, color: "#6E6E6E", marginTop: 6 }}>Por ahora el delivery se ve aparte y no entra en el ranking de arriba.</div>
-          </div>
+                {d.porPregunta.map(function (q) {
+                  return (
+                    <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <div style={{ width: 150, fontSize: 11.5, color: "#B8B8B8" }}>{q.nombre}</div>
+                      <div style={{ flex: 1, height: 6, background: "#1A1A1A", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ width: (q.prom === null ? 0 : (q.prom / 5) * 100) + "%", height: "100%", background: l.color }} />
+                      </div>
+                      <div style={{ width: 34, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{fmtNota(q.prom)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10.5, color: "#6E6E6E", marginTop: -4 }}>Por ahora el delivery se ve aparte y no entra en el ranking de arriba.</div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0 6px", flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>Comentarios</div>
@@ -338,8 +345,8 @@ function QRParaImprimir() {
   LOCALES_COMPETENCIA.forEach(function (id) {
     items.push({ local: id, canal: "salon", zona: "mesa", titulo: "Mesas" });
     items.push({ local: id, canal: "salon", zona: "barra", titulo: "Barra" });
+    items.push({ local: id, canal: "delivery", zona: "", titulo: "Delivery" });
   });
-  items.push({ local: "l2", canal: "delivery", zona: "", titulo: "Delivery" });
 
   var [imgs, setImgs] = useState({});
   var [copiado, setCopiado] = useState("");
@@ -360,7 +367,7 @@ function QRParaImprimir() {
     <div>
       <style>{"@media print { body * { visibility: hidden; } .qr-imprimir, .qr-imprimir * { visibility: visible; } .qr-imprimir { position: absolute; left: 0; top: 0; width: 100%; } .qr-no-imprimir { display: none !important; } }"}</style>
       <div className="qr-no-imprimir" style={{ fontSize: 12, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 12 }}>
-        Un QR por zona de cada local, para pegar en las mesas y en la barra. El de <b style={{ color: "#C8C8C8" }}>delivery</b> es de Kusama: imprimilo para la bolsa o el ticket, o copiá el enlace y mandalo por WhatsApp junto al pedido.
+        Un QR por zona de cada local, para pegar en las mesas y en la barra. El de <b style={{ color: "#C8C8C8" }}>delivery</b> imprimilo para la bolsa o el ticket, o copiá el enlace y mandalo por WhatsApp junto al pedido.
         <div style={{ marginTop: 8 }}>
           <button onClick={function () { window.print(); }} style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimir</button>
         </div>

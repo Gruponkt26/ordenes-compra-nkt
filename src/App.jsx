@@ -668,7 +668,20 @@ var INIT_USERS = [
 // Usuarios que entran a Compras con la misma navegación que Sofía — las dos
 // tarjetas, Órdenes de compra y Stock — pero siempre limitados a su propio
 // local y sin Faltantes ni Config, que siguen siendo de admin.
-var COMPRAS_SUBMODULOS = ["sol", "magali", "florencia", "flor", "ariana"];
+var COMPRAS_SUBMODULOS = ["sol", "magali", "florencia", "flor", "ariana", "araceli"];
+
+// Quién ve el panel completo (todos los módulos): Sofía y Belen.
+var PANEL_COMPLETO = ["sofia", "belen"];
+// Perfiles que se fijan acá, sin importar lo que diga la base de usuarios:
+//  · Belen es administradora y ve el panel completo igual que Sofía.
+//  · Araceli ve solamente Cocina, como Magali y Sol (Bodegón, sección Cocina, sin permisos de administración).
+function perfilEfectivo(u){
+  if(!u)return u;
+  var k=String(u.usuario||"").toLowerCase();
+  if(k==="belen")return {...u, rol:"admin"};
+  if(k==="araceli")return {...u, rol:"usuario", local:"l1", seccion:"Cocina"};
+  return u;
+}
 
 var INIT_PROVEEDORES = [
   { id: "p1",  nombre: "Carnicería",    categoria: "Carnes & Aves",           compartido: true, whatsapp: "", locales: ["l1","l2","l3"] },
@@ -22945,9 +22958,9 @@ export default function App() {
     var id=leerSesion();
     if(!id)return;
     var u=(users||[]).find(function(x){return x.id===id;});
-    if(u)setCu(u);
+    if(u)setCu(perfilEfectivo(u));
   },[users]);
-  function entrar(u){ guardarSesion(u&&u.id); setCu(u); }
+  function entrar(u){ guardarSesion(u&&u.id); setCu(perfilEfectivo(u)); }
   function salir(){ guardarSesion(null); setCu(null); }
   var [proveedores,setProveedores]=useState(INIT_PROVEEDORES);
   var [productos,setProductos]=useState(INIT_PRODUCTOS);
@@ -23329,7 +23342,7 @@ export default function App() {
   if(!cu)return <Login users={users} onLogin={entrar}/>;
 
   var esAdmin=cu.rol==="admin";
-  var esSofia=cu.usuario==="sofia";
+  var esSofia=PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())!==-1;   // el panel completo: Sofía y Belen
   var esCajero=cu.rol==="cajero";
   // El tilde de "tablet del local" puede haber quedado en el navegador de Sofía de una
   // prueba: ella navega por módulos, así que ahí ese arranque no vale y se ignora.

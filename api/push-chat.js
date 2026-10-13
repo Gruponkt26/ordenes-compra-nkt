@@ -79,7 +79,7 @@ module.exports = async function handler(req, res) {
       let dato = null;
       try { dato = JSON.parse(s.texto); } catch (e) {}
       if (!dato || !dato.sub || !dato.sub.endpoint) continue;
-      if (privado && s.usuario !== "sofia" && dato.local !== "l4") continue;
+      if (privado && s.usuario !== "sofia" && s.usuario !== "belen" && dato.local !== "l4") continue;
       try {
         await webpush.sendNotification(dato.sub, aviso, { TTL: 60 * 60 * 24 });
         enviados++;

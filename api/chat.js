@@ -86,7 +86,8 @@ module.exports = async function handler(req, res) {
     var apiMsg = (e && e.error && e.error.error && e.error.error.message) || "";
     var msg;
     if (status === 401) {
-      msg = "La clave de la API es inválida. Revisá que esté completa y sin espacios en Vercel.";
+      var k = String(process.env.ANTHROPIC_API_KEY || "").replace(/^[\s"']+|[\s"']+$/g, "");
+      msg = "La clave de la API es inválida. Revisá que esté completa y sin espacios en Vercel. (La clave que usa la app tiene " + k.length + " caracteres y termina en \"" + k.slice(-4) + "\".)";
     } else if (status === 429) {
       msg = "Demasiadas preguntas seguidas. Esperá unos segundos.";
     } else if (/credit balance/i.test(apiMsg)) {

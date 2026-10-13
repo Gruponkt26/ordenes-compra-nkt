@@ -79,6 +79,16 @@ export default function ChatEquipo(p) {
   var [aviso, setAviso] = useState(null);
   var [avisosApp, setAvisosApp] = useState(estadoInicialAvisos());
   var [avisosMsg, setAvisosMsg] = useState("");
+  // Al cajero se le insiste con activar los avisos: el cartel vuelve en cada ingreso hasta que los active.
+  var [cartelOculto, setCartelOculto] = useState(function () {
+    try { return sessionStorage.getItem("chat_cartel_oculto") === cu.usuario; } catch (e) { return false; }
+  });
+  function ocultarCartel() {
+    setCartelOculto(true);
+    try { sessionStorage.setItem("chat_cartel_oculto", cu.usuario); } catch (e) {}
+  }
+  var esCajero = cu.rol === "cajero";
+  var faltanAvisos = esCajero && (avisosApp === "inactivo" || avisosApp === "denegado" || avisosApp === "ios-instalar");
   var conocidos = useRef(null);
   var abiertoRef = useRef(false);
   var canalRef = useRef(CANAL_TODOS);
@@ -247,6 +257,20 @@ export default function ChatEquipo(p) {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif" }}>
+      {faltanAvisos && !cartelOculto && !abierto && (
+        <div style={{ position: "fixed", left: "50%", top: 14, transform: "translateX(-50%)", zIndex: 1001, width: "min(420px, calc(100vw - 24px))", background: "#1A1408", border: "2px solid #D4A017", borderRadius: 14, padding: "13px 15px", boxShadow: "0 10px 34px #000C" }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#D4A017", marginBottom: 5 }}>🔔 Activá los avisos del chat</div>
+          {avisosApp === "inactivo" && (<div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.5, marginBottom: 10 }}>Así te llegan los mensajes del equipo aunque la app esté cerrada. Tocá el botón y aceptá el permiso.</div>)}
+          {avisosApp === "denegado" && (<div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.5, marginBottom: 10 }}>Las notificaciones de este sitio están bloqueadas. Habilitalas en la configuración del navegador (candado o ícono junto a la dirección → Notificaciones → Permitir) y recargá la app.</div>)}
+          {avisosApp === "ios-instalar" && (<div style={{ fontSize: 12, color: "#E8E8E8", lineHeight: 1.5, marginBottom: 10 }}>En el iPhone hay que agregar la app a la pantalla de inicio: tocá Compartir → "Agregar a pantalla de inicio" y abrila desde ahí.</div>)}
+          {avisosMsg && <div style={{ fontSize: 11, color: "#E0714A", marginBottom: 8 }}>{avisosMsg}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            {avisosApp === "inactivo" && (<button onClick={activarAvisos} style={{ flex: 2, padding: "10px", borderRadius: 9, border: "none", background: "#D4A017", color: "#000", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Activar avisos</button>)}
+            <button onClick={ocultarCartel} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1px solid #3A3A3A", background: "none", color: "#9A9A9A", fontFamily: "'Inter',sans-serif", fontSize: 12, cursor: "pointer" }}>Más tarde</button>
+          </div>
+        </div>
+      )}
+
       {aviso && !abierto && (
         <div onClick={function () { abrir(aviso.canal); }}
           style={{ position: "fixed", right: 18, bottom: 84, zIndex: 1000, maxWidth: 300, background: "#1A1A1A", border: "1px solid #D4A01766", borderRadius: 12, padding: "10px 13px", cursor: "pointer", boxShadow: "0 8px 28px #000A" }}>
@@ -315,6 +339,9 @@ export default function ChatEquipo(p) {
       <button onClick={function () { if (abierto) setAbierto(false); else abrir(); }} title="Chat del equipo"
         style={{ position: "fixed", right: 18, bottom: 18, zIndex: 1000, width: 56, height: 56, borderRadius: 28, border: "none", background: abierto ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 24, cursor: "pointer", boxShadow: "0 6px 22px #000A" }}>
         💬
+        {faltanAvisos && totalSinLeer === 0 && (
+          <span title="Avisos desactivados" style={{ position: "absolute", bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, background: "#D4A017", border: "2px solid #0D0D0D" }} />
+        )}
         {totalSinLeer > 0 && (
           <span style={{ position: "absolute", top: -4, right: -4, minWidth: 20, height: 20, padding: "0 5px", boxSizing: "border-box", borderRadius: 10, background: "#E5231B", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #0D0D0D" }}>{totalSinLeer > 99 ? "99+" : totalSinLeer}</span>
         )}

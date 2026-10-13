@@ -11348,6 +11348,11 @@ function PanelIIBB(p){
             </div>
           );
         })}
+        {creditosMes.length>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",paddingTop:7,fontSize:12,fontWeight:800,color:"#F0EDE8"}}>
+            <span>Total de {mesFiltro}</span><span style={{color:"#4C9A5A"}}>{fmt(creditosMes.reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0))}</span>
+          </div>
+        )}
       </div>
     </div>
   );

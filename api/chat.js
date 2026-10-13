@@ -57,7 +57,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    var client = new Anthropic();
+    var client = new Anthropic({ apiKey: String(process.env.ANTHROPIC_API_KEY).replace(/^[\s"']+|[\s"']+$/g, "") });
     var response = await client.messages.create({
       model: "claude-sonnet-5-5",
       max_tokens: 4000,

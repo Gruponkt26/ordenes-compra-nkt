@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { SURL, SKEY, SH, LOCALES, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
+import ChatEquipo from "./chat.jsx";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 
@@ -24622,6 +24623,7 @@ export default function App() {
       {showUsers&&<GestUsuarios users={users} empleados={empleados} onClose={function(){setShowUsers(false);}}
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
+      <ChatEquipo cu={cu} users={users}/>
     </div>
   );
 }

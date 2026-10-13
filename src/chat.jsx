@@ -10,6 +10,34 @@ import { SURL, SH } from "./comun.js";
 var CANAL_TODOS = "chat_todos";
 var CANAL_PRIV = "chat_priv_sofia_oficina";
 var CADA_MS = 8000;
+// Clave pública de los avisos (la privada está en Vercel). Es pública a propósito.
+var VAPID_PUBLICA = "BJplpIAFxpkF2Of7hqMt53MWS6mH1K2dTgrzYNoRmuifHfNmOa6UGOloe6KXSeDEebxEGJD6NYZWESOg_o8VlRY";
+
+function clavePush(b64) {
+  var pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  var raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  var out = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+function hashCorto(s) {
+  var h = 5381;
+  for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+async function borrarFila(id) {
+  try { await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }); } catch (e) {}
+}
+function estadoInicialAvisos() {
+  if (typeof window === "undefined") return "no-soportado";
+  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var instalada = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    return ios && !instalada ? "ios-instalar" : "no-soportado";
+  }
+  if (Notification.permission === "denied") return "denegado";
+  return "inactivo";
+}
 
 async function cargarChat() {
   try {
@@ -49,6 +77,8 @@ export default function ChatEquipo(p) {
   var [vistos, setVistos] = useState({});
   var [texto, setTexto] = useState("");
   var [aviso, setAviso] = useState(null);
+  var [avisosApp, setAvisosApp] = useState(estadoInicialAvisos());
+  var [avisosMsg, setAvisosMsg] = useState("");
   var conocidos = useRef(null);
   var abiertoRef = useRef(false);
   var canalRef = useRef(CANAL_TODOS);
@@ -146,6 +176,51 @@ export default function ChatEquipo(p) {
     document.title = totalSinLeer > 0 ? "(" + totalSinLeer + ") " + tituloBase.current : tituloBase.current;
   }, [totalSinLeer]);
 
+  function filaSuscripcion(sub) {
+    var ahora = new Date().toISOString();
+    return { id: "pushsub_" + cu.usuario + "_" + hashCorto(sub.endpoint), ambito: "push_sub", texto: JSON.stringify({ sub: sub, local: cu.local || "" }), usuario: cu.usuario, created_at: ahora, updated_at: ahora };
+  }
+  // Si ya activó los avisos en este dispositivo, se vuelve a guardar la suscripción (puede cambiar).
+  useEffect(function () {
+    if (avisosApp !== "inactivo" || Notification.permission !== "granted") return;
+    navigator.serviceWorker.getRegistration("/sw.js").then(function (reg) {
+      if (!reg) return null;
+      return reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (!sub) return;
+      guardarFila(filaSuscripcion(sub.toJSON()));
+      setAvisosApp("activo");
+    }).catch(function () {});
+  }, [cu.usuario]);
+
+  async function activarAvisos() {
+    setAvisosMsg("");
+    try {
+      var permiso = await Notification.requestPermission();
+      if (permiso !== "granted") { setAvisosApp("denegado"); return; }
+      var reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clavePush(VAPID_PUBLICA) });
+      var err = await guardarFila(filaSuscripcion(sub.toJSON()));
+      if (err) { setAvisosMsg("No se pudo guardar: " + err); return; }
+      setAvisosApp("activo");
+    } catch (e) {
+      setAvisosMsg("No se pudieron activar los avisos: " + ((e && e.message) || e));
+    }
+  }
+  async function desactivarAvisos() {
+    try {
+      var reg = await navigator.serviceWorker.getRegistration("/sw.js");
+      var sub = reg && await reg.pushManager.getSubscription();
+      if (sub) {
+        await borrarFila("pushsub_" + cu.usuario + "_" + hashCorto(sub.endpoint));
+        await sub.unsubscribe();
+      }
+    } catch (e) {}
+    setAvisosApp("inactivo");
+  }
+
   function enviar() {
     var t = texto.trim().slice(0, 2000);
     if (!t) return;
@@ -154,7 +229,11 @@ export default function ChatEquipo(p) {
     setMsgs(function (prev) { return prev.concat([m]); });
     if (conocidos.current) conocidos.current[m.id] = true;
     setTexto("");
-    guardarFila(m).then(function (err) { if (err) alert("No se pudo enviar el mensaje:\n\n" + err); });
+    guardarFila(m).then(function (err) {
+      if (err) { alert("No se pudo enviar el mensaje:\n\n" + err); return; }
+      // Avisa a los demás aunque tengan la app cerrada.
+      fetch("/api/push-chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: m.id }) }).catch(function () {});
+    });
   }
 
   function abrir(c) {
@@ -190,6 +269,15 @@ export default function ChatEquipo(p) {
             })}
             <div style={{ flex: 1 }} />
             <button onClick={function () { setAbierto(false); }} style={{ background: "none", border: "none", color: "#8C8C8C", fontSize: 16, cursor: "pointer" }} title="Cerrar">✕</button>
+          </div>
+
+          <div style={{ padding: "6px 12px", borderBottom: "1px solid #161616", fontSize: 11, color: "#8C8C8C", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {avisosApp === "activo" && (<><span style={{ color: "#4C9A5A" }}>🔔 Avisos con la app cerrada: activados</span><button onClick={desactivarAvisos} style={{ background: "none", border: "none", color: "#7E7E7E", fontSize: 11, cursor: "pointer", textDecoration: "underline", padding: 0 }}>Desactivar</button></>)}
+            {avisosApp === "inactivo" && (<><span>🔕 Sin avisos con la app cerrada</span><button onClick={activarAvisos} style={{ background: "#D4A017", border: "none", color: "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", borderRadius: 6, padding: "3px 9px" }}>Activar avisos</button></>)}
+            {avisosApp === "denegado" && <span>🔕 Los avisos están bloqueados: habilitá las notificaciones de este sitio en el navegador.</span>}
+            {avisosApp === "ios-instalar" && <span>📱 Para recibir avisos en el iPhone: tocá Compartir → "Agregar a pantalla de inicio" y abrí la app desde ahí.</span>}
+            {avisosApp === "no-soportado" && <span>Este navegador no permite avisos con la app cerrada.</span>}
+            {avisosMsg && <span style={{ color: "#E0714A" }}>{avisosMsg}</span>}
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>

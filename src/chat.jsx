@@ -79,7 +79,7 @@ export default function ChatEquipo(p) {
   var [aviso, setAviso] = useState(null);
   var [avisosApp, setAvisosApp] = useState(estadoInicialAvisos());
   var [avisosMsg, setAvisosMsg] = useState("");
-  // Al cajero se le insiste con activar los avisos: el cartel vuelve en cada ingreso hasta que los active.
+  // Al cajero se le insiste con activar los avisos: el cartel queda hasta que los active.
   var [cartelOculto, setCartelOculto] = useState(function () {
     try { return sessionStorage.getItem("chat_cartel_oculto") === cu.usuario; } catch (e) { return false; }
   });
@@ -266,7 +266,8 @@ export default function ChatEquipo(p) {
           {avisosMsg && <div style={{ fontSize: 11, color: "#E0714A", marginBottom: 8 }}>{avisosMsg}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             {avisosApp === "inactivo" && (<button onClick={activarAvisos} style={{ flex: 2, padding: "10px", borderRadius: 9, border: "none", background: "#D4A017", color: "#000", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Activar avisos</button>)}
-            <button onClick={ocultarCartel} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1px solid #3A3A3A", background: "none", color: "#9A9A9A", fontFamily: "'Inter',sans-serif", fontSize: 12, cursor: "pointer" }}>Más tarde</button>
+            {/* Sin "más tarde": mientras se pueda activar, el cartel queda. Sólo si el arreglo está fuera de la app (permiso bloqueado, iPhone sin instalar) se puede cerrar. */}
+            {avisosApp !== "inactivo" && (<button onClick={ocultarCartel} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1px solid #3A3A3A", background: "none", color: "#9A9A9A", fontFamily: "'Inter',sans-serif", fontSize: 12, cursor: "pointer" }}>Entendido</button>)}
           </div>
         </div>
       )}

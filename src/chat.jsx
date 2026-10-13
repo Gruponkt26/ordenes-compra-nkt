@@ -1,0 +1,236 @@
+// Chat del equipo: un chat para todos los usuarios de la app y un chat privado entre Sofía y la Oficina.
+// Los mensajes viven en la tabla "pautas" que ya existe (no hace falta crear nada en Supabase):
+//   ámbito "chat_todos"            → el chat de todos
+//   ámbito "chat_priv_sofia_oficina" → el privado Sofía ↔ Oficina
+//   ámbito "chat_visto"            → hasta qué mensaje leyó cada usuario en cada chat (para el aviso)
+// La pantalla de Pautas sólo lista sus propios ámbitos, así que estos mensajes no aparecen ahí.
+import { useState, useEffect, useRef } from "react";
+import { SURL, SH } from "./comun.js";
+
+var CANAL_TODOS = "chat_todos";
+var CANAL_PRIV = "chat_priv_sofia_oficina";
+var CADA_MS = 8000;
+
+async function cargarChat() {
+  try {
+    var q = "ambito=in.(" + CANAL_TODOS + "," + CANAL_PRIV + ",chat_visto)&order=created_at.desc&limit=400";
+    var r = await fetch(SURL + "/rest/v1/pautas?" + q, { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d : null;
+  } catch (e) { return null; }
+}
+async function guardarFila(fila) {
+  try {
+    var h = { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" };
+    var r = await fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: h, body: JSON.stringify(fila) });
+    if (!r.ok) { var t = await r.text(); return t || ("Error " + r.status); }
+    return null;
+  } catch (e) { return String((e && e.message) || e); }
+}
+
+function horaCorta(iso) {
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  var hoy = new Date();
+  var hm = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  if (d.toDateString() === hoy.toDateString()) return hm;
+  return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " " + hm;
+}
+
+export default function ChatEquipo(p) {
+  var cu = p.cu, users = p.users || [];
+  var esSofia = cu.usuario === "sofia";
+  var esOficina = cu.local === "l4";
+  var veePrivado = esSofia || esOficina;
+
+  var [abierto, setAbierto] = useState(false);
+  var [canal, setCanal] = useState(CANAL_TODOS);
+  var [msgs, setMsgs] = useState([]);
+  var [vistos, setVistos] = useState({});
+  var [texto, setTexto] = useState("");
+  var [aviso, setAviso] = useState(null);
+  var conocidos = useRef(null);
+  var abiertoRef = useRef(false);
+  var canalRef = useRef(CANAL_TODOS);
+  var finRef = useRef(null);
+  var usersRef = useRef(users);
+  usersRef.current = users;
+  var tituloBase = useRef(typeof document !== "undefined" ? document.title : "");
+
+  abiertoRef.current = abierto;
+  canalRef.current = canal;
+
+  function nombreDe(usuario) {
+    var u = usersRef.current.find(function (x) { return x.usuario === usuario; });
+    return u ? u.nombre : usuario;
+  }
+  var canalesVisibles = veePrivado ? [CANAL_TODOS, CANAL_PRIV] : [CANAL_TODOS];
+  function tituloCanal(c) { return c === CANAL_TODOS ? "👥 Todos" : (esSofia ? "🔒 Oficina" : "🔒 Sofía"); }
+
+  function procesar(filas) {
+    var mensajes = filas.filter(function (f) {
+      if (f.ambito === CANAL_TODOS) return true;
+      return f.ambito === CANAL_PRIV && veePrivado;
+    }).sort(function (a, b) { return String(a.created_at).localeCompare(String(b.created_at)); });
+    var vs = {};
+    filas.forEach(function (f) {
+      if (f.ambito === "chat_visto" && f.usuario === cu.usuario) {
+        var c = String(f.id).replace("chatvisto_" + cu.usuario + "_", "");
+        vs[c] = f.texto || "";
+      }
+    });
+    // Mensajes nuevos de otros desde la última vez: se avisa con un cartelito si no lo está mirando.
+    if (conocidos.current) {
+      var nuevos = mensajes.filter(function (m) { return !conocidos.current[m.id] && m.usuario !== cu.usuario; });
+      if (nuevos.length) {
+        var ult = nuevos[nuevos.length - 1];
+        var mirando = abiertoRef.current && canalRef.current === ult.ambito;
+        if (!mirando) setAviso({ id: ult.id, de: nombreDe(ult.usuario), texto: ult.texto, canal: ult.ambito });
+      }
+    }
+    var mapa = {};
+    mensajes.forEach(function (m) { mapa[m.id] = true; });
+    conocidos.current = mapa;
+    setMsgs(mensajes);
+    setVistos(function (prev) {
+      // Lo que ya marqué como leído acá no se pisa con una lectura vieja del servidor.
+      var n = { ...vs };
+      Object.keys(prev).forEach(function (k) { if (String(prev[k]) > String(n[k] || "")) n[k] = prev[k]; });
+      return n;
+    });
+  }
+
+  function recargar() {
+    cargarChat().then(function (f) { if (f) procesar(f); });
+  }
+
+  useEffect(function () {
+    recargar();
+    var t = setInterval(recargar, CADA_MS);
+    return function () { clearInterval(t); };
+  }, [cu.usuario]);
+
+  function sinLeer(c) {
+    var desde = String(vistos[c] || "");
+    return msgs.filter(function (m) { return m.ambito === c && m.usuario !== cu.usuario && String(m.created_at) > desde; }).length;
+  }
+  var totalSinLeer = canalesVisibles.reduce(function (a, c) { return a + sinLeer(c); }, 0);
+
+  // Marcar como leído lo que se está mirando.
+  useEffect(function () {
+    if (!abierto) return;
+    var delCanal = msgs.filter(function (m) { return m.ambito === canal; });
+    if (!delCanal.length) return;
+    var ultimo = String(delCanal[delCanal.length - 1].created_at);
+    if (ultimo > String(vistos[canal] || "")) {
+      var nv = { ...vistos }; nv[canal] = ultimo; setVistos(nv);
+      var ahora = new Date().toISOString();
+      guardarFila({ id: "chatvisto_" + cu.usuario + "_" + canal, ambito: "chat_visto", texto: ultimo, usuario: cu.usuario, created_at: ahora, updated_at: ahora });
+    }
+  }, [abierto, canal, msgs]);
+
+  useEffect(function () {
+    if (abierto && finRef.current) finRef.current.scrollIntoView({ block: "end" });
+  }, [abierto, canal, msgs.length]);
+
+  // El aviso desaparece solo.
+  useEffect(function () {
+    if (!aviso) return;
+    var t = setTimeout(function () { setAviso(null); }, 7000);
+    return function () { clearTimeout(t); };
+  }, [aviso]);
+
+  // El título de la pestaña muestra cuántos mensajes sin leer hay.
+  useEffect(function () {
+    if (typeof document === "undefined") return;
+    document.title = totalSinLeer > 0 ? "(" + totalSinLeer + ") " + tituloBase.current : tituloBase.current;
+  }, [totalSinLeer]);
+
+  function enviar() {
+    var t = texto.trim().slice(0, 2000);
+    if (!t) return;
+    var ahora = new Date().toISOString();
+    var m = { id: "chat_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7), ambito: canal, texto: t, usuario: cu.usuario, created_at: ahora, updated_at: ahora };
+    setMsgs(function (prev) { return prev.concat([m]); });
+    if (conocidos.current) conocidos.current[m.id] = true;
+    setTexto("");
+    guardarFila(m).then(function (err) { if (err) alert("No se pudo enviar el mensaje:\n\n" + err); });
+  }
+
+  function abrir(c) {
+    setCanal(c || canal);
+    setAbierto(true);
+    setAviso(null);
+    recargar();
+  }
+
+  var delCanal = msgs.filter(function (m) { return m.ambito === canal; });
+
+  return (
+    <div style={{ fontFamily: "'Inter',sans-serif" }}>
+      {aviso && !abierto && (
+        <div onClick={function () { abrir(aviso.canal); }}
+          style={{ position: "fixed", right: 18, bottom: 84, zIndex: 1000, maxWidth: 300, background: "#1A1A1A", border: "1px solid #D4A01766", borderRadius: 12, padding: "10px 13px", cursor: "pointer", boxShadow: "0 8px 28px #000A" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#D4A017" }}>💬 {aviso.de}{aviso.canal === CANAL_PRIV ? " · privado" : ""}</div>
+          <div style={{ fontSize: 12, color: "#E8E8E8", marginTop: 3, wordBreak: "break-word" }}>{String(aviso.texto).slice(0, 90)}{String(aviso.texto).length > 90 ? "…" : ""}</div>
+        </div>
+      )}
+
+      {abierto && (
+        <div style={{ position: "fixed", right: 14, bottom: 84, zIndex: 1000, width: "min(380px, calc(100vw - 28px))", height: "min(520px, 72vh)", background: "#0F0F0F", border: "1px solid #2A2A2A", borderRadius: 14, display: "flex", flexDirection: "column", boxShadow: "0 12px 40px #000C", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 10px", borderBottom: "1px solid #1E1E1E" }}>
+            {canalesVisibles.map(function (c) {
+              var act = canal === c, n = sinLeer(c);
+              return (
+                <button key={c} onClick={function () { setCanal(c); }}
+                  style={{ padding: "6px 11px", borderRadius: 8, border: "none", background: act ? "#D4A017" : "#1A1A1A", color: act ? "#000" : "#9A9A9A", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  {tituloCanal(c)}{n > 0 && !act ? " · " + n : ""}
+                </button>
+              );
+            })}
+            <div style={{ flex: 1 }} />
+            <button onClick={function () { setAbierto(false); }} style={{ background: "none", border: "none", color: "#8C8C8C", fontSize: 16, cursor: "pointer" }} title="Cerrar">✕</button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+            {delCanal.length === 0 && (
+              <div style={{ margin: "auto", fontSize: 12, color: "#6E6E6E", textAlign: "center" }}>
+                {canal === CANAL_PRIV ? "Chat privado entre Sofía y la Oficina. Nadie más lo ve." : "Todavía no hay mensajes. Escribí el primero."}
+              </div>
+            )}
+            {delCanal.map(function (m) {
+              var mio = m.usuario === cu.usuario;
+              return (
+                <div key={m.id} style={{ alignSelf: mio ? "flex-end" : "flex-start", maxWidth: "82%" }}>
+                  <div style={{ background: mio ? "#C1440E" : "#1C1C1C", color: "#F0EDE8", borderRadius: 12, padding: "7px 11px", fontSize: 13, lineHeight: 1.4, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                    {!mio && <div style={{ fontSize: 10, fontWeight: 800, color: "#D4A017", marginBottom: 2 }}>{nombreDe(m.usuario)}</div>}
+                    {m.texto}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#6E6E6E", marginTop: 2, textAlign: mio ? "right" : "left" }}>{horaCorta(m.created_at)}</div>
+                </div>
+              );
+            })}
+            <div ref={finRef} />
+          </div>
+
+          <div style={{ display: "flex", gap: 7, padding: "9px 10px", borderTop: "1px solid #1E1E1E" }}>
+            <input value={texto} onChange={function (e) { setTexto(e.target.value); }}
+              onKeyDown={function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+              placeholder="Escribí un mensaje…" maxLength={2000}
+              style={{ flex: 1, padding: "9px 11px", borderRadius: 9, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, outline: "none" }} />
+            <button onClick={enviar} disabled={!texto.trim()}
+              style={{ padding: "9px 14px", borderRadius: 9, border: "none", background: texto.trim() ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: texto.trim() ? "pointer" : "default" }}>Enviar</button>
+          </div>
+        </div>
+      )}
+
+      <button onClick={function () { if (abierto) setAbierto(false); else abrir(); }} title="Chat del equipo"
+        style={{ position: "fixed", right: 18, bottom: 18, zIndex: 1000, width: 56, height: 56, borderRadius: 28, border: "none", background: abierto ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 24, cursor: "pointer", boxShadow: "0 6px 22px #000A" }}>
+        💬
+        {totalSinLeer > 0 && (
+          <span style={{ position: "absolute", top: -4, right: -4, minWidth: 20, height: 20, padding: "0 5px", boxSizing: "border-box", borderRadius: 10, background: "#E5231B", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #0D0D0D" }}>{totalSinLeer > 99 ? "99+" : totalSinLeer}</span>
+        )}
+      </button>
+    </div>
+  );
+}

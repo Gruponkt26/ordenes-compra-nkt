@@ -20786,7 +20786,13 @@ function PanelIVA(p) {
 
           {LOCALES_CTRL.map(function(l){
             var loc=comprasPorLocal[l.id];
-            if(!loc||loc.items.length===0)return(
+            // Crédito de facturas atrasadas cargado a mano: se muestra en el local de su CUIT (si lo
+            // comparten Kusama y Colantonio's, en Kusama) y entra en el total del local.
+            var atrasadas=creditosMes.filter(function(c){
+              return ["l1","l2","l3"].find(function(x){return CUIT_DE_LOCAL[x]===c.cuit;})===l.id;
+            });
+            var totalAtrasadas=atrasadas.reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0);
+            if((!loc||loc.items.length===0)&&atrasadas.length===0)return(
               <div key={l.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
                 <div style={{fontSize:12,fontWeight:700,color:l.color,marginBottom:4}}>{l.emoji} {l.nombre}</div>
                 <div style={{fontSize:11,color:"#7E7E7E"}}>Sin comprobantes facturados en {mesFiltro}</div>
@@ -20798,11 +20804,22 @@ function PanelIVA(p) {
                   <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:10,color:"#8C8C8C"}}>IVA crédito fiscal</div>
-                    <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{fmt(loc.ivaCF)}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{fmt((loc?loc.ivaCF:0)+totalAtrasadas)}</div>
                   </div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {loc.items.map(function(g){
+                  {atrasadas.map(function(c){
+                    return(
+                      <div key={c.id} style={{borderBottom:"1px solid #1A1A1A",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <div style={{fontSize:11,color:"#F0EDE8"}}>{c.detalle||"Factura atrasada"}</div>
+                          <div style={{fontSize:10,color:"#4C9A5A"}}>Crédito de factura atrasada{c.fecha_factura?" · "+fmtDate(c.fecha_factura):""}</div>
+                        </div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>{fmt(parseFloat(c.monto||0)||0)}</div>
+                      </div>
+                    );
+                  })}
+                  {(loc?loc.items:[]).map(function(g){
                     return(
                       <div key={g.id} style={{borderBottom:"1px solid #1A1A1A",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                         <div>

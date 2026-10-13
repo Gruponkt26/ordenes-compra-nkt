@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import { SURL, SKEY, SH, LOCALES, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
+import { PanelCompetencia } from "./opiniones.jsx";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 
@@ -448,9 +449,15 @@ async function sbSubirFotoChecklist(file, path) {
 // ─── PAUTAS ───────────────────────────────────────────────────────────────────
 async function sbLoadPautas() {
   try {
-    var r = await fetch(SURL + "/rest/v1/pautas?order=created_at.desc", { headers: SH });
+    // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
+    // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion))&order=created_at.desc", { headers: SH });
     var d = await r.json();
-    return Array.isArray(d) ? d : [];
+    if(Array.isArray(d))return d;
+    // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
+    var r2 = await fetch(SURL + "/rest/v1/pautas?order=created_at.desc", { headers: SH });
+    var d2 = await r2.json();
+    return Array.isArray(d2) ? d2 : [];
   } catch(e) { return []; }
 }
 async function sbSavePauta(pauta) {
@@ -23607,6 +23614,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
+              {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
@@ -23642,7 +23650,8 @@ export default function App() {
                   {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
-                  {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
+                  {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
+              {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
@@ -23996,6 +24005,11 @@ export default function App() {
           {esSofia&&modulo==="info"&&(
             <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={true}
               onSave={guardarInfoCajero} onDelete={borrarInfoCajero}/>
+          )}
+
+          {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
+          {esSofia&&modulo==="competencia"&&(
+            <PanelCompetencia/>
           )}
 
           {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}

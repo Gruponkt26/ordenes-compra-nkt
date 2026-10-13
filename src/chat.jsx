@@ -80,7 +80,7 @@ export default function ChatEquipo(p) {
   var [aviso, setAviso] = useState(null);
   var [avisosApp, setAvisosApp] = useState(estadoInicialAvisos());
   var [avisosMsg, setAvisosMsg] = useState("");
-  // Al cajero se le insiste con activar los avisos: el cartel queda hasta que los active.
+  // El cartel de avisos queda hasta que los active.
   var [cartelOculto, setCartelOculto] = useState(function () {
     try { return sessionStorage.getItem("chat_cartel_oculto") === cu.usuario; } catch (e) { return false; }
   });
@@ -88,8 +88,8 @@ export default function ChatEquipo(p) {
     setCartelOculto(true);
     try { sessionStorage.setItem("chat_cartel_oculto", cu.usuario); } catch (e) {}
   }
-  var esCajero = cu.rol === "cajero";
-  var faltanAvisos = esCajero && (avisosApp === "inactivo" || avisosApp === "denegado" || avisosApp === "ios-instalar");
+  // A todos los que entran se les insiste con activar los avisos del chat con la app cerrada.
+  var faltanAvisos = avisosApp === "inactivo" || avisosApp === "denegado" || avisosApp === "ios-instalar";
   var conocidos = useRef(null);
   var abiertoRef = useRef(false);
   var canalRef = useRef(CANAL_TODOS);

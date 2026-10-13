@@ -11248,6 +11248,15 @@ function PanelIIBB(p){
   var INPc={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var lblc={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
   function setC(k,v){setFormCred(function(f){var n={...f};n[k]=v;return n;});}
+  // Si cargan el valor de la factura y el % de IIBB, el monto se calcula solo sobre el neto.
+  function setCalcIIBB(k,v){
+    setFormCred(function(f){
+      var n={...f}; n[k]=v;
+      var t=parseFloat(n.total)||0, pct=parseFloat(n.pct)||0, d=parseFloat(n.base||"0.21");
+      if(t>0&&pct>0)n.monto=String(Math.round(t/(1+d)*pct)/100);
+      return n;
+    });
+  }
   function guardarC(){
     var monto=parseFloat(formCred.monto)||0;
     if(monto<=0){alert("Cargá el monto de IIBB, mayor a cero.");return;}
@@ -11291,6 +11300,22 @@ function PanelIIBB(p){
               <div>
                 <label style={lblc}>Mes en que se computa</label>
                 <input type="month" value={formCred.mes} onChange={function(e){setC("mes",e.target.value);}} style={INPc}/>
+              </div>
+              <div>
+                <label style={lblc}>Valor de la factura ($)</label>
+                <input type="number" placeholder="Opcional: calcula el IIBB solo" value={formCred.total||""} onChange={function(e){setCalcIIBB("total",e.target.value);}} style={INPc}/>
+              </div>
+              <div>
+                <label style={lblc}>El valor es</label>
+                <select value={formCred.base||"0.21"} onChange={function(e){setCalcIIBB("base",e.target.value);}} style={INPc}>
+                  <option value="0.21">Total con IVA 21%</option>
+                  <option value="0.105">Total con IVA 10,5%</option>
+                  <option value="0">Neto (sin IVA)</option>
+                </select>
+              </div>
+              <div style={{gridColumn:"1 / -1"}}>
+                <label style={lblc}>Percepción de IIBB (%) sobre el neto</label>
+                <input type="number" step="0.01" placeholder="Ej: 3" value={formCred.pct||""} onChange={function(e){setCalcIIBB("pct",e.target.value);}} style={INPc}/>
               </div>
               <div style={{gridColumn:"1 / -1"}}>
                 <label style={lblc}>IIBB a favor ($)</label>
@@ -20674,6 +20699,15 @@ function PanelIVA(p) {
               var INPc={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
               var lblc={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
               function setC(k,v){setFormCred(function(f){var n={...f};n[k]=v;return n;});}
+              // Si cargan el valor de la factura (con IVA adentro) y la alícuota, el IVA se calcula solo.
+              function setCalcIVA(k,v){
+                setFormCred(function(f){
+                  var n={...f}; n[k]=v;
+                  var t=parseFloat(n.total)||0, a=parseFloat(n.alic||"0.21");
+                  if(t>0)n.monto=String(Math.round((t-t/(1+a))*100)/100);
+                  return n;
+                });
+              }
               function guardarC(){
                 var monto=parseFloat(formCred.monto)||0;
                 if(monto<=0){alert("Cargá el monto de IVA, mayor a cero.");return;}
@@ -20693,6 +20727,17 @@ function PanelIVA(p) {
                     <div>
                       <label style={lblc}>Mes en que se computa</label>
                       <input type="month" value={formCred.mes} onChange={function(e){setC("mes",e.target.value);}} style={INPc}/>
+                    </div>
+                    <div>
+                      <label style={lblc}>Valor de la factura, con IVA ($)</label>
+                      <input type="number" placeholder="Opcional: calcula el IVA solo" value={formCred.total||""} onChange={function(e){setCalcIVA("total",e.target.value);}} style={INPc}/>
+                    </div>
+                    <div>
+                      <label style={lblc}>Alícuota de IVA</label>
+                      <select value={formCred.alic||"0.21"} onChange={function(e){setCalcIVA("alic",e.target.value);}} style={INPc}>
+                        <option value="0.21">21%</option>
+                        <option value="0.105">10,5%</option>
+                      </select>
                     </div>
                     <div>
                       <label style={lblc}>IVA de la factura ($)</label>

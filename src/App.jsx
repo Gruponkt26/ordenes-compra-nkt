@@ -2362,6 +2362,14 @@ function GestProveedoresPanel(p) {
     });
     return porLocal;
   }
+  // Corregir el saldo actual: se escribe cuánto se le debe hoy al proveedor en ese local (negativo = a favor)
+  // y se calcula el saldo inicial que hace que la cuenta dé justo eso (inicial + compras − pagos).
+  function saveSaldoActual(localId, deseado){
+    var d=parseFloat(deseado);
+    if(isNaN(d)){alert("Escribí el saldo actual como número. Si no se le debe nada, 0.");return;}
+    var s=getSaldoPorLocal(sel)[localId]||{compras:0,pagos:0};
+    saveSaldoInicial(localId, Math.round((d-(s.compras||0)+(s.pagos||0))*100)/100);
+  }
   function saveSaldoInicial(localId, monto){
     // Eliminar saldo inicial anterior del mismo local/proveedor
     var existente=saldos.find(function(m){return m.prov_id===sel&&m.local===localId&&m.tipo==="saldo_inicial";});
@@ -2543,12 +2551,13 @@ function GestProveedoresPanel(p) {
                               <div style={{fontSize:9,color:"#8C8C8C",marginTop:2}}>{s.saldo>0?"Debe":s.saldo<0?"A favor":"Saldado"}</div>
                               {s.saldoInicial!==0&&<div style={{fontSize:9,color:"#7E7E7E",marginTop:2}}>Inicial: {fmt(s.saldoInicial)}</div>}
                             </div>
-                            <button onClick={function(){setEditSaldoInicial({local:l.id,monto:String(s.saldoInicial||"")});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}} title="Editar saldo inicial">✏️</button>
+                            <button onClick={function(){setEditSaldoInicial({local:l.id,monto:String(Math.round((s.saldo||0)*100)/100)});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}} title="Corregir el saldo actual">✏️</button>
                           </div>
                           {editSaldoInicial&&editSaldoInicial.local===l.id&&(
-                            <div style={{marginTop:8,display:"flex",gap:5,alignItems:"center"}}>
-                              <input type="number" value={editSaldoInicial.monto} placeholder="Saldo inicial" onChange={function(e){setEditSaldoInicial(function(n){return{...n,monto:e.target.value};});}} style={{flex:1,padding:"5px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
-                              <button onClick={function(){saveSaldoInicial(l.id,editSaldoInicial.monto);}} style={{padding:"5px 10px",borderRadius:6,border:"none",background:"#D4A017",color:"#000",fontWeight:700,fontSize:11,cursor:"pointer"}}>✓</button>
+                            <div style={{marginTop:8,display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
+                              <div style={{width:"100%",fontSize:9.5,color:"#9A9A9A",lineHeight:1.5}}>Saldo actual: lo que se le debe hoy. Si es a favor nuestro, en negativo.</div>
+                              <input type="number" value={editSaldoInicial.monto} placeholder="Saldo actual" onChange={function(e){setEditSaldoInicial(function(n){return{...n,monto:e.target.value};});}} style={{flex:1,padding:"5px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                              <button onClick={function(){saveSaldoActual(l.id,editSaldoInicial.monto);}} style={{padding:"5px 10px",borderRadius:6,border:"none",background:"#D4A017",color:"#000",fontWeight:700,fontSize:11,cursor:"pointer"}}>✓</button>
                               <button onClick={function(){setEditSaldoInicial(null);}} style={{padding:"5px 8px",borderRadius:6,border:"1px solid #333",background:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer"}}>✕</button>
                             </div>
                           )}

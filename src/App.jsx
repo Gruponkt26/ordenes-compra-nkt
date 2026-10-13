@@ -24009,7 +24009,7 @@ export default function App() {
 
           {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
           {esSofia&&modulo==="competencia"&&(
-            <PanelCompetencia/>
+            <PanelCompetencia cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
           {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}

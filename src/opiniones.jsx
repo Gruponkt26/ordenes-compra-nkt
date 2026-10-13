@@ -168,6 +168,101 @@ var MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct
 var PERIODOS = ["2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03"];
 function nombrePeriodo(p) { var s = p.split("-"); return MESES[parseInt(s[1], 10) - 1] + " " + s[0]; }
 
+// ─── PUNTUALIDAD Y CAJA ──────────────────────────────────────────────────────
+var INICIO_TEMPORADA = "2026-10-01";
+var FIN_TEMPORADA = "2027-03-31";
+var TOLERANCIA_MIN = 10;                    // minutos de gracia para llegar
+// Cómo se reparten los 100 puntos entre los indicadores que hoy se miden. Si alguno todavía no tiene
+// datos, el resto se reparte en proporción. Más adelante se suman ventas y checklists.
+var PESOS = { opiniones: 0.4, puntualidad: 0.3, caja: 0.3 };
+var NOMBRE_INDICADOR = { opiniones: "Opiniones de clientes", puntualidad: "Puntualidad", caja: "Caja prolija" };
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function fechaStr(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+function ayerStr() { var d = new Date(); d.setDate(d.getDate() - 1); return fechaStr(d); }
+// Los días del período que ya terminaron (hasta ayer): lo de hoy todavía no se le puede reclamar a nadie.
+function diasDelPeriodo(periodo) {
+  var desde, hasta;
+  if (periodo === "temporada") { desde = INICIO_TEMPORADA; hasta = FIN_TEMPORADA; }
+  else {
+    var pr = periodo.split("-");
+    desde = periodo + "-01";
+    hasta = periodo + "-" + pad2(new Date(parseInt(pr[0], 10), parseInt(pr[1], 10), 0).getDate());
+  }
+  var tope = ayerStr();
+  if (hasta > tope) hasta = tope;
+  var out = [];
+  var d = new Date(parseInt(desde.substring(0, 4), 10), parseInt(desde.substring(5, 7), 10) - 1, parseInt(desde.substring(8, 10), 10));
+  while (fechaStr(d) <= hasta) { out.push(fechaStr(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+function horaMin(h) {
+  var p = String(h || "").split(":");
+  return parseInt(p[0], 10) * 60 + (parseInt(p[1], 10) || 0);
+}
+async function cargarEntradas() {
+  var mapa = {};
+  try {
+    for (var pagina = 0; pagina < 20; pagina++) {
+      var q = "fichajes?tipo=eq.entrada&fecha=gte." + INICIO_TEMPORADA + "&select=empleado_id,fecha,hora,momento&order=momento.asc&limit=1000&offset=" + (pagina * 1000);
+      var r = await fetch(SURL + "/rest/v1/" + q, { headers: SH });
+      var d = await r.json();
+      if (!Array.isArray(d)) break;
+      d.forEach(function (f) {
+        var k = f.empleado_id + "|" + String(f.fecha).substring(0, 10);
+        if (!mapa[k]) mapa[k] = f.hora;      // la primera entrada del día
+      });
+      if (d.length < 1000) break;
+    }
+  } catch (e) { return null; }
+  return mapa;
+}
+function calcPuntualidad(localId, dias, p, entradas) {
+  var res = { previstas: 0, aTiempo: 0, tarde: 0, faltas: 0, sinJornada: 0, puntaje: null };
+  var vacs = (p.vacaciones || []);
+  (p.empleados || []).filter(function (e) { return e.local === localId && e.activo !== false; }).forEach(function (e) {
+    var tiene = false;
+    dias.forEach(function (f) {
+      var t = p.turnoDe(e, f);
+      if (t === null || t === undefined) return;
+      tiene = true;
+      if (t.franco) return;
+      if (e.fecha_alta && f < String(e.fecha_alta).substring(0, 10)) return;
+      var devacaciones = vacs.some(function (v) { return v.empleado_id === e.id && f >= String(v.fecha_desde).substring(0, 10) && f <= String(v.fecha_hasta).substring(0, 10); });
+      if (devacaciones) return;
+      res.previstas++;
+      var h = entradas[e.id + "|" + f];
+      if (!h) { res.faltas++; return; }
+      if (horaMin(h) <= horaMin(t.desde) + TOLERANCIA_MIN) res.aTiempo++; else res.tarde++;
+    });
+    if (!tiene) res.sinJornada++;
+  });
+  if (res.previstas > 0) res.puntaje = (res.aTiempo / res.previstas) * 100;
+  return res;
+}
+function calcCaja(localId, dias, p) {
+  var res = { esperados: 0, buenos: 0, conDiferencia: 0, sinCierre: 0, puntaje: null };
+  var cierres = {}, avisos = {};
+  (p.cierres || []).forEach(function (c) { if (c.local === localId) cierres[String(c.fecha).substring(0, 10)] = true; });
+  (p.avisosCaja || []).forEach(function (a) { if (a.local === localId) avisos[String(a.fecha).substring(0, 10)] = true; });
+  dias.forEach(function (f) {
+    if (!p.abreEseDia(localId, f)) return;
+    res.esperados++;
+    if (!cierres[f]) { res.sinCierre++; return; }
+    if (avisos[f]) res.conDiferencia++; else res.buenos++;
+  });
+  if (res.esperados > 0) res.puntaje = (res.buenos / res.esperados) * 100;
+  return res;
+}
+function totalPuntos(partes) {
+  var s = 0, w = 0;
+  Object.keys(PESOS).forEach(function (k) {
+    if (partes[k] !== null && partes[k] !== undefined) { s += PESOS[k] * partes[k]; w += PESOS[k]; }
+  });
+  return w > 0 ? s / w : null;
+}
+function fmtPts(n) { return n === null || n === undefined ? "—" : n.toFixed(1).replace(".", ","); }
+
 function Estrellas(p) {
   var n = p.valor === null ? 0 : p.valor;
   return (
@@ -179,14 +274,15 @@ function Estrellas(p) {
   );
 }
 
-export function PanelCompetencia() {
-  var [tab, setTab] = useState("opiniones");
+export function PanelCompetencia(props) {
+  var [tab, setTab] = useState("ranking");
+  var [entradas, setEntradas] = useState(null);
   var [opiniones, setOpiniones] = useState(null);
   var [periodo, setPeriodo] = useState("temporada");
   var [filtroLocal, setFiltroLocal] = useState("todos");
 
   function recargar() { cargarOpiniones().then(setOpiniones); }
-  useEffect(function () { recargar(); }, []);
+  useEffect(function () { recargar(); cargarEntradas().then(setEntradas); }, []);
 
   var lista = (opiniones || []).filter(function (o) {
     return periodo === "temporada" ? PERIODOS.indexOf(String(o.fecha).substring(0, 7)) !== -1 : String(o.fecha).substring(0, 7) === periodo;
@@ -225,22 +321,103 @@ export function PanelCompetencia() {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"]].map(function (t) {
+        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"]].map(function (t) {
           var act = tab === t[0];
           return <button key={t[0]} onClick={function () { setTab(t[0]); }} style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid " + (act ? "#D4A017" : "#1A1A1A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#8C8C8C", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
         })}
       </div>
 
+      {tab !== "qr" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+          <select value={periodo} onChange={function (e) { setPeriodo(e.target.value); }} style={sel}>
+            <option value="temporada">📅 Toda la temporada</option>
+            {PERIODOS.map(function (p) { return <option key={p} value={p}>{nombrePeriodo(p)}</option>; })}
+          </select>
+          <button onClick={function () { recargar(); cargarEntradas().then(setEntradas); }} style={{ ...sel, cursor: "pointer" }}>🔄 Actualizar</button>
+          <div style={{ fontSize: 11, color: "#7E7E7E" }}>{opiniones === null ? "Cargando…" : lista.length + " opiniones en el período"}</div>
+        </div>
+      )}
+
+      {tab === "ranking" && (function () {
+        var dias = diasDelPeriodo(periodo);
+        var filas = LOCALES_COMPETENCIA.map(function (id) {
+          var op = resumen(id, "salon");
+          var pu = entradas ? calcPuntualidad(id, dias, props, entradas) : null;
+          var ca = calcCaja(id, dias, props);
+          var partes = {
+            opiniones: op.general === null ? null : ((op.general - 1) / 4) * 100,
+            puntualidad: pu ? pu.puntaje : null,
+            caja: ca.puntaje,
+          };
+          return { local: localDe(id), op: op, pu: pu, ca: ca, partes: partes, total: totalPuntos(partes) };
+        }).sort(function (a, b) { return (b.total === null ? -1 : b.total) - (a.total === null ? -1 : a.total); });
+        var medallas = ["🥇", "🥈", "🥉"];
+        function Barra(q) {
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 128, fontSize: 11.5, color: "#B8B8B8" }}>{q.nombre}</div>
+              <div style={{ flex: 1, height: 6, background: "#1A1A1A", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: (q.valor === null ? 0 : Math.max(0, Math.min(100, q.valor))) + "%", height: "100%", background: q.color }} />
+              </div>
+              <div style={{ width: 44, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{q.valor === null ? "—" : fmtPts(q.valor)}</div>
+            </div>
+          );
+        }
+        return (
+          <div>
+            <div style={{ ...tarjeta, fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6 }}>
+              Cada local suma de 0 a 100 puntos. Hoy cuentan tres cosas:{" "}
+              {Object.keys(PESOS).map(function (k) { return NOMBRE_INDICADOR[k] + " " + Math.round(PESOS[k] * 100) + "%"; }).join(" · ")}.
+              {" "}Pronto se suman ventas contra la meta y checklists. Si un indicador todavía no tiene datos, el resto se reparte en proporción.
+              <div style={{ marginTop: 6, color: "#6E6E6E" }}>
+                Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
+              </div>
+            </div>
+
+            {filas.map(function (x, i) {
+              return (
+                <div key={x.local.id} style={{ ...tarjeta, borderColor: x.local.color + "44" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: x.local.color }}>{x.total !== null && i < 3 ? medallas[i] + " " : ""}{x.local.emoji} {x.local.nombre}</div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Playfair Display',serif", lineHeight: 1 }}>{fmtPts(x.total)}</div>
+                      <div style={{ fontSize: 10, color: "#6E6E6E" }}>de 100 puntos</div>
+                    </div>
+                  </div>
+                  <Barra nombre="Opiniones de clientes" valor={x.partes.opiniones} color={x.local.color} />
+                  <Barra nombre="Puntualidad" valor={x.partes.puntualidad} color={x.local.color} />
+                  <Barra nombre="Caja prolija" valor={x.partes.caja} color={x.local.color} />
+                </div>
+              );
+            })}
+
+            <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, margin: "16px 0 6px" }}>Detalle</div>
+            {filas.map(function (x) {
+              var pu = x.pu, ca = x.ca;
+              return (
+                <div key={x.local.id} style={{ ...tarjeta, padding: "11px 14px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: x.local.color, marginBottom: 6 }}>{x.local.emoji} {x.local.nombre}</div>
+                  <div style={{ fontSize: 11.5, color: "#B8B8B8", lineHeight: 1.7 }}>
+                    <b style={{ color: "#E8E8E8" }}>Puntualidad:</b>{" "}
+                    {entradas === null ? "cargando fichajes…" : (pu.previstas === 0
+                      ? "sin turnos para comparar en este período" + (pu.sinJornada ? " (" + pu.sinJornada + " empleado" + (pu.sinJornada === 1 ? "" : "s") + " sin jornada cargada)" : "")
+                      : pu.aTiempo + " de " + pu.previstas + " turnos a tiempo · " + pu.tarde + " con atraso · " + pu.faltas + " sin marca" + (pu.sinJornada ? " · " + pu.sinJornada + " sin jornada cargada (no cuentan)" : ""))}
+                    <br />
+                    <b style={{ color: "#E8E8E8" }}>Caja:</b>{" "}
+                    {ca.esperados === 0 ? "todavía no hay días para comparar" : ca.buenos + " de " + ca.esperados + " días con cierre y sin diferencias · " + ca.conDiferencia + " con diferencia · " + ca.sinCierre + " sin cierre"}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 10.5, color: "#6E6E6E", lineHeight: 1.5 }}>
+              Los días de vacaciones y los francos no cuentan. Se cuenta hasta ayer, y desde el 1 de octubre de 2026.
+            </div>
+          </div>
+        );
+      })()}
+
       {tab === "opiniones" && (
         <div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-            <select value={periodo} onChange={function (e) { setPeriodo(e.target.value); }} style={sel}>
-              <option value="temporada">📅 Toda la temporada</option>
-              {PERIODOS.map(function (p) { return <option key={p} value={p}>{nombrePeriodo(p)}</option>; })}
-            </select>
-            <button onClick={recargar} style={{ ...sel, cursor: "pointer" }}>🔄 Actualizar</button>
-            <div style={{ fontSize: 11, color: "#7E7E7E" }}>{opiniones === null ? "Cargando…" : lista.length + " opiniones en el período"}</div>
-          </div>
 
           <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>En el local · ranking por promedio</div>
           {ranking.map(function (x, i) {

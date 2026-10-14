@@ -3910,7 +3910,7 @@ function PanelMetricasLocal(p){
     var esSueldoG=function(g){return g.area==="Sueldos"||g.categoria==="Sueldos";};
     var hayS=delMes.some(function(g){return esSueldoG(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
     var hayA=delMes.some(function(g){return esSueldoG(g)&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
-    (p.sueldos||[]).filter(function(x){return x.local===lid&&x.periodo===mesAnteriorDe(m)&&(x.estado==="pagado"||x.estado==="parcial");}).forEach(function(x){
+    (p.sueldos||[]).filter(function(x){return x.local===lid&&x.periodo===mesAnteriorDe(m)&&(x.estado==="pagado"||x.estado==="parcial")&&!sueldoRepartidoEnLocales(x,gastos);}).forEach(function(x){
       var esAg=!!(x.concepto_extra&&x.concepto_extra!=="null"&&x.concepto_extra!=="");
       if(esAg?hayA:hayS)return;
       var dia=(x.fecha_pago&&x.fecha_pago.substring(0,7)===m)?x.fecha_pago:m+"-01";
@@ -8963,8 +8963,8 @@ function PanelEgresos(p){
             var perAnt=mpY+"-"+(mpM<10?"0"+mpM:String(mpM));
             var hasSG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             var hasAG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
-            var slResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial");});
-            var agResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");});
+            var slResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
+            var agResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             var totG=gl.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
             var totS=hasSG?0:slResumen.reduce(function(a,s){return a+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));},0);
@@ -9004,12 +9004,12 @@ function PanelEgresos(p){
             var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
             if(!hasSueldosGastos){
-              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
+              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);}).forEach(function(s){
                 porArea["Sueldos"]=(porArea["Sueldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
               });
             }
             if(!hasAguinaldosGastos){
-              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
+              (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);}).forEach(function(s){
                 porArea["Aguinaldos"]=(porArea["Aguinaldos"]||0)+(s.estado==="parcial"?parseFloat(s.monto_parcial||0):parseFloat(s.monto||0));
               });
             }
@@ -9096,7 +9096,17 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
-                          {(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="");}).map(function(s){
+                          {gl.filter(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"))&&String(g.subramo||"").indexOf("Oficina")!==-1;}).map(function(g){
+                            return(
+                              <div key={g.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                                <div style={{display:"flex",justifyContent:"space-between"}}>
+                                  <span style={{color:"#888"}}>🏢 {g.concepto} <span style={{color:"#1A6B8A",fontWeight:700}}>· Oficina{String(g.subramo).indexOf("parcial")!==-1?" · pago parcial":""}</span> <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}</span></span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&!sueldoRepartidoEnLocales(s,gastos);}).map(function(s){
                             var est=s.estado==="pagado"?"✅":s.estado==="parcial"?"🔸":"⏳";
                             var esMixto=s.convenio==="mixto"&&(s.monto_convenio>0||s.monto_sin_convenio>0);
                             return(
@@ -10016,6 +10026,13 @@ function proximoAjusteAlquiler(a, hoy){
 // sin nada que lo respalde. Se reconocen por el id, que la app arma al generarlos.
 // Un vencimiento de la Oficina se paga en tres egresos, uno por local, con el id del pago más
 // "_l1", "_l3" o "_l2". El vencimiento guarda sólo el id base: esto devuelve el base de cualquiera.
+// El pago del sueldo de una empleada de la Oficina deja sus egresos en los locales que pusieron la plata
+// (id "egr_sueldo_<sueldo>_..."). Mientras existan, el sueldo no se vuelve a contar en la Oficina.
+function sueldoRepartidoEnLocales(s, gastos){
+  if(!s||s.local!=="l4")return false;
+  var pref="egr_sueldo_"+s.id+"_";
+  return (gastos||[]).some(function(g){return String(g.id||"").indexOf(pref)===0;});
+}
 function baseEgresoVenc(id){
   var m=/^(egr_venc_.+)_l[1-4]$/.exec(String(id||""));
   return m?m[1]:id;
@@ -17560,7 +17577,7 @@ function impuestosDeAportes(aportes, lid, mes){
 function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiros, sinDeuda, aportes){
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
-  var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial");});
+  var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
   var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
   var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
   var adelantosMesLocal=(adelantos||[]).filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mes;});

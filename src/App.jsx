@@ -20529,14 +20529,14 @@ function PanelSueldos(p){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
         <div>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Sueldos</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {tab==="estado"&&<select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
             {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>}
           
-          <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
+          {(tab==="empleados"||tab==="bajas")&&<button onClick={function(){setTab("altas");}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Nuevo colaborador</button>}
           {tab==="estado"&&<button onClick={function(){
             var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
             var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
@@ -20554,16 +20554,39 @@ function PanelSueldos(p){
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["empleados","👤 Empleados"],["bajas","📤 Bajas"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
-          <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
-        );})}
-        <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
-          <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#555":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer"}}>Todos</button>
-          {localesFiltro.map(function(l){return <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;})}
-        </div>
-      </div>
+      {/* Módulos de Personal: Altas · Sueldos · CUIT · Informe. Cada uno agrupa sus pestañas. */}
+      {(function(){
+        var MODULOS=[
+          {id:"colab",label:"👤 Colaboradores",subs:[["altas","➕ Altas"],["empleados","✏️ Modificar datos"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]]},
+          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
+        ];
+        var subsCuit=[].concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]);
+        if(subsCuit.length>0)MODULOS.push({id:"cuit",label:"🏛️ CUIT",subs:subsCuit});
+        if(p.showInforme)MODULOS.push({id:"informe",label:"📊 Informe",subs:[["informe","📊 Informe"]]});
+        var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS[1]||MODULOS[0];
+        return(
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:actual.subs.length>1?8:0}}>
+              {MODULOS.map(function(m){
+                var act=actual.id===m.id;
+                return <button key={m.id} onClick={function(){ if(!act)setTab(m.subs[0][0]); }} style={{padding:"9px 16px",borderRadius:10,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF50":"#111",color:act?"#000":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>{m.label}</button>;
+              })}
+              <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#555":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer"}}>Todos</button>
+                {localesFiltro.map(function(l){return <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;})}
+              </div>
+            </div>
+            {actual.subs.length>1&&(
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {actual.subs.map(function(t){
+                  var act=tab===t[0];
+                  return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF5022":"#111",color:act?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB ESTADO DEL MES */}
       {tab==="estado"&&(function(){
@@ -20655,6 +20678,37 @@ function PanelSueldos(p){
               </div>
             )}
           </div>
+        );
+      })()}
+
+      {/* TAB ALTAS: cargar un colaborador nuevo */}
+      {tab==="altas"&&(function(){
+        var recientes=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);})
+          .sort(function(a,b){return String(b.fecha_alta||b.created_at||"").localeCompare(String(a.fecha_alta||a.created_at||""));}).slice(0,8);
+        return(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:"#0A0A0A",border:"1px solid #4CAF5033",borderRadius:14,padding:"18px",textAlign:"center"}}>
+            <div style={{fontSize:30,marginBottom:6}}>🆕</div>
+            <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>Nuevo colaborador</div>
+            <div style={{fontSize:11,color:"#7E7E7E",lineHeight:1.5,marginBottom:12}}>Se carga la ficha con sus datos personales y laborales. Después se le asigna el usuario en Colaboradores del menú principal.</div>
+            <button onClick={function(){setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:hoy,fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});setShowFormEmp(true);}}
+              style={{padding:"11px 22px",borderRadius:10,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer"}}>+ Dar de alta</button>
+          </div>
+          {recientes.length>0&&(
+            <div>
+              <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.2,marginBottom:6}}>Últimas altas</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {recientes.map(function(emp){
+                  var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                  return <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 14px"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{emp.nombre}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}{emp.fecha_alta?" · alta "+fmtDate(String(emp.fecha_alta).substring(0,10)):""}</div>
+                  </div>;
+                })}
+              </div>
+            </div>
+          )}
+        </div>
         );
       })()}
 

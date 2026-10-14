@@ -2874,9 +2874,20 @@ function PanelPautas(p){
 // ─── INFO PARA CAJEROS ──────────────────────────────────────────────────────
 // El instructivo del día a día: Sofía lo carga acá, con un orden fijo (paso 1,
 // paso 2...), y los cajeros lo ven de sólo lectura desde su propia pantalla.
+// Se organiza en cuatro secciones. La sección no tiene columna propia: viaja en el id
+// ("info_salon_123"), así no hace falta tocar la tabla. Los instructivos viejos (sin sección)
+// quedan en "Cajeros".
+var INFO_SECCIONES=[{id:"cajeros",emoji:"💵",nombre:"Cajeros"},{id:"salon",emoji:"🍽️",nombre:"Salón"},
+                    {id:"cocina",emoji:"🍳",nombre:"Cocina"},{id:"general",emoji:"👥",nombre:"General"}];
+function seccionInfo(x){
+  var m=/^info_(cajeros|salon|cocina|general)_/.exec(String((x&&x.id)||""));
+  return m?m[1]:"cajeros";
+}
 function PanelInfoCajero(p){
-  var info=(p.info||[]).slice().sort(function(a,b){return (a.orden||0)-(b.orden||0);});
+  var [sec,setSec]=useState(p.tabInicial||"cajeros");
+  var info=(p.info||[]).filter(function(x){return seccionInfo(x)===sec;}).sort(function(a,b){return (a.orden||0)-(b.orden||0);});
   var puedeEditar=!!p.puedeEditar;
+  var secActual=INFO_SECCIONES.find(function(s2){return s2.id===sec;})||INFO_SECCIONES[0];
   var [titulo,setTitulo]=useState("");
   var [texto,setTexto]=useState("");
   var [editId,setEditId]=useState(null);
@@ -2888,7 +2899,7 @@ function PanelInfoCajero(p){
     if(!texto.trim())return;
     var maxOrden=info.reduce(function(a,x){return Math.max(a,x.orden||0);},0);
     p.onSave({
-      id:"info_"+Date.now(),
+      id:"info_"+sec+"_"+Date.now(),
       titulo:titulo.trim(),
       texto:texto.trim(),
       orden:maxOrden+1,
@@ -2917,13 +2928,23 @@ function PanelInfoCajero(p){
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{marginBottom:14}}>
         <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>{puedeEditar?"Módulo":"Compras"}</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>ℹ️ Info{puedeEditar?" para cajeros":""}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>ℹ️ Info para colaboradores</div>
         {!puedeEditar&&<div style={{fontSize:11,color:"#8C8C8C",marginTop:4}}>Instructivo y guías para el día a día.</div>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+        {INFO_SECCIONES.map(function(t){
+          var act=sec===t.id;
+          var n=(p.info||[]).filter(function(x){return seccionInfo(x)===t.id;}).length;
+          return <button key={t.id} onClick={function(){setSec(t.id);setEditId(null);}}
+            style={{padding:"8px 13px",borderRadius:9,border:"1px solid "+(act?"#1A6B8A":"#1E1E1E"),background:act?"#1A6B8A22":"#111",
+              color:act?"#3A9BC1":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+            {t.emoji} {t.id==="general"?"General (todos)":t.nombre}{n>0?" · "+n:""}</button>;
+        })}
       </div>
 
       {puedeEditar&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"13px",marginBottom:14}}>
-          <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Nuevo instructivo</label>
+          <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Nuevo instructivo · {secActual.nombre}</label>
           <input value={titulo} onChange={function(e){setTitulo(e.target.value);}} placeholder="Título — ej: Cómo cerrar la caja" style={{...INP,marginBottom:8}}/>
           <textarea value={texto} onChange={function(e){setTexto(e.target.value);}} rows={3} placeholder="El paso a paso, en el orden en que hay que hacerlo..." style={{...INP,marginBottom:8}}/>
           <button onClick={agregar} disabled={!texto.trim()}
@@ -2936,7 +2957,7 @@ function PanelInfoCajero(p){
       {info.length===0?(
         <div style={{textAlign:"center",padding:"34px 0",color:"#6E6E6E"}}>
           <div style={{fontSize:30,marginBottom:8}}>ℹ️</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#6E6E6E"}}>{puedeEditar?"Todavía no cargaste ningún instructivo":"Todavía no hay info cargada"}</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#6E6E6E"}}>{puedeEditar?"Todavía no cargaste nada en "+secActual.nombre:"Todavía no hay info cargada en esta sección"}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:9}}>
@@ -24389,7 +24410,7 @@ export default function App() {
               {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
-              {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
+              {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
               {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
@@ -24425,7 +24446,7 @@ export default function App() {
                   {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
-                  {id:"info",emoji:"ℹ️",label:"Info para cajeros",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
+                  {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                   {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
@@ -24452,7 +24473,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info para colaboradores":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -24486,7 +24507,7 @@ export default function App() {
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
-                            {id:"info",emoji:"ℹ️",label:"Info",desc:"Instructivo y guías para el día a día",color:"#1A6B8A",badge:0}]
+                            {id:"info",emoji:"ℹ️",label:"Info para colaboradores",desc:"Instructivo y guías para el día a día",color:"#1A6B8A",badge:0}]
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   limpiarTabs();
@@ -24589,7 +24610,7 @@ export default function App() {
 
           {/* INFO — el cajero la lee, la carga Sofía desde su propio módulo */}
           {enInfo&&(
-            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false}
+            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false} tabInicial={esCajero?"cajeros":"cocina"}
               onSave={function(){}} onDelete={function(){}}/>
           )}
 

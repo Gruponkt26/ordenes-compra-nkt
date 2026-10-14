@@ -794,7 +794,10 @@ function SBadge(p) {
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function Login(p) {
   var [u,setU]=useState(""), [pw,setPw]=useState(""), [err,setErr]=useState(""), [show,setShow]=useState(false);
-  function go() { var x=p.users.find(function(x){return x.usuario===u.trim()&&x.password===pw;}); if(x)p.onLogin(x); else setErr("Usuario o contraseña incorrectos."); }
+  // Desde el celular el teclado suele poner la primera letra en mayúscula ("Sofia") y agregar un
+  // espacio al final al autocompletar: el usuario se compara sin mayúsculas ni espacios, y la clave
+  // sin espacios en los bordes (las mayúsculas de la clave sí cuentan).
+  function go() { var uu=u.trim().toLowerCase(), pp=pw.trim(); var x=p.users.find(function(x){return String(x.usuario||"").trim().toLowerCase()===uu&&String(x.password||"").trim()===pp;}); if(x)p.onLogin(x); else setErr("Usuario o contraseña incorrectos."); }
   return (
     <div style={{minHeight:"100vh",background:"#0A0A0A",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
       <div style={{width:"min(380px,92vw)"}}>
@@ -809,12 +812,12 @@ function Login(p) {
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Usuario</label>
-              <input value={u} onChange={function(e){setU(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="tu usuario" style={INP}/>
+              <input value={u} onChange={function(e){setU(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="tu usuario" autoCapitalize="none" autoCorrect="off" autoComplete="username" spellCheck={false} style={INP}/>
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Contraseña</label>
               <div style={{position:"relative"}}>
-                <input type={show?"text":"password"} value={pw} onChange={function(e){setPw(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="••••••••" style={{...INP,paddingRight:42}}/>
+                <input type={show?"text":"password"} value={pw} onChange={function(e){setPw(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="••••••••" autoCapitalize="none" autoCorrect="off" autoComplete="current-password" spellCheck={false} style={{...INP,paddingRight:42}}/>
                 <button onClick={function(){setShow(function(v){return !v;});}} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#8C8C8C",cursor:"pointer",fontSize:14}}>{show?"🙈":"👁️"}</button>
               </div>
             </div>

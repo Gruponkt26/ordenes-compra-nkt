@@ -10473,11 +10473,11 @@ function ubicacionAhora(){
     if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
     var listo=false;
     function fin(v){ if(listo)return; listo=true; res(v); }
-    setTimeout(function(){ fin(null); },5000);
+    setTimeout(function(){ fin(null); },9000);
     navigator.geolocation.getCurrentPosition(
       function(pos){ fin({lat:pos.coords.latitude,lng:pos.coords.longitude}); },
       function(){ fin(null); },
-      {enableHighAccuracy:false,timeout:5000,maximumAge:120000});
+      {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
   });
 }
 function sacarFoto(v){
@@ -10701,35 +10701,16 @@ function PanelFichar(p){
     return {adentro:!!(ult&&ult.tipo!=="salida"), ultimo:ult};
   }
 
-  // La cámara vive mientras dure la pantalla de marcación y se apaga al salir: dejarla
-  // prendida en una tablet que queda sola todo el día no le hace bien a nadie.
+  // Sin foto: al abrir la pantalla de marcar se pide la ubicación, así el celular pregunta el permiso
+  // una sola vez y la marca sale con un solo toque.
+  var [ubic,setUbic]=useState("");   // "" | buscando | ok | no
+  var ubicRef=useRef(null);
   useEffect(function(){
-    if(!camaraOn){ apagar(); return; }
-    var vivo=true, timer=null;
-    var det=detectorDeCaras();
-    if(!det)setCara(null);
-    navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},audio:false})
-      .then(function(st){
-        if(!vivo){ st.getTracks().forEach(function(t){t.stop();}); return; }
-        streamRef.current=st;
-        if(videoRef.current){ videoRef.current.srcObject=st; videoRef.current.play().catch(function(){}); }
-        if(det){
-          timer=setInterval(function(){
-            if(!videoRef.current||!videoRef.current.videoWidth)return;
-            det.detect(videoRef.current).then(function(caras){ if(vivo)setCara(caras&&caras.length>0); })
-              .catch(function(){ if(vivo)setCara(null); });
-          },700);
-        }
-      })
-      .catch(function(e){
-        if(!vivo)return;
-        setErrCam(e&&e.name==="NotAllowedError"
-          ?"No diste permiso para la cámara. Tocá el candado en la barra del navegador y habilitala."
-          :"No se pudo abrir la cámara: "+((e&&e.message)||e));
-      });
-    function apagarTodo(){ vivo=false; if(timer)clearInterval(timer); apagar(); }
-    return apagarTodo;
-  },[camaraOn]);
+    if(!camaraOn||fase==="guardando")return;
+    var vivo=true; setUbic("buscando"); ubicRef.current=null;
+    ubicacionAhora().then(function(pos){ if(!vivo)return; ubicRef.current=pos; setUbic(pos?"ok":"no"); });
+    return function(){ vivo=false; };
+  },[camaraOn&&fase!=="guardando"]);
 
   function apagar(){
     if(streamRef.current){ streamRef.current.getTracks().forEach(function(t){t.stop();}); streamRef.current=null; }
@@ -10808,22 +10789,16 @@ function PanelFichar(p){
       setOlvido(null);
     }
     var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
-    var blob=await sacarFoto(videoRef.current);
     var foto=null, avisoFoto="";
-    if(blob){
-      var sub=await sbSubirFotoFichaje(blob, fechaLocal(ahora)+"/"+id+".jpg");
-      if(sub.ok)foto=sub.url;
-      else avisoFoto="La marca quedó guardada, pero la foto no se pudo subir. Falta el bucket \"fichajes\" en Supabase → Storage (creálo público).";
-    }
-    var pos=await ubicacionAhora();
+    var pos=ubicRef.current||await ubicacionAhora();
     var fila={id:id, empleado_id:elegido.id, empleado_nombre:elegido.nombre, local:local,
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
-      foto_url:foto, cara:cara, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
+      foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
       con_pin:!!pinDe(elegido), notas:""};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
-    setRecibo({...fila, aviso:avisoFoto});
+    setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
     setFase("listo");
     // En la tablet del local la pantalla vuelve sola a la lista: el próximo ya está esperando.
     // Se cancela si alguien tocó antes al siguiente: si no, a los 6 segundos le borraba el
@@ -10882,7 +10857,7 @@ function PanelFichar(p){
           {esEnt?"Entrada":"Salida"} · {recibo.hora}
         </div>
         <div style={{fontSize:11,color:"#7E7E7E",marginTop:4}}>{fmtDate(recibo.fecha)} · {(getLocal(recibo.local)||{}).nombre||recibo.local}</div>
-        {recibo.foto_url&&<img src={recibo.foto_url} alt="" style={{width:150,borderRadius:12,marginTop:14,border:"1px solid #222"}}/>}
+        {recibo.lat!=null&&<div style={{fontSize:11.5,color:"#3A7D44",marginTop:12}}>📍 Ubicación registrada</div>}
         {recibo.aviso&&<div style={{fontSize:11,color:"#D4A017",marginTop:12,lineHeight:1.5}}>⚠️ {recibo.aviso}</div>}
         <button onClick={volver} style={{...BS("#1A6B8A"),padding:"12px 24px",fontSize:14,marginTop:18}}>Listo</button>
       </div>
@@ -10935,7 +10910,7 @@ function PanelFichar(p){
   if(camaraOn&&elegido){
     var est=estadoDe(elegido.id);
     var sugerido=est.adentro?"salida":"entrada";
-    var puede=!errCam&&cara!==false;
+    var puede=true;
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
         <button onClick={volver} disabled={fase==="guardando"} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
@@ -10944,22 +10919,15 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
-          <div style={{position:"relative",borderRadius:14,overflow:"hidden",background:"#000",border:"1px solid "+(cara===true?"#3A7D44":cara===false?"#C1440E":"#222")}}>
-            <video ref={videoRef} playsInline muted autoPlay style={{width:"100%",display:"block",transform:"scaleX(-1)"}}/>
-            {fase==="guardando"&&(
-              <div style={{position:"absolute",inset:0,background:"#000A",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,color:"#F0EDE8"}}>Guardando…</div>
-            )}
+          <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
+            fontSize:13,fontWeight:700,color:ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
+            {fase==="guardando"?"Guardando…":ubic==="ok"?"📍 Ubicación lista":ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
-          {errCam
-            ?<div style={{fontSize:12,color:"#C1440E",marginTop:10,lineHeight:1.5,textAlign:"left"}}>
-               {errCam}
-               <ol style={{margin:"7px 0 0 16px",padding:0,fontSize:11,color:"#8A8A8A",lineHeight:1.8}}>
-                 {pasosCamara().map(function(t,i){ return <li key={i}>{t}</li>; })}
-               </ol>
-             </div>
-            :<div style={{fontSize:12,marginTop:10,color:cara===true?"#3A7D44":cara===false?"#D4A017":"#8C8C8C"}}>
-              {cara===true?"✅ Te veo bien":cara===false?"⚠️ No veo ninguna cara — acomodate frente a la cámara":"📷 Mirá a la cámara"}
-            </div>}
+          {ubic==="no"&&fase!=="guardando"&&(
+            <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>
+              Podés marcar igual, pero queda sin ubicación. Para activarla: tocá el candado 🔒 de la barra del navegador → «Permisos» → «Ubicación» → «Permitir», y recargá.
+            </div>
+          )}
           {olvido&&(
             <div style={{marginTop:14,textAlign:"left",background:"#14100A",border:"1px solid #D4A01766",borderRadius:12,padding:"12px 14px"}}>
               <div style={{fontSize:13,fontWeight:800,color:"#D4A017"}}>No tengo registrada tu entrada</div>
@@ -10989,7 +10957,7 @@ function PanelFichar(p){
               </button>;
             })}
           </div>}
-          <div style={{fontSize:10,color:"#6E6E6E",marginTop:10}}>La foto queda guardada con la hora. No se compara con nada.</div>
+          <div style={{fontSize:10,color:"#6E6E6E",marginTop:10}}>Se guarda la hora y el lugar desde donde marcaste.</div>
         </div>
       </div>
     );
@@ -11014,59 +10982,6 @@ function PanelFichar(p){
           )}
         </div>
       )}
-      {(embebido||permCam==="denied"||permCam==="prompt"||permCam==="sin_soporte")&&(
-        <div style={{background:embebido||permCam==="denied"?"#14100A":"#08120F",
-          border:"1px solid "+(embebido||permCam==="denied"?"#D4A01755":"#1A8A7B55"),borderRadius:12,padding:"13px 15px",marginBottom:12}}>
-          {embebido?(
-            <div>
-              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>⚠️ Abrilo en Chrome o Safari</div>
-              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65}}>
-                Parece que estás adentro de WhatsApp (o de otra app). Ese navegador <strong>no da acceso a la
-                cámara</strong>, por más permisos que le des, así que desde acá no vas a poder fichar.
-                <div style={{marginTop:7,color:"#9A9A9A"}}>
-                  Tocá los <strong>⋮ tres puntitos</strong> arriba a la derecha y elegí <strong>«Abrir en Chrome»</strong>
-                  {esIPhone()?" o «Abrir en Safari»":""}. Después agregalo a la pantalla de inicio y entrás siempre directo.
-                </div>
-              </div>
-            </div>
-          ):permCam==="sin_soporte"?(
-            <div>
-              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>⚠️ Este navegador no da cámara</div>
-              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65}}>
-                Probá abrir la página en Chrome{esIPhone()?" o Safari":""}. Si entraste por una dirección que
-                no empieza con <strong>https</strong>, el navegador no habilita la cámara nunca.
-              </div>
-            </div>
-          ):permCam==="denied"?(
-            <div>
-              <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017",marginBottom:5}}>📷 La cámara está bloqueada</div>
-              <div style={{fontSize:11.5,color:"#8A8A8A",lineHeight:1.65,marginBottom:4}}>
-                Alguien le dio «Bloquear» en este celular. El navegador no vuelve a preguntar solo, así que hay
-                que destrabarlo a mano:
-              </div>
-              <ol style={{margin:"0 0 0 16px",padding:0,fontSize:11.5,color:"#888",lineHeight:1.8}}>
-                {pasosCamara().map(function(t,i){ return <li key={i}>{t}</li>; })}
-              </ol>
-            </div>
-          ):(
-            <div>
-              <div style={{fontSize:12.5,fontWeight:800,color:"#1A8A7B",marginBottom:4}}>📷 Habilitá la cámara</div>
-              <div style={{fontSize:11.5,color:"#9A9A9A",lineHeight:1.6,marginBottom:10}}>
-                Para fichar hace falta una foto. Tocá el botón y el celular te va a preguntar si la dejás usar:
-                decile que <strong style={{color:"#888"}}>sí</strong>. Se pregunta una sola vez.
-              </div>
-              <button onClick={habilitarCamara} disabled={pidiendoCam}
-                style={{...BS("#1A8A7B"),padding:"11px 18px",fontSize:13,width:"100%"}}>
-                {pidiendoCam?"Esperando…":"📷 Habilitar la cámara"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      {permCam==="granted"&&!embebido&&(
-        <div style={{fontSize:10.5,color:"#3A7D44",marginBottom:10}}>✅ Cámara lista en este celular</div>
-      )}
-
       {ofrecerInstalar&&(
         <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 15px",marginBottom:12}}>
           <div style={{fontSize:12.5,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📲 Sumalo a tu pantalla de inicio</div>

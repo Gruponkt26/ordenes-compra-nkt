@@ -4277,7 +4277,7 @@ function PanelResumenOficina(p){
   var [mes,setMes]=useState(hoy.slice(0,7));
   var [abierto,setAbierto]=useState({});
   var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
-  function esParteOficina(g){ return g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
+  function esParteOficina(g){ return esParteOficinaGasto(g); }
   var partes=gastos.filter(esParteOficina);
   var viejos=gastos.filter(function(g){return g.local==="l4";});
   var meses=[];
@@ -6070,8 +6070,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       var parte=rep[t[0]];
       if(!parte||parte.monto<=0)return;
       if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
-        subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · Oficina · "+(completo?"último pago":"pago parcial"),
-        detalle:"Puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo de la Oficina (referencia "+t[2]+"%: "+fmt(Math.round(res.monto*t[2]/100))+")",
+        subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · "+(completo?"último pago":"pago parcial")+" · Oficina "+t[2]+"%",
+        detalle:"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
         monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
         notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
     });
@@ -15060,7 +15060,13 @@ function medioEsDelLocal(medio, localMedios){
 // pero en el momento de pagar puede poner más uno que otro. Eso no es una deuda entre locales a saldar:
 // se muestra como "puso de más / de menos" en el Resumen de la Oficina, y la disponibilidad igual
 // descuenta de la cuenta que realmente pagó.
-function esParteOficinaGasto(g){ return !!g&&g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
+// Parte de un gasto de la Oficina que puso un local. Los pagos de sueldo hechos antes de llevar el porcentaje
+// en el subrubro dicen solamente "Oficina": también cuentan.
+function esParteOficinaGasto(g){
+  if(!g||g.local==="l4")return false;
+  var sub=String(g.subramo||"");
+  return /Oficina (50|30|20)%/.test(sub)||(/^egr_sueldo_/.test(String(g.id||""))&&/Oficina/.test(sub));
+}
 function esMedioCorrecto(gasto){
   if(esParteOficinaGasto(gasto))return true; // no cuenta como pago cruzado
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];

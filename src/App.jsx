@@ -13672,12 +13672,21 @@ function PanelVencimientos(p){
     // saldría dos veces.
     if(!formPago.yaCargado&&onSaveEgreso){
       egresoId="egr_venc_"+String(Date.now());
+      // El egreso cae en el área que corresponde (la luz de Kusama, en Servicios de Kusama), con aclaración de
+      // cuándo vencía y cuánto se atrasó el pago. Gremio y obra social son aportes que van a F.931: hasta que
+      // eso se acomode, quedan en Administrativo del Bodegón.
+      var gidEg=grupoIdDe(x.v), esAporteEg=(gidEg==="gremio"||gidEg==="obra_social");
+      var localEg=esAporteEg?"l1":x.v.local, areaEg=esAporteEg?"Administrativo":x.v.area;
+      var atrasoDias=(x.fecha&&formPago.fecha)?Math.round((new Date(formPago.fecha+"T00:00:00")-new Date(String(x.fecha).substring(0,10)+"T00:00:00"))/86400000):0;
+      var partesDet=[];
+      if(interes>0)partesDet.push("Incluye "+fmt(interes)+" de intereses por mora");
+      if(x.fecha)partesDet.push("Vencimiento original: "+fmtDate(String(x.fecha).substring(0,10))+(atrasoDias>0?" (pagado "+atrasoDias+" día"+(atrasoDias===1?"":"s")+" después)":""));
       onSaveEgreso({
-        id:egresoId, local:x.v.local, concepto:x.v.concepto, subramo:x.v.subramo||"Vencimiento",
+        id:egresoId, local:localEg, concepto:x.v.concepto, subramo:esAporteEg?(grupoDe(gidEg).corto+" (a F.931)"):(x.v.subramo||"Vencimiento"),
         monto:monto, forma_pago:medios.length===1?medios[0].medio:"Varios medios", pagos:medios,
-        detalle:interes>0?("Incluye "+fmt(interes)+" de intereses por mora"):"",
+        detalle:partesDet.join(" · "),
         facturado:!!formPago.facturado, facturacion:formPago.facturado?formPago.facturacion:"",
-        categoria:x.v.area, area:x.v.area,
+        categoria:areaEg, area:areaEg,
         notas:"Pago de vencimiento — "+mesFiltro, fecha:formPago.fecha,
         usuario:usuario, created_at:new Date().toISOString()
       });
@@ -13762,6 +13771,25 @@ function PanelVencimientos(p){
               {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
             </select>
           )}
+          {(function(){
+            // Pagos viejos de gremio y obra social: quedaron como "Sueldos"; se pasan a Administrativo del Bodegón.
+            var idsAp={};
+            (vencimientos||[]).forEach(function(v){ var g0=grupoIdDe(v); if(g0==="gremio"||g0==="obra_social")egresosDe(v).forEach(function(id){ idsAp[id]=true; }); });
+            var viejos=(p.gastos||[]).filter(function(g){ return (idsAp[g.id]||idsAp[baseEgresoVenc(g.id)])&&(g.area==="Sueldos"||g.categoria==="Sueldos"); });
+            if(viejos.length===0||!onSaveEgreso)return null;
+            var totalV=viejos.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+            return (
+              <button onClick={function(){
+                var lista=viejos.slice(0,8).map(function(g){return "· "+g.concepto+" "+fmt(g.monto)+" ("+fmtDate(g.fecha)+")";}).join("\n");
+                if(!window.confirm("Hay "+viejos.length+" pago"+(viejos.length===1?"":"s")+" de Gremio / Obra Social por "+fmt(totalV)+" cargado"+(viejos.length===1?"":"s")+" como Sueldos.\n\n"
+                  +lista+(viejos.length>8?"\n· …y "+(viejos.length-8)+" más":"")
+                  +"\n\n¿Pasarlos a Administrativo del Bodegón? El monto y la fecha no cambian."))return;
+                viejos.forEach(function(g){ onSaveEgreso({...g,area:"Administrativo",categoria:"Administrativo",local:"l1"}); });
+              }} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #D4A01766",background:"#14100A",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                🔧 Pasar {viejos.length} pago{viejos.length===1?"":"s"} viejo{viejos.length===1?"":"s"} de Gremio/Obra Social a Administrativo
+              </button>
+            );
+          })()}
           {(function(){
             var hu=egresosHuerfanos(p.gastos,vencimientos);
             if(hu.length===0)return null;

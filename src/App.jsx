@@ -20013,6 +20013,85 @@ function antiguedadTexto(fechaAlta){
   var a=Math.floor(m/12), r=m%12;
   return (a>0?a+" año"+(a===1?"":"s"):"")+(a>0&&r>0?" y ":"")+(r>0||a===0?r+" mes"+(r===1?"":"es"):"");
 }
+// Los datos personales del propio empleado, que él mismo carga desde "Mi ficha". Edita contacto, nacimiento, altura,
+// talles, grupo sanguíneo, enfermedad y medicación. El CUIL, el local, el puesto y todo lo laboral lo maneja administración.
+function MisDatosPersonales(p){
+  var emp=p.emp;
+  var [ex,setEx]=useState(p.datos||{});
+  var [tel,setTel]=useState((emp&&emp.telefono)||"");
+  var [dir,setDir]=useState((emp&&emp.direccion)||"");
+  var [telEm,setTelEm]=useState((emp&&emp.telefono_emergencia)||"");
+  var [msg,setMsg]=useState("");
+  var [abierto,setAbierto]=useState(false);
+  useEffect(function(){ setEx(p.datos||{}); },[p.datos]);
+  if(!emp)return null;
+  var IN={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var LB={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  function setX(k,v){ setEx(function(x){var n={...x};n[k]=v;return n;}); }
+  var empAct={...emp,telefono:tel,direccion:dir,telefono_emergencia:telEm};
+  var comp=completitudFicha(empAct,ex);
+  var col=comp.pct>=100?"#3A7D44":comp.pct>=60?"#D4A017":"#C1440E";
+  var edad=edadDe(ex.nacimiento);
+  async function guardar(){
+    var exF={...ex,enf_detalle:ex.enf==="si"?(ex.enf_detalle||""):"",med_detalle:ex.med==="si"?(ex.med_detalle||""):""};
+    var emp2={...empAct,enfermedad_congenita:ex.enf==="si"||(ex.enf===undefined&&!!emp.enfermedad_congenita)};
+    var r=await sbSaveDatosEmp(emp.id,exF,p.usuario);
+    if(!r.ok){ setMsg("No se pudo guardar: "+r.error); return; }
+    if(p.onSaveEmp)await p.onSaveEmp(emp2);
+    if(p.onDatos)p.onDatos({...exF,empleado_id:emp.id});
+    setMsg("✓ Guardado"); setTimeout(function(){setMsg("");},2500);
+  }
+  function sino(k,det,ph){
+    return <div>
+      <div style={{display:"flex",gap:6}}>
+        {[["no","No"],["si","Sí"]].map(function(op){var act=ex[k]===op[0]; return <button key={op[0]} onClick={function(){setX(k,op[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(act?"#4CAF50":"#2A2A2A"),background:act?"#4CAF5022":"#0F0F0F",color:act?"#4CAF50":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>;})}
+      </div>
+      {ex[k]==="si"&&<input placeholder={ph} value={ex[det]||""} onChange={function(e){setX(det,e.target.value);}} style={{...IN,marginTop:6}}/>}
+    </div>;
+  }
+  return(
+    <div style={{background:"#0A0A0A",border:"1px solid "+col+"55",borderRadius:14,padding:"13px 15px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>
+      <button onClick={function(){setAbierto(function(v){return !v;});}} style={{width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",textAlign:"left",fontFamily:"'Inter',sans-serif"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+          <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{abierto?"▾":"▸"} Mis datos personales</span>
+          <span style={{fontSize:16,fontWeight:800,color:col}}>{comp.pct}%</span>
+        </div>
+        <div style={{height:6,borderRadius:3,background:"#1A1A1A",marginTop:7,overflow:"hidden"}}><div style={{width:comp.pct+"%",height:"100%",background:col}}/></div>
+        {comp.pct<100&&<div style={{fontSize:10.5,color:"#8C8C8C",marginTop:6,lineHeight:1.5}}>Te falta: {comp.faltan.join(", ")}.</div>}
+        {comp.pct>=100&&<div style={{fontSize:10.5,color:"#3A7D44",marginTop:6}}>✅ Tenés todos tus datos cargados.</div>}
+      </button>
+      {abierto&&(
+        <div style={{display:"flex",flexDirection:"column",gap:9,marginTop:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><label style={LB}>Teléfono</label><input value={tel} onChange={function(e){setTel(e.target.value);}} style={IN}/></div>
+            <div><label style={LB}>Tel. de emergencia</label><input value={telEm} onChange={function(e){setTelEm(e.target.value);}} style={IN}/></div>
+          </div>
+          <div><label style={LB}>Dirección</label><input value={dir} onChange={function(e){setDir(e.target.value);}} style={IN}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><label style={LB}>Fecha de nacimiento</label><input type="date" value={ex.nacimiento||""} onChange={function(e){setX("nacimiento",e.target.value);}} style={IN}/></div>
+            <div><label style={LB}>Edad</label><div style={{...IN,color:edad==null?"#6E6E6E":"#F0EDE8"}}>{edad==null?"—":edad+" años"}</div></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><label style={LB}>Altura (cm)</label><input type="number" inputMode="numeric" value={ex.altura||""} onChange={function(e){setX("altura",e.target.value);}} style={IN}/></div>
+            <div><label style={LB}>Grupo sanguíneo</label>
+              <select value={ex.sangre||""} onChange={function(e){setX("sangre",e.target.value);}} style={IN}>
+                <option value="">—</option>{GRUPOS_SANGRE.map(function(g){return <option key={g} value={g}>{g}</option>;})}
+              </select></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            <div><label style={LB}>Talle calzado</label><input value={ex.calzado||""} onChange={function(e){setX("calzado",e.target.value);}} style={IN}/></div>
+            <div><label style={LB}>Talle remera</label><input value={ex.remera||""} onChange={function(e){setX("remera",e.target.value);}} style={IN}/></div>
+            <div><label style={LB}>Talle pantalón</label><input value={ex.pantalon||""} onChange={function(e){setX("pantalon",e.target.value);}} style={IN}/></div>
+          </div>
+          <div><label style={LB}>¿Tenés alguna enfermedad congénita?</label>{sino("enf","enf_detalle","¿Cuál?")}</div>
+          <div><label style={LB}>¿Tomás medicación?</label>{sino("med","med_detalle","¿Cuál / cuáles?")}</div>
+          <button onClick={guardar} style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{msg||"💾 Guardar mis datos"}</button>
+          <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5}}>Sólo los ves vos y administración. Si hay algo que no podés cambiar (por ejemplo el CUIL), pedíselo a administración.</div>
+        </div>
+      )}
+    </div>
+  );
+}
 function FichaLaboral(p){
   var emp=p.emp, admin=!!p.verAdmin;
   var fichajes=p.fichajes||[], vacaciones=p.vacaciones||[], justificativos=p.justificativos||[];
@@ -23893,6 +23972,22 @@ export default function App() {
   var [corrResultados,setCorrResultados]=useState({});
   var [traspasos,setTraspasos]=useState({});
   var [empleados,setEmpleados]=useState([]);
+  // La ficha de empleado de quien está logueado: por el vínculo del usuario, o por el nombre.
+  function empleadoDe(u){
+    if(!u)return null;
+    return empleados.find(function(e){return e.id===u.empleado_id;})||empleados.find(function(e){return String(e.nombre||"").trim().toLowerCase()===String(u.nombre||"").trim().toLowerCase();})||null;
+  }
+  var miEmpId=(empleadoDe(cu)||{}).id||"";
+  useEffect(function(){
+    if(!miEmpId){ setMisDatos(null); return; }
+    var vivo=true;
+    fetch(SURL+"/rest/v1/pautas?id=eq.datos_"+encodeURIComponent(miEmpId),{headers:SH}).then(function(r){return r.json();}).then(function(d){
+      if(!vivo)return;
+      var x={}; try{ if(Array.isArray(d)&&d[0])x=JSON.parse(d[0].texto)||{}; }catch(e){}
+      setMisDatos(x);
+    }).catch(function(){ if(vivo)setMisDatos({}); });
+    return function(){vivo=false;};
+  },[miEmpId]);
   var [sueldos,setSueldos]=useState([]);
   var [cargasSociales,setCargasSociales]=useState([]);
   var [saldosProveedores,setSaldosProveedores]=useState([]);
@@ -23902,6 +23997,8 @@ export default function App() {
   var [recetas,setRecetas]=useState([]);
   var [pautas,setPautas]=useState([]);
   var [infoCajero,setInfoCajero]=useState([]);
+  // Datos personales ampliados del propio colaborador (para Mi ficha y el aviso de "completá tus datos").
+  var [misDatos,setMisDatos]=useState(null);
   var [avisosCaja,setAvisosCaja]=useState([]);
   // Retiro de caja menor: null = cerrado; un objeto {local,monto,nota} = el modal abierto.
   var [retiroMenorForm,setRetiroMenorForm]=useState(null);
@@ -24611,6 +24708,19 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:23,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Por favor cerrar la caja</div>
                 <div style={{fontSize:13,color:"#C88888",marginTop:6}}>Anoche no quedó cargado el cierre de {la?la.nombre:lf} ({fmtDate(ayer)}).</div>
               </div>
+            );
+          })()}
+
+          {/* Aviso para completar los datos personales */}
+          {enCompras&&!subCompras&&!esSofia&&misDatos!==null&&empleadoDe(cu)&&(function(){
+            var c=completitudFicha(empleadoDe(cu),misDatos);
+            if(c.pct>=100)return null;
+            return(
+              <button onClick={function(){limpiarTabs();setSubCompras("mificha");}}
+                style={{width:"100%",textAlign:"left",background:"#14100A",border:"1px solid #D4A01766",borderRadius:14,padding:"14px 16px",marginBottom:12,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#D4A017"}}>📝 Completá tus datos personales ({c.pct}%)</div>
+                <div style={{fontSize:11,color:"#B8B8B8",marginTop:4,lineHeight:1.5}}>Te falta: {c.faltan.join(", ")}. Tocá acá para cargarlos en Mi ficha.</div>
+              </button>
             );
           })()}
 
@@ -25430,6 +25540,9 @@ export default function App() {
 
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {/* Mi ficha: lo laboral del propio empleado, sin sueldos ni observaciones */}
+          {!esSofia&&subCompras==="mificha"&&empleadoDe(cu)&&misDatos!==null&&(
+            <MisDatosPersonales emp={empleadoDe(cu)} datos={misDatos} onDatos={setMisDatos} onSaveEmp={guardarEmpleado} usuario={cu.nombre}/>
+          )}
           {!esSofia&&subCompras==="mificha"&&(
             <FichaLaboral
               emp={empleados.find(function(e){return e.id===cu.empleado_id;})||empleados.find(function(e){return String(e.nombre||"").trim().toLowerCase()===String(cu.nombre||"").trim().toLowerCase();})||null}

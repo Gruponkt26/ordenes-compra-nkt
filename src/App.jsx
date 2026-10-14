@@ -11413,9 +11413,14 @@ function PanelFichajes(p){
           :<span style={{width:26,height:26,borderRadius:6,background:"#141414",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#7E7E7E"}}>{f.manual?"✎":"—"}</span>}
         <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
         {f.cara===false&&<span title="El navegador no vio una cara" style={{fontSize:10}}>⚠️</span>}
-        {(function(){ var d=lejosDe(f); return d==null?null:(
-          <span title={"Marcó a "+fmtDistancia(d)+" del local"} style={{fontSize:9.5,color:"#C1440E",fontWeight:700}}>📍{fmtDistancia(d)}</span>
-        ); })()}
+        {f.lat!=null&&f.lng!=null
+          ?(function(){
+              var d=distanciaMetros(localesDatos[f.local],{lat:f.lat,lng:f.lng}), lejos=d!=null&&d>RADIO_LOCAL;
+              return <a href={"https://maps.google.com/?q="+f.lat+","+f.lng} target="_blank" rel="noreferrer"
+                title={d!=null?("Marcó a "+fmtDistancia(d)+" del local · tocá para ver el mapa"):"Tocá para ver dónde marcó"}
+                style={{fontSize:10,fontWeight:700,textDecoration:"none",color:lejos?"#C1440E":"#3A7D44"}}>📍{d!=null?fmtDistancia(d):"mapa"}</a>;
+            })()
+          :(!f.manual&&<span title="Esta marca no tiene ubicación" style={{fontSize:10,color:"#D4A017"}}>📍✕</span>)}
         {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
           style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11,padding:"0 2px"}} title="Borrar">🗑</button>}
       </span>

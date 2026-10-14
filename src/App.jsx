@@ -16418,6 +16418,8 @@ function PanelCierresSofia(p) {
   );
 }
 
+// Un día sin ventas se carga como un cierre en $0 con la nota "SIN VENTAS". Cuenta como día cerrado.
+function esSinVentas(c){ return !!c&&!(parseFloat(c.total_ventas||0)>0)&&/^\s*sin ventas/i.test(String(c.notas||"")); }
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
   // Día de negocio, no calendario: un cajero que abre a la noche y cierra pasada la
@@ -16444,7 +16446,7 @@ function PanelCierre(p) {
   // retiro anotado pero sin ninguna venta. Esa fila no cuenta como "cierre cargado" para
   // nada de lo que sigue —ni para la pantalla de hoy, ni para el día atrasado—: si contara,
   // el cajero vería "ya está cargado" con $0 y ese día podría quedar sin cerrar para siempre.
-  function esCierreReal(c){ return c&&parseFloat(c.total_ventas||0)>0; }
+  function esCierreReal(c){ return c&&(parseFloat(c.total_ventas||0)>0||esSinVentas(c)); }
   var hoyDataCruda=cierresLocal.find(function(c){return c.fecha===hoy;});
   var hoyEsSoloRetiro=!!hoyDataCruda&&!esCierreReal(hoyDataCruda);
   var hoyData=hoyEsSoloRetiro?null:hoyDataCruda;
@@ -16543,7 +16545,8 @@ function PanelCierre(p) {
     setShowForm(true);
   }
 
-  function doSave(){
+  function doSave(sinVentas){
+    sinVentas=sinVentas===true;
     // Un cierre nuevo no puede saltear el día atrasado: si hay uno pendiente, sólo se
     // guarda si es justo ese día. Editar un cierre que ya existe no cuenta como saltear
     // nada, así que no se lo bloquea.
@@ -16556,8 +16559,14 @@ function PanelCierre(p) {
     if(fechaSospechosa&&!window.confirm("Hoy es "+fmtDate(hoy)+", pero este cierre dice "+fmtDate(form.fecha)+". ¿Guardarlo con esa fecha igual?")){
       return;
     }
+    if(sinVentas){
+      var hayImportes=calcTotal(form)>0;
+      if(!window.confirm("¿Confirmás que el "+fmtDate(form.fecha)+" NO hubo ventas?\n\nEl cierre queda en $0"+(hayImportes?" y se descartan los importes que cargaste":"")+"."))return;
+      form={...form,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",
+        notas:"SIN VENTAS"+(String(form.notas||"").replace(/^\s*sin ventas\s*·?\s*/i,"").trim()?" · "+String(form.notas||"").replace(/^\s*sin ventas\s*·?\s*/i,"").trim():"")};
+    }
     var total=calcTotal(form);
-    if(total===0){alert("Cargá al menos un medio de pago para guardar el cierre.");return;}
+    if(total===0&&!sinVentas){alert("Cargá al menos un medio de pago para guardar el cierre, o tocá «Sin ventas» si hoy no se vendió nada.");return;}
     var cierre={
       id: editId || (localId+"_"+form.fecha+"_"+String(Date.now())),
       local:localId,
@@ -16743,7 +16752,7 @@ function PanelCierre(p) {
         </div>
         {hoyData?(
           <div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:800,color:"#3A7D44",marginBottom:10}}>${parseFloat(hoyData.total_ventas).toLocaleString("es-AR")}</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:800,color:esSinVentas(hoyData)?"#D4A017":"#3A7D44",marginBottom:10}}>{esSinVentas(hoyData)?"🚫 Sin ventas · $0":"$"+parseFloat(hoyData.total_ventas).toLocaleString("es-AR")}</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:11,color:"#8C8C8C"}}>
               {hoyData.efectivo>0&&<div>💵 Efectivo: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.efectivo).toLocaleString("es-AR")}</span></div>}
               {hoyData.transferencia>0&&<div>📲 Transf.: <span style={{color:"#F0EDE8"}}>${parseFloat(hoyData.transferencia).toLocaleString("es-AR")}</span></div>}
@@ -16889,7 +16898,8 @@ function PanelCierre(p) {
             <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Observaciones..." style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={doSave} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
+            <button onClick={function(){doSave();}} style={{background:local?local.color:"#C1440E",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Guardar cierre</button>
+            <button onClick={function(){doSave(true);}} style={{padding:"11px",borderRadius:8,border:"1px solid #D4A01766",background:"#14100A",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2}}>🚫 Sin ventas ($0)</button>
             <button onClick={function(){setShowForm(false);setEditId(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
           </div>
         </div>

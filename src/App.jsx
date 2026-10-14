@@ -20536,7 +20536,7 @@ function PanelSueldos(p){
             {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>}
           
-          {(tab==="empleados"||tab==="bajas")&&<button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado nuevo</button>}
+          {(tab==="empleados"||tab==="bajas")&&<button onClick={function(){setTab("altas");}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Nuevo colaborador</button>}
           {tab==="estado"&&<button onClick={function(){
             var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
             var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
@@ -20557,7 +20557,7 @@ function PanelSueldos(p){
       {/* Módulos de Personal: Altas · Sueldos · CUIT · Informe. Cada uno agrupa sus pestañas. */}
       {(function(){
         var MODULOS=[
-          {id:"altas",label:"➕ Altas",subs:[["empleados","👤 Empleados"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]]},
+          {id:"colab",label:"👤 Colaboradores",subs:[["altas","➕ Altas"],["empleados","✏️ Modificar datos"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]]},
           {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
         ];
         var subsCuit=[].concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]);
@@ -20678,6 +20678,37 @@ function PanelSueldos(p){
               </div>
             )}
           </div>
+        );
+      })()}
+
+      {/* TAB ALTAS: cargar un colaborador nuevo */}
+      {tab==="altas"&&(function(){
+        var recientes=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);})
+          .sort(function(a,b){return String(b.fecha_alta||b.created_at||"").localeCompare(String(a.fecha_alta||a.created_at||""));}).slice(0,8);
+        return(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:"#0A0A0A",border:"1px solid #4CAF5033",borderRadius:14,padding:"18px",textAlign:"center"}}>
+            <div style={{fontSize:30,marginBottom:6}}>🆕</div>
+            <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>Nuevo colaborador</div>
+            <div style={{fontSize:11,color:"#7E7E7E",lineHeight:1.5,marginBottom:12}}>Se carga la ficha con sus datos personales y laborales. Después se le asigna el usuario en Colaboradores del menú principal.</div>
+            <button onClick={function(){setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:hoy,fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});setShowFormEmp(true);}}
+              style={{padding:"11px 22px",borderRadius:10,border:"none",background:"#4CAF50",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer"}}>+ Dar de alta</button>
+          </div>
+          {recientes.length>0&&(
+            <div>
+              <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.2,marginBottom:6}}>Últimas altas</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {recientes.map(function(emp){
+                  var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                  return <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 14px"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{emp.nombre}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}{emp.fecha_alta?" · alta "+fmtDate(String(emp.fecha_alta).substring(0,10)):""}</div>
+                  </div>;
+                })}
+              </div>
+            </div>
+          )}
+        </div>
         );
       })()}
 

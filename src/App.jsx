@@ -20018,9 +20018,9 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   }
   return {tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
 }
-function antiguedadTexto(fechaAlta){
+function antiguedadTexto(fechaAlta,hasta){
   if(!fechaAlta)return "";
-  var d=new Date(String(fechaAlta).substring(0,10)+"T00:00:00"), h=new Date();
+  var d=new Date(String(fechaAlta).substring(0,10)+"T00:00:00"), h=hasta?new Date(String(hasta).substring(0,10)+"T00:00:00"):new Date();
   if(isNaN(d.getTime()))return "";
   var m=(h.getFullYear()-d.getFullYear())*12+(h.getMonth()-d.getMonth())-(h.getDate()<d.getDate()?1:0);
   if(m<0)return "";
@@ -20357,6 +20357,7 @@ function PanelSueldos(p){
   useEffect(function(){ setTabFicha("personales"); },[showFormEmp]);
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
+  var [bajaAbierta,setBajaAbierta]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
   var [datosEmp,setDatosEmp]=useState({});      // empleado_id → datos personales ampliados
   var [formExtra,setFormExtra]=useState({});
@@ -20429,6 +20430,22 @@ function PanelSueldos(p){
   }
   function armarEmpleado(){
     return {id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formExtra.enf==="si"||(formExtra.enf===undefined&&!!formEmp.enfermedad_congenita),fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+  }
+  // Dar de baja no borra nada: la ficha queda inactiva con fecha y motivo, y pasa a la pestaña Bajas junto con todo
+  // su historial (marcas, jornadas, vacaciones, sueldos, justificativos y observaciones).
+  function darDeBaja(emp){
+    var f=window.prompt("Fecha de baja de "+emp.nombre+" (AAAA-MM-DD):",hoy);
+    if(f===null)return;
+    f=String(f).trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){ alert("La fecha tiene que tener el formato AAAA-MM-DD, por ejemplo "+hoy+"."); return; }
+    var motivo=window.prompt("Motivo de la baja (renuncia, despido, fin de temporada…):",emp.motivo_baja||"");
+    if(motivo===null)return;
+    onSaveEmpleado({...emp,activo:false,fecha_baja:f,motivo_baja:String(motivo).trim()});
+    setTab("bajas");
+  }
+  function reactivar(emp){
+    if(!window.confirm("¿Reactivar a "+emp.nombre+"?\n\nVuelve a Empleados y puede fichar. Se borra la fecha y el motivo de baja."))return;
+    onSaveEmpleado({...emp,activo:true,fecha_baja:"",motivo_baja:""});
   }
   var [guardadoLab,setGuardadoLab]=useState(false);
   // Guardar la situación laboral desde la pestaña "Datos laborales": no cierra la ficha.
@@ -20539,7 +20556,7 @@ function PanelSueldos(p){
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["empleados","👤 Empleados"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
+        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["empleados","👤 Empleados"],["bajas","📤 Bajas"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
         <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
@@ -20644,8 +20661,8 @@ function PanelSueldos(p){
       {/* TAB EMPLEADOS */}
       {tab==="empleados"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {empleadosFiltro.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Sin empleados. Agregá uno con el botón +</div>}
-          {empleadosFiltro.map(function(emp){
+          {empleadosFiltro.filter(function(e){return e.activo!==false;}).length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Sin empleados activos. Agregá uno con el botón +</div>}
+          {empleadosFiltro.filter(function(e){return e.activo!==false;}).map(function(emp){
             var loc=LOCALES.find(function(l){return l.id===emp.local;});
             return(
               <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -20655,13 +20672,60 @@ function PanelSueldos(p){
                 </div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio",cuil:emp.cuil||"",direccion:emp.direccion||"",telefono:emp.telefono||"",telefono_emergencia:emp.telefono_emergencia||"",enfermedad_congenita:emp.enfermedad_congenita||false,fecha_alta:emp.fecha_alta||"",fecha_baja:emp.fecha_baja||"",motivo_baja:emp.motivo_baja||"",monto_convenio:String(emp.monto_convenio||""),monto_sin_convenio:String(emp.monto_sin_convenio||"")});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
-                  <button onClick={function(){if(window.confirm("¿Eliminar a "+emp.nombre+"?"))onDeleteEmpleado(emp.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
+                  <button onClick={function(){darDeBaja(emp);}} title="Dar de baja: pasa a Bajas con todo su historial" style={{padding:"5px 10px",borderRadius:7,border:"1px solid #D4A01744",background:"none",color:"#D4A017",fontSize:11,cursor:"pointer"}}>📤 Baja</button>
+                  <button onClick={function(){if(window.confirm("¿Eliminar a "+emp.nombre+"?\n\nSe borra la ficha. Si se fue del grupo, mejor usá «Baja» para conservar su historial."))onDeleteEmpleado(emp.id);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:11,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* TAB BAJAS: los que ya no están activos, con todo su historial */}
+      {tab==="bajas"&&(function(){
+        var bajas=empleadosFiltro.filter(function(e){return e.activo===false;}).sort(function(a,b){return String(b.fecha_baja||"").localeCompare(String(a.fecha_baja||""));});
+        return(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{fontSize:11,color:"#7E7E7E",lineHeight:1.5}}>Acá queda la ficha de quien ya no trabaja en el grupo, con todo su historial: marcas, jornadas, vacaciones, sueldos, justificativos y observaciones. Para pasar a alguien desde Empleados, usá el botón «📤 Baja».</div>
+          {bajas.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>No hay bajas registradas.</div>}
+          {bajas.map(function(emp){
+            var loc=LOCALES.find(function(l){return l.id===emp.local;});
+            var ab=bajaAbierta===emp.id;
+            var tiempo=antiguedadTexto(emp.fecha_alta,emp.fecha_baja);
+            var ex=datosEmp[emp.id]||{};
+            return(
+              <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid "+(ab?"#2A2A2A":"#1A1A1A"),borderRadius:12,overflow:"hidden"}}>
+                <div style={{padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}} onClick={function(){setBajaAbierta(ab?null:emp.id);}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{ab?"▾":"▸"} {emp.nombre}</div>
+                    <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:3,lineHeight:1.6}}>
+                      {loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}
+                      <br/>{emp.fecha_alta?"Alta "+fmtDate(String(emp.fecha_alta).substring(0,10)):"Sin fecha de alta"} → {emp.fecha_baja?"Baja "+fmtDate(String(emp.fecha_baja).substring(0,10)):"Sin fecha de baja"}{tiempo?" · "+tiempo:""}
+                    </div>
+                    {emp.motivo_baja&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:2}}>Motivo: {emp.motivo_baja}</div>}
+                  </div>
+                  <button onClick={function(e){e.stopPropagation();reactivar(emp);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #3A7D4466",background:"none",color:"#3A7D44",fontSize:11,cursor:"pointer",flexShrink:0}}>↩ Reactivar</button>
+                </div>
+                {ab&&(
+                  <div style={{borderTop:"1px solid #161616",padding:"12px 14px"}}>
+                    <div style={{fontSize:9.5,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1.2,fontWeight:700,marginBottom:6}}>Datos</div>
+                    <div style={{fontSize:11.5,color:"#B8B8B8",lineHeight:1.8,marginBottom:12}}>
+                      {emp.cuil&&<div>CUIL: {emp.cuil}</div>}
+                      {emp.telefono&&<div>Teléfono: {emp.telefono}{emp.telefono_emergencia?" · Emergencia: "+emp.telefono_emergencia:""}</div>}
+                      {emp.direccion&&<div>Dirección: {emp.direccion}</div>}
+                      {ex.nacimiento&&<div>Nacimiento: {fmtDate(ex.nacimiento)}{edadDe(ex.nacimiento)!=null?" ("+edadDe(ex.nacimiento)+" años)":""}</div>}
+                      <div>{emp.convenio==="convenio"?"📋 Convenio":emp.convenio==="mixto"?"📋 + Sin convenio":"Sin convenio"}</div>
+                    </div>
+                    <FichaLaboral emp={emp} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
+                      sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        );
+      })()}
 
       {/* TAB HISTORIAL */}
       {tab==="historial"&&(

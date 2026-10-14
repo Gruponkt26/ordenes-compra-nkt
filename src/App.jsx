@@ -20529,14 +20529,14 @@ function PanelSueldos(p){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
         <div>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Sueldos</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {tab==="estado"&&<select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
             {mesesDisp.map(function(m){return <option key={m} value={m}>{m}</option>;})}
           </select>}
           
-          <button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado</button>
+          {(tab==="empleados"||tab==="bajas")&&<button onClick={function(){setShowFormEmp(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Empleado nuevo</button>}
           {tab==="estado"&&<button onClick={function(){
             var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
             var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
@@ -20554,16 +20554,39 @@ function PanelSueldos(p){
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["empleados","👤 Empleados"],["bajas","📤 Bajas"],["historial","📋 Historial"],["vacaciones","🏖️ Vacaciones"]].concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]).concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[]).map(function(t){return(
-          <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?"#4CAF50":"#1E1E1E"),background:tab===t[0]?"#4CAF5022":"#111",color:tab===t[0]?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
-        );})}
-        <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
-          <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#555":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer"}}>Todos</button>
-          {localesFiltro.map(function(l){return <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;})}
-        </div>
-      </div>
+      {/* Módulos de Personal: Altas · Sueldos · CUIT · Informe. Cada uno agrupa sus pestañas. */}
+      {(function(){
+        var MODULOS=[
+          {id:"altas",label:"➕ Altas",subs:[["empleados","👤 Empleados"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]]},
+          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
+        ];
+        var subsCuit=[].concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]);
+        if(subsCuit.length>0)MODULOS.push({id:"cuit",label:"🏛️ CUIT",subs:subsCuit});
+        if(p.showInforme)MODULOS.push({id:"informe",label:"📊 Informe",subs:[["informe","📊 Informe"]]});
+        var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS[1]||MODULOS[0];
+        return(
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:actual.subs.length>1?8:0}}>
+              {MODULOS.map(function(m){
+                var act=actual.id===m.id;
+                return <button key={m.id} onClick={function(){ if(!act)setTab(m.subs[0][0]); }} style={{padding:"9px 16px",borderRadius:10,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF50":"#111",color:act?"#000":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>{m.label}</button>;
+              })}
+              <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#555":"#1A1A1A"),background:localFiltro==="all"?"#222":"none",color:localFiltro==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer"}}>Todos</button>
+                {localesFiltro.map(function(l){return <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;})}
+              </div>
+            </div>
+            {actual.subs.length>1&&(
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {actual.subs.map(function(t){
+                  var act=tab===t[0];
+                  return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF5022":"#111",color:act?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB ESTADO DEL MES */}
       {tab==="estado"&&(function(){

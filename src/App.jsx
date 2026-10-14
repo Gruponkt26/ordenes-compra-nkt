@@ -11136,8 +11136,14 @@ function PanelJornadas(p){
       return x&&!x.franco&&((x.desde&&!x.hasta)||(x.hasta&&!x.desde));
     });
     if(malo){ alert("En "+malo.n+" falta una de las dos horas. Poné las dos, o marcalo franco."); return; }
+    // Un día que quedó sin horas y sin franco tildado se guarda como franco: sin horario no hay jornada.
+    var jn={...j};
+    DIAS_SEM.forEach(function(d){
+      var x=jn[d.k];
+      if(x&&!x.franco&&!x.desde&&!x.hasta)jn[d.k]={franco:true,desde:"",hasta:""};
+    });
     setGuardando(e.id);
-    var r=await p.onSaveEmpleado({...e, jornada:j});
+    var r=await p.onSaveEmpleado({...e, jornada:jn});
     setGuardando("");
     if(r!==false)setBorr(function(o){var n={...o};delete n[e.id];return n;});
   }
@@ -11192,7 +11198,9 @@ function PanelJornadas(p){
               <div style={{borderTop:"1px solid #161616",padding:"10px 15px 14px"}}>
                 {DIAS_SEM.map(function(d){
                   var x=j[d.k]||{};
-                  var esFranco=!!x.franco||(!x.desde&&!x.hasta);
+                  // Un día sin cargar figura como franco; al destildar "franco" pasa a ser un día de trabajo aunque todavía
+                  // no tenga horas (antes volvía a quedar como franco y las horas no se podían tocar).
+                  var esFranco=x.franco===undefined?(!x.desde&&!x.hasta):!!x.franco;
                   return (
                     <div key={d.k} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",flexWrap:"wrap"}}>
                       <span style={{width:34,fontSize:12,fontWeight:700,color:esFranco?"#6E6E6E":"#F0EDE8"}}>{d.n}</span>

@@ -4277,7 +4277,7 @@ function PanelResumenOficina(p){
   var [mes,setMes]=useState(hoy.slice(0,7));
   var [abierto,setAbierto]=useState({});
   var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
-  function esParteOficina(g){ return g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
+  function esParteOficina(g){ return esParteOficinaGasto(g); }
   var partes=gastos.filter(esParteOficina);
   var viejos=gastos.filter(function(g){return g.local==="l4";});
   var meses=[];
@@ -6070,8 +6070,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       var parte=rep[t[0]];
       if(!parte||parte.monto<=0)return;
       if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
-        subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · Oficina · "+(completo?"último pago":"pago parcial"),
-        detalle:"Puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo de la Oficina (referencia "+t[2]+"%: "+fmt(Math.round(res.monto*t[2]/100))+")",
+        subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · "+(completo?"último pago":"pago parcial")+" · Oficina "+t[2]+"%",
+        detalle:"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
         monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
         notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
     });
@@ -8973,13 +8973,15 @@ function PanelEgresos(p){
             // Los adelantos de sueldo viven en su propia tabla, no en gastos: también son egreso.
             var totAdel=(p.adelantos||[]).filter(function(a){return a.local===l.id&&a.fecha&&a.fecha.slice(0,7)===mesFiltroGrid;}).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
             var ccTop=costosCalc(l.id,mesFiltroGrid);
+            // Sueldos de la Oficina que pusieron los locales: ya figuran en cada uno, acá se muestran de referencia.
+            var totRepOf=l.id==="l4"?(p.sueldos||[]).filter(function(s){return s.local==="l4"&&s.periodo===perAnt&&(s.estado==="pagado"||s.estado==="parcial")&&sueldoRepartidoEnLocales(s,gastos);}).reduce(function(t,s){return t+aportesSueldoOficina(s,gastos).total;},0):0;
             var tot=totG+totS+totAg+totR+totAdel+ccTop.total;
             var activo=localGrid===l.id;
             return(
               <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
-                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
+                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)}{totRepOf>0?" (+"+fmt(totRepOf)+" puesto por los locales)":""}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
               </div>
             );
           })}
@@ -9137,6 +9139,34 @@ function PanelEgresos(p){
                           })}
                         </div>
                       )}
+                    </div>
+                  );
+                })()}
+
+                {/* Sueldos de la Oficina pagados por los locales: de referencia, ya cuentan en cada local */}
+                {l.id==="l4"&&(function(){
+                  var lista=(p.sueldos||[]).filter(function(s){return s.local==="l4"&&s.periodo===periodoAnterior&&sueldoRepartidoEnLocales(s,gastos);});
+                  if(lista.length===0)return null;
+                  var nombres={l1:"Bodegón",l3:"Colantonio's",l2:"Kusama"};
+                  return(
+                    <div style={{marginBottom:8,background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#1A6B8A"}}>🏢 Sueldos de la Oficina · los pagan los locales</div>
+                      <div style={{fontSize:9.5,color:"#7E7E7E",margin:"2px 0 6px",lineHeight:1.5}}>Ya están sumados en cada local que puso su parte, por eso no suman en el total de la Oficina.</div>
+                      {lista.map(function(s){
+                        var ap=aportesSueldoOficina(s,gastos);
+                        var total=s.estado==="parcial"?Math.max(parseFloat(s.monto)||0,0):parseFloat(s.monto)||0;
+                        return(
+                          <div key={s.id} style={{padding:"4px 0",borderBottom:"1px solid #12202B",fontSize:10}}>
+                            <div style={{display:"flex",justifyContent:"space-between"}}>
+                              <span style={{color:"#B8B8B8"}}>{s.estado==="pagado"?"✅":"🔸"} {s.empleado_nombre}{s.estado==="parcial"&&<span style={{color:"#E07B00",fontWeight:700}}> · pago parcial</span>}</span>
+                              <span style={{color:"#F0EDE8",fontWeight:600}}>sueldo {fmt(total)}</span>
+                            </div>
+                            <div style={{color:"#7E7E7E",paddingLeft:14,marginTop:1}}>
+                              {["l1","l3","l2"].map(function(lid){return nombres[lid]+" "+fmt(ap.por[lid]||0);}).join(" · ")} · puesto {fmt(ap.total)}{total-ap.total>0.5?" · falta "+fmt(total-ap.total):""}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })()}
@@ -10032,6 +10062,16 @@ function sueldoRepartidoEnLocales(s, gastos){
   if(!s||s.local!=="l4")return false;
   var pref="egr_sueldo_"+s.id+"_";
   return (gastos||[]).some(function(g){return String(g.id||"").indexOf(pref)===0;});
+}
+// Cuánto puso cada local del sueldo de una empleada de la Oficina (suma de sus egresos).
+function aportesSueldoOficina(s, gastos){
+  var pref="egr_sueldo_"+s.id+"_", por={l1:0,l3:0,l2:0}, total=0;
+  (gastos||[]).forEach(function(g){
+    if(String(g.id||"").indexOf(pref)!==0)return;
+    var m=parseFloat(g.monto)||0;
+    por[g.local]=(por[g.local]||0)+m; total+=m;
+  });
+  return {por:por,total:total};
 }
 function baseEgresoVenc(id){
   var m=/^(egr_venc_.+)_l[1-4]$/.exec(String(id||""));
@@ -15020,7 +15060,13 @@ function medioEsDelLocal(medio, localMedios){
 // pero en el momento de pagar puede poner más uno que otro. Eso no es una deuda entre locales a saldar:
 // se muestra como "puso de más / de menos" en el Resumen de la Oficina, y la disponibilidad igual
 // descuenta de la cuenta que realmente pagó.
-function esParteOficinaGasto(g){ return !!g&&g.local!=="l4"&&/Oficina (50|30|20)%/.test(String(g.subramo||"")); }
+// Parte de un gasto de la Oficina que puso un local. Los pagos de sueldo hechos antes de llevar el porcentaje
+// en el subrubro dicen solamente "Oficina": también cuentan.
+function esParteOficinaGasto(g){
+  if(!g||g.local==="l4")return false;
+  var sub=String(g.subramo||"");
+  return /Oficina (50|30|20)%/.test(sub)||(/^egr_sueldo_/.test(String(g.id||""))&&/Oficina/.test(sub));
+}
 function esMedioCorrecto(gasto){
   if(esParteOficinaGasto(gasto))return true; // no cuenta como pago cruzado
   var localMedios=MEDIOS_POR_LOCAL[gasto.local];

@@ -9047,7 +9047,7 @@ function PanelEgresos(p){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
             var mpArr=mesFiltroGrid.split("-");var mpY=parseInt(mpArr[0]);var mpM=parseInt(mpArr[1])-1;if(mpM===0){mpM=12;mpY--;}
             var perAnt=mpY+"-"+(mpM<10?"0"+mpM:String(mpM));
-            var hasSG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+            var hasSG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             var hasAG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
             var slResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
             var agResumen=(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===perAnt&&s.concepto_extra&&s.concepto_extra!=="null"&&s.concepto_extra!==""&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
@@ -9090,7 +9090,7 @@ function PanelEgresos(p){
               porArea[a]=(porArea[a]||0)+parseFloat(g.monto||0);
             });
             // Sueldos de tabla sueldos si no hay en gastos
-            var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+            var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
             var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
             if(!hasSueldosGastos){
               (p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);}).forEach(function(s){
@@ -9190,6 +9190,16 @@ function PanelEgresos(p){
                       </div>
                       {abierto&&(
                         <div style={{background:"#080808",borderRadius:7,padding:"8px",margin:"4px 0"}}>
+                          {gl.filter(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&esEgresoDeVenc(g);}).map(function(g){
+                            return(
+                              <div key={g.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                                <div style={{display:"flex",justifyContent:"space-between"}}>
+                                  <span style={{color:"#888"}}>📅 {g.concepto}{g.subramo&&g.subramo!=="Vencimiento"?" · "+g.subramo:""} <span style={{color:"#00BCD4",fontWeight:700}}>· vencimiento</span> <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}</span></span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
                           {gl.filter(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"))&&String(g.subramo||"").indexOf("Oficina")!==-1;}).map(function(g){
                             return(
                               <div key={g.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
@@ -10165,6 +10175,9 @@ function aportesSueldoOficina(s, gastos){
   });
   return {por:por,total:total};
 }
+// El egreso que genera el pago de un vencimiento (gremio, obra social…). Los de gremio y obra social tienen
+// área "Sueldos", pero no son sueldos: se muestran aparte y no cuentan como "sueldo ya cargado".
+function esEgresoDeVenc(g){ return String((g&&g.id)||"").indexOf("egr_venc_")===0||String((g&&g.notas)||"").indexOf("Pago de vencimiento")===0; }
 function baseEgresoVenc(id){
   var m=/^(egr_venc_.+)_l[1-4]$/.exec(String(id||""));
   return m?m[1]:id;
@@ -17878,7 +17891,7 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   var gl=(gastos||[]).filter(function(g){return g.local===lid&&g.fecha&&g.fecha.substring(0,7)===mes;});
   var periodoAnterior=mesAnteriorDe(mes);
   var sueldosTabla=(sueldos||[]).filter(function(s){return s.local===lid&&s.periodo===periodoAnterior&&(s.estado==="pagado"||s.estado==="parcial")&&!sueldoRepartidoEnLocales(s,gastos);});
-  var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
+  var hasSueldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
   var hasAguinaldosGastos=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo");});
   var adelantosMesLocal=(adelantos||[]).filter(function(a){return a.local===lid&&a.fecha&&a.fecha.substring(0,7)===mes;});
   var adelantosMonto=adelantosMesLocal.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);

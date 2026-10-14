@@ -5881,6 +5881,12 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       ?pago.pagos.map(function(pg){return{medio:pg.medio||pg.tipo||"",monto:String(pg.monto||"")};})
       :[{medio:pago?pago.medio_pago||"":(CAJA_MAYOR_POR_LOCAL[pl.local]||""),monto:""}];
     setModalPl(pl);
+    if(pl.local==="l4"){
+      // Oficina: cada pago es nuevo (los anteriores se ven en la lista y no se pisan).
+      setModalForm({estado:"parcial",monto_parcial:"",pagos:[{medio:"",monto:""}],notas:"",fecha_pago:hoy,ahoraOf:{},mediosOf:{},pagaOf:{}});
+      setShowModal(true);
+      return;
+    }
     setModalForm({
       estado:pago?pago.estado:"pagado",
       monto_parcial:pago?String(pago.monto_parcial||""):"",
@@ -5898,8 +5904,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   // Pago parcial de la Oficina por local: cada local pone lo que abonó de su parte (acumulado), y el
   // monto abonado es la suma. Sólo sin adelantos, que se descuentan del total y no de cada local.
   function ahoraOficinaActivo(){
-    if(!modalPl||modalPl.local!=="l4"||modalForm.estado!=="parcial")return false;
-    if(adelantosDe(modalPl.empleado_id).length>0)return false;
+    // Oficina: cada pago se carga por local (lo que pone cada uno en ese pago), con o sin adelantos.
+    if(!modalPl||modalPl.local!=="l4")return false;
     var a=modalForm.ahoraOf||{};
     return ["l1","l3","l2"].some(function(k){return a[k]!==undefined&&a[k]!=="";});
   }
@@ -5910,6 +5916,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   }
   function netoModal(){
     if(!modalPl)return 0;
+    if(esOficinaModal())return mpModal();   // Oficina: lo que ponen los locales en este pago
     var base=modalForm.estado==="parcial"?mpModal():(parseFloat(modalPl.monto)||0);
     var totalAdel=adelantosDe(modalPl.empleado_id).reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
     return Math.max(0,base-totalAdel);
@@ -5969,8 +5976,115 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     });
   }
 
+  // ── Sueldo de la Oficina: pagos independientes ──
+  // Cada pago genera sus propios egresos (uno por local, con la fecha del pago), así que se pueden hacer
+  // todos los pagos parciales que hagan falta y borrar uno solo sin tocar los demás. Lo ya abonado sale de
+  // esos egresos. El reparto 50/30/20 es solo de referencia: cada local pone lo que puede.
+  var PCT_OF=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
+  function sueldoOfDe(empleadoId,esAg,tipo){
+    return (sueldos||[]).find(function(s){
+      return s.periodo===mesFiltro&&s.empleado_id===empleadoId&&(esAg?s.concepto_extra===tipo:!s.concepto_extra);
+    });
+  }
+  function pagosDeSueldoOf(rec){
+    if(!rec)return [];
+    var pref="egr_sueldo_"+rec.id+"_", grupos={}, orden=[];
+    (gastos||[]).forEach(function(g){
+      var id=String(g.id||"");
+      if(id.indexOf(pref)!==0)return;
+      var resto=id.substring(pref.length).split("_");
+      var lid=resto[resto.length-1], payId=resto.length>1?resto[0]:"0";
+      if(!grupos[payId]){grupos[payId]={payId:payId,fecha:g.fecha||"",total:0,porLocal:{},ids:[]};orden.push(payId);}
+      var q=grupos[payId], m=parseFloat(g.monto)||0;
+      q.total+=m; q.porLocal[lid]=(q.porLocal[lid]||0)+m; q.ids.push(g.id);
+      if((g.fecha||"")>q.fecha)q.fecha=g.fecha;
+    });
+    return orden.map(function(k){return grupos[k];}).sort(function(x,y){return String(x.fecha).localeCompare(String(y.fecha));});
+  }
+  function resumenSueldoOf(pl){
+    var esAg=!!pl._esAguinaldo;
+    var rec=sueldoOfDe(pl.empleado_id,esAg,pl.tipo);
+    var pagosOf=pagosDeSueldoOf(rec);
+    var porLocal={l1:0,l3:0,l2:0}, abonado=0;
+    pagosOf.forEach(function(q){abonado+=q.total;Object.keys(q.porLocal).forEach(function(l){porLocal[l]=(porLocal[l]||0)+q.porLocal[l];});});
+    if(pagosOf.length===0&&rec)abonado=montoAbonadoSueldo(rec);
+    var adel=adelantos.filter(function(x){return x.empleado_id===pl.empleado_id&&(!x.aplicado||(rec&&String(x.sueldo_id)===String(rec.id)));})
+      .reduce(function(t,x){return t+(parseFloat(x.monto)||0);},0);
+    var monto=parseFloat(pl.monto)||0;
+    return {rec:rec,pagos:pagosOf,porLocal:porLocal,abonado:abonado,adelantos:adel,monto:monto,falta:Math.max(0,monto-adel-abonado)};
+  }
+  function recalcularSueldoOf(rec,monto,adel,restante,fechaUlt){
+    // Después de borrar un pago: el registro del sueldo vuelve a reflejar lo que quedó abonado.
+    if(restante<=0.5){
+      if(onDeleteSueldo)onDeleteSueldo(rec.id);
+      adelantos.filter(function(x){return String(x.sueldo_id)===String(rec.id);}).forEach(function(x){
+        if(p&&p.onSaveAdelanto)p.onSaveAdelanto({...x,aplicado:false,sueldo_id:null});
+      });
+      return;
+    }
+    var completo=restante+adel>=monto-0.5;
+    if(onSaveSueldo)onSaveSueldo({...rec,estado:completo?"pagado":"parcial",monto_parcial:restante,fecha_pago:fechaUlt||rec.fecha_pago});
+  }
+  function borrarPagoOf(pl,pago){
+    var res=resumenSueldoOf(pl), rec=res.rec;
+    if(!rec||!pago)return;
+    if(!window.confirm("¿Borrar el pago del "+fmtFechaCorta(pago.fecha)+" por "+fmt(pago.total)+"? Se borran sus egresos y el sueldo vuelve a mostrar lo que falta."))return;
+    if(!(p&&p.onDelete)){alert("No se pudo borrar: falta la función de borrado de egresos.");return;}
+    pago.ids.forEach(function(id){p.onDelete(id);});
+    var restantes=res.pagos.filter(function(q){return q.payId!==pago.payId;});
+    var resto=restantes.reduce(function(t,q){return t+q.total;},0);
+    var ult=restantes.length?restantes[restantes.length-1].fecha:"";
+    recalcularSueldoOf(rec,res.monto,res.adelantos,resto,ult);
+  }
+  function doGuardarOficina(){
+    var esAguinaldo=modalPl._esAguinaldo||false;
+    var res=resumenSueldoOf(modalPl), rec=res.rec;
+    var T=mpModal();
+    if(T<=0){alert("Escribí cuánto pone cada local en este pago.");return;}
+    var pagosValidos=pagosModal();
+    if(pagosValidos.length===0){alert("Elegí el medio de pago de cada local.");return;}
+    if(T>res.falta+0.5&&!window.confirm("Este pago ("+fmt(T)+") es más de lo que falta pagar ("+fmt(res.falta)+").\n\n¿Lo cargo igual?"))return;
+    var sid=rec?rec.id:String(Date.now()), payId=String(Date.now());
+    var nuevoAbonado=res.abonado+T;
+    var completo=nuevoAbonado+res.adelantos>=res.monto-0.5;
+    var s={
+      id:sid,
+      empleado_id:modalPl.empleado_id, empleado_nombre:modalPl.empleado_nombre, local:modalPl.local,
+      periodo:mesFiltro, fecha_pago:modalForm.fecha_pago,
+      monto:res.monto,
+      monto_convenio:parseFloat(modalPl.monto_convenio)||0,
+      monto_sin_convenio:parseFloat(modalPl.monto_sin_convenio)||0,
+      monto_parcial:completo?res.monto:nuevoAbonado,
+      medio_pago:pagosValidos[0].medio||"",
+      estado:completo?"pagado":"parcial",
+      convenio:esAguinaldo?modalPl.tipo:"sin_convenio",
+      concepto_extra:esAguinaldo?modalPl.tipo:null,
+      pagos:pagosValidos,
+      notas:modalForm.notas||"",
+      usuario:usuario||"",
+      created_at:rec?rec.created_at:new Date().toISOString()
+    };
+    if(onSaveSueldo)onSaveSueldo(s);
+    var rep=repartirSueldoOficina(pagosValidos,{l1:ahoraDe("l1"),l3:ahoraDe("l3"),l2:ahoraDe("l2")});
+    PCT_OF.forEach(function(t){
+      var parte=rep[t[0]];
+      if(!parte||parte.monto<=0)return;
+      if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
+        subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · Oficina · "+(completo?"último pago":"pago parcial"),
+        detalle:"Puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo de la Oficina (referencia "+t[2]+"%: "+fmt(Math.round(res.monto*t[2]/100))+")",
+        monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
+        notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
+    });
+    // Los adelantos pendientes pasan a descontarse de este sueldo (ya figuran en lo que falta).
+    adelantosDe(modalPl.empleado_id).forEach(function(a){
+      if(p&&p.onSaveAdelanto)p.onSaveAdelanto({...a,aplicado:true,sueldo_id:s.id});
+    });
+    setShowModal(false);
+  }
+
   function doGuardar(){
     if(!modalPl)return;
+    if(esOficinaModal()){doGuardarOficina();return;}
     var pagosValidos=pagosModal();
     if(pagosValidos.length===0){alert("Seleccioná al menos un medio de pago.");return;}
     if(esOficinaModal()&&Math.abs(sumaPagaOficina()-netoModal())>0.5){alert("Lo que ponen los tres locales ("+fmt(sumaPagaOficina())+") tiene que sumar el total a pagar ("+fmt(netoModal())+").");return;}
@@ -6233,7 +6347,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             {(function(){
               var adelPend=adelantosDe(modalPl.empleado_id);
               var totalAdel=adelPend.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
-              if(totalAdel<=0)return null;
+              if(totalAdel<=0||esOficinaModal())return null;
               var base=modalForm.estado==="parcial"?mpModal():(parseFloat(modalPl.monto)||0);
               var neto=Math.max(0,base-totalAdel);
               return(
@@ -6252,62 +6366,107 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 </div>
               );
             })()}
-            <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {!esOficinaModal()&&<div style={{display:"flex",gap:6,marginBottom:12}}>
               {ESTADOS_S.map(function(e){return(
                 <button key={e[0]} onClick={function(){setModalForm(function(f){return{...f,estado:e[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(modalForm.estado===e[0]?e[2]:"#2A2A2A"),background:modalForm.estado===e[0]?e[2]+"22":"#0F0F0F",color:modalForm.estado===e[0]?e[2]:"#8C8C8C",fontSize:11,fontWeight:700,cursor:"pointer"}}>{e[1]}</button>
               );})}
-            </div>
-            {modalForm.estado==="parcial"&&(
+            </div>}
+            {modalForm.estado==="parcial"&&!esOficinaModal()&&(
               <div style={{marginBottom:10}}>
                 <label style={{display:"block",fontSize:9,color:"#E07B00",textTransform:"uppercase",marginBottom:4}}>Monto abonado $</label>
                 <input type="number" placeholder="0" value={ahoraOficinaActivo()?String(mpModal()):modalForm.monto_parcial} readOnly={ahoraOficinaActivo()} onChange={function(e){setModalForm(function(f){return{...f,monto_parcial:e.target.value};});}} style={{...INP,color:"#E07B00",border:"1px solid #E07B0033"}}/>
               </div>
             )}
-            {esOficinaModal()&&(
-              <div style={{marginBottom:10,background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px 12px"}}>
-                <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🏢 Reparto de la Oficina</div>
-                <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>El costo del sueldo se reparte 50/30/20 entre los tres locales. Cada uno paga su parte con su Caja Mayor; si un local no llega y paga otro, cambiá lo que pone cada uno: el costo no cambia y la diferencia queda a la vista en el Resumen de la Oficina (no es una deuda a saldar).</div>
-                {partesOficinaModal().map(function(x){
-                  return(
-                    <div key={x.local} style={{marginBottom:8}}>
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
-                        <span style={{color:"#F0EDE8",fontWeight:700}}>{x.nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {x.pct}%</span></span>
-                        <span style={{color:"#F0EDE8",fontWeight:800}}>{fmt(x.monto)} <span style={{color:"#7E7E7E",fontWeight:400,fontSize:10}}>de costo</span></span>
-                      </div>
-                      {modalForm.estado==="parcial"&&adelantosDe(modalPl.empleado_id).length===0&&(function(){
-                        var suParte=Math.round((parseFloat(modalPl.monto)||0)*x.pct/100);
-                        var ab=(modalForm.ahoraOf||{})[x.local];
-                        var abNum=ab===undefined||ab===""?0:(parseFloat(ab)||0);
+            {esOficinaModal()&&(function(){
+              var res=resumenSueldoOf(modalPl);
+              var T=mpModal();
+              var quedaria=Math.max(0,res.falta-T);
+              var completo=res.abonado>0&&res.falta<=0.5;
+              var cajaOf={background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:10,padding:"11px 12px",marginBottom:10};
+              return(
+                <div>
+                  <div style={cajaOf}>
+                    <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>🏢 Sueldo de la Oficina</div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{color:"#8C8C8C"}}>Sueldo</span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(res.monto)}</span></div>
+                    {res.adelantos>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{color:"#8C8C8C"}}>Adelantos ya dados</span><span style={{color:"#D4A017"}}>−{fmt(res.adelantos)}</span></div>}
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{color:"#8C8C8C"}}>Pagado hasta ahora</span><span style={{color:"#3A7D44",fontWeight:700}}>{fmt(res.abonado)}</span></div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:13,paddingTop:5,borderTop:"1px solid #12202B"}}><span style={{color:"#F0EDE8",fontWeight:700}}>Falta pagar</span><span style={{color:res.falta>0.5?"#E07B00":"#3A7D44",fontWeight:800}}>{res.falta>0.5?fmt(res.falta):"Nada · pagado completo ✓"}</span></div>
+                  </div>
+
+                  <div style={cajaOf}>
+                    <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>📐 Referencia 50 / 30 / 20 · solo informativa</div>
+                    <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>Así sería el reparto si cada local pagara exactamente su parte. No obliga a nada: cada local pone lo que pueda, y acá se ve quién puso de más y quién de menos.</div>
+                    {PCT_OF.map(function(t){
+                      var corresponde=Math.round(res.monto*t[2]/100), puso=res.porLocal[t[0]]||0, dif=puso-corresponde;
+                      return(
+                        <div key={t[0]} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6,fontSize:11.5,marginBottom:4}}>
+                          <span style={{color:"#F0EDE8",fontWeight:700,minWidth:98}}>{t[1]} <span style={{color:"#7E7E7E",fontWeight:400}}>{t[2]}%</span></span>
+                          <span style={{color:"#8C8C8C"}}>le toca {fmt(corresponde)}</span>
+                          <span style={{color:"#F0EDE8"}}>puso {fmt(puso)}</span>
+                          <span style={{fontWeight:700,minWidth:92,textAlign:"right",color:Math.abs(dif)<=0.5?"#7E7E7E":(dif>0?"#E07B00":"#4AA8B8")}}>{Math.abs(dif)<=0.5?"justo":(dif>0?"+"+fmt(dif)+" de más":fmt(-dif)+" de menos")}</span>
+                        </div>
+                      );
+                    })}
+                    {completo&&<div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #12202B",fontSize:11,color:"#B8B8B8",lineHeight:1.6}}>
+                      <b style={{color:"#3A7D44"}}>Pago completo.</b> Resultado final:{" "}
+                      {PCT_OF.map(function(t){
+                        var dif=(res.porLocal[t[0]]||0)-Math.round(res.monto*t[2]/100);
+                        return t[1]+" "+(Math.abs(dif)<=0.5?"puso lo justo":(dif>0?"puso "+fmt(dif)+" de más":"puso "+fmt(-dif)+" de menos"));
+                      }).join(" · ")}.
+                    </div>}
+                  </div>
+
+                  {res.pagos.length>0&&(
+                    <div style={cajaOf}>
+                      <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Pagos ya cargados</div>
+                      {res.pagos.map(function(q){
                         return(
-                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                            <label style={{fontSize:9,color:"#E07B00",textTransform:"uppercase",flex:"none"}}>Abonado de su parte</label>
-                            <input type="number" placeholder={"de "+suParte} value={ab===undefined?"":ab} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.ahoraOf||{})};m[x.local]=v;return{...f,ahoraOf:m};});}} style={{...INP,fontSize:11,padding:"5px 8px",color:"#E07B00",border:"1px solid #E07B0033"}}/>
-                            <span style={{fontSize:10,color:"#7E7E7E",whiteSpace:"nowrap"}}>{ab!==undefined&&ab!==""?"queda "+fmt(Math.max(0,suParte-abNum)):"su parte "+fmt(suParte)}</span>
+                          <div key={q.payId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,fontSize:11,marginBottom:5}}>
+                            <span style={{color:"#B8B8B8",flex:1,minWidth:0}}>
+                              <b style={{color:"#F0EDE8"}}>{fmtFechaCorta(q.fecha)}</b> · {PCT_OF.filter(function(t){return (q.porLocal[t[0]]||0)>0;}).map(function(t){return t[1]+" "+fmt(q.porLocal[t[0]]);}).join(" · ")}
+                            </span>
+                            <b style={{color:"#3A7D44"}}>{fmt(q.total)}</b>
+                            <button onClick={function(){borrarPagoOf(modalPl,q);setShowModal(false);}} title="Borrar este pago" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12,padding:"0 2px"}}>🗑️</button>
                           </div>
                         );
-                      })()}
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                        <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",flex:"none"}}>Paga $</label>
-                        <input type="number" placeholder={String(Math.round(x.paga))} value={(modalForm.pagaOf||{})[x.local]===undefined?"":(modalForm.pagaOf||{})[x.local]} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.pagaOf||{})};m[x.local]=v;return{...f,pagaOf:m};});}} style={{...INP,fontSize:12,padding:"7px 10px"}}/>
-                      </div>
-                      <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
-                        {opcionesMedios(x.local)}
-                      </select>
+                      })}
                     </div>
-                  );
-                })}
-                {(function(){
-                  var ok=Math.abs(sumaPagaOficina()-netoModal())<=0.5;
-                  var cruzado=partesOficinaModal().some(function(x){return Math.abs(x.paga-x.monto)>0.5;});
-                  return(
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:ok?"#0A1A0A":"#1A0A0A"}}>
-                      <span style={{color:"#8C8C8C"}}>Suma de lo que ponen{ok&&cruzado?" · un local pone más que su parte":""}</span>
-                      <span style={{color:ok?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(sumaPagaOficina())} / {fmt(netoModal())}{ok?" ✓":" ← diferencia"}</span>
+                  )}
+
+                  {res.falta>0.5?(
+                  <div style={cajaOf}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,marginBottom:6}}>
+                      <div style={{fontSize:9,color:"#E07B00",textTransform:"uppercase",letterSpacing:1}}>➕ Este pago · cuánto pone cada local</div>
+                      <button onClick={function(){
+                        var f=res.falta, bod=Math.round(f*0.5), col=Math.round(f*0.3), kus=f-bod-col;
+                        setModalForm(function(x){return{...x,ahoraOf:{l1:String(bod),l3:String(col),l2:String(kus)}};});
+                      }} style={{fontSize:10,color:"#4CAF50",background:"none",border:"1px solid #4CAF5044",borderRadius:6,padding:"3px 8px",cursor:"pointer",flex:"none"}}>Completar 50/30/20</button>
                     </div>
-                  );
-                })()}
-              </div>
-            )}
+                    {partesOficinaModal().map(function(x){
+                      var ab=(modalForm.ahoraOf||{})[x.local];
+                      return(
+                        <div key={x.local} style={{marginBottom:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:12,color:"#F0EDE8",fontWeight:700,minWidth:98}}>{x.nombre}</span>
+                            <input type="number" placeholder="0" value={ab===undefined?"":ab} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.ahoraOf||{})};m[x.local]=v;return{...f,ahoraOf:m};});}} style={{...INP,flex:1}}/>
+                          </div>
+                          <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
+                            {opcionesMedios(x.local)}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"5px 8px",borderRadius:6,background:"#0F0F0F"}}>
+                      <span style={{color:"#8C8C8C"}}>Este pago {T>0?"· quedaría por pagar":""}</span>
+                      <span style={{color:T>0?"#F0EDE8":"#6E6E6E",fontWeight:700}}>{fmt(T)}{T>0?" · "+(quedaria>0.5?fmt(quedaria):"nada ✓"):""}</span>
+                    </div>
+                  </div>
+                  ):(
+                  <div style={{fontSize:11,color:"#3A7D44",marginBottom:10}}>Este sueldo ya está pagado completo. Si hace falta corregir algo, borrá el pago que corresponda en la lista de arriba.</div>
+                  )}
+                </div>
+              );
+            })()}
             {!esOficinaModal()&&<div style={{marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                 <label style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase"}}>Medios de pago</label>

@@ -6292,6 +6292,53 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         </div>
       </div>
 
+      {/* Sueldo de la Oficina: lo que puso cada local. Se ve en el filtro de cada local aunque la empleada sea de la Oficina. */}
+      {(function(){
+        var base=(planillaSueldos||[]).filter(function(pl){
+          return pl.local==="l4"&&String(pl.tipo||"").indexOf("ag_")!==0&&parseInt(pl.mes)===mesFiltroNum&&parseInt(pl.anio)===anioFiltroNum;
+        });
+        var ag=tipoAguinaldo?(planillaSueldos||[]).filter(function(pl){
+          return pl.local==="l4"&&pl.tipo===tipoAguinaldo&&parseInt(pl.anio)===anioFiltroNum;
+        }).map(function(x){return{...x,_esAguinaldo:true};}):[];
+        var lista=[...base,...ag];
+        if(lista.length===0)return null;
+        var locales=(localFiltro==="all"||localFiltro==="l4")?PCT_OF:PCT_OF.filter(function(t){return t[0]===localFiltro;});
+        if(locales.length===0)return null;
+        return(
+          <div style={{background:"#0A0F14",border:"1px solid #1A6B8A44",borderRadius:12,padding:"11px 13px",marginBottom:12}}>
+            <div style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>🏢 Sueldos de la Oficina · lo que puso cada local</div>
+            <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>Cada local suma a su Egresos lo que puso. La referencia 50/30/20 es solo informativa.</div>
+            {lista.map(function(pl){
+              var res=resumenSueldoOf(pl);
+              return(
+                <div key={pl.id||pl.empleado_id+(pl.tipo||"")} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{pl.empleado_nombre}{pl._esAguinaldo?" · aguinaldo":""}</span>
+                    <span style={{fontSize:10.5,color:"#8C8C8C"}}>sueldo {fmt(res.monto)} · pagado {fmt(res.abonado)} · {res.falta>0.5?"falta "+fmt(res.falta):"completo ✓"}</span>
+                  </div>
+                  {locales.map(function(t){
+                    var corresponde=Math.round(res.monto*t[2]/100), puso=res.porLocal[t[0]]||0, dif=puso-corresponde;
+                    var suyos=res.pagos.filter(function(q){return (q.porLocal[t[0]]||0)>0;});
+                    var l=getLocal(t[0])||{};
+                    return(
+                      <div key={t[0]} style={{marginTop:5,paddingLeft:8,borderLeft:"2px solid "+(l.color||"#1A6B8A")}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:11.5}}>
+                          <span style={{color:l.color||"#F0EDE8",fontWeight:700}}>{l.emoji} {t[1]} <span style={{color:"#7E7E7E",fontWeight:400}}>{t[2]}% = {fmt(corresponde)}</span></span>
+                          <span style={{color:"#F0EDE8",fontWeight:700}}>puso {fmt(puso)}
+                            <span style={{marginLeft:6,fontWeight:700,color:Math.abs(dif)<=0.5?"#7E7E7E":(dif>0?"#E07B00":"#4AA8B8")}}>{Math.abs(dif)<=0.5?"justo":(dif>0?"+"+fmt(dif):"−"+fmt(-dif))}</span>
+                          </span>
+                        </div>
+                        {suyos.length>0&&<div style={{fontSize:10,color:"#7E7E7E",marginTop:1}}>{suyos.map(function(q){return fmtFechaCorta(q.fecha)+" "+fmt(q.porLocal[t[0]]);}).join(" · ")}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
 
       {planillaMesTotal.length===0?(
         <div style={{textAlign:"center",padding:"20px",color:"#6E6E6E",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>

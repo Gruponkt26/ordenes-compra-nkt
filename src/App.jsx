@@ -283,10 +283,10 @@ async function sbDeleteFichaje(id) {
   } catch(e){ alert("Error de conexión al borrar el fichaje: "+e.message); return false; }
 }
 // Borra de una vez todas las marcas de un mes (y, si se pide, de un solo local).
-async function sbDeleteFichajesMes(mes, local) {
+async function sbDeleteFichajesMes(mes, local, empId) {
   try {
     var pr=mes.split("-"), ult=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate();
-    var q="fecha=gte."+mes+"-01&fecha=lte."+mes+"-"+String(ult).padStart(2,"0")+(local&&local!=="all"?"&local=eq."+local:"");
+    var q="fecha=gte."+mes+"-01&fecha=lte."+mes+"-"+String(ult).padStart(2,"0")+(local&&local!=="all"?"&local=eq."+local:"")+(empId?"&empleado_id=eq."+encodeURIComponent(empId):"");
     var r=await fetch(SURL+"/rest/v1/fichajes?"+q,{method:"DELETE",headers:SH});
     if(!r.ok){ alert(explicarErrorFichajes(await r.text())); return false; }
     return true;
@@ -11590,6 +11590,19 @@ function PanelFichajes(p){
             </button>
             {ab&&(
               <div style={{borderTop:"1px solid #161616"}}>
+                {puedeEditar&&p.onDeleteMes&&(
+                  <div style={{padding:"8px 15px",textAlign:"right"}}>
+                    <button onClick={async function(){
+                      var cant=fichajes.filter(function(f){return f.empleado_id===x.e.id&&String(f.fecha).substring(0,7)===mes;}).length;
+                      if(cant===0){ alert("No hay marcas de "+x.e.nombre+" en "+fmtMes(mes)+"."); return; }
+                      var t=window.prompt("⚠️ Vas a BORRAR las "+cant+" marcas de "+x.e.nombre+" en "+fmtMes(mes)+".\n\nNo se puede deshacer.\n\nPara confirmar escribí BORRAR:");
+                      if(t===null)return;
+                      if(String(t).trim().toUpperCase()!=="BORRAR"){ alert("No se borró nada: no escribiste BORRAR."); return; }
+                      var ok=await p.onDeleteMes(mes,"all",x.e.id);
+                      if(ok)alert("Listo: las marcas de "+x.e.nombre+" en "+fmtMes(mes)+" quedaron en cero.");
+                    }} style={{...GH,padding:"5px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E55"}}>🗑 Poner en cero a {x.e.nombre}</button>
+                  </div>
+                )}
                 {x.faltas.length>0&&(
                   <div style={{padding:"9px 15px",fontSize:11.5,color:"#C1440E",lineHeight:1.6}}>
                     No marcó en días que le tocaban: {x.faltas.map(function(f){return fmtDate(f);}).join(" · ")}
@@ -24196,10 +24209,10 @@ export default function App() {
     setFichajes(function(prev){ return prev.filter(function(f){return f.id!==id;}); });
   }
 
-  async function borrarFichajesMes(mes,local){
-    var ok=await sbDeleteFichajesMes(mes,local);
+  async function borrarFichajesMes(mes,local,empId){
+    var ok=await sbDeleteFichajesMes(mes,local,empId);
     if(ok)setFichajes(function(prev){ return prev.filter(function(f){
-      return !(String(f.fecha).substring(0,7)===mes&&(!local||local==="all"||f.local===local)); }); });
+      return !(String(f.fecha).substring(0,7)===mes&&(!local||local==="all"||f.local===local)&&(!empId||f.empleado_id===empId)); }); });
     return ok;
   }
 

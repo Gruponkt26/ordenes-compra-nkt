@@ -451,7 +451,7 @@ async function sbLoadPautas() {
   try {
     // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
     // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
-    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta))&order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado))&order=created_at.desc", { headers: SH });
     var d = await r.json();
     if(Array.isArray(d))return d;
     // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
@@ -19971,6 +19971,235 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
   );
 }
 
+// ─── FICHA LABORAL ────────────────────────────────────────────────────────────
+// Lo laboral de un empleado en un solo lugar: su jornada, su asistencia del mes (horas, atrasos, salidas
+// antes de hora), sus faltas con el estado del justificativo, las vacaciones, la antigüedad y —sólo para
+// administración— los sueldos y las observaciones. No carga datos nuevos: junta los de Jornadas, Fichaje,
+// Vacaciones y Sueldos. El empleado ve la suya sin sueldos ni observaciones.
+var TOLERANCIA_ATRASO_MIN=10;
+function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
+  var hoy=fechaLocal();
+  var mias=(fichajes||[]).filter(function(f){return f.empleado_id===emp.id;});
+  var jor=jornadasDe(mias).filter(function(j){
+    var ref=j.entrada||j.salida;
+    return ref&&String(ref.fecha||"").substring(0,7)===mes;
+  });
+  var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j);},0);
+  var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
+  var tarde=[], antes=[], faltas=[], francosTrabajados=0;
+  jor.forEach(function(j){
+    if(!j.entrada)return;
+    var f=String(j.entrada.fecha).substring(0,10);
+    var t=turnoDe(emp,f); if(!t||t.franco)return;
+    var ini=new Date(f+"T"+t.desde+":00"), fin=new Date(f+"T"+t.hasta+":00");
+    if(fin<=ini)fin=new Date(fin.getTime()+86400000);
+    var dT=Math.round((new Date(j.entrada.momento)-ini)/60000);
+    if(dT>TOLERANCIA_ATRASO_MIN)tarde.push({fecha:f,min:dT});
+    if(j.salida){ var dA=Math.round((fin-new Date(j.salida.momento))/60000); if(dA>TOLERANCIA_ATRASO_MIN)antes.push({fecha:f,min:dA}); }
+  });
+  var tieneJornada=!!jornadaDe(emp);
+  if(tieneJornada){
+    diasDelMesHasta(mes,hoy).forEach(function(f){
+      var t=turnoDe(emp,f); if(!t)return;
+      if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
+      if(f>=hoy||conMarcas[f])return;
+      if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))return;
+      if((vacaciones||[]).some(function(v){return v.empleado_id===emp.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);}))return;
+      var j=(justificativos||[]).find(function(x){return x.empleado_id===emp.id&&x.fecha===f;});
+      faltas.push({fecha:f,estado:j?j.estado:(f<INICIO_JUSTIFICATIVOS?"previa":"sin"),just:j||null});
+    });
+  }
+  return {tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
+}
+function antiguedadTexto(fechaAlta){
+  if(!fechaAlta)return "";
+  var d=new Date(String(fechaAlta).substring(0,10)+"T00:00:00"), h=new Date();
+  if(isNaN(d.getTime()))return "";
+  var m=(h.getFullYear()-d.getFullYear())*12+(h.getMonth()-d.getMonth())-(h.getDate()<d.getDate()?1:0);
+  if(m<0)return "";
+  var a=Math.floor(m/12), r=m%12;
+  return (a>0?a+" año"+(a===1?"":"s"):"")+(a>0&&r>0?" y ":"")+(r>0||a===0?r+" mes"+(r===1?"":"es"):"");
+}
+function FichaLaboral(p){
+  var emp=p.emp, admin=!!p.verAdmin;
+  var fichajes=p.fichajes||[], vacaciones=p.vacaciones||[], justificativos=p.justificativos||[];
+  var hoy=fechaLocal(), mesHoy=hoy.substring(0,7);
+  var [mes,setMes]=useState(mesHoy);
+  var [obs,setObs]=useState(null);
+  var [obsTexto,setObsTexto]=useState("");
+  var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
+  var meses=[mesHoy];
+  fichajes.forEach(function(f){var m=String(f.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m);});
+  meses.sort().reverse();
+  var MESES_N=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  var nombreMes=function(m){var pr=String(m).split("-"); return MESES_N[parseInt(pr[1],10)]+" "+pr[0];};
+  useEffect(function(){
+    if(!admin||!emp)return;
+    fetch(SURL+"/rest/v1/pautas?ambito=eq.obs_empleado&id=like.obs_"+emp.id+"_*&order=created_at.desc&limit=200",{headers:SH})
+      .then(function(r){return r.json();}).then(function(d){setObs(Array.isArray(d)?d:[]);}).catch(function(){setObs([]);});
+  },[emp&&emp.id,admin]);
+  if(!emp)return <div style={{fontSize:12,color:"#8C8C8C",padding:"10px 0"}}>Tu usuario todavía no está vinculado a una ficha de empleado. Pedile a administración que lo vincule.</div>;
+  var res=resumenAsistencia(emp,fichajes,mes,vacaciones,justificativos);
+  // Las faltas de antes de que existiera el control (15/10/2026) no se cuentan ni se piden: solo se informan.
+  var faltasReales=res.faltas.filter(function(f){return f.estado!=="previa";});
+  var faltasPrevias=res.faltas.length-faltasReales.length;
+  var jornada=jornadaDe(emp)||{};
+  var minSem=DIAS_SEM.reduce(function(a,d){var t=turnoDe(emp,"2026-10-"+String(({d1:5,d2:6,d3:7,d4:8,d5:9,d6:10,d0:11})[d.k]).padStart(2,"0")); return a+((t&&!t.franco)?t.minutos:0);},0);
+  var loc=getLocal(emp.local)||{};
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:"12px 14px",marginBottom:10};
+  var TIT={fontSize:9.5,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1.2,marginBottom:7,fontWeight:700};
+  var ESTADO={
+    sin:["⚠️ Sin justificar","#C1440E"], pendiente:["🕓 En revisión","#D4A017"], aprobado:["✅ Justificada","#3A7D44"],
+    rechazado:["❌ Rechazada","#C1440E"], previa:["anterior al sistema","#6E6E6E"]
+  };
+  var antig=antiguedadTexto(emp.fecha_alta);
+  var propios=vacaciones.filter(function(v){return v.empleado_id===emp.id;}).sort(function(x,y){return String(y.fecha_desde).localeCompare(String(x.fecha_desde));}).slice(0,6);
+  var sueldosEmp=admin?(p.sueldos||[]).filter(function(s){return s.empleado_id===emp.id&&!s.concepto_extra;}).sort(function(x,y){return String(y.periodo).localeCompare(String(x.periodo));}).slice(0,4):[];
+  var adelPend=admin?(p.adelantos||[]).filter(function(a){return a.empleado_id===emp.id&&!a.aplicado;}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0):0;
+  function agregarObs(){
+    var t=obsTexto.trim(); if(!t)return;
+    var ahora=new Date().toISOString();
+    var fila={id:"obs_"+emp.id+"_"+Date.now(),ambito:"obs_empleado",texto:t,usuario:p.usuario||"",created_at:ahora,updated_at:ahora};
+    fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"return=minimal"},body:JSON.stringify(fila)})
+      .then(function(r){ if(!r.ok)throw new Error("no se pudo guardar"); setObs(function(prev){return [fila].concat(prev||[]);}); setObsTexto(""); })
+      .catch(function(){ alert("No se pudo guardar la observación."); });
+  }
+  function borrarObs(id){
+    if(!window.confirm("¿Borrar esta observación?"))return;
+    fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:SH});
+    setObs(function(prev){return (prev||[]).filter(function(o){return o.id!==id;});});
+  }
+  function resolver(j,estado){ if(p.onSaveJustif)p.onSaveJustif({...j,estado:estado,resuelto_por:p.usuario||"",resuelto_at:new Date().toISOString()}); }
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,flexWrap:"wrap",marginBottom:10}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:800,color:"#F0EDE8"}}>{emp.nombre}</div>
+          <div style={{fontSize:11,color:"#7E7E7E"}}>{loc.emoji} {loc.nombre}{emp.categoria?" · "+emp.categoria:""}{emp.activo===false?" · inactivo":""}</div>
+        </div>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          {meses.map(function(m){return <option key={m} value={m}>{nombreMes(m)}</option>;})}
+        </select>
+      </div>
+
+      <div style={CAJA}>
+        <div style={TIT}>Antigüedad</div>
+        <div style={{fontSize:12.5,color:"#D8D8D8"}}>
+          {emp.fecha_alta?("Ingresó el "+fmtDate(String(emp.fecha_alta).substring(0,10))+(antig?" · "+antig+" en la empresa":"")):"Sin fecha de ingreso cargada."}
+          {emp.activo===false&&emp.fecha_baja&&<div style={{color:"#C1440E",marginTop:3}}>Baja: {fmtDate(String(emp.fecha_baja).substring(0,10))}{emp.motivo_baja?" · "+emp.motivo_baja:""}</div>}
+        </div>
+      </div>
+
+      <div style={CAJA}>
+        <div style={TIT}>Jornada <span style={{color:"#6E6E6E",textTransform:"none",letterSpacing:0,fontWeight:400}}>{res.tieneJornada?"· "+fmtHs(minSem)+" por semana":""}</span></div>
+        {!res.tieneJornada?<div style={{fontSize:12,color:"#D4A017"}}>Todavía no tiene la jornada cargada.{admin?" Se carga en Fichajes → Jornadas.":""}</div>:(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:6}}>
+            {DIAS_SEM.map(function(d){
+              var x=jornada[d.k]||{}; var franco=x.franco||(!x.desde&&!x.hasta);
+              return <div key={d.k} style={{background:"#0F0F0F",borderRadius:8,padding:"6px 9px",fontSize:11.5}}>
+                <span style={{fontWeight:700,color:franco?"#6E6E6E":"#F0EDE8"}}>{d.n}</span>{" "}
+                <span style={{color:franco?"#5A5A5A":"#B8B8B8"}}>{franco?"franco":x.desde+" → "+x.hasta}</span>
+              </div>;
+            })}
+          </div>
+        )}
+        {admin&&res.tieneJornada&&<div style={{fontSize:10,color:"#6E6E6E",marginTop:6}}>Se edita en Fichajes → Jornadas.</div>}
+      </div>
+
+      <div style={CAJA}>
+        <div style={TIT}>Asistencia · {nombreMes(mes)}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
+          {[["Días trabajados",String(res.dias),"#F0EDE8"],["Horas",fmtHs(res.minutos),"#F0EDE8"],
+            ["Llegadas tarde",String(res.tarde.length),res.tarde.length?"#E07B00":"#6E6E6E"],
+            ["Salidas antes",String(res.antes.length),res.antes.length?"#E07B00":"#6E6E6E"],
+            ["Faltas",String(faltasReales.length),faltasReales.length?"#C1440E":"#6E6E6E"]].map(function(c){
+            return <div key={c[0]} style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{fontSize:9.5,color:"#7E7E7E"}}>{c[0]}</div>
+              <div style={{fontSize:17,fontWeight:800,color:c[2],fontFamily:"'Playfair Display',serif"}}>{c[1]}</div>
+            </div>;
+          })}
+        </div>
+        {(res.tarde.length>0||res.antes.length>0||res.abiertas>0||res.francosTrabajados>0)&&(
+          <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.7,marginTop:8}}>
+            {res.tarde.length>0&&<div>🕒 Llegó tarde: {res.tarde.map(function(x){return fmtDate(x.fecha)+" (+"+x.min+" min)";}).join(" · ")}</div>}
+            {res.antes.length>0&&<div>🚪 Salió antes: {res.antes.map(function(x){return fmtDate(x.fecha)+" (−"+x.min+" min)";}).join(" · ")}</div>}
+            {res.abiertas>0&&<div>⚠️ {res.abiertas} marca{res.abiertas===1?"":"s"} sin entrada o sin salida.</div>}
+            {res.francosTrabajados>0&&<div>📅 Trabajó {res.francosTrabajados} día{res.francosTrabajados===1?"":"s"} de franco.</div>}
+          </div>
+        )}
+        <div style={{fontSize:9.5,color:"#5E5E5E",marginTop:6}}>Atrasos y salidas antes con más de {TOLERANCIA_ATRASO_MIN} minutos de diferencia con su horario.</div>
+      </div>
+
+      <div style={CAJA}>
+        <div style={TIT}>Faltas y justificativos · {nombreMes(mes)}</div>
+        {faltasReales.length===0?<div style={{fontSize:12,color:"#3A7D44"}}>{res.tieneJornada?"Sin faltas en el mes ✅":"Sin jornada cargada: no se puede saber."}</div>:faltasReales.map(function(f){
+          var e=ESTADO[f.estado]||ESTADO.sin;
+          return(
+            <div key={f.fecha} style={{padding:"7px 0",borderTop:"1px solid #141414"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap",fontSize:12.5}}>
+                <span style={{color:"#F0EDE8",fontWeight:700}}>{fmtDate(f.fecha)}</span>
+                <span style={{color:e[1],fontWeight:700}}>{e[0]}</span>
+              </div>
+              {f.just&&f.just.motivo&&<div style={{fontSize:11.5,color:"#B8B8B8",marginTop:3}}>“{f.just.motivo}”</div>}
+              {f.just&&f.just.foto_url&&<a href={f.just.foto_url} target="_blank" rel="noreferrer"><img src={f.just.foto_url} alt="certificado" style={{height:50,borderRadius:8,border:"1px solid #2A2A2A",marginTop:5}}/></a>}
+              {f.estado==="sin"&&!admin&&<div style={{fontSize:10.5,color:"#8C8C8C",marginTop:3}}>Se te va a pedir el justificativo la próxima vez que fiches.</div>}
+              {admin&&f.estado==="pendiente"&&f.just&&(
+                <div style={{display:"flex",gap:6,marginTop:6}}>
+                  <button onClick={function(){resolver(f.just,"aprobado");}} style={{padding:"5px 11px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>✅ Aprobar</button>
+                  <button onClick={function(){if(window.confirm("¿Rechazar este justificativo?"))resolver(f.just,"rechazado");}} style={{padding:"5px 11px",borderRadius:7,border:"1px solid #C1440E66",background:"none",color:"#C1440E",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>❌ Rechazar</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {faltasPrevias>0&&<div style={{fontSize:10.5,color:"#6E6E6E",margin:"-4px 2px 10px"}}>Hay {faltasPrevias} día{faltasPrevias===1?"":"s"} sin marcas antes del {fmtDate(INICIO_JUSTIFICATIVOS)}, cuando todavía no se llevaba este control: no se cuentan como faltas.</div>}
+
+      <div style={CAJA}>
+        <div style={TIT}>Vacaciones y licencias</div>
+        {propios.length===0?<div style={{fontSize:12,color:"#6E6E6E"}}>Sin vacaciones cargadas.</div>:propios.map(function(v){
+          return <div key={v.id||v.fecha_desde} style={{fontSize:12,color:"#B8B8B8",padding:"3px 0"}}>🏖️ {fmtDate(String(v.fecha_desde).substring(0,10))} → {fmtDate(String(v.fecha_hasta).substring(0,10))}{v.notas?" · "+v.notas:""}</div>;
+        })}
+      </div>
+
+      {admin&&(
+        <div style={CAJA}>
+          <div style={TIT}>Sueldos <span style={{color:"#6E6E6E",textTransform:"none",letterSpacing:0,fontWeight:400}}>· solo administración</span></div>
+          {sueldosEmp.length===0?<div style={{fontSize:12,color:"#6E6E6E"}}>Sin pagos cargados.</div>:sueldosEmp.map(function(s){
+            return <div key={s.id} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",color:"#B8B8B8"}}>
+              <span>{s.periodo} · {s.estado==="pagado"?"✅ pagado":s.estado==="parcial"?"🔸 parcial":"⏳ pendiente"}</span>
+              <span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
+            </div>;
+          })}
+          {adelPend>0&&<div style={{fontSize:11.5,color:"#D4A017",marginTop:5}}>⏳ Adelantos pendientes de descontar: {fmt(adelPend)}</div>}
+        </div>
+      )}
+
+      {admin&&(
+        <div style={CAJA}>
+          <div style={TIT}>Observaciones <span style={{color:"#6E6E6E",textTransform:"none",letterSpacing:0,fontWeight:400}}>· solo administración</span></div>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <input value={obsTexto} onChange={function(e){setObsTexto(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")agregarObs();}} placeholder="Anotar algo (llamado de atención, felicitación, acuerdo…)"
+              style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5,outline:"none"}}/>
+            <button onClick={agregarObs} disabled={!obsTexto.trim()} style={{padding:"8px 14px",borderRadius:8,border:"none",background:obsTexto.trim()?"#4CAF50":"#222",color:obsTexto.trim()?"#000":"#555",fontWeight:700,fontSize:12,cursor:obsTexto.trim()?"pointer":"default"}}>Agregar</button>
+          </div>
+          {obs===null?<div style={{fontSize:11,color:"#6E6E6E"}}>Cargando…</div>:obs.length===0?<div style={{fontSize:12,color:"#6E6E6E"}}>Sin observaciones.</div>:obs.map(function(o){
+            return <div key={o.id} style={{padding:"6px 0",borderTop:"1px solid #141414"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:10,color:"#7E7E7E"}}>
+                <span>{new Date(o.created_at).toLocaleDateString("es-AR")}{o.usuario?" · "+o.usuario:""}</span>
+                <button onClick={function(){borrarObs(o.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11,padding:0}}>🗑️</button>
+              </div>
+              <div style={{fontSize:12.5,color:"#D8D8D8",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{o.texto}</div>
+            </div>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelSueldos(p){
   var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
   var cargasSociales=p.cargasSociales||[], onSaveCargaSocial=p.onSaveCargaSocial, onDeleteCargaSocial=p.onDeleteCargaSocial;
@@ -19979,6 +20208,7 @@ function PanelSueldos(p){
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent="2026-07";
   var [tab,setTab]=useState(p.tabInicial||"estado");
+  var [tabFicha,setTabFicha]=useState("personales");   // ficha del empleado: personales | laborales
   var [showFormCarga,setShowFormCarga]=useState(false);
   var [cargaEdit,setCargaEdit]=useState(null);
   var CUITS=[
@@ -19989,6 +20219,7 @@ function PanelSueldos(p){
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
   var [localFiltro,setLocalFiltro]=useState("all");
   var [showFormEmp,setShowFormEmp]=useState(false);
+  useEffect(function(){ setTabFicha("personales"); },[showFormEmp]);
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
@@ -20440,8 +20671,23 @@ function PanelSueldos(p){
       {/* MODAL EMPLEADO */}
       {showFormEmp&&(
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:440,border:"1px solid #4CAF5033",maxHeight:"92vh",overflowY:"auto"}}>
-            <div style={{fontSize:14,fontWeight:700,color:"#4CAF50",marginBottom:14}}>{empEdit?"Editar":"Nueva"} ficha — Empleado</div>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:(empEdit&&tabFicha==="laborales")?640:440,border:"1px solid #4CAF5033",maxHeight:"92vh",overflowY:"auto"}}>
+            <div style={{fontSize:14,fontWeight:700,color:"#4CAF50",marginBottom:10}}>{empEdit?"Editar":"Nueva"} ficha — Empleado</div>
+            {empEdit&&(
+              <div style={{display:"flex",gap:6,marginBottom:12}}>
+                {[["personales","👤 Datos personales"],["laborales","💼 Datos laborales"]].map(function(t){
+                  var act=tabFicha===t[0];
+                  return <button key={t[0]} onClick={function(){setTabFicha(t[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF5022":"#0F0F0F",color:act?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                })}
+              </div>
+            )}
+            {empEdit&&tabFicha==="laborales"?(
+              <div>
+                <FichaLaboral emp={empEdit} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
+                  sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
+                <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:4}}>Cerrar</button>
+              </div>
+            ):(<>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               {/* Datos básicos */}
               <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Datos personales</div>
@@ -20502,6 +20748,7 @@ function PanelSueldos(p){
               <button onClick={doSaveEmp} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar ficha</button>
               <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
             </div>
+            </>)}
           </div>
         </div>
       )}
@@ -24220,7 +24467,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -24252,6 +24499,7 @@ export default function App() {
                 ]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
+                            {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
                             {id:"info",emoji:"ℹ️",label:"Info",desc:"Instructivo y guías para el día a día",color:"#1A6B8A",badge:0}]
               ).map(function(m){return(
@@ -24452,7 +24700,7 @@ export default function App() {
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
               </div>
-              <PanelSueldos
+              <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
                 tabInicial={vista==="vacaciones"?"vacaciones":vista==="faltantes"?"faltantes":undefined}
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
@@ -24805,7 +25053,7 @@ export default function App() {
 
           {/* PERSONAL — sin tab F.931 */}
           {esSofia&&modulo==="admin"&&vista==="personal"&&(
-            <PanelSueldos
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               showF931={false}
               cargasSociales={cargasSociales}
@@ -24957,7 +25205,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="sueldos"&&(
-            <PanelSueldos
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
@@ -25055,6 +25303,13 @@ export default function App() {
           )}
 
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
+          {/* Mi ficha: lo laboral del propio empleado, sin sueldos ni observaciones */}
+          {!esSofia&&subCompras==="mificha"&&(
+            <FichaLaboral
+              emp={empleados.find(function(e){return e.id===cu.empleado_id;})||empleados.find(function(e){return String(e.nombre||"").trim().toLowerCase()===String(cu.nombre||"").trim().toLowerCase();})||null}
+              fichajes={fichajes} vacaciones={vacaciones} justificativos={justificativos} usuario={cu.nombre} verAdmin={false}/>
+          )}
+
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
               localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}

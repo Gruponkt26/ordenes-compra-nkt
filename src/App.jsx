@@ -4312,6 +4312,21 @@ function PanelResumenOficina(p){
   lista.forEach(function(x){ var r=x.area||"Sin rubro"; porRubro[r]=(porRubro[r]||0)+x.total; });
   var rubros=Object.keys(porRubro).map(function(r){return {rubro:r,total:porRubro[r]};}).sort(function(a,b){return b.total-a.total;});
   var viejosMes=viejos.filter(delMes);
+  // Cuánto le costó la Oficina a cada local, y en qué: sueldos, gastos fijos, obras y otros egresos.
+  function tipoOf(g){
+    var k=String(g.id).replace(/_l[123]$/,"");
+    return /^egr_sueldo_/.test(k)?"Sueldos":/^egr_of_/.test(k)?"Gastos fijos":/^egr_obra_/.test(k)?"Obras":"Otros";
+  }
+  var TIPOS_COSTO=["Sueldos","Gastos fijos","Obras","Otros"];
+  var costoTipo={l1:{},l3:{},l2:{}};
+  partes.filter(delMes).forEach(function(g){
+    var t=tipoOf(g); costoTipo[g.local][t]=(costoTipo[g.local][t]||0)+(parseFloat(g.monto)||0);
+  });
+  var temporadaOf={l1:0,l3:0,l2:0};
+  partes.forEach(function(g){
+    var m=String(g.fecha||"").substring(0,7);
+    if(m>="2026-10"&&m<="2027-03")temporadaOf[g.local]+=parseFloat(g.monto)||0;
+  });
   // Borrar un egreso de la Oficina borra sus tres partes, una por local (y si venía de un
   // vencimiento, éste vuelve a quedar impago). Sólo los egresos sueltos y los de vencimientos:
   // un sueldo, una obra o un gasto fijo se deshacen desde su propia sección, que también
@@ -4339,6 +4354,24 @@ function PanelResumenOficina(p){
         </select>
         <div style={{fontSize:12,color:"#8C8C8C"}}>Total de la Oficina: <b style={{color:"#F0EDE8",fontSize:15}}>{fmt(total)}</b></div>
       </div>
+
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>Lo que le costó la Oficina a cada local · {mes==="todos"?"todos los meses":mes}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:6}}>
+        {LOC.map(function(t){
+          var l=getLocal(t[0]);
+          return(
+            <div key={t[0]} style={{background:"#0C0C0C",border:"1px solid "+(l?l.color:"#1E1E1E")+"44",borderRadius:12,padding:"11px 13px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:t[1]}</div>
+              <div style={{fontSize:21,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif",margin:"2px 0 6px"}}>{fmt(costo[t[0]])}</div>
+              {TIPOS_COSTO.filter(function(k){return (costoTipo[t[0]][k]||0)>0;}).map(function(k){
+                return <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#8C8C8C"}}><span>{k}</span><span style={{color:"#B8B8B8"}}>{fmt(costoTipo[t[0]][k])}</span></div>;
+              })}
+              <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,paddingTop:5,borderTop:"1px solid #151515"}}>Temporada (oct–mar): <b style={{color:"#9A9A9A"}}>{fmt(temporadaOf[t[0]])}</b></div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{fontSize:11,color:"#9A9A9A",marginBottom:14}}>Total que cuesta mantener la Oficina{mes==="todos"?"":" en "+mes}: <b style={{color:"#F0EDE8"}}>{fmt(costo.l1+costo.l3+costo.l2)}</b></div>
 
       <div style={{overflowX:"auto",border:"1px solid #171717",borderRadius:12,background:"#0C0C0C",marginBottom:12}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:380}}>
@@ -8973,6 +9006,7 @@ function PanelEgresos(p){
             // Los adelantos de sueldo viven en su propia tabla, no en gastos: también son egreso.
             var totAdel=(p.adelantos||[]).filter(function(a){return a.local===l.id&&a.fecha&&a.fecha.slice(0,7)===mesFiltroGrid;}).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
             var ccTop=costosCalc(l.id,mesFiltroGrid);
+            var totOfL=l.id==="l4"?0:gl.filter(esParteOficinaGasto).reduce(function(t,g){return t+(parseFloat(g.monto)||0);},0);
             // Sueldos de la Oficina que pusieron los locales: ya figuran en cada uno, acá se muestran de referencia.
             var totRepOf=l.id==="l4"?(p.sueldos||[]).filter(function(s){return s.local==="l4"&&s.periodo===perAnt&&(s.estado==="pagado"||s.estado==="parcial")&&sueldoRepartidoEnLocales(s,gastos);}).reduce(function(t,s){return t+aportesSueldoOficina(s,gastos).total;},0):0;
             var tot=totG+totS+totAg+totR+totAdel+ccTop.total;
@@ -8981,7 +9015,7 @@ function PanelEgresos(p){
               <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
-                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)}{totRepOf>0?" (+"+fmt(totRepOf)+" puesto por los locales)":""}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
+                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)}{totRepOf>0?" (+"+fmt(totRepOf)+" puesto por los locales)":""}{totOfL>0?" · de los cuales Oficina "+fmt(totOfL):""}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
               </div>
             );
           })}
@@ -9026,6 +9060,11 @@ function PanelEgresos(p){
             return(
               <div key={l.id} style={{background:"#0F0F0F",border:"1px solid "+l.color+"33",borderRadius:10,padding:"10px 12px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:l.color,marginBottom:8,borderBottom:"1px solid "+l.color+"22",paddingBottom:5}}>{l.emoji} {l.nombre}</div>
+                {(function(){
+                  var deOf=gl.filter(esParteOficinaGasto).reduce(function(t,g){return t+(parseFloat(g.monto)||0);},0);
+                  if(l.id==="l4"||deOf<=0)return null;
+                  return <div style={{fontSize:11,color:"#1A6B8A",background:"#0A0F14",border:"1px solid #1A6B8A33",borderRadius:7,padding:"6px 9px",marginBottom:8}}>🏢 De los egresos de este mes, lo que puso para la Oficina: <b style={{color:"#F0EDE8"}}>{fmt(deOf)}</b> <span style={{color:"#6E6E6E"}}>(sueldos, gastos fijos, obras y otros; ya está incluido en los totales de abajo)</span></div>;
+                })()}
 
                 {/* Un bloque por cada área/tab */}
                 {[...AREAS_BASE.filter(function(a){return !esAreaSocios(a);}), ...(p.areasCustom||[])].map(function(area){

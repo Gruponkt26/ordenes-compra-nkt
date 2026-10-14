@@ -451,7 +451,7 @@ async function sbLoadPautas() {
   try {
     // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
     // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
-    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion))&order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta))&order=created_at.desc", { headers: SH });
     var d = await r.json();
     if(Array.isArray(d))return d;
     // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
@@ -10536,6 +10536,70 @@ function diasDelMesHasta(mes, hoy){
 
 // La pantalla con la que marcan los chicos. Sirve igual en la tablet fija del local —que se
 // queda siempre acá— y en el celular de cada uno.
+// ─── JUSTIFICATIVOS DE FALTAS ─────────────────────────────────────────────────
+// Si alguien no marcó un día que le tocaba trabajar (y no estaba de vacaciones), la próxima vez que va a
+// fichar se le pide un justificativo: un certificado (foto) o el motivo escrito. Administración lo aprueba
+// o lo rechaza. Se guardan en la tabla de pautas (ámbito "justif_falta"), sin tablas nuevas. Sólo se piden
+// las faltas desde INICIO_JUSTIFICATIVOS, para no reclamar lo de antes de que existiera esto.
+var INICIO_JUSTIFICATIVOS="2026-10-15";
+async function sbLoadJustificativos(){
+  var out=[];
+  try{
+    for(var pg=0;pg<5;pg++){
+      var r=await fetch(SURL+"/rest/v1/pautas?ambito=eq.justif_falta&order=created_at.desc&limit=1000&offset="+(pg*1000),{headers:SH});
+      var d=await r.json();
+      if(!Array.isArray(d))break;
+      d.forEach(function(f){
+        var x=null; try{ x=JSON.parse(f.texto); }catch(e){}
+        if(x&&x.empleado_id&&x.fecha)out.push({...x,id:f.id});
+      });
+      if(d.length<1000)break;
+    }
+  }catch(e){}
+  return out;
+}
+async function sbSaveJustificativo(j){
+  try{
+    var ahora=new Date().toISOString();
+    var fila={id:j.id,ambito:"justif_falta",
+      texto:JSON.stringify({empleado_id:j.empleado_id,empleado_nombre:j.empleado_nombre,local:j.local,fecha:j.fecha,motivo:j.motivo||"",
+        foto_url:j.foto_url||"",estado:j.estado||"pendiente",resuelto_por:j.resuelto_por||"",resuelto_at:j.resuelto_at||"",enviado_at:j.enviado_at||ahora}),
+      usuario:j.empleado_nombre||"",created_at:j.enviado_at||ahora,updated_at:ahora};
+    var r=await fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(fila)});
+    if(!r.ok)return {ok:false,error:await r.text()};
+    return {ok:true};
+  }catch(e){ return {ok:false,error:(e&&e.message)||String(e)}; }
+}
+// Los días (hasta ayer, de los últimos 10) en que le tocaba trabajar, no marcó nada, no estaba de vacaciones y
+// todavía no justificó.
+function faltasSinJustificar(emp, fichajes, vacaciones, justificativos){
+  var out=[];
+  for(var i=1;i<=10;i++){
+    var d=new Date(); d.setDate(d.getDate()-i);
+    var f=fechaLocal(d);
+    if(f<INICIO_JUSTIFICATIVOS)break;
+    if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
+    var t=turnoDe(emp,f);
+    if(!t||t.franco)continue;
+    if((fichajes||[]).some(function(x){return x.empleado_id===emp.id&&String(x.fecha).substring(0,10)===f;}))continue;
+    if((vacaciones||[]).some(function(v){return v.empleado_id===emp.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);}))continue;
+    if((justificativos||[]).some(function(j){return j.empleado_id===emp.id&&j.fecha===f;}))continue;
+    out.push(f);
+  }
+  return out.sort();
+}
+// Una foto de celular pesa varios MB: se achica antes de subirla.
+async function reducirImagen(file){
+  try{
+    var bmp=await createImageBitmap(file);
+    var esc=Math.min(1,1280/Math.max(bmp.width,bmp.height));
+    var cv=document.createElement("canvas");
+    cv.width=Math.round(bmp.width*esc); cv.height=Math.round(bmp.height*esc);
+    cv.getContext("2d").drawImage(bmp,0,0,cv.width,cv.height);
+    return await new Promise(function(res){ cv.toBlob(function(b){ res(b||file); },"image/jpeg",0.82); });
+  }catch(e){ return file; }
+}
+
 function PanelFichar(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var fichajes=p.fichajes||[];
@@ -10552,6 +10616,8 @@ function PanelFichar(p){
   var [elegido,setElegido]=useState(null);
   var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
   var [pin,setPin]=useState("");          // lo que va tecleando
+  var [justForm,setJustForm]=useState({motivo:"",archivo:null,enviando:false,error:""});
+  var [olvido,setOlvido]=useState(null);  // entrada olvidada: {hora} mientras se pregunta a qué hora entró
   // De quién es este celular. En la tablet del local no se usa —ahí marcan todos—, pero en
   // el celular de cada uno sí: si la pantalla muestra la lista entera, cualquiera puede
   // fichar por cualquiera. Atado el aparato, ve su nombre y nada más.
@@ -10678,10 +10744,34 @@ function PanelFichar(p){
     cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
-    if(!pinDe(emp)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } setFase("camara"); return; }
+    if(!pinDe(emp)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
     setFase("pin");
   }
-  function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); }
+  function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); setOlvido(null); }
+  // Después del PIN: si dejó una falta sin justificar, primero se le pide el justificativo; si no, a la cámara.
+  function pendientesJ(emp){ return emp?faltasSinJustificar(emp,fichajes,p.vacaciones,p.justificativos):[]; }
+  function seguirDespuesDelPin(emp){
+    if(pendientesJ(emp).length>0){ setJustForm({motivo:"",archivo:null,enviando:false,error:""}); setFase("justificar"); }
+    else setFase("camara");
+  }
+  async function enviarJustificativo(){
+    var emp=elegido; if(!emp)return;
+    var fecha=pendientesJ(emp)[0]; if(!fecha)return;
+    var motivo=String(justForm.motivo||"").trim();
+    if(motivo.length<4&&!justForm.archivo){ setJustForm(function(f){return{...f,error:"Escribí el motivo o sacá una foto del certificado."};}); return; }
+    setJustForm(function(f){return{...f,enviando:true,error:""};});
+    var foto="";
+    if(justForm.archivo){
+      var blob=await reducirImagen(justForm.archivo);
+      var sub=await sbSubirFotoFichaje(blob,"justificativos/"+emp.id+"_"+fecha+"_"+Date.now()+".jpg");
+      if(sub.ok)foto=sub.url;
+      else if(motivo.length<4){ setJustForm(function(f){return{...f,enviando:false,error:"No se pudo subir la foto. Escribí el motivo y probá de nuevo."};}); return; }
+    }
+    var r=p.onSaveJustif?await p.onSaveJustif({id:"justif_"+emp.id+"_"+fecha,empleado_id:emp.id,empleado_nombre:emp.nombre,local:emp.local,fecha:fecha,
+      motivo:motivo,foto_url:foto,estado:"pendiente",enviado_at:new Date().toISOString()}):{ok:false,error:"No se puede guardar acá."};
+    if(!r||!r.ok){ setJustForm(function(f){return{...f,enviando:false,error:(r&&r.error)||"No se pudo guardar. Probá de nuevo."};}); return; }
+    setJustForm({motivo:"",archivo:null,enviando:false,error:""});
+  }
   // Se comprueba solo al cuarto dígito: nadie tiene que buscar un botón de "aceptar".
   function tecla(d){
     if(fase!=="pin")return;
@@ -10692,16 +10782,31 @@ function PanelFichar(p){
       if(v===pinDe(elegido)){
         setPin("");
         if(vinculando){ guardarMiEmp(elegido.id); setVinculando(false); setElegido(null); setFase("lista"); return; }
-        setFase("camara");
+        seguirDespuesDelPin(elegido);
       }
       else { setPinMal(true); setTimeout(function(){ setPin(""); },450); }
     }
   }
 
-  async function marcar(tipo){
+  async function marcar(tipo,extra){
     if(!elegido)return;
     setFase("guardando");
     var ahora=new Date();
+    // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
+    // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
+    if(extra&&extra.entradaHora){
+      var hm=String(extra.entradaHora).split(":");
+      var de=new Date(); de.setHours(parseInt(hm[0],10),parseInt(hm[1],10)||0,0,0);
+      if(de>ahora)de=new Date(de.getTime()-86400000);
+      if(isNaN(de.getTime())||ahora-de>16*3600000){ alert("Revisá la hora de entrada: no puede ser de hace más de 16 horas."); setFase("camara"); return; }
+      var filaE={id:"f"+de.getTime()+"_"+Math.random().toString(36).slice(2,7),empleado_id:elegido.id,empleado_nombre:elegido.nombre,local:local,
+        fecha:fechaLocal(de),hora:horaLocal(de),tipo:"entrada",momento:de.toISOString(),foto_url:null,cara:null,lat:null,lng:null,
+        aparato:kiosco?"kiosco":"celular",usuario:p.usuario||"",manual:true,con_pin:!!pinDe(elegido),
+        notas:"Entrada olvidada: la informó el empleado al marcar la salida"};
+      var rE=await p.onFichar(filaE);
+      if(!rE||!rE.ok){ alert((rE&&rE.error)||"No se pudo guardar la entrada."); setFase("camara"); return; }
+      setOlvido(null);
+    }
     var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
     var blob=await sacarFoto(videoRef.current);
     var foto=null, avisoFoto="";
@@ -10730,7 +10835,41 @@ function PanelFichar(p){
     },6000);
   }
 
+  useEffect(function(){
+    if(fase==="justificar"&&elegido&&pendientesJ(elegido).length===0)setFase("camara");
+  },[fase,elegido,p.justificativos]);
+
   var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:16};
+
+  // ── La falta sin justificar ──
+  if(fase==="justificar"&&elegido){
+    var pend=pendientesJ(elegido), fPend=pend[0];
+    if(!fPend)return null;
+    return (
+      <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
+        <button onClick={volver} disabled={justForm.enviando} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
+        <div style={{...CAJA,border:"1px solid #D4A01766"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8"}}>{elegido.nombre}</div>
+          <div style={{fontSize:14,fontWeight:800,color:"#D4A017",marginTop:10}}>No marcaste el {fmtDate(fPend)}</div>
+          <div style={{fontSize:12,color:"#B8B8B8",lineHeight:1.6,marginTop:6}}>
+            Ese día te tocaba trabajar y no hay ninguna marca. Subí una foto de tu <b>certificado</b> o escribí el <b>motivo</b>, así queda justificada la falta.
+            {pend.length>1&&<span style={{color:"#8C8C8C"}}> Te quedan {pend.length-1} día{pend.length-1===1?"":"s"} más por justificar.</span>}
+          </div>
+          <textarea value={justForm.motivo} onChange={function(e){var v=e.target.value;setJustForm(function(f){return{...f,motivo:v};});}} rows={3} maxLength={500}
+            placeholder="Motivo (ej: estuve enfermo, trámite, cambio de turno acordado con…)"
+            style={{width:"100%",boxSizing:"border-box",marginTop:10,padding:"10px 12px",borderRadius:10,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:14,resize:"vertical",outline:"none"}}/>
+          <label style={{display:"block",marginTop:10,padding:"12px",borderRadius:10,border:"1px dashed "+(justForm.archivo?"#3A7D44":"#3A3A3A"),textAlign:"center",fontSize:13,color:justForm.archivo?"#3A7D44":"#9A9A9A",cursor:"pointer"}}>
+            {justForm.archivo?"📎 "+justForm.archivo.name:"📎 Adjuntar foto del certificado (opcional)"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){var fl=e.target.files&&e.target.files[0];setJustForm(function(f){return{...f,archivo:fl||null};});}}/>
+          </label>
+          {justForm.error&&<div style={{fontSize:12,color:"#E0714A",marginTop:8}}>{justForm.error}</div>}
+          <button onClick={enviarJustificativo} disabled={justForm.enviando}
+            style={{...BS("#D4A017"),width:"100%",marginTop:12,padding:"13px",fontSize:14,color:"#000"}}>{justForm.enviando?"Enviando…":"Enviar justificativo"}</button>
+          <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Administración lo revisa y lo aprueba o lo rechaza. Después seguís a marcar normalmente.</div>
+        </div>
+      </div>
+    );
+  }
 
   // ── El recibo de lo que se acaba de marcar ──
   if(fase==="listo"&&recibo){
@@ -10821,18 +10960,35 @@ function PanelFichar(p){
             :<div style={{fontSize:12,marginTop:10,color:cara===true?"#3A7D44":cara===false?"#D4A017":"#8C8C8C"}}>
               {cara===true?"✅ Te veo bien":cara===false?"⚠️ No veo ninguna cara — acomodate frente a la cámara":"📷 Mirá a la cámara"}
             </div>}
-          <div style={{display:"flex",gap:8,marginTop:14}}>
+          {olvido&&(
+            <div style={{marginTop:14,textAlign:"left",background:"#14100A",border:"1px solid #D4A01766",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#D4A017"}}>No tengo registrada tu entrada</div>
+              <div style={{fontSize:11.5,color:"#B8B8B8",lineHeight:1.5,margin:"4px 0 8px"}}>Como estás marcando la salida, sé que estuviste trabajando. ¿A qué hora entraste?</div>
+              <input type="time" value={olvido.hora} onChange={function(e){var v=e.target.value;setOlvido(function(o){return{...o,hora:v};});}}
+                style={{width:"100%",boxSizing:"border-box",padding:"11px 12px",borderRadius:10,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:18,textAlign:"center"}}/>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <button onClick={function(){ if(!olvido.hora){alert("Poné a qué hora entraste.");return;} marcar("salida",{entradaHora:olvido.hora}); }} disabled={!puede||fase==="guardando"}
+                  style={{flex:2,padding:"13px 8px",borderRadius:10,border:"none",background:"#C1440E",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer",opacity:puede?1:0.45}}>Confirmar y marcar salida</button>
+                <button onClick={function(){setOlvido(null);}} style={{flex:1,padding:"13px 8px",borderRadius:10,border:"1px solid #333",background:"none",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+              </div>
+              <div style={{fontSize:10,color:"#7E7E7E",marginTop:7}}>La entrada queda cargada como manual, con una nota, para que administración pueda revisarla.</div>
+            </div>
+          )}
+          {!olvido&&<div style={{display:"flex",gap:8,marginTop:14}}>
             {["entrada","salida"].map(function(t){
               var es=t===sugerido;
               var col=t==="entrada"?"#3A7D44":"#C1440E";
-              return <button key={t} onClick={function(){marcar(t);}} disabled={!puede||fase==="guardando"}
+              return <button key={t} onClick={function(){
+                  if(t==="salida"&&!est.adentro){ var tj=turnoDe(elegido,fechaLocal()); setOlvido({hora:(tj&&!tj.franco&&tj.desde)?tj.desde:""}); }
+                  else marcar(t);
+                }} disabled={!puede||fase==="guardando"}
                 style={{flex:es?2:1,padding:"16px 10px",borderRadius:12,border:"1px solid "+col+(es?"":"44"),
                   background:es?col:"#111",color:es?"#fff":col,fontFamily:"'Inter',sans-serif",
                   fontSize:es?15:13,fontWeight:800,cursor:puede?"pointer":"not-allowed",opacity:puede?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
                 {t==="entrada"?"🟢 Entrada":"🔴 Salida"}
               </button>;
             })}
-          </div>
+          </div>}
           <div style={{fontSize:10,color:"#6E6E6E",marginTop:10}}>La foto queda guardada con la hora. No se compara con nada.</div>
         </div>
       </div>
@@ -11366,6 +11522,51 @@ function PanelFichajes(p){
         </button>}
         {puedeEditar&&<button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12}}>✎ Marca manual</button>}
       </div>
+
+      {(function(){
+        var js=p.justificativos||[];
+        var pend=js.filter(function(j){return j.estado==="pendiente"&&(localF==="all"||j.local===localF);})
+          .sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
+        var sin=[];
+        porEmpleado.forEach(function(x){
+          x.faltas.forEach(function(f){
+            if(f>=INICIO_JUSTIFICATIVOS&&f<hoy&&!js.some(function(j){return j.empleado_id===x.e.id&&j.fecha===f;}))sin.push({e:x.e,f:f});
+          });
+        });
+        if(pend.length===0&&sin.length===0)return null;
+        function resolver(j,estado){ if(p.onSaveJustif)p.onSaveJustif({...j,estado:estado,resuelto_por:p.usuario||"",resuelto_at:new Date().toISOString()}); }
+        return(
+          <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:6}}>📎 Justificativos de faltas</div>
+            {pend.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,margin:"4px 0"}}>Para revisar · {pend.length}</div>}
+            {pend.map(function(j){
+              var l=getLocal(j.local)||{};
+              return(
+                <div key={j.id} style={{padding:"8px 0",borderTop:"1px solid #1E1A10"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap",fontSize:12.5}}>
+                    <span style={{color:"#F0EDE8",fontWeight:700}}>{j.empleado_nombre} <span style={{color:"#7E7E7E",fontWeight:400}}>· {l.emoji} {l.nombre}</span></span>
+                    <span style={{color:"#C1440E",fontWeight:700}}>faltó el {fmtDate(j.fecha)}</span>
+                  </div>
+                  {j.motivo&&<div style={{fontSize:12,color:"#B8B8B8",marginTop:3,lineHeight:1.5}}>“{j.motivo}”</div>}
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginTop:6,flexWrap:"wrap"}}>
+                    {j.foto_url&&<a href={j.foto_url} target="_blank" rel="noreferrer"><img src={j.foto_url} alt="certificado" style={{height:54,borderRadius:8,border:"1px solid #2A2A2A"}}/></a>}
+                    {!j.foto_url&&<span style={{fontSize:11,color:"#7E7E7E"}}>sin certificado adjunto</span>}
+                    {puedeEditar&&<span style={{marginLeft:"auto",display:"flex",gap:6}}>
+                      <button onClick={function(){resolver(j,"aprobado");}} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>✅ Aprobar</button>
+                      <button onClick={function(){if(window.confirm("¿Rechazar este justificativo? La falta queda sin justificar."))resolver(j,"rechazado");}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #C1440E66",background:"none",color:"#C1440E",fontSize:12,fontWeight:700,cursor:"pointer"}}>❌ Rechazar</button>
+                    </span>}
+                  </div>
+                </div>
+              );
+            })}
+            {sin.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px"}}>Todavía sin justificar · {sin.length}</div>}
+            {sin.length>0&&<div style={{fontSize:11.5,color:"#B8B8B8",lineHeight:1.7}}>
+              {sin.map(function(x){return x.e.nombre+" ("+fmtDate(x.f)+")";}).join(" · ")}
+              <div style={{fontSize:10,color:"#6E6E6E"}}>Se les pide el justificativo la próxima vez que van a fichar.</div>
+            </div>}
+          </div>
+        );
+      })()}
 
       {showUbic&&puedeEditar&&(
         <div style={{...CAJA,marginBottom:12}}>
@@ -23329,6 +23530,7 @@ export default function App() {
   var [sueldos,setSueldos]=useState([]);
   var [cargasSociales,setCargasSociales]=useState([]);
   var [saldosProveedores,setSaldosProveedores]=useState([]);
+  var [justificativos,setJustificativos]=useState([]);
   var [localesDatos,setLocalesDatos]=useState({});
   var [localesObras,setLocalesObras]=useState([]);
   var [recetas,setRecetas]=useState([]);
@@ -23400,6 +23602,7 @@ export default function App() {
     sbLoadSueldos().then(function(d){setSueldos(d||[]);}).catch(function(){});
     sbLoadCargasSociales().then(function(d){setCargasSociales(d||[]);}).catch(function(){});
     sbLoadSaldosProveedores().then(function(d){setSaldosProveedores(d||[]);}).catch(function(){});
+    sbLoadJustificativos().then(function(d){setJustificativos(d||[]);}).catch(function(){});
     sbLoadLocalesDatos().then(function(d){setLocalesDatos(d||{});}).catch(function(){});
     sbLoadLocalesObras().then(function(d){setLocalesObras(d||[]);}).catch(function(){});
     sbLoadRecetas().then(function(d){setRecetas(d||[]);}).catch(function(){});
@@ -23758,6 +23961,11 @@ export default function App() {
   // vuelve a la vista inicial, limpia los filtros compartidos y remonta el contenido.
   // Fichaje: la marca se pinta en pantalla apenas se guarda, porque el que fichó está
   // mirando la tablet y quiere ver que quedó.
+  async function guardarJustif(j){
+    var r=await sbSaveJustificativo(j);
+    if(r&&r.ok)setJustificativos(function(prev){ return [j].concat(prev.filter(function(x){return x.id!==j.id;})); });
+    return r;
+  }
   async function guardarFichaje(f){
     var r=await sbSaveFichaje(f);
     if(r&&r.ok)setFichajes(function(prev){ return [f].concat(prev.filter(function(x){return x.id!==f.id;})); });
@@ -24295,6 +24503,7 @@ export default function App() {
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje}
+                   justificativos={justificativos} onSaveJustif={guardarJustif}
                    localesDatos={localesDatos}
                    onSaveLocalDatos={async function(d){
                      setLocalesDatos(function(prev){var n={...prev};n[d.local]={...(prev[d.local]||{}),...d};return n;});
@@ -24305,7 +24514,8 @@ export default function App() {
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}/>}
+                   localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}/>}
             </div>
           )}
 
@@ -24847,7 +25057,8 @@ export default function App() {
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-              localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}/>
+              localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+              justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(

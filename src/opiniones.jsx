@@ -201,7 +201,7 @@ function horaMin(h) {
   return parseInt(p[0], 10) * 60 + (parseInt(p[1], 10) || 0);
 }
 async function cargarEntradas() {
-  var mapa = {};
+  var mapa = {}, justif = {};
   try {
     for (var pagina = 0; pagina < 20; pagina++) {
       var q = "fichajes?tipo=eq.entrada&fecha=gte." + INICIO_TEMPORADA + "&select=empleado_id,fecha,hora,momento&order=momento.asc&limit=1000&offset=" + (pagina * 1000);
@@ -215,9 +215,19 @@ async function cargarEntradas() {
       if (d.length < 1000) break;
     }
   } catch (e) { return null; }
-  return mapa;
+  // Faltas con justificativo (aprobado o todavía en revisión): no cuentan contra la puntualidad.
+  try {
+    var rj = await fetch(SURL + "/rest/v1/pautas?ambito=eq.justif_falta&order=created_at.desc&limit=1000", { headers: SH });
+    var dj = await rj.json();
+    if (Array.isArray(dj)) dj.forEach(function (f) {
+      var x = null; try { x = JSON.parse(f.texto); } catch (e) {}
+      if (x && x.empleado_id && x.fecha) justif[x.empleado_id + "|" + x.fecha] = x.estado || "pendiente";
+    });
+  } catch (e) {}
+  return { entradas: mapa, justif: justif };
 }
-function calcPuntualidad(localId, dias, p, entradas) {
+function calcPuntualidad(localId, dias, p, datos) {
+  var entradas = datos.entradas, justif = datos.justif || {};
   var res = { previstas: 0, aTiempo: 0, tarde: 0, faltas: 0, sinJornada: 0, puntaje: null };
   var vacs = (p.vacaciones || []);
   (p.empleados || []).filter(function (e) { return e.local === localId && e.activo !== false; }).forEach(function (e) {
@@ -230,8 +240,10 @@ function calcPuntualidad(localId, dias, p, entradas) {
       if (e.fecha_alta && f < String(e.fecha_alta).substring(0, 10)) return;
       var devacaciones = vacs.some(function (v) { return v.empleado_id === e.id && f >= String(v.fecha_desde).substring(0, 10) && f <= String(v.fecha_hasta).substring(0, 10); });
       if (devacaciones) return;
-      res.previstas++;
       var h = entradas[e.id + "|" + f];
+      var est = justif[e.id + "|" + f];
+      if (!h && est && est !== "rechazado") return;   // falta justificada: no cuenta
+      res.previstas++;
       if (!h) { res.faltas++; return; }
       if (horaMin(h) <= horaMin(t.desde) + TOLERANCIA_MIN) res.aTiempo++; else res.tarde++;
     });

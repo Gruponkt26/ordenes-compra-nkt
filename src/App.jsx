@@ -8800,7 +8800,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   </div>
                   <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
-                  {g.detalle&&<div style={{fontSize:10,color:"#3A7D44",marginTop:1}}>🛒 {g.detalle}</div>}
+                  {g.detalle&&<div style={{fontSize:10,color:esEgresoDeVenc(g)?"#D4A017":"#3A7D44",marginTop:1}}>{esEgresoDeVenc(g)?"📅":"🛒"} {g.detalle}</div>}
                   {g.notas&&<div style={{fontSize:10,color:"#6E6E6E",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginLeft:10}}>
@@ -9063,12 +9063,14 @@ function PanelEgresos(p){
             // Sueldos de la Oficina que pusieron los locales: ya figuran en cada uno, acá se muestran de referencia.
             var totRepOf=l.id==="l4"?(p.sueldos||[]).filter(function(s){return s.local==="l4"&&s.periodo===perAnt&&(s.estado==="pagado"||s.estado==="parcial")&&sueldoRepartidoEnLocales(s,gastos);}).reduce(function(t,s){return t+aportesSueldoOficina(s,gastos).total;},0):0;
             var tot=totG+totS+totAg+totR+totAdel+ccTop.total;
+            // Los sueldos ya cargados como egreso están dentro de "Gastos": para el rótulo se separan, así no dice Sueldos $0.
+            var sueldosEnGastos=gl.filter(function(g){return (g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g);}).reduce(function(t,g){return t+(parseFloat(g.monto)||0);},0);
             var activo=localGrid===l.id;
             return(
               <div key={l.id} onClick={function(){setLocalGrid(l.id);setExpandidoGrid(null);setGastoDetalle(null);}} style={{background:activo?l.color+"22":"#111",border:"2px solid "+(activo?l.color:l.color+"55"),borderRadius:10,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"all 0.15s"}}>
                 <div style={{fontSize:12,color:l.color,fontWeight:700,marginBottom:3}}>{l.emoji} {l.nombre}</div>
                 <div style={{fontSize:18,fontWeight:800,color:l.color,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</div>
-                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG)} · Sueldos {fmt(totS+totAg)}{totRepOf>0?" (+"+fmt(totRepOf)+" puesto por los locales)":""}{totOfL>0?" · de los cuales Oficina "+fmt(totOfL):""}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
+                <div style={{fontSize:9,color:"#7E7E7E",marginTop:3}}>Gastos {fmt(totG-sueldosEnGastos)} · Sueldos {fmt(sueldosEnGastos+totS+totAg)}{totRepOf>0?" (+"+fmt(totRepOf)+" puesto por los locales)":""}{totOfL>0?" · de los cuales Oficina "+fmt(totOfL):""}{totAdel>0?" · Adelantos "+fmt(totAdel):""} · Retiros {fmt(totR)}{ccTop.total>0?" · Imp. y comis. "+fmt(ccTop.total):""}</div>
               </div>
             );
           })}
@@ -9163,6 +9165,7 @@ function PanelEgresos(p){
                                     <div><span style={{color:"#8C8C8C"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{g.created_at?fmtDateTime(g.created_at).split(" ")[1]:"—"}</span></div>
                                     <div><span style={{color:"#8C8C8C"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(g.monto)}</span></div>
                                     <div><span style={{color:"#8C8C8C"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{medioPagoGasto(g)}</span></div>
+                                    {g.detalle&&<div style={{gridColumn:"1 / -1"}}><span style={{color:"#8C8C8C"}}>{esEgresoDeVenc(g)?"📅 ":"📝 "}</span><span style={{color:"#D4A017"}}>{g.detalle}</span></div>}
                                   </div>
                                 )}
                               </div>

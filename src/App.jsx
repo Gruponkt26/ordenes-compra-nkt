@@ -20242,9 +20242,67 @@ function PanelSueldos(p){
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
+  // Los datos laborales de la ficha: puesto, local, situación (convenio / sin convenio / mixto), alta, baja y estado.
+  // Se muestran en "Datos laborales" al editar, y a continuación de los personales al crear un empleado nuevo.
+  function camposLaborales(){
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              <select value={formEmp.local} onChange={function(e){setFormEmp(function(f){return{...f,local:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                {localesFiltro.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+              </select>
+              <select value={formEmp.categoria} onChange={function(e){setFormEmp(function(f){return{...f,categoria:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
+              </select>
+
+              {/* Situación laboral */}
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Situación laboral</label>
+                <div style={{display:"flex",gap:6}}>
+                  {[["convenio","📋 Convenio"],["sin_convenio","Sin convenio"],["mixto","📋 + Sin conv."]].map(function(op){return(
+                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#8C8C8C",fontSize:10,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
+                  );})}
+                </div>
+              </div>
+
+
+
+              {/* Fechas */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de alta</label>
+                  <input type="date" value={formEmp.fecha_alta} onChange={function(e){setFormEmp(function(f){return{...f,fecha_alta:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de baja</label>
+                  <input type="date" value={formEmp.fecha_baja} onChange={function(e){setFormEmp(function(f){return{...f,fecha_baja:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+              {formEmp.fecha_baja&&(
+                <input placeholder="Motivo de baja" value={formEmp.motivo_baja} onChange={function(e){setFormEmp(function(f){return{...f,motivo_baja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
+              )}
+
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
+                <input type="checkbox" checked={formEmp.activo} onChange={function(e){setFormEmp(function(f){return{...f,activo:e.target.checked};});}}/>
+                Empleado activo
+              </label>
+      </div>
+    );
+  }
+  function armarEmpleado(){
+    return {id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formEmp.enfermedad_congenita||false,fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+  }
+  var [guardadoLab,setGuardadoLab]=useState(false);
+  // Guardar la situación laboral desde la pestaña "Datos laborales": no cierra la ficha.
+  function guardarLaborales(){
+    if(!formEmp.nombre.trim())return;
+    var emp=armarEmpleado();
+    onSaveEmpleado(emp);
+    setEmpEdit(emp);
+    setGuardadoLab(true); setTimeout(function(){setGuardadoLab(false);},2500);
+  }
   function doSaveEmp(){
     if(!formEmp.nombre.trim())return;
-    var emp={id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formEmp.enfermedad_congenita||false,fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    var emp=armarEmpleado();
     onSaveEmpleado(emp);
     setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   }
@@ -20683,6 +20741,11 @@ function PanelSueldos(p){
             )}
             {empEdit&&tabFicha==="laborales"?(
               <div>
+                <div style={{background:"#0A0A0A",border:"1px solid #4CAF5033",borderRadius:12,padding:"12px 14px",marginBottom:10}}>
+                  <div style={{fontSize:9.5,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1.2,marginBottom:8,fontWeight:700}}>Situación laboral</div>
+                  {camposLaborales()}
+                  <button onClick={guardarLaborales} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:10}}>{guardadoLab?"✓ Guardado":"💾 Guardar situación laboral"}</button>
+                </div>
                 <FichaLaboral emp={empEdit} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
                   sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
                 <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:4}}>Cerrar</button>
@@ -20703,46 +20766,8 @@ function PanelSueldos(p){
                 Enfermedad congénita
               </label>
 
-              {/* Datos laborales */}
-              <div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginTop:6,marginBottom:2}}>Datos laborales</div>
-              <select value={formEmp.local} onChange={function(e){setFormEmp(function(f){return{...f,local:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
-                {localesFiltro.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
-              </select>
-              <select value={formEmp.categoria} onChange={function(e){setFormEmp(function(f){return{...f,categoria:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
-                {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
-              </select>
-
-              {/* Situación laboral */}
-              <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Situación laboral</label>
-                <div style={{display:"flex",gap:6}}>
-                  {[["convenio","📋 Convenio"],["sin_convenio","Sin convenio"],["mixto","📋 + Sin conv."]].map(function(op){return(
-                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#8C8C8C",fontSize:10,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
-                  );})}
-                </div>
-              </div>
-
-
-
-              {/* Fechas */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <div>
-                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de alta</label>
-                  <input type="date" value={formEmp.fecha_alta} onChange={function(e){setFormEmp(function(f){return{...f,fecha_alta:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
-                </div>
-                <div>
-                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de baja</label>
-                  <input type="date" value={formEmp.fecha_baja} onChange={function(e){setFormEmp(function(f){return{...f,fecha_baja:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
-                </div>
-              </div>
-              {formEmp.fecha_baja&&(
-                <input placeholder="Motivo de baja" value={formEmp.motivo_baja} onChange={function(e){setFormEmp(function(f){return{...f,motivo_baja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
-              )}
-
-              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}>
-                <input type="checkbox" checked={formEmp.activo} onChange={function(e){setFormEmp(function(f){return{...f,activo:e.target.checked};});}}/>
-                Empleado activo
-              </label>
+              {!empEdit&&<div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginTop:6,marginBottom:2}}>Datos laborales</div>}
+              {!empEdit&&camposLaborales()}
             </div>
             <div style={{display:"flex",gap:8,marginTop:14}}>
               <button onClick={doSaveEmp} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>💾 Guardar ficha</button>

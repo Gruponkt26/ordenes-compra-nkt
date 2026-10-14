@@ -282,6 +282,16 @@ async function sbDeleteFichaje(id) {
     return true;
   } catch(e){ alert("Error de conexión al borrar el fichaje: "+e.message); return false; }
 }
+// Borra de una vez todas las marcas de un mes (y, si se pide, de un solo local).
+async function sbDeleteFichajesMes(mes, local) {
+  try {
+    var pr=mes.split("-"), ult=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate();
+    var q="fecha=gte."+mes+"-01&fecha=lte."+mes+"-"+String(ult).padStart(2,"0")+(local&&local!=="all"?"&local=eq."+local:"");
+    var r=await fetch(SURL+"/rest/v1/fichajes?"+q,{method:"DELETE",headers:SH});
+    if(!r.ok){ alert(explicarErrorFichajes(await r.text())); return false; }
+    return true;
+  } catch(e){ alert("Error de conexión al borrar los fichajes: "+e.message); return false; }
+}
 // La foto va al bucket "fichajes". Si el bucket no existe la marcación se guarda igual,
 // sin foto: llegar tarde y que no ande la cámara son dos problemas distintos, y perder el
 // horario por el segundo sería el peor de los dos.
@@ -11441,6 +11451,16 @@ function PanelFichajes(p){
           📍 Locales {(function(){ var n=LOCALES.filter(function(l){return (localesDatos[l.id]||{}).lat!=null;}).length; return n+"/"+LOCALES.length; })()}
         </button>}
         {puedeEditar&&<button onClick={function(){setShowManual(true);}} style={{...GH,padding:"7px 12px",fontSize:12}}>✎ Marca manual</button>}
+        {puedeEditar&&p.onDeleteMes&&<button onClick={async function(){
+          var cant=fichajes.filter(function(f){return String(f.fecha).substring(0,7)===mes&&(localF==="all"||f.local===localF);}).length;
+          if(cant===0){ alert("No hay marcas en "+fmtMes(mes)+(localF==="all"?"":" para ese local")+"."); return; }
+          var donde=localF==="all"?"de TODOS los locales":"de "+((getLocal(localF)||{}).nombre||localF);
+          var t=window.prompt("⚠️ Vas a BORRAR las "+cant+" marcas de "+fmtMes(mes)+" "+donde+".\n\nNo se puede deshacer, y cambia las horas trabajadas de ese mes.\n\nPara confirmar escribí BORRAR:");
+          if(t===null)return;
+          if(String(t).trim().toUpperCase()!=="BORRAR"){ alert("No se borró nada: no escribiste BORRAR."); return; }
+          var ok=await p.onDeleteMes(mes,localF);
+          if(ok)alert("Listo: registros de "+fmtMes(mes)+" en cero.");
+        }} style={{...GH,padding:"7px 12px",fontSize:12,color:"#C1440E",borderColor:"#C1440E55"}}>🗑 Poner el mes en cero</button>}
       </div>
 
       {(function(){
@@ -24176,6 +24196,13 @@ export default function App() {
     setFichajes(function(prev){ return prev.filter(function(f){return f.id!==id;}); });
   }
 
+  async function borrarFichajesMes(mes,local){
+    var ok=await sbDeleteFichajesMes(mes,local);
+    if(ok)setFichajes(function(prev){ return prev.filter(function(f){
+      return !(String(f.fecha).substring(0,7)===mes&&(!local||local==="all"||f.local===local)); }); });
+    return ok;
+  }
+
   function limpiarTabs(){
     setSubCompras(null);
     setVistaProv("gestion");
@@ -24695,7 +24722,7 @@ export default function App() {
               </div>
               {vista==="fichajes_registro"
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
-                   puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje}
+                   puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
                    localesDatos={localesDatos}
                    onSaveLocalDatos={async function(d){

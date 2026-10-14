@@ -2901,7 +2901,11 @@ function infoSeccionesDe(u){
 }
 function PanelInfoCajero(p){
   // Quien edita ve las cuatro secciones; un colaborador ve la suya (p.misSecciones) más General.
-  var visibles=p.puedeEditar?INFO_SECCIONES:INFO_SECCIONES.filter(function(t){return t.id==="general"||(p.misSecciones||[]).indexOf(t.id)!==-1;});
+  // Si viene "solo", se muestra únicamente esa sección (el colaborador tiene un módulo para la general y otro para la suya).
+  var visibles=p.puedeEditar?INFO_SECCIONES:INFO_SECCIONES.filter(function(t){
+    if(p.solo)return t.id===p.solo;
+    return t.id==="general"||(p.misSecciones||[]).indexOf(t.id)!==-1;
+  });
   var [sec,setSec]=useState(p.tabInicial||(visibles[0]&&visibles[0].id)||"general");
   var info=(p.info||[]).filter(function(x){return seccionInfo(x)===sec;}).sort(function(a,b){return (a.orden||0)-(b.orden||0);});
   var puedeEditar=!!p.puedeEditar;
@@ -2949,7 +2953,7 @@ function PanelInfoCajero(p){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>ℹ️ Info para colaboradores</div>
         {!puedeEditar&&<div style={{fontSize:11,color:"#8C8C8C",marginTop:4}}>Instructivo y guías para el día a día.</div>}
       </div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,display:visibles.length>1?"flex":"none"}}>
         {visibles.map(function(t){
           var act=sec===t.id;
           var n=(p.info||[]).filter(function(x){return seccionInfo(x)===t.id;}).length;
@@ -24361,7 +24365,7 @@ export default function App() {
   var enOrdenes=enCompras&&subCompras==="ordenes";
   var enRecetas=esCocina&&enCompras&&subCompras==="recetas";
   var enIdeas=!esSofia&&enCompras&&subCompras==="ideas";
-  var enInfo=!esSofia&&enCompras&&subCompras==="info";
+  var enInfo=!esSofia&&enCompras&&(subCompras==="info"||subCompras==="info_general");
   var enStockCompras=enCompras&&subCompras==="stock";
   var lf=esAdmin?null:cu.local;
   var la=getLocal(lf);
@@ -24690,7 +24694,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info"?"ℹ️ Info para colaboradores":"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -24737,7 +24741,8 @@ export default function App() {
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
-                            {id:"info",emoji:"ℹ️",label:"Info para colaboradores",desc:"Instructivo y guías para el día a día",color:"#1A6B8A",badge:0}]
+                            {id:"info_general",emoji:"ℹ️",label:"Info general",desc:"Información para todos los colaboradores",color:"#1A6B8A",badge:0}].concat(
+                              infoSeccionesDe(cu).length>0?[{id:"info",emoji:(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{}).emoji||"ℹ️",label:"Info para "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre.toLowerCase(),desc:"Sólo para tu sector",color:"#3A9BC1",badge:0}]:[])
               ).map(function(m){return(
                 <button key={m.id} onClick={function(){
                   limpiarTabs();
@@ -24840,7 +24845,7 @@ export default function App() {
 
           {/* INFO — el cajero la lee, la carga Sofía desde su propio módulo */}
           {enInfo&&(
-            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false} misSecciones={infoSeccionesDe(cu)}
+            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false} solo={subCompras==="info_general"?"general":(infoSeccionesDe(cu)[0]||"general")}
               onSave={function(){}} onDelete={function(){}}/>
           )}
 

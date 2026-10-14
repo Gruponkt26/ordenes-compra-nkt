@@ -461,7 +461,7 @@ async function sbLoadPautas() {
   try {
     // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
     // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
-    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado))&order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado,datos_emp))&order=created_at.desc", { headers: SH });
     var d = await r.json();
     if(Array.isArray(d))return d;
     // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
@@ -20192,6 +20192,56 @@ function FichaLaboral(p){
   );
 }
 
+// ─── DATOS PERSONALES AMPLIADOS ─────────────────────────────────────────────
+// Fecha de nacimiento, altura, talles, grupo sanguíneo, enfermedad congénita (cuál) y medicación (cuál).
+// Se guardan en la tabla de pautas (ámbito "datos_emp", un registro por empleado) para no tener que tocar la
+// tabla de empleados. La edad se calcula sola a partir de la fecha de nacimiento.
+var GRUPOS_SANGRE=["A+","A-","B+","B-","AB+","AB-","0+","0-"];
+async function sbLoadDatosEmp(){
+  var out={};
+  try{
+    var r=await fetch(SURL+"/rest/v1/pautas?ambito=eq.datos_emp&limit=1000",{headers:SH});
+    var d=await r.json();
+    if(Array.isArray(d))d.forEach(function(f){
+      var x=null; try{ x=JSON.parse(f.texto); }catch(e){}
+      if(x&&x.empleado_id)out[x.empleado_id]=x;
+    });
+  }catch(e){}
+  return out;
+}
+async function sbSaveDatosEmp(empId,ex,usuario){
+  try{
+    var ahora=new Date().toISOString();
+    var fila={id:"datos_"+empId,ambito:"datos_emp",texto:JSON.stringify({...ex,empleado_id:empId}),usuario:usuario||"",created_at:ahora,updated_at:ahora};
+    var r=await fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(fila)});
+    if(!r.ok)return {ok:false,error:await r.text()};
+    return {ok:true};
+  }catch(e){ return {ok:false,error:(e&&e.message)||String(e)}; }
+}
+function edadDe(nac){
+  if(!nac)return null;
+  var pr=String(nac).substring(0,10).split("-"); if(pr.length<3)return null;
+  var hoyD=new Date(), a=hoyD.getFullYear()-parseInt(pr[0],10);
+  var m=hoyD.getMonth()+1-parseInt(pr[1],10);
+  if(m<0||(m===0&&hoyD.getDate()<parseInt(pr[2],10)))a--;
+  return (a>=0&&a<120)?a:null;
+}
+// Qué porcentaje de los datos personales está cargado, y qué falta.
+function completitudFicha(emp,ex){
+  ex=ex||{}; emp=emp||{};
+  var llena=function(v){return String(v==null?"":v).trim()!=="";};
+  var items=[
+    ["Nombre",llena(emp.nombre)],["CUIL",llena(emp.cuil)],["Dirección",llena(emp.direccion)],
+    ["Teléfono",llena(emp.telefono)],["Tel. de emergencia",llena(emp.telefono_emergencia)],
+    ["Fecha de nacimiento",llena(ex.nacimiento)],["Altura",llena(ex.altura)],
+    ["Talle de calzado",llena(ex.calzado)],["Talle de remera",llena(ex.remera)],["Talle de pantalón",llena(ex.pantalon)],
+    ["Grupo sanguíneo",llena(ex.sangre)],
+    ["Enfermedad congénita",ex.enf==="no"||(ex.enf==="si"&&llena(ex.enf_detalle))],
+    ["Medicación",ex.med==="no"||(ex.med==="si"&&llena(ex.med_detalle))]
+  ];
+  var ok=items.filter(function(i){return i[1];}).length;
+  return {pct:Math.round(ok*100/items.length),ok:ok,total:items.length,faltan:items.filter(function(i){return !i[1];}).map(function(i){return i[0];})};
+}
 function PanelSueldos(p){
   var empleados=p.empleados||[], sueldos=p.sueldos||[], usuario=p.usuario;
   var cargasSociales=p.cargasSociales||[], onSaveCargaSocial=p.onSaveCargaSocial, onDeleteCargaSocial=p.onDeleteCargaSocial;
@@ -20215,6 +20265,10 @@ function PanelSueldos(p){
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
   var [sueldoEdit,setSueldoEdit]=useState(null);
+  var [datosEmp,setDatosEmp]=useState({});      // empleado_id → datos personales ampliados
+  var [formExtra,setFormExtra]=useState({});
+  useEffect(function(){ var vivo=true; sbLoadDatosEmp().then(function(d){ if(vivo)setDatosEmp(d); }); return function(){vivo=false;}; },[]);
+  useEffect(function(){ setFormExtra(empEdit?(datosEmp[empEdit.id]||{}):{}); },[showFormEmp,empEdit&&empEdit.id]);
   var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[{medio:"",monto:""}],notas:""});
   var [preCargar,setPreCargar]=useState(false);
@@ -20281,7 +20335,7 @@ function PanelSueldos(p){
     );
   }
   function armarEmpleado(){
-    return {id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formEmp.enfermedad_congenita||false,fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    return {id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formExtra.enf==="si"||(formExtra.enf===undefined&&!!formEmp.enfermedad_congenita),fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
   }
   var [guardadoLab,setGuardadoLab]=useState(false);
   // Guardar la situación laboral desde la pestaña "Datos laborales": no cierra la ficha.
@@ -20292,10 +20346,17 @@ function PanelSueldos(p){
     setEmpEdit(emp);
     setGuardadoLab(true); setTimeout(function(){setGuardadoLab(false);},2500);
   }
+  async function guardarExtra(empId){
+    var ex={...formExtra,enf_detalle:formExtra.enf==="si"?(formExtra.enf_detalle||""):"",med_detalle:formExtra.med==="si"?(formExtra.med_detalle||""):""};
+    setDatosEmp(function(prev){var n={...prev};n[empId]={...ex,empleado_id:empId};return n;});
+    var r=await sbSaveDatosEmp(empId,ex,usuario);
+    if(!r.ok)alert("No se pudieron guardar los datos personales ampliados:\n\n"+r.error);
+  }
   function doSaveEmp(){
     if(!formEmp.nombre.trim())return;
     var emp=armarEmpleado();
     onSaveEmpleado(emp);
+    guardarExtra(emp.id);
     setShowFormEmp(false);setEmpEdit(null);setFormEmp({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   }
   // ── Medios de pago del sueldo (se puede repartir entre varias cuentas) ──
@@ -20497,7 +20558,7 @@ function PanelSueldos(p){
               <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:700,color:emp.activo!==false?"#F0EDE8":"#7E7E7E"}}>{emp.nombre}{emp.activo===false&&" (inactivo)"}</div>
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"} · Base: {fmt(emp.sueldo_base)}</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"} · Base: {fmt(emp.sueldo_base)}{(function(){ var c=completitudFicha(emp,datosEmp[emp.id]); return <span style={{color:c.pct>=100?"#3A7D44":c.pct>=60?"#D4A017":"#C1440E"}}> · datos {c.pct}%</span>; })()}</div>
                 </div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio",cuil:emp.cuil||"",direccion:emp.direccion||"",telefono:emp.telefono||"",telefono_emergencia:emp.telefono_emergencia||"",enfermedad_congenita:emp.enfermedad_congenita||false,fecha_alta:emp.fecha_alta||"",fecha_baja:emp.fecha_baja||"",motivo_baja:emp.motivo_baja||"",monto_convenio:String(emp.monto_convenio||""),monto_sin_convenio:String(emp.monto_sin_convenio||"")});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
@@ -20753,10 +20814,51 @@ function PanelSueldos(p){
                 <input placeholder="Teléfono" value={formEmp.telefono} onChange={function(e){setFormEmp(function(f){return{...f,telefono:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
                 <input placeholder="Tel. emergencia" value={formEmp.telefono_emergencia} onChange={function(e){setFormEmp(function(f){return{...f,telefono_emergencia:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
               </div>
-              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",padding:"8px 12px",background:"#0F0F0F",borderRadius:8,border:"1px solid #2A2A2A"}}>
-                <input type="checkbox" checked={formEmp.enfermedad_congenita||false} onChange={function(e){setFormEmp(function(f){return{...f,enfermedad_congenita:e.target.checked};});}}/>
-                Enfermedad congénita
-              </label>
+              {/* Datos personales ampliados */}
+              {(function(){
+                var IN={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+                var LB={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+                function setX(k,v){ setFormExtra(function(x){var n={...x};n[k]=v;return n;}); }
+                var edad=edadDe(formExtra.nacimiento);
+                var comp=completitudFicha({nombre:formEmp.nombre,cuil:formEmp.cuil,direccion:formEmp.direccion,telefono:formEmp.telefono,telefono_emergencia:formEmp.telefono_emergencia},formExtra);
+                var colP=comp.pct>=100?"#3A7D44":comp.pct>=60?"#D4A017":"#C1440E";
+                function sino(k,det,ph){
+                  return <div>
+                    <div style={{display:"flex",gap:6}}>
+                      {[["no","No"],["si","Sí"]].map(function(op){var act=formExtra[k]===op[0]; return <button key={op[0]} onClick={function(){setX(k,op[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(act?"#4CAF50":"#2A2A2A"),background:act?"#4CAF5022":"#0F0F0F",color:act?"#4CAF50":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>;})}
+                    </div>
+                    {formExtra[k]==="si"&&<input placeholder={ph} value={formExtra[det]||""} onChange={function(e){setX(det,e.target.value);}} style={{...IN,marginTop:6}}/>}
+                  </div>;
+                }
+                return <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                  <div style={{background:"#0A0A0A",border:"1px solid "+colP+"55",borderRadius:10,padding:"10px 12px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+                      <span style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Datos completos</span>
+                      <span style={{fontSize:16,fontWeight:800,color:colP}}>{comp.pct}%</span>
+                    </div>
+                    <div style={{height:6,borderRadius:3,background:"#1A1A1A",marginTop:6,overflow:"hidden"}}><div style={{width:comp.pct+"%",height:"100%",background:colP}}/></div>
+                    {comp.faltan.length>0&&<div style={{fontSize:10,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Falta: {comp.faltan.join(", ")}.</div>}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div><label style={LB}>Fecha de nacimiento</label><input type="date" value={formExtra.nacimiento||""} onChange={function(e){setX("nacimiento",e.target.value);}} style={IN}/></div>
+                    <div><label style={LB}>Edad</label><div style={{...IN,color:edad==null?"#6E6E6E":"#F0EDE8"}}>{edad==null?"—":edad+" años"}</div></div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div><label style={LB}>Altura (cm)</label><input type="number" inputMode="numeric" placeholder="ej: 172" value={formExtra.altura||""} onChange={function(e){setX("altura",e.target.value);}} style={IN}/></div>
+                    <div><label style={LB}>Grupo sanguíneo</label>
+                      <select value={formExtra.sangre||""} onChange={function(e){setX("sangre",e.target.value);}} style={IN}>
+                        <option value="">—</option>{GRUPOS_SANGRE.map(function(g){return <option key={g} value={g}>{g}</option>;})}
+                      </select></div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div><label style={LB}>Talle calzado</label><input placeholder="ej: 42" value={formExtra.calzado||""} onChange={function(e){setX("calzado",e.target.value);}} style={IN}/></div>
+                    <div><label style={LB}>Talle remera</label><input placeholder="ej: M" value={formExtra.remera||""} onChange={function(e){setX("remera",e.target.value);}} style={IN}/></div>
+                    <div><label style={LB}>Talle pantalón</label><input placeholder="ej: 40" value={formExtra.pantalon||""} onChange={function(e){setX("pantalon",e.target.value);}} style={IN}/></div>
+                  </div>
+                  <div><label style={LB}>¿Tiene alguna enfermedad congénita?</label>{sino("enf","enf_detalle","¿Cuál?")}</div>
+                  <div><label style={LB}>¿Toma medicación?</label>{sino("med","med_detalle","¿Cuál / cuáles?")}</div>
+                </div>;
+              })()}
 
               {!empEdit&&<div style={{fontSize:9,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1,marginTop:6,marginBottom:2}}>Datos laborales</div>}
               {!empEdit&&camposLaborales()}

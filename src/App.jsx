@@ -2883,8 +2883,19 @@ function seccionInfo(x){
   var m=/^info_(cajeros|salon|cocina|general)_/.exec(String((x&&x.id)||""));
   return m?m[1]:"cajeros";
 }
+// A qué sección de Info pertenece cada usuario (la "Sección" que se le carga en Usuarios).
+function infoSeccionesDe(u){
+  var sx=String((u&&u.seccion)||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(u&&u.rol==="cajero")return ["cajeros"];
+  if(sx==="salon")return ["salon"];
+  if(sx==="cocina")return ["cocina"];
+  if(sx==="caja")return ["cajeros"];
+  return [];
+}
 function PanelInfoCajero(p){
-  var [sec,setSec]=useState(p.tabInicial||"cajeros");
+  // Quien edita ve las cuatro secciones; un colaborador ve la suya (p.misSecciones) más General.
+  var visibles=p.puedeEditar?INFO_SECCIONES:INFO_SECCIONES.filter(function(t){return t.id==="general"||(p.misSecciones||[]).indexOf(t.id)!==-1;});
+  var [sec,setSec]=useState(p.tabInicial||(visibles[0]&&visibles[0].id)||"general");
   var info=(p.info||[]).filter(function(x){return seccionInfo(x)===sec;}).sort(function(a,b){return (a.orden||0)-(b.orden||0);});
   var puedeEditar=!!p.puedeEditar;
   var secActual=INFO_SECCIONES.find(function(s2){return s2.id===sec;})||INFO_SECCIONES[0];
@@ -2932,7 +2943,7 @@ function PanelInfoCajero(p){
         {!puedeEditar&&<div style={{fontSize:11,color:"#8C8C8C",marginTop:4}}>Instructivo y guías para el día a día.</div>}
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-        {INFO_SECCIONES.map(function(t){
+        {visibles.map(function(t){
           var act=sec===t.id;
           var n=(p.info||[]).filter(function(x){return seccionInfo(x)===t.id;}).length;
           return <button key={t.id} onClick={function(){setSec(t.id);setEditId(null);}}
@@ -24610,7 +24621,7 @@ export default function App() {
 
           {/* INFO — el cajero la lee, la carga Sofía desde su propio módulo */}
           {enInfo&&(
-            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false} tabInicial={esCajero?"cajeros":"cocina"}
+            <PanelInfoCajero info={infoCajero} usuario={cu.nombre} puedeEditar={false} misSecciones={infoSeccionesDe(cu)}
               onSave={function(){}} onDelete={function(){}}/>
           )}
 

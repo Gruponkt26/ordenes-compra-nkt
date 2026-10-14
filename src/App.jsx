@@ -1751,7 +1751,7 @@ function GestUsuarios(p) {
     <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
       <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",overflow:"hidden"}}>
         <div style={{padding:"17px 22px",borderBottom:"1px solid #1E1E1E",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-          <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>👥 Usuarios</h2>
+          <h2 style={{margin:0,fontFamily:"'Playfair Display',serif",fontSize:19}}>👥 Colaboradores</h2>
           <div style={{display:"flex",gap:8}}><button onClick={p.onClose} style={{...BS("#3A7D44"),fontSize:12}}>✓ Listo</button><button onClick={p.onClose} style={{background:"none",border:"1px solid #222",color:"#8C8C8C",borderRadius:8,width:30,height:30,cursor:"pointer"}}>✕</button></div>
         </div>
         <div style={{overflowY:"auto",flex:1,padding:"14px 22px"}}>
@@ -1762,7 +1762,7 @@ function GestUsuarios(p) {
                 <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Nombre</label><input value={nuevo.nombre} onChange={function(e){setNuevo(function(n){return{...n,nombre:e.target.value};});}} style={INP}/></div>
                 <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Usuario</label><input value={nuevo.usuario} onChange={function(e){setNuevo(function(n){return{...n,usuario:e.target.value.toLowerCase()};});}} style={INP}/></div>
                 <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Contraseña</label><input value={nuevo.password} onChange={function(e){setNuevo(function(n){return{...n,password:e.target.value};});}} style={INP}/></div>
-                <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
+                <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Colaborador</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
               </div>
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setNuevo(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"7px 3px",borderRadius:8,border:"2px solid "+(nuevo.local===l.id?l.color:"#222"),background:nuevo.local===l.id?l.color+"22":"#111",color:nuevo.local===l.id?l.color:"#8C8C8C",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={nuevo.seccion||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
@@ -1793,7 +1793,7 @@ function GestUsuarios(p) {
                     <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Nombre</label><input value={editando.nombre} onChange={function(e){setEditando(function(n){return{...n,nombre:e.target.value};});}} style={INP}/></div>
                     <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Usuario</label><input value={editando.usuario} onChange={function(e){setEditando(function(n){return{...n,usuario:e.target.value};});}} style={INP}/></div>
                     <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Contraseña</label><input value={editando.password} onChange={function(e){setEditando(function(n){return{...n,password:e.target.value};});}} style={INP}/></div>
-                    <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Usuario</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
+                    <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Colaborador</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
                   </div>
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setEditando(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"6px 3px",borderRadius:8,border:"2px solid "+(editando.local===l.id?l.color:"#222"),background:editando.local===l.id?l.color+"22":"#111",color:editando.local===l.id?l.color:"#8C8C8C",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={editando.seccion||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
@@ -11151,10 +11151,10 @@ function PanelPines(p){
         {sinPin>0&&<div style={{color:"#D4A017",marginTop:6}}>⚠️ {sinPin} sin PIN todavía.</div>}
         {(function(){
           var sinU=lista.filter(function(e){ return !(p.usuarios||[]).some(function(u){return u.empleado_id===e.id;}); });
-          if(sinU.length===0)return <div style={{color:"#3A7D44",marginTop:6}}>✅ Todos tienen su usuario para fichar.</div>;
+          if(sinU.length===0)return <div style={{color:"#3A7D44",marginTop:6}}>✅ Todos tienen su usuario de colaborador para fichar.</div>;
           return <div style={{color:"#D4A017",marginTop:6}}>
-            ⚠️ {sinU.length} sin usuario propio: {sinU.slice(0,6).map(function(e){return e.nombre;}).join(", ")}{sinU.length>6?" y "+(sinU.length-6)+" más":""}.
-            <div style={{color:"#8C8C8C",marginTop:3}}>Se les crea en 👤 Usuarios, eligiéndolos en «🕐 Es el empleado».</div>
+            ⚠️ {sinU.length} sin usuario de colaborador: {sinU.slice(0,6).map(function(e){return e.nombre;}).join(", ")}{sinU.length>6?" y "+(sinU.length-6)+" más":""}.
+            <div style={{color:"#8C8C8C",marginTop:3}}>Se les crea en 👤 Colaboradores, eligiéndolos en «🕐 Es el empleado».</div>
           </div>;
         })()}
       </div>
@@ -11178,7 +11178,7 @@ function PanelPines(p){
                 {(function(){
                   var u=(p.usuarios||[]).find(function(x){return x.empleado_id===e.id;});
                   return u?<span style={{color:"#3A7D44"}}> · 👤 {u.usuario}</span>
-                          :<span style={{color:"#D4A017"}}> · sin usuario</span>;
+                          :<span style={{color:"#D4A017"}}> · sin usuario de colaborador</span>;
                 })()}
               </div>
             </span>
@@ -20024,7 +20024,7 @@ function FichaLaboral(p){
     fetch(SURL+"/rest/v1/pautas?ambito=eq.obs_empleado&id=like.obs_"+emp.id+"_*&order=created_at.desc&limit=200",{headers:SH})
       .then(function(r){return r.json();}).then(function(d){setObs(Array.isArray(d)?d:[]);}).catch(function(){setObs([]);});
   },[emp&&emp.id,admin]);
-  if(!emp)return <div style={{fontSize:12,color:"#8C8C8C",padding:"10px 0"}}>Tu usuario todavía no está vinculado a una ficha de empleado. Pedile a administración que lo vincule.</div>;
+  if(!emp)return <div style={{fontSize:12,color:"#8C8C8C",padding:"10px 0"}}>Tu usuario de colaborador todavía no está vinculado a una ficha de empleado. Pedile a administración que lo vincule.</div>;
   var res=resumenAsistencia(emp,fichajes,mes,vacaciones,justificativos);
   // Las faltas de antes de que existiera el control (15/10/2026) no se cuentan ni se piden: solo se informan.
   var faltasReales=res.faltas.filter(function(f){return f.estado!=="previa";});
@@ -24396,7 +24396,7 @@ export default function App() {
           <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             <RelojEncabezado/>
             <span style={{fontSize:11,color:"#7E7E7E",borderLeft:"1px solid #222",borderRight:"1px solid #222",padding:"0 9px",marginRight:2}}>👤 {cu.nombre}</span>
-            {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Usuarios</button>}
+            {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Colaboradores</button>}
             {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#8C8C8C"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={salir} style={{...GH,padding:"6px 8px",fontSize:12,color:"#8C8C8C"}} title="Cerrar sesión">🚪</button>
@@ -24418,7 +24418,7 @@ export default function App() {
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
-              {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
+              {id:"usuarios",emoji:"👤",label:"Colaboradores",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -24454,7 +24454,7 @@ export default function App() {
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
-                  {id:"usuarios",emoji:"👤",label:"Usuarios",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
+                  {id:"usuarios",emoji:"👤",label:"Colaboradores",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
                   {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -24675,7 +24675,7 @@ export default function App() {
                 {/* Sub-tabs de Config Admin */}
                 {modActivo==="configadmin"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["personal","👥 Personal","#4CAF50"],["usuarios","👤 Usuarios","#1A6B8A"]].map(function(t){return(
+                    {[["personal","👥 Personal","#4CAF50"],["usuarios","👤 Colaboradores","#1A6B8A"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
                   </div>
@@ -24789,7 +24789,7 @@ export default function App() {
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Colaboradores</div>
               </div>
               <GestUsuarios users={users} empleados={empleados} onClose={function(){setModulo(null);}}
                 onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
@@ -25064,7 +25064,7 @@ export default function App() {
               <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Configuración</div>
               </div>
-              <div style={{fontSize:11,color:"#7E7E7E"}}>Seleccioná Personal o Usuarios del menú.</div>
+              <div style={{fontSize:11,color:"#7E7E7E"}}>Seleccioná Personal o Colaboradores del menú.</div>
             </div>
           )}
 
@@ -25087,9 +25087,9 @@ export default function App() {
           {esSofia&&modulo==="admin"&&vista==="usuarios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:12}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Usuarios</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👤 Colaboradores</div>
               </div>
-              <div style={{fontSize:11,color:"#7E7E7E"}}>Gestión de usuarios — próximamente.</div>
+              <div style={{fontSize:11,color:"#7E7E7E"}}>Gestión de colaboradores — próximamente.</div>
             </div>
           )}
 

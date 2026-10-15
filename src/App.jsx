@@ -21005,7 +21005,8 @@ function PanelSueldos(p){
     );
   }
   function armarEmpleado(){
-    return {id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formExtra.enf==="si"||(formExtra.enf===undefined&&!!formEmp.enfermedad_congenita),fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
+    // Se parte de la ficha completa: lo que este formulario no edita (jornada, PIN, vínculos…) tiene que conservarse.
+    return {...(empEdit||{}),id:empEdit?empEdit.id:String(Date.now()),nombre:formEmp.nombre.trim(),local:formEmp.local,categoria:formEmp.categoria,activo:formEmp.activo,convenio:formEmp.convenio||"sin_convenio",cuil:formEmp.cuil||"",direccion:formEmp.direccion||"",telefono:formEmp.telefono||"",telefono_emergencia:formEmp.telefono_emergencia||"",enfermedad_congenita:formExtra.enf==="si"||(formExtra.enf===undefined&&!!formEmp.enfermedad_congenita),fecha_alta:formEmp.fecha_alta||"",fecha_baja:formEmp.fecha_baja||"",motivo_baja:formEmp.motivo_baja||"",monto_convenio:parseFloat(formEmp.monto_convenio)||0,monto_sin_convenio:parseFloat(formEmp.monto_sin_convenio)||0,sueldo_base:(parseFloat(formEmp.monto_convenio)||0)+(parseFloat(formEmp.monto_sin_convenio)||0),created_at:empEdit?empEdit.created_at:new Date().toISOString()};
   }
   // Dar de baja no borra nada: la ficha queda inactiva con fecha y motivo, y pasa a la pestaña Bajas junto con todo
   // su historial (marcas, jornadas, vacaciones, sueldos, justificativos y observaciones).
@@ -25285,7 +25286,7 @@ export default function App() {
   async function guardarEmpleado(emp){
     var r=await sbSaveEmpleado(emp);
     if(r&&r.ok===false){ alert(r.error); return false; }
-    setEmpleados(function(prev){ var f=prev.filter(function(x){return x.id!==emp.id;}); return [emp].concat(f); });
+    setEmpleados(function(prev){ var ant=prev.find(function(x){return x.id===emp.id;}); var f=prev.filter(function(x){return x.id!==emp.id;}); return [{...(ant||{}),...emp}].concat(f); });
     return true;
   }
   function borrarFichaje(id){
@@ -25821,7 +25822,7 @@ export default function App() {
                 gastos={gastos}
                 cuitAportes={cuitAportes} onAsignarCuitAporte={asignarCuitAporte}
                 cargasSociales={cargasSociales}
-                onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+                onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var ant=prev.find(function(x){return x.id===e.id;});var f=prev.filter(function(x){return x.id!==e.id;});return[{...(ant||{}),...e},...f];});}}
                 onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
                 onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
                 onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
@@ -26176,7 +26177,7 @@ export default function App() {
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               showF931={false}
               cargasSociales={cargasSociales}
-              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var ant=prev.find(function(x){return x.id===e.id;});var f=prev.filter(function(x){return x.id!==e.id;});return[{...(ant||{}),...e},...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
@@ -26240,7 +26241,7 @@ export default function App() {
               onDeleteAporte={function(id){sbDeleteAporte(id);setAportes(function(p){return p.filter(function(a){return a.id!==id;});});}}
               onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(p){var f=p.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
               onDeleteCargaSocial={borrarCargaSocial}
-              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var ant=prev.find(function(x){return x.id===e.id;});var f=prev.filter(function(x){return x.id!==e.id;});return[{...(ant||{}),...e},...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}
@@ -26306,7 +26307,7 @@ export default function App() {
           {esSofia&&modulo==="admin"&&vista==="sueldos"&&(
             <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
-              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
+              onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var ant=prev.find(function(x){return x.id===e.id;});var f=prev.filter(function(x){return x.id!==e.id;});return[{...(ant||{}),...e},...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
               onSaveSueldo={function(s){sbSaveSueldo(s);setSueldos(function(prev){var f=prev.filter(function(x){return x.id!==s.id;});return[s,...f];});}}
               onDeleteSueldo={function(id){sbDeleteSueldo(id);setSueldos(function(prev){return prev.filter(function(s){return s.id!==id;});});}}

@@ -378,8 +378,10 @@ async function sbLoadLocalesDatos() {
 async function sbSaveLocalDatos(datos) {
   try {
     var h={...SH,"Prefer":"resolution=merge-duplicates,return=minimal"};
-    await fetch(SURL+"/rest/v1/locales_datos",{method:"POST",headers:h,body:JSON.stringify({...datos,updated_at:new Date().toISOString()})});
-  } catch(e) {}
+    var r=await fetch(SURL+"/rest/v1/locales_datos",{method:"POST",headers:h,body:JSON.stringify({...datos,updated_at:new Date().toISOString()})});
+    if(!r.ok){ var t=""; try{ t=await r.text(); }catch(e2){} return {ok:false,error:"HTTP "+r.status+" "+t.slice(0,300)}; }
+    return {ok:true};
+  } catch(e) { return {ok:false,error:String(e&&e.message||e)}; }
 }
 async function sbLoadLocalesObras() {
   try {
@@ -26003,8 +26005,13 @@ export default function App() {
                    justificativos={justificativos} onSaveJustif={guardarJustif}
                    localesDatos={localesDatos}
                    onSaveLocalDatos={async function(d){
+                     var antes=localesDatos[d.local];
                      setLocalesDatos(function(prev){var n={...prev};n[d.local]={...(prev[d.local]||{}),...d};return n;});
-                     await sbSaveLocalDatos(d);
+                     var rs=await sbSaveLocalDatos(d);
+                     if(rs&&!rs.ok){
+                       setLocalesDatos(function(prev){var n={...prev}; if(antes)n[d.local]=antes; else delete n[d.local]; return n;});
+                       alert("No se pudo guardar la ubicación. Detalle: "+rs.error);
+                     }
                    }}/>
                 :vista==="fichajes_jornadas"
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>

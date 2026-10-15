@@ -39,6 +39,10 @@ export var NOVEDADES_APP = [
     "En Fichajes → Registro, cada empleado muestra si está en la app en este momento, a qué hora entró hoy y cuál fue su último ingreso (y desde qué aparato). Hace falta que su usuario esté vinculado a su ficha." ] },
   { id: "2026-10-15j", titulo: "Mapa de cada marca", items: [
     "En Fichajes → Registro, al tocar el 📍 de una marca se abre un mapa con el punto exacto donde marcó y la distancia al local. Las marcas fuera del local se destacan en rojo con «ver mapa»." ] },
+  { id: "2026-10-15k", titulo: "Accesos a la app en Personal", items: [
+    "El módulo Colaboradores del inicio se eliminó: el usuario y la clave de cada persona ahora se cargan en su ficha (Personal → Colaboradores → ficha → 🔑 Acceso a la app). Los usuarios sin ficha, como las administradoras, están en Personal → Colaboradores → 🔑 Accesos.",
+    "Al dar de baja a un empleado se pregunta si se elimina también su acceso.",
+    "Se eliminan las cuentas compartidas de cajero (una por local) en cuanto Galo, Ariana y Alejo tengan la suya con rol cajero." ] },
 ];
 
 function ultimoVisto(usuario) {

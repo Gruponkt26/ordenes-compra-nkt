@@ -10792,6 +10792,9 @@ function diasDelMesHasta(mes, hoy){
 // o lo rechaza. Se guardan en la tabla de pautas (ámbito "justif_falta"), sin tablas nuevas. Sólo se piden
 // las faltas desde INICIO_JUSTIFICATIVOS, para no reclamar lo de antes de que existiera esto.
 var INICIO_JUSTIFICATIVOS="2026-10-15";
+// Desde qué día se usa el sistema de fichaje: lo anterior no cuenta como falta. Lo fija administración en Fichajes → Registro;
+// si no lo fijó, es el día de la primera marca. App lo deja acá en cada render.
+var FICHAJE_DESDE="";
 async function sbLoadJustificativos(){
   var out=[];
   try{
@@ -10827,7 +10830,7 @@ function faltasSinJustificar(emp, fichajes, vacaciones, justificativos){
   for(var i=1;i<=10;i++){
     var d=new Date(); d.setDate(d.getDate()-i);
     var f=fechaLocal(d);
-    if(f<INICIO_JUSTIFICATIVOS)break;
+    if(f<INICIO_JUSTIFICATIVOS||(FICHAJE_DESDE&&f<FICHAJE_DESDE))break;
     if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
     var t=turnoDe(emp,f);
     if(!t||t.franco)continue;
@@ -11608,6 +11611,8 @@ function textoAcceso(a){
 function PanelFichajes(p){
   var fichajes=p.fichajes||[], empleados=p.empleados||[];
   var accesos=useAccesos();
+  var [desdeEdit,setDesdeEdit]=useState(FICHAJE_DESDE);
+  useEffect(function(){ setDesdeEdit(FICHAJE_DESDE); },[FICHAJE_DESDE]);
   // El usuario de cada empleado (por el vínculo "Es el empleado" de Colaboradores).
   function accesoDe(emp){
     var u=(p.users||[]).find(function(x){return x.empleado_id===emp.id;});
@@ -11674,6 +11679,7 @@ function PanelFichajes(p){
       diasDelMesHasta(mes,hoy).forEach(function(f){
         var t=turnoDe(e,f); if(!t)return;
         if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
+        if(FICHAJE_DESDE&&f<FICHAJE_DESDE&&!conMarcas[f])return;   // antes de usar el sistema no hay faltas
         previstas+=t.minutos;
         if(!conMarcas[f])faltas.push(f);
       });
@@ -11758,6 +11764,17 @@ function PanelFichajes(p){
           if(ok)alert("Listo: registros de "+fmtMes(mes)+" en cero.");
         }} style={{...GH,padding:"7px 12px",fontSize:12,color:"#C1440E",borderColor:"#C1440E55"}}>🗑 Poner el mes en cero</button>}
       </div>
+
+      {puedeEditar&&p.onSaveDesde&&(
+        <div style={{...CAJA,marginBottom:12,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>📅 El fichaje se usa desde</div>
+            <div style={{fontSize:10.5,color:"#7E7E7E",lineHeight:1.5}}>Los días anteriores no cuentan como falta. {p.desdeFijado?"Fijado por administración.":"Si no lo fijás, es el día de la primera marca."}</div>
+          </div>
+          <input type="date" value={desdeEdit||""} onChange={function(e){setDesdeEdit(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}/>
+          <button onClick={function(){ if(desdeEdit)p.onSaveDesde(desdeEdit); }} disabled={!desdeEdit||desdeEdit===FICHAJE_DESDE} style={{...GH,padding:"7px 12px",fontSize:12,opacity:(!desdeEdit||desdeEdit===FICHAJE_DESDE)?0.5:1}}>Guardar</button>
+        </div>
+      )}
 
       {(function(){
         var js=p.justificativos||[];
@@ -20542,6 +20559,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
       var t=turnoDe(emp,f); if(!t)return;
       if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
       if(f>=hoy||conMarcas[f])return;
+      if(FICHAJE_DESDE&&f<FICHAJE_DESDE)return;
       if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))return;
       if((vacaciones||[]).some(function(v){return v.empleado_id===emp.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);}))return;
       var j=(justificativos||[]).find(function(x){return x.empleado_id===emp.id&&x.fecha===f;});
@@ -25039,6 +25057,11 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  var cfgFichaje=null;
+  pautas.forEach(function(x){ if(x.ambito==="config_fichaje"){ try{ var d0=JSON.parse(x.texto||"{}").desde; if(d0)cfgFichaje=d0; }catch(e){} } });
+  var primeraMarca="";
+  fichajes.forEach(function(f){ if(!f.manual&&f.fecha){ var d1=String(f.fecha).substring(0,10); if(!primeraMarca||d1<primeraMarca)primeraMarca=d1; } });
+  FICHAJE_DESDE=cfgFichaje||primeraMarca||"";
   // Qué se decidió con lo que quedó sin saldar entre locales: "dejar" (por este mes) o una fecha estimada para saldar.
   var planSaldar=null;
   pautas.forEach(function(x){
@@ -25904,7 +25927,7 @@ export default function App() {
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
               {vista==="fichajes_registro"
-                ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre}
+                ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
                    localesDatos={localesDatos}
@@ -25960,7 +25983,7 @@ export default function App() {
 
           {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
           {esSofia&&modulo==="competencia"&&(
-            <PanelCompetencia cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+            <PanelCompetencia fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
           {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}

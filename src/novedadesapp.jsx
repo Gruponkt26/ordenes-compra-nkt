@@ -51,6 +51,8 @@ export var NOVEDADES_APP = [
     "Al dar de baja se pide la fecha, el tipo de baja (renuncia, despido, mutuo acuerdo…) y el motivo; todo queda en Bajas." ] },
   { id: "2026-10-15n", titulo: "Fichaje en varios aparatos", items: [
     "Las marcas se actualizan solas cada minuto en todos los aparatos: si alguien ficha desde el celular y abre la compu, ya figura fichado. En el inicio se ve «Ya estás fichado» con la hora y desde dónde." ] },
+  { id: "2026-10-15o", titulo: "Faltas desde que se usa el fichaje", items: [
+    "Los días anteriores a que empezáramos a usar el fichaje ya no cuentan como faltas. En Fichajes → Registro se ve y se puede cambiar la fecha desde la que se usa (si no se fija, es el día de la primera marca)." ] },
 ];
 
 function ultimoVisto(usuario) {

@@ -10650,7 +10650,10 @@ function fmtDistancia(m){
 }
 // Hasta acá se considera "en el local". El GPS de un celular adentro de una cocina se va
 // fácil un par de cuadras, así que apretar más sería marcar de dudosa media planilla.
-var RADIO_LOCAL=300;
+var RADIO_LOCAL=100;
+// Quiénes pueden fichar en cualquiera de los tres locales (cubren puestos en los tres). Si marcan en un local que no es el suyo,
+// queda avisado en Novedades. Para sumar a alguien, agregar su usuario.
+var USUARIOS_EN_CUALQUIER_LOCAL=["galo","ariana","alejo"];
 
 // Una web no puede darse permiso de cámara a sí misma: sólo puede pedirlo y, si ya se lo
 // negaron, explicar dónde se destraba. Esto es lo que hace falta para eso.
@@ -10857,6 +10860,8 @@ function PanelFichar(p){
     try{ return window.localStorage.getItem("nkt_fichaje_local")||""; }catch(e){ return ""; }
   });
   var local=localElegido||p.localSugerido||"l1";
+  var multiLocal=USUARIOS_EN_CUALQUIER_LOCAL.indexOf(String(p.usuarioLogin||"").toLowerCase())!==-1;
+  var [eligioLocal,setEligioLocal]=useState(false);   // los que pueden fichar en cualquier local arrancan en el suyo
   var [kiosco,setKiosco]=useState(function(){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
   });
@@ -10924,7 +10929,7 @@ function PanelFichar(p){
   // puede pasar acá.
   useEffect(function(){ if(!elegido&&camaraOn)setFase("lista"); },[elegido,camaraOn]);
 
-  function guardarLocal(v){ setLocalElegido(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
+  function guardarLocal(v){ setEligioLocal(true); setLocalElegido(v); try{ window.localStorage.setItem("nkt_fichaje_local",v); }catch(e){} }
   function guardarKiosco(v){ setKiosco(v); try{ window.localStorage.setItem("nkt_fichaje_kiosco",v?"1":"0"); }catch(e){} }
 
   // Quién es el que está mirando la pantalla. Primero el vínculo del usuario, que vive en
@@ -10933,6 +10938,8 @@ function PanelFichar(p){
   // Usuarios se ve quién está configurado y quién no.
   var porUsuario=p.empleadoId?empleados.find(function(e){return e.id===p.empleadoId;}):null;
   var soyYo=porUsuario||(miEmp?empleados.find(function(e){return e.id===miEmp;}):null);
+  // Con el celular propio se ficha en el local de la ficha; los que cubren los tres locales pueden elegir otro.
+  if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
   // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
   // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
   var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});
@@ -11054,7 +11061,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:""};
+      con_pin:!!pinDe(elegido), notas:(elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):""};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -11278,7 +11285,7 @@ function PanelFichar(p){
           <button onClick={function(){setVinculando(false);}} style={{...GH,padding:"5px 10px",fontSize:11,marginTop:9}}>Cancelar</button>
         </div>
       )}
-      {!soyYo&&(
+      {(!soyYo||multiLocal)&&(
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
         {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
           var act=local===l.id;
@@ -11286,10 +11293,11 @@ function PanelFichar(p){
             style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",
               color:act?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>;
         })}
-        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C",cursor:"pointer",marginLeft:"auto"}}>
+        {!soyYo&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C",cursor:"pointer",marginLeft:"auto"}}>
           <input type="checkbox" checked={kiosco} onChange={function(e){guardarKiosco(e.target.checked);}}/>
           Tablet del local
-        </label>
+        </label>}
+        {soyYo&&multiLocal&&<div style={{width:"100%",fontSize:10.5,color:"#8C8C8C"}}>Marcás en el local donde estás. Si no es el tuyo ({(getLocal(soyYo.local)||{}).nombre}), queda avisado en Novedades.</div>}
       </div>
       )}
       {!soyYo&&!vinculando&&!kiosco&&!p.empleadoId&&(
@@ -13282,6 +13290,35 @@ function PanelNovedades(p){
             </div>
           )}
         </Seccion>
+
+        {(function(){
+          // Quienes marcaron en un local que no es el suyo (los que cubren los tres locales), de los últimos 7 días.
+          var desdeF=fechaLocal(new Date(Date.now()-6*86400000));
+          var vistos={}, otros=[];
+          (p.fichajes||[]).forEach(function(f){
+            if(f.manual||!f.fecha||String(f.fecha).substring(0,10)<desdeF)return;
+            var emp=(p.empleados||[]).find(function(e){return e.id===f.empleado_id;});
+            if(!emp||!emp.local||!f.local||emp.local===f.local)return;
+            var k=f.empleado_id+"_"+String(f.fecha).substring(0,10)+"_"+f.local;
+            if(vistos[k]){ vistos[k].horas.push(f.tipo+" "+f.hora); return; }
+            vistos[k]={emp:emp,f:f,horas:[f.tipo+" "+f.hora]}; otros.push(vistos[k]);
+          });
+          if(otros.length===0)return null;
+          otros.sort(function(a,b){return String(b.f.fecha).localeCompare(String(a.f.fecha));});
+          return(
+            <Seccion titulo={"📍 Marcaron en otro local"} color="#1A8A7B">
+              {otros.map(function(o,i){
+                var dst=getLocal(o.f.local), org=getLocal(o.emp.local);
+                return(
+                  <div key={i} style={{padding:"6px 0",borderTop:i===0?"none":"1px solid #141414",fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
+                    <b style={{color:"#F0EDE8"}}>{o.emp.nombre}</b> marcó en {dst?dst.emoji+" "+dst.nombre:o.f.local} <span style={{color:"#8C8C8C"}}>(su local es {org?org.emoji+" "+org.nombre:o.emp.local})</span>
+                    <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(String(o.f.fecha).substring(0,10))} · {o.horas.join(" · ")}</div>
+                  </div>
+                );
+              })}
+            </Seccion>
+          );
+        })()}
 
         {(function(){
           // Lo que un local le debe a otro: pagos cruzados y lo que se puso de más o de menos por la Oficina.
@@ -25795,7 +25832,7 @@ export default function App() {
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
-                :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+                :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
                    localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
                    justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>}
             </div>
@@ -25863,7 +25900,7 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades ordenes={ordenes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}
@@ -26333,7 +26370,7 @@ export default function App() {
           )}
 
           {!esSofia&&subCompras==="fichar"&&(
-            <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+            <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
               localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
               justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}

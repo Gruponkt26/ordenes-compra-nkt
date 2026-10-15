@@ -49,6 +49,8 @@ export var NOVEDADES_APP = [
   { id: "2026-10-15m", titulo: "Convenio y bajas", items: [
     "En la ficha, quien tiene convenio ahora lleva el nombre del convenio (por ejemplo UTHGRA – Gastronómicos).",
     "Al dar de baja se pide la fecha, el tipo de baja (renuncia, despido, mutuo acuerdo…) y el motivo; todo queda en Bajas." ] },
+  { id: "2026-10-15n", titulo: "Fichaje en varios aparatos", items: [
+    "Las marcas se actualizan solas cada minuto en todos los aparatos: si alguien ficha desde el celular y abre la compu, ya figura fichado. En el inicio se ve «Ya estás fichado» con la hora y desde dónde." ] },
 ];
 
 function ultimoVisto(usuario) {

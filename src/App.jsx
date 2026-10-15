@@ -24733,6 +24733,29 @@ export default function App() {
   function entrar(u){ guardarSesion(u&&u.id); setCu(perfilEfectivo(u)); }
   // Se deja registrado cuándo entra cada usuario y hasta cuándo estuvo con la app abierta: un registro por usuario (pautas,
   // ámbito "acceso") que se actualiza cada pocos minutos mientras la app está abierta. Se ve en Colaboradores.
+  // Las marcas se vuelven a traer solas (los últimos 2 días, liviano): si alguien ficha desde el celular y después abre la
+  // compu, que ya estaba abierta, la compu tiene que enterarse de que ya está fichado.
+  function refrescarFichajes(){
+    var d0=fechaLocal(new Date(Date.now()-2*86400000));
+    fetch(SURL+"/rest/v1/fichajes?fecha=gte."+d0+"&order=momento.desc&limit=3000",{headers:{...SH,"Cache-Control":"no-cache","Pragma":"no-cache"}})
+      .then(function(r){return r.json();})
+      .then(function(nuevos){
+        if(!Array.isArray(nuevos))return;
+        setFichajes(function(prev){
+          var viejos=(prev||[]).filter(function(x){return String(x.fecha||"").substring(0,10)<d0;});
+          return nuevos.concat(viejos);
+        });
+      }).catch(function(){});
+  }
+  useEffect(function(){
+    if(!cu)return;
+    function r(){ if(typeof document!=="undefined"&&document.visibilityState==="hidden")return; refrescarFichajes(); }
+    r();
+    var t=setInterval(r,60000);
+    document.addEventListener("visibilitychange",r);
+    window.addEventListener("focus",r);
+    return function(){ clearInterval(t); document.removeEventListener("visibilitychange",r); window.removeEventListener("focus",r); };
+  },[cu&&cu.usuario]);
   var ultimoPingAcceso=useRef(0);
   useEffect(function(){
     if(!cu||!cu.usuario)return;
@@ -25587,6 +25610,23 @@ export default function App() {
                 <div style={{fontSize:36,marginBottom:6}}>🚨</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:23,fontWeight:800,color:"#E0714A",lineHeight:1.2}}>Por favor cerrar la caja</div>
                 <div style={{fontSize:13,color:"#C88888",marginTop:6}}>Anoche no quedó cargado el cierre de {la?la.nombre:lf} ({fmtDate(ayer)}).</div>
+              </div>
+            );
+          })()}
+
+          {/* Si ya fichó (por ejemplo desde el celular), se lo dice acá */}
+          {enCompras&&!subCompras&&!esSofia&&empleadoDe(cu)&&(function(){
+            var emp=empleadoDe(cu);
+            var limite=new Date(Date.now()-18*3600000).toISOString();
+            var mias=fichajes.filter(function(f){return f.empleado_id===emp.id&&String(f.momento||"")>=limite;})
+              .sort(function(a,b){return String(a.momento||"").localeCompare(String(b.momento||""));});
+            var ult=mias[mias.length-1];
+            if(!ult)return null;
+            var dentro=ult.tipo!=="salida";
+            return(
+              <div style={{background:dentro?"#08120F":"#111",border:"1px solid "+(dentro?"#3A7D4466":"#1E1E1E"),borderRadius:14,padding:"12px 16px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>
+                <div style={{fontSize:13,fontWeight:800,color:dentro?"#3A7D44":"#9A9A9A"}}>{dentro?"🟢 Ya estás fichado":"🔴 Marcaste la salida"} · {ult.tipo==="salida"?"salida":"entrada"} {ult.hora}</div>
+                <div style={{fontSize:11,color:"#7E7E7E",marginTop:2}}>{ult.aparato==="kiosco"?"desde la tablet del local":ult.aparato==="celular"?"desde el celular":ult.manual?"carga manual":""}{(getLocal(ult.local)||{}).nombre?" · "+(getLocal(ult.local)||{}).nombre:""}</div>
               </div>
             );
           })()}

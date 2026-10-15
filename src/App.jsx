@@ -25267,7 +25267,6 @@ export default function App() {
                     {id:"dashboard",label:"📊 Dashboard",color:"#D4A017"},
                     {id:"egresos",label:"💰 Egresos",color:"#1A6B8A"},
                     {id:"cierres",label:"🏪 Cierres",color:"#C1440E"},
-                    {id:"vencimientos",label:"📅 Vencimientos",color:"#D4A017",avisos:avisosVencimientos(vencimientos,7).length},
                     {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
                   ].map(function(sm){
                     var activo=modActivo===sm.id;
@@ -25276,7 +25275,6 @@ export default function App() {
                         if(sm.id==="dashboard")irVista("dashboard");
                         else if(sm.id==="egresos")irVista("egresos");
                         else if(sm.id==="cierres")irVista("cierres");
-                        else if(sm.id==="vencimientos")irVista("vencimientos");
                         else if(sm.id==="finanzas")irVista("resultados");
                         else if(sm.id==="configadmin")irVista("configadmin");
                       }} style={{flex:1,padding:"10px 6px",borderRadius:8,border:"none",background:activo?sm.color+"22":"transparent",color:activo?sm.color:"#7E7E7E",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.15s",textAlign:"center",position:"relative"}}>

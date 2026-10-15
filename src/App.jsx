@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import { SURL, SKEY, SH, LOCALES, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
+import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
 
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
@@ -461,7 +462,7 @@ async function sbLoadPautas() {
   try {
     // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
     // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
-    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado,datos_emp))&order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado,datos_emp,novedades_vistas))&order=created_at.desc", { headers: SH });
     var d = await r.json();
     if(Array.isArray(d))return d;
     // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
@@ -26104,6 +26105,7 @@ export default function App() {
         onSaveUser={function(u){sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});}}
         onDeleteUser={function(id){sbDeleteUsuario(id);setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>}
       <ChatEquipo cu={cu} users={users}/>
+      <NovedadesApp cu={cu}/>
     </div>
   );
 }

@@ -27,6 +27,9 @@ export var NOVEDADES_APP = [
   { id: "2026-10-15e", titulo: "Saldar entre locales", items: [
     "Lo que un local puso de más o de menos por la Oficina ahora se puede saldar (Locales → Oficina → Resumen), igual que los pagos cruzados.",
     "En Novedades hay una tarjeta «Para saldar entre locales» y, cada mes nuevo, pregunta si se van a saldar o para qué fecha." ] },
+  { id: "2026-10-15f", titulo: "Deuda", items: [
+    "En cada local hay una pestaña nueva «💳 Deuda» al lado de Vencimientos: ahí pasa lo que ya venció y no se pagó, con su botón para pagar.",
+    "Vencimientos queda más despejado: sólo lo que viene y lo ya pagado." ] },
 ];
 
 function ultimoVisto(usuario) {

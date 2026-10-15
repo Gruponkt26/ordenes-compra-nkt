@@ -32,6 +32,9 @@ export var NOVEDADES_APP = [
     "Vencimientos queda más despejado: sólo lo que viene y lo ya pagado." ] },
   { id: "2026-10-15g", titulo: "Enviar la app", items: [
     "En la pantalla de inicio hay un botón «📲 Enviar la app por WhatsApp»: manda a cada colaborador (con el teléfono de su ficha) el link de la app y el instructivo para instalarla." ] },
+  { id: "2026-10-15h", titulo: "Fichaje con ubicación", items: [
+    "El PIN se pide sólo en la tablet del local. Desde el celular propio (vinculado a su ficha) se ficha sin PIN, pero hay que estar en el local: si el local tiene su ubicación cargada, la app compara y no deja marcar desde lejos (hasta 300 m).",
+    "Para que funcione, cargá la ubicación de cada local parado ahí: Fichajes → Registro → 📍 Locales." ] },
 ];
 
 function ultimoVisto(usuario) {

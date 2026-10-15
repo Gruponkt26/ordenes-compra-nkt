@@ -13112,6 +13112,9 @@ function PanelVencimientos(p){
   // Con localFijo (cuando se abre desde el módulo Locales) sólo se ven y se cargan los vencimientos de ese local.
   var vencTodos=p.vencimientos||[];
   var LF=p.localFijo||"l1";
+  // La Oficina sólo tiene Alquileres, Servicios y Otros: el resto de los rubros (AFIP, ARBA, gremio…) es de los locales.
+  // Si ya hay algo cargado en otro rubro (un crédito, por ejemplo), sigue visible para poder pasarlo al local que corresponde.
+  var GRUPOS=p.localFijo==="l4"?GRUPOS_VENC.filter(function(g){return ["alquileres","servicios","otros"].indexOf(g.id)>=0||vencTodos.some(function(v){return v.local==="l4"&&grupoIdDe(v)===g.id;});}):GRUPOS_VENC;
   var vencimientos=p.localFijo?vencTodos.filter(function(v){return v.local===p.localFijo;}):vencTodos;
   var onSave=p.localFijo?function(v){ return p.onSave({...v,local:p.localFijo}); }:p.onSave;
   var onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
@@ -13612,7 +13615,7 @@ function PanelVencimientos(p){
       <select value="" onChange={function(e){moverRubro(v,e.target.value);}} title="Pasar a otro rubro"
         style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#9A9A9A",fontSize:10,cursor:"pointer",padding:"4px 6px",fontFamily:"'Inter',sans-serif",maxWidth:110}}>
         <option value="">↪ Mover a…</option>
-        {GRUPOS_VENC.filter(function(g){return g.id!==grupoIdDe(v);}).map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
+        {GRUPOS.filter(function(g){return g.id!==grupoIdDe(v);}).map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
       </select>
     );
   }
@@ -13785,6 +13788,21 @@ function PanelVencimientos(p){
               {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
             </select>
           )}
+          {!p.localFijo&&(function(){
+            // AFIP, ARBA, Gremio y Obra Social de la SRL: estaban en la Oficina (que sólo tiene Alquileres, Servicios y Otros);
+            // pasan a Kusama.
+            var deOf=vencTodos.filter(function(v){ return v.local==="l4"&&["afip","arba","gremio","obra_social"].indexOf(grupoIdDe(v))>=0; });
+            if(deOf.length===0)return null;
+            return (
+              <button onClick={function(){
+                var lista=deOf.slice(0,10).map(function(v){return "· "+grupoDe(v.grupo).corto+" — "+v.concepto;}).join("\n");
+                if(!window.confirm("Hay "+deOf.length+" vencimiento"+(deOf.length===1?"":"s")+" de AFIP / ARBA / Gremio / Obra Social en la Oficina.\n\n"+lista+(deOf.length>10?"\n· …y "+(deOf.length-10)+" más":"")+"\n\n¿Pasarlos a Kusama? Los pagos ya hechos no se tocan."))return;
+                deOf.forEach(function(v){ onSave({...v,local:"l2"}); });
+              }} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #8B2FC966",background:"#0F0A14",color:"#B070E0",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                🔧 Pasar {deOf.length} vencimiento{deOf.length===1?"":"s"} de la Oficina a Kusama
+              </button>
+            );
+          })()}
           {(function(){
             // Pagos hechos antes de que el egreso guardara la fecha original de vencimiento: se la agregamos desde el vencimiento.
             if(!onSaveEgreso)return null;
@@ -13961,7 +13979,7 @@ function PanelVencimientos(p){
         <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
           {[
             {id:"rubros", txt:"📅 Por rubro",     color:"#D4A017", act:!grupoFiltro&&!verTodos,
-             sub:GRUPOS_VENC.length+" rubros",
+             sub:GRUPOS.length+" rubros",
              ir:function(){ setVerTodos(false); verGrupo(null); }},
             {id:"juntos", txt:"📋 Todos juntos",  color:"#1A6B8A", act:grupoFiltro==="all"&&!verTodos,
              sub:fmt(delMesTodos.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0))+" en "+mesFiltro,
@@ -14017,7 +14035,7 @@ function PanelVencimientos(p){
       {!grupoFiltro&&!verTodos&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(215px,1fr))",gap:10,marginBottom:12}}>
-            {GRUPOS_VENC.map(function(g){
+            {GRUPOS.map(function(g){
               var delGrupo=delMesTodos.filter(function(x){return grupoIdDe(x.v)===g.id;});
               var falta=delGrupo.filter(function(x){return !x.pago;}).reduce(function(a,x){return a+montoDe(x);},0);
               var venc=delGrupo.filter(function(x){return !x.pago&&x.dias!==null&&x.dias<0;}).length;
@@ -14111,7 +14129,7 @@ function PanelVencimientos(p){
                 <div style={{...INP,display:"flex",alignItems:"center",color:grupoDe(form.grupo).color,fontWeight:700,background:"#0A0A0A"}}>{grupoDe(form.grupo).label}</div>
               ):(
                 <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>
-                  {GRUPOS_VENC.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
+                  {GRUPOS.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
                 </select>
               )}
             </div>

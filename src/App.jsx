@@ -11650,7 +11650,7 @@ function PanelFichajes(p){
     var previo=localesDatos[l.id]||{};
     var d=distanciaMetros(previo,pos);
     if(previo.lat!=null&&d!=null&&!window.confirm(l.nombre+" ya tenía una ubicación cargada, a "+fmtDistancia(d)+" de donde estás ahora.\n\n¿La reemplazo por esta?"))return;
-    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, local:l.id, lat:pos.lat, lng:pos.lng});
+    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, id:previo.id||(l.id+"_datos"), local:l.id, lat:pos.lat, lng:pos.lng});
   }
   // Carga a mano: se pega el enlace de Google Maps (o "lat, lng") y no hace falta estar en el local.
   async function pegarUbicacion(l){
@@ -11660,7 +11660,7 @@ function PanelFichajes(p){
     var lat=m?parseFloat(m[1]):NaN, lng=m?parseFloat(m[2]):NaN;
     if(!m||isNaN(lat)||isNaN(lng)||Math.abs(lat)>90||Math.abs(lng)>180){ alert("No encontré coordenadas en ese texto. Tienen que verse así: -34.60370, -58.38160"); return; }
     var previo=localesDatos[l.id]||{};
-    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, local:l.id, lat:lat, lng:lng});
+    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, id:previo.id||(l.id+"_datos"), local:l.id, lat:lat, lng:lng});
   }
   // La distancia de una marca a su local, cuando se saben las dos puntas.
   function lejosDe(f){

@@ -4323,12 +4323,43 @@ function PanelResumenLocal(p){
 // sueltos): cuánto le tocaba a cada local (50/30/20) y cuánto puso realmente de su cuenta, para ver
 // quién puso de más o de menos. Se reconocen por el subrubro "Oficina X%" que llevan los egresos
 // partidos; los egresos viejos con local Oficina que no se partieron se muestran aparte.
+// Lo que cada local puso de más (+) o de menos (−) por la Oficina, acumulado desde que se llevan los saldos entre locales
+// (SALDOS_CRUZADOS_DESDE): lo que salió de sus cuentas menos la parte que le tocaba (50/30/20).
+function balanceOficina(gastos){
+  var dif={l1:0,l3:0,l2:0};
+  (gastos||[]).filter(function(g){return esParteOficinaGasto(g)&&String(g.fecha||"").substring(0,7)>=SALDOS_CRUZADOS_DESDE;}).forEach(function(g){
+    if(dif[g.local]===undefined)return;
+    dif[g.local]-=parseFloat(g.monto)||0;
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:g.monto}];
+    pagos.forEach(function(pg){
+      var d=localDeCajaMayor(String(pg.medio||pg.tipo||""))||getLocalFromMedio(String(pg.medio||pg.tipo||""));
+      if(d!=="l1"&&d!=="l2"&&d!=="l3")d=g.local;
+      dif[d]+=parseFloat(pg.monto)||0;
+    });
+  });
+  return dif;
+}
+// Lo que el local a le debe al local b por la Oficina: el que puso de menos le devuelve a los que pusieron de más, en
+// proporción a lo que cada uno puso de más.
+function deudaOficinaEntre(dif,a,b){
+  var deficit=Math.max(0,-(dif[a]||0)), credB=Math.max(0,dif[b]||0);
+  var totCred=["l1","l3","l2"].reduce(function(t,k){return t+Math.max(0,dif[k]||0);},0);
+  if(deficit<=0||credB<=0||totCred<=0)return 0;
+  return deficit*credB/totCred;
+}
+// Neto por la Oficina entre a y b, descontando lo ya devuelto: positivo si a le debe a b.
+function netoOficinaPar(gastos,a,b){
+  var dif=balanceOficina(gastos);
+  var pg=function(x,y){return (SALDOS_CRUZADOS||[]).filter(function(q){return q.deudor===x&&q.acreedor===y&&String(q.fecha||"").substring(0,7)>=SALDOS_CRUZADOS_DESDE&&q.oficina;}).reduce(function(t,q){return t+(parseFloat(q.monto)||0);},0);};
+  return deudaOficinaEntre(dif,a,b)-deudaOficinaEntre(dif,b,a)-pg(a,b)+pg(b,a);
+}
 function PanelResumenOficina(p){
   var gastos=p.gastos||[];
   var hoy=new Date().toISOString().split("T")[0];
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var [mes,setMes]=useState(hoy.slice(0,7));
   var [abierto,setAbierto]=useState({});
+  var [saldarOf,setSaldarOf]=useState(null);
   var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
   function esParteOficina(g){ return esParteOficinaGasto(g); }
   var partes=gastos.filter(esParteOficina);
@@ -4456,6 +4487,72 @@ function PanelResumenOficina(p){
         "Le correspondía" es la parte del costo de cada local (50/30/20). "Puso de su cuenta" es la plata que salió de las cuentas de ese local. Si no coinciden, la diferencia son los gastos cruzados: quien puso de más está cubriendo a quien puso de menos.
       </div>
 
+      {(function(){
+        var par=[["l1","l3"],["l1","l2"],["l3","l2"]];
+        var filas=par.map(function(t){
+          var n=netoOficinaPar(gastos,t[0],t[1]);
+          if(Math.abs(n)<1)return null;
+          return n>0?{deudor:t[0],acreedor:t[1],m:n}:{deudor:t[1],acreedor:t[0],m:-n};
+        }).filter(Boolean);
+        var ya=(SALDOS_CRUZADOS||[]).filter(function(q){return q.oficina&&String(q.fecha||"").substring(0,7)>=SALDOS_CRUZADOS_DESDE;});
+        if(filas.length===0&&ya.length===0)return null;
+        return(
+          <div style={{background:"#0C0C0C",border:"1px solid #E07B0044",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+            <div style={{fontSize:10,color:"#E07B00",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8,fontWeight:700}}>💸 Saldar lo de la Oficina · acumulado desde {SALDOS_CRUZADOS_DESDE}</div>
+            {filas.length===0&&<div style={{fontSize:12,color:"#3A7D44"}}>✅ Todo saldado entre los locales.</div>}
+            {filas.map(function(f){
+              var d=getLocal(f.deudor), a=getLocal(f.acreedor);
+              return(
+                <div key={f.deudor+f.acreedor} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #151515"}}>
+                  <div style={{fontSize:12,color:"#D8D8D8"}}>{d?d.emoji+" "+d.nombre:f.deudor} le debe <b style={{color:"#F0EDE8"}}>{fmt(f.m)}</b> a {a?a.emoji+" "+a.nombre:f.acreedor}</div>
+                  {p.onSaldar&&<button onClick={function(){setSaldarOf({deudor:f.deudor,acreedor:f.acreedor,monto:String(Math.round(f.m)),medio:"efectivo",fecha:hoy,nota:"Oficina"});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>💸 Saldar</button>}
+                </div>
+              );
+            })}
+            {ya.length>0&&(
+              <div style={{marginTop:8}}>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Devoluciones por la Oficina</div>
+                {ya.map(function(x){
+                  var d=getLocal(x.deudor), a=getLocal(x.acreedor);
+                  return <div key={x.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#9A9A9A",padding:"3px 0"}}>
+                    <span>{fmtDate(x.fecha)} · {d?d.nombre:x.deudor} → {a?a.nombre:x.acreedor} · {x.medio==="efectivo"?"💵 efectivo":"📲 transferencia"}</span>
+                    <b style={{color:"#F0EDE8"}}>{fmt(x.monto)}</b>
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {saldarOf&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:380,border:"1px solid #3A7D4444"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#4C9A5A",marginBottom:2}}>💸 Saldar lo de la Oficina</div>
+            <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>{(getLocal(saldarOf.deudor)||{}).nombre} le devuelve a {(getLocal(saldarOf.acreedor)||{}).nombre}. La plata sale de la caja o la cuenta del primero y entra a la del segundo.</div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Monto</label>
+            <input type="number" value={saldarOf.monto} onChange={function(e){var v=e.target.value;setSaldarOf(function(f){return{...f,monto:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:14,width:"100%",boxSizing:"border-box",marginBottom:10}}/>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Cómo se devolvió</label>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              {[["efectivo","💵 Efectivo"],["transferencia","📲 Transferencia"]].map(function(o){var on=saldarOf.medio===o[0];return(
+                <button key={o[0]} onClick={function(){setSaldarOf(function(f){return{...f,medio:o[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(on?"#3A7D44":"#1E1E1E"),background:on?"#3A7D4422":"#0F0F0F",color:on?"#4C9A5A":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>{o[1]}</button>
+              );})}
+            </div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha</label>
+            <input type="date" value={saldarOf.fecha} onChange={function(e){var v=e.target.value;setSaldarOf(function(f){return{...f,fecha:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:12}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setSaldarOf(null);}} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+              <button onClick={function(){
+                var m=parseFloat(saldarOf.monto)||0;
+                if(m<=0){alert("Poné cuánto se devolvió.");return;}
+                p.onSaldar({fecha:saldarOf.fecha,deudor:saldarOf.deudor,acreedor:saldarOf.acreedor,medio:saldarOf.medio,monto:m,nota:saldarOf.nota||"Oficina",oficina:true});
+                setSaldarOf(null);
+              }} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Confirmar devolución</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {rubros.length>0&&(
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>En qué se gastó</div>
@@ -4526,7 +4623,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4657,7 +4754,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
-      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
+      {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina} onSaldar={onSaldarOficina}/>}
 
       {/* Tab Recetas */}
       {tab==="recetas"&&(
@@ -13036,6 +13133,30 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
+        {(function(){
+          // Lo que un local le debe a otro: pagos cruzados y lo que se puso de más o de menos por la Oficina.
+          var pend=pendientesDeSaldar(p.gastos||[]);
+          if(pend.length===0)return null;
+          return(
+            <Seccion titulo={"💸 Para saldar entre locales"} color="#E07B00">
+              {pend.map(function(x,i){
+                var d=getLocal(x.deudor), a=getLocal(x.acreedor);
+                var oficina=x.tipo==="oficina";
+                var ir=oficina?p.irSaldarOficina:p.irSaldarCruzados;
+                return(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <div style={{fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
+                      {d?d.emoji+" "+d.nombre:x.deudor} le debe <b style={{color:"#F0EDE8"}}>{fmt(x.m)}</b> a {a?a.emoji+" "+a.nombre:x.acreedor}
+                      <div style={{fontSize:10,color:oficina?"#1A6B8A":"#E07B00"}}>{oficina?"🏢 por la Oficina":"↔️ pagos cruzados"}</div>
+                    </div>
+                    {ir&&<button onClick={ir} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>💸 Saldar</button>}
+                  </div>
+                );
+              })}
+            </Seccion>
+          );
+        })()}
+
         {(altas.length+bajas.length)>0&&(
         <Seccion titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Personal">
           <div>
@@ -15315,6 +15436,74 @@ function PanelVencimientos(p){
   );
 }
 
+// Lo que el local a le debe al local b por pagos cruzados, acumulado desde SALDOS_CRUZADOS_DESDE y menos lo ya devuelto
+// (sin contar las devoluciones por la Oficina, que van aparte); negativo si es al revés.
+function netoComunPar(gastos,saldos,a,b){
+  var deudasAcum=deudasDe((gastos||[]).filter(function(g){return g.fecha&&g.fecha.slice(0,7)>=SALDOS_CRUZADOS_DESDE&&g.local!=="l4";}));
+  var saldosDesde=(saldos||[]).filter(function(x){return x.fecha&&x.fecha.slice(0,7)>=SALDOS_CRUZADOS_DESDE&&!x.oficina;});
+  var d=function(x,y){return deudasAcum.filter(function(q){return q.deudor===x&&q.acreedor===y;}).reduce(function(t,q){return t+q.total;},0);};
+  var pg=function(x,y){return saldosDesde.filter(function(q){return q.deudor===x&&q.acreedor===y;}).reduce(function(t,q){return t+(parseFloat(q.monto)||0);},0);};
+  return d(a,b)-d(b,a)-pg(a,b)+pg(b,a);
+}
+// Todo lo que está para saldar entre locales: pagos cruzados y lo de la Oficina. [{deudor,acreedor,m,tipo}]
+function pendientesDeSaldar(gastos){
+  var out=[];
+  [["l1","l3"],["l1","l2"],["l3","l2"]].forEach(function(t){
+    var c=netoComunPar(gastos,SALDOS_CRUZADOS,t[0],t[1]);
+    if(Math.abs(c)>=1)out.push(c>0?{deudor:t[0],acreedor:t[1],m:c,tipo:"cruzado"}:{deudor:t[1],acreedor:t[0],m:-c,tipo:"cruzado"});
+    var o=netoOficinaPar(gastos,t[0],t[1]);
+    if(Math.abs(o)>=1)out.push(o>0?{deudor:t[0],acreedor:t[1],m:o,tipo:"oficina"}:{deudor:t[1],acreedor:t[0],m:-o,tipo:"oficina"});
+  });
+  return out;
+}
+// Deudas entre locales por pagos cruzados (un local paga con el medio de otro). Las usan Pagos cruzados y Novedades.
+// Calcular deudas entre locales por medio de pago
+function detectarLocalMedio(medio){
+  if(!medio)return null;
+  if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))return "l1";
+  if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
+  if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano")||medio.includes("Calzon"))return "l3";
+  if(medio.includes("Oficina"))return "l4";
+  return null;
+}
+function tipoMedio(medio){
+  if(!medio)return "Otro";
+  if(medio.toLowerCase().includes("efectivo"))return "Efectivo";
+  if(medio.toLowerCase().includes("transferencia"))return "Transferencia";
+  if(medio.toLowerCase().includes("débito")||medio.toLowerCase().includes("debito"))return "Débito";
+  if(medio.toLowerCase().includes("crédito")||medio.toLowerCase().includes("credito"))return "Crédito";
+  return "Otro";
+}
+// acreedorLocal ya resuelto por el llamador — respeta pago.local explícito (ej. cargado desde "Gastos Diarios")
+// antes de caer al detectarLocalMedio por texto, igual que hace PanelResultados.
+function registrarDeuda(deudas,localGasto,acreedorLocal,medio,cuenta,monto){
+  if(!acreedorLocal||acreedorLocal===localGasto)return;
+  var tipo=tipoMedio(medio);
+  var key=localGasto+"_"+acreedorLocal+"_"+tipo;
+  if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:acreedorLocal,medio:tipo,cuentas:[],total:0};
+  deudas[key].total+=parseFloat(monto||0);
+  var cuentaLabel=(cuenta||medio||"").replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
+  if(cuentaLabel&&!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
+}
+function deudasDe(lista){
+  var deudas={};
+  lista.forEach(function(g){
+    if(esParteOficinaGasto(g))return; // la Oficina no genera deuda entre locales (ver Resumen de la Oficina)
+    if(g.pagos&&g.pagos.length>0){
+      // Nuevo sistema con pagos[]
+      g.pagos.forEach(function(pago){
+        var medio=pago.medio||pago.tipo||pago.forma_pago||"";
+        var acreedorLocal=pago.local||detectarLocalMedio(medio);
+        registrarDeuda(deudas,g.local,acreedorLocal,medio,pago.cuenta,pago.monto);
+      });
+    } else {
+      // Legacy: forma_pago simple
+      registrarDeuda(deudas,g.local,detectarLocalMedio(g.forma_pago),g.forma_pago,null,g.monto);
+    }
+  });
+  return Object.values(deudas).filter(function(d){return d.total>0;});
+}
+
 // ─── PANEL CIERRE DE CAJA ─────────────────────────────────────────────────────
 // Saldos entre locales: cuando un local le devuelve a otro lo que éste pagó por él (pago cruzado), eso mueve la
 // disponibilidad —sale de la caja o cuenta del que devuelve y entra a la del que recibe—. Se guardan en
@@ -15509,53 +15698,7 @@ function PanelCruzados(p){
 
   var totalCruzado=gastosFiltrados.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
 
-  // Calcular deudas entre locales por medio de pago
-  function detectarLocalMedio(medio){
-    if(!medio)return null;
-    if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))return "l1";
-    if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
-    if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano")||medio.includes("Calzon"))return "l3";
-    if(medio.includes("Oficina"))return "l4";
-    return null;
-  }
-  function tipoMedio(medio){
-    if(!medio)return "Otro";
-    if(medio.toLowerCase().includes("efectivo"))return "Efectivo";
-    if(medio.toLowerCase().includes("transferencia"))return "Transferencia";
-    if(medio.toLowerCase().includes("débito")||medio.toLowerCase().includes("debito"))return "Débito";
-    if(medio.toLowerCase().includes("crédito")||medio.toLowerCase().includes("credito"))return "Crédito";
-    return "Otro";
-  }
-  // acreedorLocal ya resuelto por el llamador — respeta pago.local explícito (ej. cargado desde "Gastos Diarios")
-  // antes de caer al detectarLocalMedio por texto, igual que hace PanelResultados.
-  function registrarDeuda(deudas,localGasto,acreedorLocal,medio,cuenta,monto){
-    if(!acreedorLocal||acreedorLocal===localGasto)return;
-    var tipo=tipoMedio(medio);
-    var key=localGasto+"_"+acreedorLocal+"_"+tipo;
-    if(!deudas[key])deudas[key]={deudor:localGasto,acreedor:acreedorLocal,medio:tipo,cuentas:[],total:0};
-    deudas[key].total+=parseFloat(monto||0);
-    var cuentaLabel=(cuenta||medio||"").replace("Efectivo - ","").replace("Transferencia - ","").replace("Débito - ","").replace("Crédito - ","");
-    if(cuentaLabel&&!deudas[key].cuentas.includes(cuentaLabel))deudas[key].cuentas.push(cuentaLabel);
-  }
   function calcDeudas(){ return deudasDe(gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltro&&g.local!=="l4";})); }
-  function deudasDe(lista){
-    var deudas={};
-    lista.forEach(function(g){
-      if(esParteOficinaGasto(g))return; // la Oficina no genera deuda entre locales (ver Resumen de la Oficina)
-      if(g.pagos&&g.pagos.length>0){
-        // Nuevo sistema con pagos[]
-        g.pagos.forEach(function(pago){
-          var medio=pago.medio||pago.tipo||pago.forma_pago||"";
-          var acreedorLocal=pago.local||detectarLocalMedio(medio);
-          registrarDeuda(deudas,g.local,acreedorLocal,medio,pago.cuenta,pago.monto);
-        });
-      } else {
-        // Legacy: forma_pago simple
-        registrarDeuda(deudas,g.local,detectarLocalMedio(g.forma_pago),g.forma_pago,null,g.monto);
-      }
-    });
-    return Object.values(deudas).filter(function(d){return d.total>0;});
-  }
   var deudas=calcDeudas();
   // Lo acumulado desde que se empezó a llevar (octubre 2026), no sólo el mes: una deuda de fines de un mes se
   // suele devolver en el siguiente. Menos lo que ya se devolvió.
@@ -15563,11 +15706,7 @@ function PanelCruzados(p){
   var deudasAcum=deudasDe(gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)>=SALDOS_CRUZADOS_DESDE&&g.local!=="l4";}));
   var saldosDesde=saldos.filter(function(x){return x.fecha&&x.fecha.slice(0,7)>=SALDOS_CRUZADOS_DESDE;});
   var [saldando,setSaldando]=useState(null);
-  function netoPar(a,b){ // lo que a le debe a b, restando lo ya devuelto; negativo si es al revés
-    var d=function(x,y){return deudasAcum.filter(function(q){return q.deudor===x&&q.acreedor===y;}).reduce(function(t,q){return t+q.total;},0);};
-    var pg=function(x,y){return saldosDesde.filter(function(q){return q.deudor===x&&q.acreedor===y;}).reduce(function(t,q){return t+(parseFloat(q.monto)||0);},0);};
-    return d(a,b)-d(b,a)-pg(a,b)+pg(b,a);
-  }
+  function netoPar(a,b){ return netoComunPar(gastos,saldos,a,b); }
   function confirmarSaldo(){
     var m=parseFloat(saldando.monto)||0;
     if(m<=0){alert("Poné cuánto se devolvió.");return;}
@@ -25345,6 +25484,8 @@ export default function App() {
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
               irFaltantes={function(){abrirModulo("personal","faltantes");}}
+              irSaldarCruzados={function(){abrirModulo("admin","cruzados");}}
+              irSaldarOficina={function(){setLocInicial("l4");setLocTab("resumen");abrirModulo("locales","loc_inicio");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
               irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />
@@ -25380,6 +25521,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
+              onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid){ return panelVencimientos({llave:"venc_"+lid,localFijo:lid}); }}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}

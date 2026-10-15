@@ -12018,6 +12018,8 @@ function PanelIIBB(p){
 // emitió) y las canceladas se muestran aparte, chiquitas, para que no inflen el número.
 function PanelOrdenesPorMes(p){
   var ordenes=p.ordenes||[];
+  var [fechaPlan,setFechaPlan]=useState("");
+  var [cambiandoPlan,setCambiandoPlan]=useState(false);
   var locales=LOCALES.filter(function(l){return l.id!=="l4";});
   var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   var mesActual=diaDeNegocio().substring(0,7);
@@ -13139,6 +13141,30 @@ function PanelNovedades(p){
           if(pend.length===0)return null;
           return(
             <Seccion titulo={"💸 Para saldar entre locales"} color="#E07B00">
+              {(function(){
+                // Desde el primer día del mes siguiente al que se empezó a llevar, si queda algo sin saldar se pregunta qué se va a hacer.
+                var hoyP=diaDeNegocio(), mesP=hoyP.substring(0,7), plan=p.planSaldar;
+                var vigente=!!plan&&((plan.decision==="dejar"&&plan.mes===mesP)||(plan.decision==="fecha"&&plan.fecha&&plan.fecha>=hoyP));
+                var preguntar=mesP>SALDOS_CRUZADOS_DESDE&&(!vigente||cambiandoPlan);
+                if(!preguntar&&vigente&&plan.decision==="fecha")return(
+                  <div style={{fontSize:11,color:"#D4A017",marginBottom:8,display:"flex",justifyContent:"space-between",gap:8}}>
+                    <span>📅 Fecha estimada para saldar: <b>{fmtDate(plan.fecha)}</b></span>
+                    {p.onPlanSaldar&&<button onClick={function(){setCambiandoPlan(true);setFechaPlan(plan.fecha);}} style={{background:"none",border:"none",color:"#8A8A8A",fontSize:10,cursor:"pointer",padding:0}}>cambiar</button>}
+                  </div>
+                );
+                if(!preguntar||!p.onPlanSaldar)return null;
+                return(
+                  <div style={{background:"#14100A",border:"1px solid #D4A01766",borderRadius:10,padding:"11px 13px",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#D4A017"}}>Empezó un mes nuevo y quedó plata sin saldar entre locales</div>
+                    <div style={{fontSize:11,color:"#B8B8B8",margin:"4px 0 9px",lineHeight:1.5}}>¿Los vas a saldar? Podés dejarlo así por este mes o poner una fecha estimada, y te lo vuelvo a preguntar cuando pase.</div>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                      <button onClick={function(){p.onPlanSaldar({decision:"dejar",mes:mesP});setCambiandoPlan(false);}} style={{padding:"8px 13px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#D8D8D8",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Lo dejo así</button>
+                      <input type="date" value={fechaPlan} min={hoyP} onChange={function(e){setFechaPlan(e.target.value);}} style={{padding:"7px 9px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}/>
+                      <button disabled={!fechaPlan||fechaPlan<hoyP} onClick={function(){p.onPlanSaldar({decision:"fecha",fecha:fechaPlan,mes:mesP});setCambiandoPlan(false);setFechaPlan("");}} style={{padding:"8px 13px",borderRadius:8,border:"none",background:(!fechaPlan||fechaPlan<hoyP)?"#1A1A1A":"#D4A017",color:(!fechaPlan||fechaPlan<hoyP)?"#6E6E6E":"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:800,cursor:(!fechaPlan||fechaPlan<hoyP)?"not-allowed":"pointer"}}>📅 Fecha estimada</button>
+                    </div>
+                  </div>
+                );
+              })()}
               {pend.map(function(x,i){
                 var d=getLocal(x.deudor), a=getLocal(x.acreedor);
                 var oficina=x.tipo==="oficina";
@@ -24557,6 +24583,15 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  // Qué se decidió con lo que quedó sin saldar entre locales: "dejar" (por este mes) o una fecha estimada para saldar.
+  var planSaldar=null;
+  pautas.forEach(function(x){
+    if(x.ambito!=="saldar_plan")return;
+    try{
+      var d=JSON.parse(x.texto||"{}");
+      if(d.decision&&(!planSaldar||String(x.updated_at||x.created_at||"")>String(planSaldar.at||"")))planSaldar={...d,id:x.id,at:x.updated_at||x.created_at||""};
+    }catch(e){}
+  });
   // Impuesto al débito/crédito cargado a mano (Resultados): una pauta por carga, ámbito "imp_extra".
   var impExtra=[];
   pautas.forEach(function(x){
@@ -25482,6 +25517,7 @@ export default function App() {
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
               irFaltantes={function(){abrirModulo("personal","faltantes");}}
+              planSaldar={planSaldar} onPlanSaldar={function(o){guardarOfPauta("saldar_plan",{id:"sp_"+String(Date.now()),...o});}}
               irSaldarCruzados={function(){abrirModulo("admin","cruzados");}}
               irSaldarOficina={function(){setLocInicial("l4");setLocTab("resumen");abrirModulo("locales","loc_inicio");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}

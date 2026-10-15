@@ -11781,6 +11781,40 @@ function PanelFichajes(p){
         }} style={{...GH,padding:"7px 12px",fontSize:12,color:"#C1440E",borderColor:"#C1440E55"}}>🗑 Poner el mes en cero</button>}
       </div>
 
+      {showUbic&&puedeEditar&&(
+        <div style={{...CAJA,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📍 Ubicación de los locales</div>
+          <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.6,marginBottom:11}}>
+            Se toma <strong style={{color:"#888"}}>parado en el local</strong>: tocás «Tomar acá» y queda guardada la posición de ese
+            aparato. Con eso, desde el celular no se puede marcar a más de {RADIO_LOCAL} m del local.
+            Si no estás en el local, usá «Pegar coordenadas» con el enlace de Google Maps.
+          </div>
+          {LOCALES.map(function(l,i){
+            var d=localesDatos[l.id]||{};
+            var tiene=d.lat!=null&&d.lng!=null;
+            return (
+              <div key={l.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:i===0?"none":"1px solid #141414",flexWrap:"wrap"}}>
+                <span style={{flex:1,minWidth:130}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{l.emoji} {l.nombre}</div>
+                  <div style={{fontSize:10,color:tiene?"#3A7D44":"#D4A017",marginTop:2}}>
+                    {tiene
+                      ? <a href={"https://maps.google.com/?q="+d.lat+","+d.lng} target="_blank" rel="noreferrer" style={{color:"#3A7D44"}}>
+                          {Number(d.lat).toFixed(5)}, {Number(d.lng).toFixed(5)} · ver en el mapa
+                        </a>
+                      : "Sin ubicación — de este local no se puede comparar nada"}
+                  </div>
+                </span>
+                <button onClick={function(){tomarUbicacion(l);}} disabled={tomando===l.id}
+                  style={{...BS(tiene?"#222":"#1A6B8A"),padding:"7px 13px",fontSize:11.5,color:tiene?"#888":"#fff"}}>
+                  {tomando===l.id?"Leyendo…":(tiene?"Tomar de nuevo":"Tomar acá")}
+                </button>
+                <button onClick={function(){pegarUbicacion(l);}} style={{...BS("#222"),padding:"7px 13px",fontSize:11.5,color:"#888"}}>Pegar coordenadas</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {puedeEditar&&p.onSaveDesde&&(
         <div style={{...CAJA,marginBottom:12,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{flex:1,minWidth:200}}>
@@ -11889,39 +11923,6 @@ function PanelFichajes(p){
         );
       })()}
 
-      {showUbic&&puedeEditar&&(
-        <div style={{...CAJA,marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📍 Ubicación de los locales</div>
-          <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.6,marginBottom:11}}>
-            Se toma <strong style={{color:"#888"}}>parado en el local</strong>: tocás «Tomar acá» y queda guardada la posición de ese
-            aparato. Con eso, desde el celular no se puede marcar a más de {RADIO_LOCAL} m del local.
-            Si no estás en el local, usá «Pegar coordenadas» con el enlace de Google Maps.
-          </div>
-          {LOCALES.map(function(l,i){
-            var d=localesDatos[l.id]||{};
-            var tiene=d.lat!=null&&d.lng!=null;
-            return (
-              <div key={l.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:i===0?"none":"1px solid #141414",flexWrap:"wrap"}}>
-                <span style={{flex:1,minWidth:130}}>
-                  <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{l.emoji} {l.nombre}</div>
-                  <div style={{fontSize:10,color:tiene?"#3A7D44":"#D4A017",marginTop:2}}>
-                    {tiene
-                      ? <a href={"https://maps.google.com/?q="+d.lat+","+d.lng} target="_blank" rel="noreferrer" style={{color:"#3A7D44"}}>
-                          {Number(d.lat).toFixed(5)}, {Number(d.lng).toFixed(5)} · ver en el mapa
-                        </a>
-                      : "Sin ubicación — de este local no se puede comparar nada"}
-                  </div>
-                </span>
-                <button onClick={function(){tomarUbicacion(l);}} disabled={tomando===l.id}
-                  style={{...BS(tiene?"#222":"#1A6B8A"),padding:"7px 13px",fontSize:11.5,color:tiene?"#888":"#fff"}}>
-                  {tomando===l.id?"Leyendo…":(tiene?"Tomar de nuevo":"Tomar acá")}
-                </button>
-                <button onClick={function(){pegarUbicacion(l);}} style={{...BS("#222"),padding:"7px 13px",fontSize:11.5,color:"#888"}}>Pegar coordenadas</button>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       <div style={{...CAJA,marginBottom:12,display:"flex",gap:20,flexWrap:"wrap"}}>
         <div><div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>Horas del mes</div>

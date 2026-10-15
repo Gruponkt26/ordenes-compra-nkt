@@ -10095,7 +10095,10 @@ var CUITS_VENC=[
   {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"CUIT personal",corto:"CUIT personal",color:"#C1440E",local:"l1",cubre:"El Bodegón"},
   {id:"c2",cuit:"30-71844629-1",razon:"Calzon Gitano SRL",label:"Calzón Gitano SRL",corto:"SRL",color:"#1A6B8A",local:"l4",cubre:"Kusama + Colantonio's"},
 ];
-var GRUPOS_POR_CUIT=["afip","arba","gremio","obra_social","creditos"];
+// Antes AFIP, ARBA, Gremio, Obra Social y Créditos se cargaban por CUIT. Ahora todos los vencimientos se cargan por
+// local —más prolijo: cada local ve y paga lo suyo—. Los que ya estaban cargados por CUIT conservan su local
+// (el Bodegón o la Oficina) y se pueden pasar a otro local editándolos.
+var GRUPOS_POR_CUIT=[];
 function porCuit(grupo){ return GRUPOS_POR_CUIT.indexOf(grupoDe(grupo||"otros").id)>=0; }
 function cuitVenc(id){ return CUITS_VENC.find(function(c){return c.id===id;})||CUITS_VENC[1]; }
 // Lo cargado antes de que existiera el campo: el Bodegón es el CUIT personal, el resto la SRL.
@@ -13679,7 +13682,7 @@ function PanelVencimientos(p){
       // cuándo vencía y cuánto se atrasó el pago. Gremio y obra social son aportes que van a F.931: hasta que
       // eso se acomode, quedan en Administrativo del Bodegón.
       var gidEg=grupoIdDe(x.v), esAporteEg=(gidEg==="gremio"||gidEg==="obra_social");
-      var localEg=esAporteEg?"l1":x.v.local, areaEg=esAporteEg?"Administrativo":x.v.area;
+      var localEg=esAporteEg?((x.v.local&&x.v.local!=="l4")?x.v.local:"l1"):x.v.local, areaEg=esAporteEg?"Administrativo":x.v.area;
       var atrasoDias=(x.fecha&&formPago.fecha)?Math.round((new Date(formPago.fecha+"T00:00:00")-new Date(String(x.fecha).substring(0,10)+"T00:00:00"))/86400000):0;
       var partesDet=[];
       if(interes>0)partesDet.push("Incluye "+fmt(interes)+" de intereses por mora");

@@ -10916,6 +10916,9 @@ function PanelFichar(p){
   var videoRef=useRef(null), streamRef=useRef(null), vueltaRef=useRef(null);
   // La cámara se prende mientras haga falta, y "camara"→"guardando" no la reinicia.
   var camaraOn=(fase==="camara"||fase==="guardando");
+  // Si el local tiene su ubicación cargada, desde el celular sólo se ficha estando ahí.
+  var coordsLocal=(p.localesDatos||{})[local];
+  var cercaReq=!kiosco&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
 
   function cancelarVuelta(){ if(vueltaRef.current){ clearTimeout(vueltaRef.current); vueltaRef.current=null; } }
   useEffect(function(){ return cancelarVuelta; },[]);
@@ -10955,10 +10958,11 @@ function PanelFichar(p){
   // una sola vez y la marca sale con un solo toque.
   var [ubic,setUbic]=useState("");   // "" | buscando | ok | no
   var ubicRef=useRef(null);
+  var [posAct,setPosAct]=useState(null);
   useEffect(function(){
     if(!camaraOn||fase==="guardando")return;
-    var vivo=true; setUbic("buscando"); ubicRef.current=null;
-    ubicacionAhora().then(function(pos){ if(!vivo)return; ubicRef.current=pos; setUbic(pos?"ok":"no"); });
+    var vivo=true; setUbic("buscando"); ubicRef.current=null; setPosAct(null);
+    ubicacionAhora().then(function(pos){ if(!vivo)return; ubicRef.current=pos; setPosAct(pos); setUbic(pos?"ok":"no"); });
     return function(){ vivo=false; };
   },[camaraOn&&fase!=="guardando"]);
 
@@ -10975,7 +10979,8 @@ function PanelFichar(p){
     cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
-    if(!pinDe(emp)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
+    // Con el celular propio (ya vinculado) no se pide PIN: ahí manda la ubicación. El PIN queda para la tablet del local y para los aparatos compartidos.
+    if(!pinDe(emp)||(soyYo&&!kiosco)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
     setFase("pin");
   }
   function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); setOlvido(null); }
@@ -11023,6 +11028,13 @@ function PanelFichar(p){
     if(!elegido)return;
     setFase("guardando");
     var ahora=new Date();
+    // Desde un celular (no la tablet del local) hay que estar en el local: se compara la ubicación con la cargada del local.
+    var posChk=ubicRef.current||await ubicacionAhora();
+    if(cercaReq){
+      if(!posChk){ alert("No pude tomar tu ubicación. Para fichar desde el celular tenés que activarla: candado 🔒 de la barra del navegador → Permisos → Ubicación → Permitir, y recargá."); setFase("camara"); return; }
+      var dChk=distanciaMetros(coordsLocal,posChk);
+      if(dChk!=null&&dChk>RADIO_LOCAL){ alert("Estás a "+fmtDistancia(dChk)+" del local. Para fichar tenés que estar en el local (hasta "+RADIO_LOCAL+" m)."); setFase("camara"); return; }
+    }
     // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
     // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
     if(extra&&extra.entradaHora){
@@ -11040,7 +11052,7 @@ function PanelFichar(p){
     }
     var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
     var foto=null, avisoFoto="";
-    var pos=ubicRef.current||await ubicacionAhora();
+    var pos=posChk;
     var fila={id:id, empleado_id:elegido.id, empleado_nombre:elegido.nombre, local:local,
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
@@ -11160,7 +11172,9 @@ function PanelFichar(p){
   if(camaraOn&&elegido){
     var est=estadoDe(elegido.id);
     var sugerido=est.adentro?"salida":"entrada";
-    var puede=true;
+    var distAct=(cercaReq&&posAct)?distanciaMetros(coordsLocal,posAct):null;
+    var fueraLocal=cercaReq&&(ubic==="no"||(distAct!=null&&distAct>RADIO_LOCAL));
+    var puede=!fueraLocal;
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
         <button onClick={volver} disabled={fase==="guardando"} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
@@ -11169,13 +11183,13 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
-          <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
-            fontSize:13,fontWeight:700,color:ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?"📍 Ubicación lista":ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+          <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
+            fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distAct>RADIO_LOCAL?"📍 Estás a "+fmtDistancia(distAct)+" del local":"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {ubic==="no"&&fase!=="guardando"&&(
             <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>
-              Podés marcar igual, pero queda sin ubicación. Para activarla: tocá el candado 🔒 de la barra del navegador → «Permisos» → «Ubicación» → «Permitir», y recargá.
+              {cercaReq?"Desde el celular hace falta la ubicación para fichar. ":"Podés marcar igual, pero queda sin ubicación. "}Para activarla: tocá el candado 🔒 de la barra del navegador → «Permisos» → «Ubicación» → «Permitir», y recargá.
             </div>
           )}
           {olvido&&(
@@ -25590,7 +25604,7 @@ export default function App() {
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
                 :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
                    localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
-                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}/>}
+                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>}
             </div>
           )}
 
@@ -26128,7 +26142,7 @@ export default function App() {
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
               localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
-              justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}/>
+              justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(

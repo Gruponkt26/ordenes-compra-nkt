@@ -10928,8 +10928,6 @@ function PanelFichar(p){
   // La cámara se prende mientras haga falta, y "camara"→"guardando" no la reinicia.
   var camaraOn=(fase==="camara"||fase==="guardando");
   // Si el local tiene su ubicación cargada, desde el celular sólo se ficha estando ahí.
-  var coordsLocal=(p.localesDatos||{})[local];
-  var cercaReq=!kiosco&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
 
   function cancelarVuelta(){ if(vueltaRef.current){ clearTimeout(vueltaRef.current); vueltaRef.current=null; } }
   useEffect(function(){ return cancelarVuelta; },[]);
@@ -10949,6 +10947,9 @@ function PanelFichar(p){
   var soyYo=porUsuario||(miEmp?empleados.find(function(e){return e.id===miEmp;}):null);
   // Con el celular propio se ficha en el local de la ficha; los que cubren los tres locales pueden elegir otro.
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
+  // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
+  var coordsLocal=(p.localesDatos||{})[local];
+  var cercaReq=!kiosco&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
   // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
   // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
   var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});

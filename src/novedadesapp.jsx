@@ -36,7 +36,7 @@ export var NOVEDADES_APP = [
     "El PIN se pide sólo en la tablet del local. Desde el celular propio (vinculado a su ficha) se ficha sin PIN, pero hay que estar en el local: si el local tiene su ubicación cargada, la app compara y no deja marcar desde lejos (hasta 300 m).",
     "Para que funcione, cargá la ubicación de cada local parado ahí: Fichajes → Registro → 📍 Locales." ] },
   { id: "2026-10-15i", titulo: "Quién entró a la app", items: [
-    "En Colaboradores, cada usuario muestra si está en la app en este momento, a qué hora entró hoy y cuál fue su último ingreso (y desde qué aparato)." ] },
+    "En Fichajes → Registro, cada empleado muestra si está en la app en este momento, a qué hora entró hoy y cuál fue su último ingreso (y desde qué aparato). Hace falta que su usuario esté vinculado a su ficha." ] },
 ];
 
 function ultimoVisto(usuario) {

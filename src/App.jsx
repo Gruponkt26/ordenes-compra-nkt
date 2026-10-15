@@ -25266,6 +25266,7 @@ export default function App() {
                   </button>
                 );})}
               </div>
+              <div style={{textAlign:"center"}}><BotonEnviarApp empleados={empleados}/></div>
             </div>
           )}
 
@@ -25471,8 +25472,6 @@ export default function App() {
                     );
                   })}
                 </div>
-
-                <BotonEnviarApp empleados={empleados}/>
 
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(

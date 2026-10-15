@@ -55,6 +55,8 @@ export var NOVEDADES_APP = [
     "Los días anteriores a que empezáramos a usar el fichaje ya no cuentan como faltas. En Fichajes → Registro se ve y se puede cambiar la fecha desde la que se usa (si no se fija, es el día de la primera marca)." ] },
   { id: "2026-10-15p", titulo: "Módulo Fichaje", items: [
     "Para Sofía y Belen el módulo Fichaje ya no tiene «Fichar» (ninguna ficha): abre directo en el Registro, con Jornadas y PINs al lado." ] },
+  { id: "2026-10-15q", titulo: "Registro de fichajes más limpio", items: [
+    "El Registro abre con dos columnas por día: Entradas y Salidas, cada una con quién marcó, a qué hora y en qué local (⚠️ si no es el suyo). El detalle por empleado sigue en «Por empleado»." ] },
 ];
 
 function ultimoVisto(usuario) {

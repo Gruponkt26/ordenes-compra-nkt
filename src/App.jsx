@@ -10872,7 +10872,8 @@ function PanelFichar(p){
   });
   // Quien entra con su usuario vinculado a una ficha ficha con su celular: nunca cuenta como tablet del local.
   var atadoAEmp=false; try{ atadoAEmp=!!window.localStorage.getItem("nkt_fichaje_empleado"); }catch(e){}
-  var kiosco=kioscoGuardado&&!p.empleadoId&&!multiLocal&&!atadoAEmp;
+  // El modo tablet del local está desactivado por ahora: se ficha siempre con la ubicación del celular.
+  var kiosco=false;
   var [elegido,setElegido]=useState(null);
   var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
   var [pin,setPin]=useState("");          // lo que va tecleando
@@ -11301,10 +11302,6 @@ function PanelFichar(p){
             style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",
               color:act?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>;
         })}
-        {!soyYo&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C",cursor:"pointer",marginLeft:"auto"}}>
-          <input type="checkbox" checked={kiosco} onChange={function(e){guardarKiosco(e.target.checked);}}/>
-          Tablet del local
-        </label>}
         {soyYo&&multiLocal&&<div style={{width:"100%",fontSize:10.5,color:"#8C8C8C"}}>Marcás en el local donde estás. Si no es el tuyo ({(getLocal(soyYo.local)||{}).nombre}), queda avisado en Novedades.</div>}
       </div>
       )}

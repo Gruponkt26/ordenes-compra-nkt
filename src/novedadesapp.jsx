@@ -53,6 +53,8 @@ export var NOVEDADES_APP = [
     "Las marcas se actualizan solas cada minuto en todos los aparatos: si alguien ficha desde el celular y abre la compu, ya figura fichado. En el inicio se ve «Ya estás fichado» con la hora y desde dónde." ] },
   { id: "2026-10-15o", titulo: "Faltas desde que se usa el fichaje", items: [
     "Los días anteriores a que empezáramos a usar el fichaje ya no cuentan como faltas. En Fichajes → Registro se ve y se puede cambiar la fecha desde la que se usa (si no se fija, es el día de la primera marca)." ] },
+  { id: "2026-10-15p", titulo: "Módulo Fichaje", items: [
+    "Para Sofía y Belen el módulo Fichaje ya no tiene «Fichar» (ninguna ficha): abre directo en el Registro, con Jornadas y PINs al lado." ] },
 ];
 
 function ultimoVisto(usuario) {

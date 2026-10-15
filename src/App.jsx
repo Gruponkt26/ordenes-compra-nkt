@@ -25549,7 +25549,7 @@ export default function App() {
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
-              {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
+              {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
@@ -25584,7 +25584,7 @@ export default function App() {
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
-                  {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
+                  {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
@@ -25677,7 +25677,7 @@ export default function App() {
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
-                esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida con foto",color:"#1A8A7B",badge:0},
+                esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
                             {id:"info_general",emoji:"ℹ️",label:"Info general",desc:"Información para todos los colaboradores",color:"#1A6B8A",badge:0}].concat(
@@ -25917,8 +25917,8 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["fichar","🕐 Fichar","#1A8A7B"],["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"]].map(function(t){
-                  var act=vista===t[0];
+                {[["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"]].map(function(t){
+                  var act=vista===t[0]||(t[0]==="fichajes_registro"&&vista!=="fichajes_jornadas"&&vista!=="fichajes_pines");
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
                 <button onClick={async function(){
@@ -25926,7 +25926,7 @@ export default function App() {
                   alert("🔧 Diagnóstico del fichaje\n\n"+r);
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
-              {vista==="fichajes_registro"
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
@@ -25939,9 +25939,7 @@ export default function App() {
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
-                :<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
-                   localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
-                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>}
+                :null}
             </div>
           )}
 

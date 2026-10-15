@@ -11650,6 +11650,16 @@ function PanelFichajes(p){
     if(previo.lat!=null&&d!=null&&!window.confirm(l.nombre+" ya tenía una ubicación cargada, a "+fmtDistancia(d)+" de donde estás ahora.\n\n¿La reemplazo por esta?"))return;
     if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, local:l.id, lat:pos.lat, lng:pos.lng});
   }
+  // Carga a mano: se pega el enlace de Google Maps (o "lat, lng") y no hace falta estar en el local.
+  async function pegarUbicacion(l){
+    var txt=window.prompt("Pegá el enlace de Google Maps de "+l.nombre+" (o las coordenadas, ej: -34.6037, -58.3816).\n\nEn Google Maps: tocá y mantené el lugar → copiá los números que aparecen arriba.");
+    if(!txt)return;
+    var m=String(txt).match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)||String(txt).match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)||String(txt).match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+    var lat=m?parseFloat(m[1]):NaN, lng=m?parseFloat(m[2]):NaN;
+    if(!m||isNaN(lat)||isNaN(lng)||Math.abs(lat)>90||Math.abs(lng)>180){ alert("No encontré coordenadas en ese texto. Tienen que verse así: -34.60370, -58.38160"); return; }
+    var previo=localesDatos[l.id]||{};
+    if(p.onSaveLocalDatos)await p.onSaveLocalDatos({...previo, local:l.id, lat:lat, lng:lng});
+  }
   // La distancia de una marca a su local, cuando se saben las dos puntas.
   function lejosDe(f){
     if(!f||f.lat==null)return null;
@@ -11884,8 +11894,8 @@ function PanelFichajes(p){
           <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📍 Ubicación de los locales</div>
           <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.6,marginBottom:11}}>
             Se toma <strong style={{color:"#888"}}>parado en el local</strong>: tocás «Tomar acá» y queda guardada la posición de ese
-            aparato. Con eso, las marcas que se hagan a más de {RADIO_LOCAL} m aparecen con la distancia en rojo.
-            No bloquea nada —el GPS de un celular adentro de una cocina se va fácil un par de cuadras—, sólo avisa.
+            aparato. Con eso, desde el celular no se puede marcar a más de {RADIO_LOCAL} m del local.
+            Si no estás en el local, usá «Pegar coordenadas» con el enlace de Google Maps.
           </div>
           {LOCALES.map(function(l,i){
             var d=localesDatos[l.id]||{};
@@ -11906,6 +11916,7 @@ function PanelFichajes(p){
                   style={{...BS(tiene?"#222":"#1A6B8A"),padding:"7px 13px",fontSize:11.5,color:tiene?"#888":"#fff"}}>
                   {tomando===l.id?"Leyendo…":(tiene?"Tomar de nuevo":"Tomar acá")}
                 </button>
+                <button onClick={function(){pegarUbicacion(l);}} style={{...BS("#222"),padding:"7px 13px",fontSize:11.5,color:"#888"}}>Pegar coordenadas</button>
               </div>
             );
           })}

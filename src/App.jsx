@@ -10650,7 +10650,7 @@ function fmtDistancia(m){
 }
 // Hasta acá se considera "en el local". El GPS de un celular adentro de una cocina se va
 // fácil un par de cuadras, así que apretar más sería marcar de dudosa media planilla.
-var RADIO_LOCAL=100;
+var RADIO_LOCAL=150;
 // Quiénes pueden fichar en cualquiera de los tres locales (cubren puestos en los tres). Si marcan en un local que no es el suyo,
 // queda avisado en Novedades. Para sumar a alguien, agregar su usuario.
 var USUARIOS_EN_CUALQUIER_LOCAL=["galo","ariana","alejo"];

@@ -792,22 +792,39 @@ function SBadge(p) {
   var e = M[p.status]||M.borrador; return <Badge color={e[1]}>{e[0]}</Badge>;
 }
 
-// Envía el link de la app por WhatsApp: a un número puntual o eligiendo el contacto en WhatsApp.
+// Envía el link de la app y el instructivo de instalación por WhatsApp: a cada colaborador (con el teléfono de su ficha),
+// a un número puntual o eligiendo el contacto en WhatsApp.
 var APP_URL="https://ordenes-compra-nkt.vercel.app";
-function BotonEnviarApp(){
+var MENSAJE_APP="Hola {nombre}! Este es el link de la app de gestión del Grupo NKT:\n"+APP_URL+"\n\n"
+  +"📲 Cómo instalarla:\n"
+  +"• Android: abrí el link en Chrome → tocá los 3 puntitos ⋮ → «Agregar a la pantalla de inicio» → «Instalar».\n"
+  +"• iPhone: abrí el link en Safari → tocá el botón de compartir (cuadrado con flecha) → «Agregar a inicio» → «Agregar».\n\n"
+  +"Si te lo abre dentro de WhatsApp, tocá ⋮ (o los 3 puntitos) → «Abrir en Chrome» o «Abrir en Safari».\n"
+  +"Después entrá con tu usuario y contraseña y, cuando te lo pida, aceptá las notificaciones.";
+function numeroWsp(num){
+  var d=cleanPhone(num||"");
+  if(!d)return "";
+  if(d.indexOf("54")===0)return d;
+  d=d.replace(/^0+/,"").replace(/^(\d{2,4})15(\d{6,8})$/,"$1$2");   // saca el 0 de la zona y el 15
+  return "549"+d;
+}
+function BotonEnviarApp(p){
   var [abierto,setAbierto]=useState(false);
   var [num,setNum]=useState("");
-  var [msg,setMsg]=useState("Hola! Este es el link de la app de gestión del Grupo NKT: "+APP_URL+"\n\nAbrilo en Chrome (o Safari) y agregalo a la pantalla de inicio para entrar directo.");
-  function numeroWsp(){
-    var d=cleanPhone(num);
-    if(!d)return "";
-    if(d.indexOf("54")===0)return d;
-    d=d.replace(/^0+/,"").replace(/^(\d{2,4})15(\d{6,8})$/,"$1$2");   // saca el 0 de la zona y el 15
-    return "549"+d;
-  }
-  function enviar(){
-    var n=numeroWsp();
-    window.open("https://wa.me/"+n+"?text="+encodeURIComponent(msg),"_blank");
+  var [msg,setMsg]=useState(MENSAJE_APP);
+  var [enviados,setEnviados]=useState(function(){
+    try{ return JSON.parse(window.localStorage.getItem("nkt_app_enviada")||"{}"); }catch(e){ return {}; }
+  });
+  var colabs=(p.empleados||[]).filter(function(e){return e.activo!==false;}).sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));});
+  function abrirWsp(telefono,nombre,id){
+    var n=numeroWsp(telefono);
+    var texto=msg.replace(/\{nombre\}/g,nombre?String(nombre).trim().split(" ")[0]:"").replace("Hola !","Hola!");
+    window.open("https://wa.me/"+n+"?text="+encodeURIComponent(texto),"_blank");
+    if(id){
+      var nuevo={...enviados}; nuevo[id]=new Date().toISOString().slice(0,10);
+      setEnviados(nuevo);
+      try{ window.localStorage.setItem("nkt_app_enviada",JSON.stringify(nuevo)); }catch(e){}
+    }
   }
   var INPW={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   return(
@@ -815,16 +832,34 @@ function BotonEnviarApp(){
       <button onClick={function(){setAbierto(true);}} style={{padding:"7px 13px",borderRadius:8,border:"1px solid #25D36666",background:"#25D36615",color:"#25D366",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📲 Enviar la app por WhatsApp</button>
       {abierto&&(
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16,textAlign:"left"}}>
-          <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:400,border:"1px solid #25D36644",fontFamily:"'Inter',sans-serif"}}>
+          <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",border:"1px solid #25D36644",fontFamily:"'Inter',sans-serif"}}>
             <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>📲 Enviar la app por WhatsApp</div>
-            <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>Link: <span style={{color:"#25D366"}}>{APP_URL}</span></div>
-            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Número (opcional)</label>
+            <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>Link: <span style={{color:"#25D366"}}>{APP_URL}</span> · con el instructivo de instalación</div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Mensaje ({"{nombre}"} se reemplaza por el nombre de cada uno)</label>
+            <textarea value={msg} onChange={function(e){setMsg(e.target.value);}} rows={9} style={{...INPW,resize:"vertical",marginBottom:12,fontSize:12}}/>
+            <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Colaboradores · el teléfono sale de su ficha</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+              {colabs.length===0&&<div style={{fontSize:11,color:"#6E6E6E"}}>No hay colaboradores cargados.</div>}
+              {colabs.map(function(e){
+                var tel=numeroWsp(e.telefono);
+                var ya=enviados[e.id];
+                var loc=getLocal(e.local);
+                return(
+                  <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,background:"#0C0C0C",border:"1px solid #171717",borderRadius:9,padding:"7px 10px"}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:tel?"#F0EDE8":"#6E6E6E"}}>{e.nombre}{ya?<span style={{color:"#3A7D44",fontWeight:400}}> · ✓ enviado {fmtDate(ya)}</span>:null}</div>
+                      <div style={{fontSize:10,color:tel?"#7E7E7E":"#C1440E"}}>{loc?loc.emoji+" ":""}{tel?e.telefono:"sin teléfono en la ficha"}</div>
+                    </div>
+                    <button disabled={!tel} onClick={function(){abrirWsp(e.telefono,e.nombre,e.id);}} style={{padding:"6px 11px",borderRadius:8,border:"none",background:tel?"#25D366":"#1A1A1A",color:tel?"#000":"#6E6E6E",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:800,cursor:tel?"pointer":"not-allowed",flexShrink:0}}>{ya?"Reenviar":"Enviar"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Otro número (opcional)</label>
             <input value={num} onChange={function(e){setNum(e.target.value);}} placeholder="ej: 11 5555 1234 — vacío = elegir el contacto en WhatsApp" style={{...INPW,marginBottom:10}}/>
-            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Mensaje</label>
-            <textarea value={msg} onChange={function(e){setMsg(e.target.value);}} rows={5} style={{...INPW,resize:"vertical",marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={function(){setAbierto(false);}} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cerrar</button>
-              <button onClick={enviar} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#25D366",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>Enviar por WhatsApp</button>
+              <button onClick={function(){abrirWsp(num,"",null);}} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#25D366",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>Enviar a este número</button>
             </div>
           </div>
         </div>
@@ -25437,7 +25472,7 @@ export default function App() {
                   })}
                 </div>
 
-                <BotonEnviarApp/>
+                <BotonEnviarApp empleados={empleados}/>
 
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(

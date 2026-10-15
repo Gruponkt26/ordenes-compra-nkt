@@ -13113,7 +13113,8 @@ function PanelVencimientos(p){
   var vencTodos=p.vencimientos||[];
   var LF=p.localFijo||"l1";
   // La Oficina sólo tiene Alquileres, Servicios y Otros: el resto de los rubros (AFIP, ARBA, gremio…) es de los locales.
-  var GRUPOS=p.localFijo==="l4"?GRUPOS_VENC.filter(function(g){return ["alquileres","servicios","otros"].indexOf(g.id)>=0;}):GRUPOS_VENC;
+  // Si ya hay algo cargado en otro rubro (un crédito, por ejemplo), sigue visible para poder pasarlo al local que corresponde.
+  var GRUPOS=p.localFijo==="l4"?GRUPOS_VENC.filter(function(g){return ["alquileres","servicios","otros"].indexOf(g.id)>=0||vencTodos.some(function(v){return v.local==="l4"&&grupoIdDe(v)===g.id;});}):GRUPOS_VENC;
   var vencimientos=p.localFijo?vencTodos.filter(function(v){return v.local===p.localFijo;}):vencTodos;
   var onSave=p.localFijo?function(v){ return p.onSave({...v,local:p.localFijo}); }:p.onSave;
   var onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;

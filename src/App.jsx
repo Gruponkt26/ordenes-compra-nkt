@@ -8901,6 +8901,8 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   function getLocal(id){return LOCALES.find(function(l){return l.id===id;});}
   function getFact(id){var FACTS=[{id:"f1",razonSocial:"Calzon Gitano SRL",cuit:"30-71844629-1"},{id:"f2",razonSocial:"Colantonio Carlos Nicolas",cuit:"20-26958479-4"}];return FACTS.find(function(f){return f.id===id;});}
 
+  var [percIvaF,setPercIvaF]=useState("");
+  var [percIibbF,setPercIibbF]=useState("");
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
     var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
@@ -8910,6 +8912,9 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
+    var pi=parseFloat(String(percIvaF).replace(",",".")), pb=parseFloat(String(percIibbF).replace(",","."));
+    if(g.facturado&&(!isNaN(pi)||!isNaN(pb)))GUARDAR_PERC(g.id,{iva:isNaN(pi)?0:pi,iibb:isNaN(pb)?0:pb});
+    setPercIvaF(""); setPercIibbF("");
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
     setEsDeuda(false);
@@ -8917,6 +8922,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   }
   function abrirEditar(g){
     setEditId(g.id);
+    setPercIvaF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iva||""):""); setPercIibbF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iibb||""):"");
     setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Caja Mayor - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
     setPagosEgreso(g.pagos&&g.pagos.length>0?g.pagos.map(function(p){return{medio:p.medio||p.tipo||g.forma_pago,monto:String(p.monto||0)};}): [{medio:g.forma_pago||"Caja Mayor - Bodegón",monto:String(g.monto||"")}]);
     setEsDeuda(esGastoDeuda(g));
@@ -9131,6 +9137,18 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   <option value="f1">Calzon Gitano SRL — 30-71844629-1</option>
                   <option value="f2">Colantonio Carlos Nicolas — 20-26958479-4</option>
                 </select>
+              )}
+              {form.facturado&&PERCIBEN_IVA_IIBB.test(form.concepto||"")&&(
+                <div style={{marginTop:8,background:"#0C140C",border:"1px solid #4C9A5A44",borderRadius:9,padding:"9px 11px"}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#4C9A5A",marginBottom:5}}>Percepciones de la factura (a favor)</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA ($)</label>
+                      <input value={percIvaF} onChange={function(e){setPercIvaF(e.target.value);}} placeholder="Ej: 1692,60" inputMode="decimal" style={INP}/></div>
+                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IIBB ($)</label>
+                      <input value={percIibbF} onChange={function(e){setPercIibbF(e.target.value);}} placeholder="Ej: 2399,74" inputMode="decimal" style={INP}/></div>
+                  </div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Copiá los importes de las líneas «PERC. IVA» y «PERC. I.B.» de la factura. Si los dejás vacíos, la app estima con 2,2 % y 3,16 % del neto.</div>
+                </div>
               )}
             </div>
 
@@ -16403,8 +16421,12 @@ function alicuotaIVACompra(g){
   var txt=((g&&g.categoria)||"")+" "+((g&&g.subramo)||"")+" "+((g&&g.concepto)||"");
   return /verduler[ií]a|la finca|el centro de la carne|la boutique de la carne/i.test(txt)?0.105:0.21;
 }
+// Percepciones tal cual figuran en cada factura (se cargan en el egreso). Si están, mandan sobre la estimación.
+var PERC_REALES={};
+var GUARDAR_PERC=function(){};
 function percepcionesCocaCola(g){
   var cero={iva:0,iibb:0};
+  if(g&&g.facturado&&PERC_REALES[g.id])return {iva:PERC_REALES[g.id].iva||0, iibb:PERC_REALES[g.id].iibb||0};
   if(!g||!g.facturado||!PERCIBEN_IVA_IIBB.test(g.concepto||""))return cero;
   var monto=parseFloat(g.monto||0)||0;
   if(monto<=0)return cero;
@@ -25129,6 +25151,13 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  var percReales={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="perc_fact")return;
+    try{ var dp=JSON.parse(x.texto||"{}"); percReales[String(x.id).replace(/^perc_/,"")]={iva:parseFloat(dp.iva)||0,iibb:parseFloat(dp.iibb)||0}; }catch(e){}
+  });
+  PERC_REALES=percReales;
+  GUARDAR_PERC=function(gid,d){ guardarOfPauta("perc_fact",{id:"perc_"+gid,iva:d.iva,iibb:d.iibb}); };
   var cfgFichaje=null;
   pautas.forEach(function(x){ if(x.ambito==="config_fichaje"){ try{ var d0=JSON.parse(x.texto||"{}").desde; if(d0)cfgFichaje=d0; }catch(e){} } });
   var primeraMarca="";

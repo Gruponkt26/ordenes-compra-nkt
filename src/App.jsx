@@ -4526,7 +4526,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4645,7 +4645,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -4686,6 +4686,9 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tab Obras */}
       {tab==="checklist"&&<PanelChecklist local={localSel} usuario={usuario}/>}
+
+      {/* Tab Vencimientos de un local: se cargan y se pagan desde acá; en Novedades aparecen igual que siempre */}
+      {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id)}
 
       {tab==="obras"&&(
         <div>
@@ -13106,7 +13109,12 @@ function PanelNovedades(p){
 }
 
 function PanelVencimientos(p){
-  var vencimientos=p.vencimientos||[], onSave=p.onSave, onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
+  // Con localFijo (cuando se abre desde el módulo Locales) sólo se ven y se cargan los vencimientos de ese local.
+  var vencTodos=p.vencimientos||[];
+  var LF=p.localFijo||"l1";
+  var vencimientos=p.localFijo?vencTodos.filter(function(v){return v.local===p.localFijo;}):vencTodos;
+  var onSave=p.localFijo?function(v){ return p.onSave({...v,local:p.localFijo}); }:p.onSave;
+  var onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
   var faltanColumnas=p.faltanColumnas||[];
   var [diag,setDiag]=useState(null); // informe del guardado de prueba
   var [verTodos,setVerTodos]=useState(false); // la lista general, sin filtro de mes
@@ -13143,12 +13151,12 @@ function PanelVencimientos(p){
   var [editPlan,setEditPlan]=useState(null);   // datos del plan que se está editando
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
-  var FORM_VACIO={local:"l1",cuit:"c2",debito_cuenta:"",debito_cbu:"",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
+  var FORM_VACIO={local:LF,cuit:"c2",debito_cuenta:"",debito_cbu:"",concepto:"",area:"Administrativo",subramo:"",monto:"",recurrente:true,dia:"10",fecha:hoy,notas:"",cuotas:"",cuotas_previas:"",referencia:"",grupo:"otros"};
   var [form,setForm]=useState(FORM_VACIO);
   var FORM_PAGO={fecha:hoy,monto:"",total:"",medio:"",facturado:false,facturacion:"",yaCargado:false};
   var [pagosPago,setPagosPago]=useState([{medio:"",monto:""}]);
   var [formPago,setFormPago]=useState(FORM_PAGO);
-  var FORM_PLAN={concepto:"",nro_plan:"",local:"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,caduca_en:"3",dia_segundo:"26",dia_corrido:"12",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
+  var FORM_PLAN={concepto:"",nro_plan:"",local:p.localFijo||"l4",cuit:"c2",debito_cuenta:"",debito_cbu:"",pagadas:"",anticipoPagado:false,caduca_en:"3",dia_segundo:"26",dia_corrido:"12",anticipo:"",fechaAnticipo:hoy,cantidad:"12",montoCuota:"",dia:"16",mesInicio:mesCurrent,notas:""};
   var [formPlan,setFormPlan]=useState(FORM_PLAN);
   // La factura de un servicio: el período y el número de asociado son de la cuenta, y las
   // dos cuotas se pagan las dos, cada una con su fecha y su importe.
@@ -13156,20 +13164,20 @@ function PanelVencimientos(p){
   // pago de una deuda de luz puede venir en ocho. El tope es un año desde la primera —más
   // que eso ya no es una factura, es un plan— y doce cuotas.
   var MAX_CUOTAS_FACTURA=12;
-  var FORM_FACTURA={concepto:"Luz",local:"l1",nro_asociado:"",periodo:mesCurrent,debito_cuenta:"",debito_cbu:"",
+  var FORM_FACTURA={concepto:"Luz",local:LF,nro_asociado:"",periodo:mesCurrent,debito_cuenta:"",debito_cbu:"",
     cuotas:[{vence:"",monto:""},{vence:"",monto:""}],notas:""};
   var [formFactura,setFormFactura]=useState(FORM_FACTURA);
   // El crédito bancario. La deuda a la fecha se carga a mano: es la que informa el banco,
   // que incluye intereses devengados y casi nunca coincide con la suma de las cuotas que
   // faltan. Se guardan las dos y se muestran las dos.
   var FORM_CREDITO={entidad:"",nro_credito:"",descripcion:"",tipo_prestamo:"",monto_inicial:"",fecha_otorgamiento:hoy,
-    local:"l1",cuit:"c2",cantidad:"12",montoCuota:"",dia:"10",mesInicio:mesCurrent,pagadas:"",
+    local:LF,cuit:"c2",cantidad:"12",montoCuota:"",dia:"10",mesInicio:mesCurrent,pagadas:"",
     tna:"",deuda_actual:"",forma_pago:"",debito_cuenta:"",debito_cbu:"",notas:""};
   var [formCredito,setFormCredito]=useState(FORM_CREDITO);
   var [showCredito,setShowCredito]=useState(false);
   var [editCreditoId,setEditCreditoId]=useState(null);
   // Alquiler: la tarjeta con los datos del contrato.
-  var FORM_ALQ={local:"l1",concepto:"",locador:"",alquiler:"",expensas:"",agua:"",otros:"",otros_nombre:"",desde:"",hasta:"",dia:"10",
+  var FORM_ALQ={local:LF,concepto:"",locador:"",alquiler:"",expensas:"",agua:"",otros:"",otros_nombre:"",desde:"",hasta:"",dia:"10",
     ajuste_meses:"",ajuste_indice:"",deposito:"",notas:""};
   var [formAlq,setFormAlq]=useState(FORM_ALQ);
   var [showAlq,setShowAlq]=useState(false);
@@ -13788,7 +13796,7 @@ function PanelVencimientos(p){
               if(String(g.detalle||"").indexOf("Vencimiento original")!==-1)return;
               faltan.push({g:g,orig:String(orig).substring(0,10),pago:pagoFecha||g.fecha});
             }
-            (vencimientos||[]).forEach(function(v){
+            vencTodos.forEach(function(v){
               cuotasPlan(v).forEach(function(c){ if(c.pago&&c.pago.egreso_id)revisar(v,c.pago.egreso_id,c.vence,c.pago.fecha); });
               (Array.isArray(v.pagos)?v.pagos:[]).forEach(function(pg){
                 if(!pg||!pg.egreso_id)return;
@@ -13815,7 +13823,7 @@ function PanelVencimientos(p){
           {(function(){
             // Pagos viejos de gremio y obra social: quedaron como "Sueldos"; se pasan a Administrativo del Bodegón.
             var idsAp={};
-            (vencimientos||[]).forEach(function(v){ var g0=grupoIdDe(v); if(g0==="gremio"||g0==="obra_social")egresosDe(v).forEach(function(id){ idsAp[id]=true; }); });
+            vencTodos.forEach(function(v){ var g0=grupoIdDe(v); if(g0==="gremio"||g0==="obra_social")egresosDe(v).forEach(function(id){ idsAp[id]=true; }); });
             var viejos=(p.gastos||[]).filter(function(g){ return (idsAp[g.id]||idsAp[baseEgresoVenc(g.id)])&&(g.area==="Sueldos"||g.categoria==="Sueldos"); });
             if(viejos.length===0||!onSaveEgreso)return null;
             var totalV=viejos.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
@@ -13832,7 +13840,7 @@ function PanelVencimientos(p){
             );
           })()}
           {(function(){
-            var hu=egresosHuerfanos(p.gastos,vencimientos);
+            var hu=egresosHuerfanos(p.gastos,vencTodos);
             if(hu.length===0)return null;
             var total=hu.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
             return (
@@ -14092,7 +14100,7 @@ function PanelVencimientos(p){
             ):(
               <div>
                 <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
-                <select value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                <select disabled={!!p.localFijo} value={form.local} onChange={function(e){setForm(function(f){return{...f,local:e.target.value};});}} style={INP}>
                   {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
                 </select>
               </div>
@@ -14252,7 +14260,7 @@ function PanelVencimientos(p){
                 ?<select value={formCredito.cuit} onChange={function(e){setFormCredito(function(f){return{...f,cuit:e.target.value};});}} style={INP}>
                    {CUITS_VENC.map(function(c){return <option key={c.id} value={c.id}>{c.label}</option>;})}
                  </select>
-                :<select value={formCredito.local} onChange={function(e){setFormCredito(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                :<select disabled={!!p.localFijo} value={formCredito.local} onChange={function(e){setFormCredito(function(f){return{...f,local:e.target.value};});}} style={INP}>
                    {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
                  </select>}
             </div>
@@ -14308,7 +14316,7 @@ function PanelVencimientos(p){
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
-              <select value={formAlq.local} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,local:v};});}} style={INP}>
+              <select disabled={!!p.localFijo} value={formAlq.local} onChange={function(e){var v=e.target.value;setFormAlq(function(f){return{...f,local:v};});}} style={INP}>
                 {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
               </select>
             </div>
@@ -14397,7 +14405,7 @@ function PanelVencimientos(p){
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
-              <select value={formFactura.local} onChange={function(e){setFormFactura(function(f){return{...f,local:e.target.value};});}} style={INP}>
+              <select disabled={!!p.localFijo} value={formFactura.local} onChange={function(e){setFormFactura(function(f){return{...f,local:e.target.value};});}} style={INP}>
                 {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
               </select>
             </div>
@@ -14493,7 +14501,7 @@ function PanelVencimientos(p){
             ):(
               <div>
                 <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
-                <select value={formPlan.local} onChange={function(e){setFormPlan(function(f){return{...f,local:e.target.value};});}} style={INP}>
+                <select disabled={!!p.localFijo} value={formPlan.local} onChange={function(e){setFormPlan(function(f){return{...f,local:e.target.value};});}} style={INP}>
                   {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
                 </select>
               </div>
@@ -14742,7 +14750,7 @@ function PanelVencimientos(p){
                           ):(
                             <div>
                               <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
-                              <select value={editPlan.local} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,local:x};});}} style={INP}>
+                              <select disabled={!!p.localFijo} value={editPlan.local} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,local:x};});}} style={INP}>
                                 {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
                               </select>
                             </div>
@@ -24668,6 +24676,31 @@ export default function App() {
     return ok;
   }
 
+  // El panel de vencimientos: el general (Administración) y el de cada local (módulo Locales) usan los mismos datos.
+  function panelVencimientos(extra){
+    return (
+      <PanelVencimientos key={(extra&&extra.llave)||"venc_general"} {...extra}
+                    vencimientos={vencimientos}
+                    faltanColumnas={faltanColsVenc}
+                    usuario={cu.nombre}
+                    onSave={async function(v){
+                      setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
+                      await sbSaveVencimiento(v);
+                    }}
+                    onDelete={async function(id,egresos){
+                      setVencimientos(function(prev){return prev.filter(function(x){return x.id!==id;});});
+                      // Los egresos se borran solos, sin despagar nada: el vencimiento que los
+                      // generó ya no existe, así que borrarEgreso volvería a buscarlo al pedo.
+                      (egresos||[]).forEach(function(eid){ borrarEgresoSolo(eid); });
+                      await sbDeleteVencimiento(id);
+                    }}
+                    onSaveEgreso={guardarEgresoConOficina}
+                    onDeleteEgreso={borrarEgresoSolo}
+                    gastos={gastos}
+                  />
+    );
+  }
+
   function limpiarTabs(){
     setSubCompras(null);
     setVistaProv("gestion");
@@ -25329,6 +25362,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
+              renderVencimientos={function(lid){ return panelVencimientos({llave:"venc_"+lid,localFijo:lid}); }}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}
@@ -25598,27 +25632,7 @@ export default function App() {
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}/>
           )}
 
-          {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
-            <PanelVencimientos grupoInicial={vencGrupo}
-              vencimientos={vencimientos}
-              faltanColumnas={faltanColsVenc}
-              usuario={cu.nombre}
-              onSave={async function(v){
-                setVencimientos(function(prev){var f=prev.filter(function(x){return x.id!==v.id;});return[v,...f];});
-                await sbSaveVencimiento(v);
-              }}
-              onDelete={async function(id,egresos){
-                setVencimientos(function(prev){return prev.filter(function(x){return x.id!==id;});});
-                // Los egresos se borran solos, sin despagar nada: el vencimiento que los
-                // generó ya no existe, así que borrarEgreso volvería a buscarlo al pedo.
-                (egresos||[]).forEach(function(eid){ borrarEgresoSolo(eid); });
-                await sbDeleteVencimiento(id);
-              }}
-              onSaveEgreso={guardarEgresoConOficina}
-              onDeleteEgreso={borrarEgresoSolo}
-              gastos={gastos}
-            />
-          )}
+          {esSofia&&modulo==="admin"&&vista==="vencimientos"&&panelVencimientos({grupoInicial:vencGrupo})}
 
           {esSofia&&modulo==="admin"&&vista==="cruzados"&&(
             <PanelCruzados gastos={gastos} saldos={saldosCruzados}

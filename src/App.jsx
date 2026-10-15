@@ -11629,6 +11629,7 @@ function PanelFichajes(p){
   var [abierto,setAbierto]=useState({});
   var [foto,setFoto]=useState(null);
   var [mapaDe,setMapaDe]=useState(null);   // la marca cuyo mapa se está viendo
+  var [vistaReg,setVistaReg]=useState("movimientos");   // movimientos (entradas | salidas) o detalle por empleado
   var [showManual,setShowManual]=useState(false);
   var [manual,setManual]=useState({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
   var [showUbic,setShowUbic]=useState(false);
@@ -11742,6 +11743,9 @@ function PanelFichajes(p){
   return (
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        <div style={{display:"flex",gap:4}}>
+          {[["movimientos","🟢🔴 Entradas y salidas"],["empleados","👤 Por empleado"]].map(function(t){var act=vistaReg===t[0]; return <button key={t[0]} onClick={function(){setVistaReg(t[0]);}} style={{padding:"7px 12px",borderRadius:8,border:"1px solid "+(act?"#1A8A7B":"#1E1E1E"),background:act?"#1A8A7B22":"#111",color:act?"#1A8A7B":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;})}
+        </div>
         <select value={mes} onChange={function(e){setMes(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}>
           {meses.map(function(m){return <option key={m} value={m}>{fmtMes(m)}</option>;})}
         </select>
@@ -11776,6 +11780,58 @@ function PanelFichajes(p){
         </div>
       )}
 
+      {vistaReg==="movimientos"&&(function(){
+        var marcas=fichajes.filter(function(f){return String(f.fecha||"").substring(0,7)===mes&&(localF==="all"||f.local===localF);});
+        if(marcas.length===0)return <div style={{...CAJA,color:"#8C8C8C",fontSize:13,textAlign:"center"}}>No hay marcas en {fmtMes(mes)}.</div>;
+        var dias={};
+        marcas.forEach(function(f){ var d=String(f.fecha).substring(0,10); (dias[d]=dias[d]||{entrada:[],salida:[]})[f.tipo==="salida"?"salida":"entrada"].push(f); });
+        var fechas=Object.keys(dias).sort().reverse();
+        var DS=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+        function fila(f){
+          var emp=empleados.find(function(e){return e.id===f.empleado_id;});
+          var loc=getLocal(f.local);
+          var otro=emp&&emp.local&&f.local&&emp.local!==f.local;
+          var lej=lejosDe(f);
+          return(
+            <div key={f.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderTop:"1px solid #141414",flexWrap:"wrap"}}>
+              <b style={{fontSize:12.5,color:"#F0EDE8"}}>{f.empleado_nombre}</b>
+              <span style={{fontSize:12.5,fontWeight:700,color:f.tipo==="salida"?"#C1440E":"#3A7D44",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
+              <span style={{fontSize:11,color:otro?"#D4A017":(loc?loc.color:"#8C8C8C")}}>{loc?loc.emoji+" "+loc.nombre:f.local}{otro?" ⚠️":""}</span>
+              {f.manual&&<span title="Carga manual" style={{fontSize:10,color:"#7E7E7E"}}>✎</span>}
+              {f.lat!=null&&f.lng!=null?<button onClick={function(){setMapaDe(f);}} style={{background:"none",border:"none",padding:0,fontSize:10,cursor:"pointer",color:lej?"#C1440E":"#3A7D44",fontWeight:700}}>📍{lej?fmtDistancia(lej):""}</button>:(!f.manual&&<span title="Sin ubicación" style={{fontSize:10,color:"#D4A017"}}>📍✕</span>)}
+              {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11,padding:"0 2px",marginLeft:"auto"}} title="Borrar">🗑</button>}
+            </div>
+          );
+        }
+        function col(titulo,color,lista){
+          var l=lista.slice().sort(function(a,b){return String(a.momento||a.hora).localeCompare(String(b.momento||b.hora));});
+          return(
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:10,fontWeight:800,color:color,textTransform:"uppercase",letterSpacing:1.2,marginBottom:2}}>{titulo} <span style={{color:"#6E6E6E",fontWeight:400}}>({l.length})</span></div>
+              {l.length===0?<div style={{fontSize:11,color:"#5E5E5E",padding:"6px 0",borderTop:"1px solid #141414"}}>—</div>:l.map(fila)}
+            </div>
+          );
+        }
+        return(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {fechas.map(function(d){
+              var pr=d.split("-"), dt=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10));
+              return(
+                <div key={d} style={{...CAJA,padding:"12px 14px"}}>
+                  <div style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",marginBottom:8}}>{DS[dt.getDay()]} {fmtDate(d)}{d===hoy?" · hoy":""}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:16}}>
+                    {col("🟢 Entradas","#3A7D44",dias[d].entrada)}
+                    {col("🔴 Salidas","#C1440E",dias[d].salida)}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5}}>⚠️ = marcó en un local que no es el suyo · 📍 = ubicación (en rojo la distancia cuando estaba lejos del local) · ✎ = carga manual.</div>
+          </div>
+        );
+      })()}
+
+      {vistaReg!=="movimientos"&&(<div>
       {(function(){
         var js=p.justificativos||[];
         var pend=js.filter(function(j){return j.estado==="pendiente"&&(localF==="all"||j.local===localF);})
@@ -11945,6 +12001,7 @@ function PanelFichajes(p){
           </div>
         );
       })}
+      </div>)}
 
       {mapaDe&&(function(){
         var f=mapaDe, d=distanciaMetros(localesDatos[f.local],{lat:f.lat,lng:f.lng}), lejos=d!=null&&d>RADIO_LOCAL;

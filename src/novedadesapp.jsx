@@ -30,8 +30,8 @@ export var NOVEDADES_APP = [
   { id: "2026-10-15f", titulo: "Deuda", items: [
     "En cada local hay una pestaña nueva «💳 Deuda» al lado de Vencimientos: ahí pasa lo que ya venció y no se pagó, con su botón para pagar.",
     "Vencimientos queda más despejado: sólo lo que viene y lo ya pagado." ] },
-  { id: "2026-10-15g", titulo: "Administración", items: [
-    "Hay un botón «📲 Enviar la app por WhatsApp» para mandar el link de la app a un número o elegir el contacto en WhatsApp." ] },
+  { id: "2026-10-15g", titulo: "Enviar la app", items: [
+    "En la pantalla de inicio hay un botón «📲 Enviar la app por WhatsApp»: manda a cada colaborador (con el teléfono de su ficha) el link de la app y el instructivo para instalarla." ] },
 ];
 
 function ultimoVisto(usuario) {

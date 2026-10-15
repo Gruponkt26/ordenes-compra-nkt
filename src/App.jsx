@@ -12025,9 +12025,9 @@ function BloquesIIBBPorCuit(props){
                     <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
                     {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
                     {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
-                    {linea("Retenido por los bancos",o.iibbRetenido,"#4C9A5A",true)}
+                    {linea("Retenido por los bancos (SIRCREB "+pctIIBB()+"%)",o.iibbRetenido,"#4C9A5A",true)}
                     {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola / Pepsi / La Serenísima",o.iibbAFavor,"#4C9A5A",true)}
-                    {extra>0.5&&linea("IIBB a favor cargado a mano",extra,"#4C9A5A",true)}
+                    {extra>0.5&&linea("IIBB a favor cargado a mano (percepciones)",extra,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(Math.abs(saldo))}</span>

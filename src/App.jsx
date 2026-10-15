@@ -792,6 +792,47 @@ function SBadge(p) {
   var e = M[p.status]||M.borrador; return <Badge color={e[1]}>{e[0]}</Badge>;
 }
 
+// Envía el link de la app por WhatsApp: a un número puntual o eligiendo el contacto en WhatsApp.
+var APP_URL="https://ordenes-compra-nkt.vercel.app";
+function BotonEnviarApp(){
+  var [abierto,setAbierto]=useState(false);
+  var [num,setNum]=useState("");
+  var [msg,setMsg]=useState("Hola! Este es el link de la app de gestión del Grupo NKT: "+APP_URL+"\n\nAbrilo en Chrome (o Safari) y agregalo a la pantalla de inicio para entrar directo.");
+  function numeroWsp(){
+    var d=cleanPhone(num);
+    if(!d)return "";
+    if(d.indexOf("54")===0)return d;
+    d=d.replace(/^0+/,"").replace(/^(\d{2,4})15(\d{6,8})$/,"$1$2");   // saca el 0 de la zona y el 15
+    return "549"+d;
+  }
+  function enviar(){
+    var n=numeroWsp();
+    window.open("https://wa.me/"+n+"?text="+encodeURIComponent(msg),"_blank");
+  }
+  var INPW={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  return(
+    <div style={{marginBottom:12,textAlign:"right"}}>
+      <button onClick={function(){setAbierto(true);}} style={{padding:"7px 13px",borderRadius:8,border:"1px solid #25D36666",background:"#25D36615",color:"#25D366",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📲 Enviar la app por WhatsApp</button>
+      {abierto&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16,textAlign:"left"}}>
+          <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:400,border:"1px solid #25D36644",fontFamily:"'Inter',sans-serif"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>📲 Enviar la app por WhatsApp</div>
+            <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>Link: <span style={{color:"#25D366"}}>{APP_URL}</span></div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Número (opcional)</label>
+            <input value={num} onChange={function(e){setNum(e.target.value);}} placeholder="ej: 11 5555 1234 — vacío = elegir el contacto en WhatsApp" style={{...INPW,marginBottom:10}}/>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Mensaje</label>
+            <textarea value={msg} onChange={function(e){setMsg(e.target.value);}} rows={5} style={{...INPW,resize:"vertical",marginBottom:12}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setAbierto(false);}} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cerrar</button>
+              <button onClick={enviar} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#25D366",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>Enviar por WhatsApp</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function Login(p) {
   var [u,setU]=useState(""), [pw,setPw]=useState(""), [err,setErr]=useState(""), [show,setShow]=useState(false);
@@ -25395,6 +25436,8 @@ export default function App() {
                     );
                   })}
                 </div>
+
+                <BotonEnviarApp/>
 
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(

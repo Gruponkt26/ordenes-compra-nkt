@@ -13775,6 +13775,41 @@ function PanelVencimientos(p){
             </select>
           )}
           {(function(){
+            // Pagos hechos antes de que el egreso guardara la fecha original de vencimiento: se la agregamos desde el vencimiento.
+            if(!onSaveEgreso)return null;
+            var porId={}; (p.gastos||[]).forEach(function(g){ porId[g.id]=g; });
+            var faltan=[];
+            function revisar(v,eid,orig,pagoFecha){
+              if(!eid||!orig)return;
+              var g=porId[eid]; if(!g)return;
+              if(String(g.detalle||"").indexOf("Vencimiento original")!==-1)return;
+              faltan.push({g:g,orig:String(orig).substring(0,10),pago:pagoFecha||g.fecha});
+            }
+            (vencimientos||[]).forEach(function(v){
+              cuotasPlan(v).forEach(function(c){ if(c.pago&&c.pago.egreso_id)revisar(v,c.pago.egreso_id,c.vence,c.pago.fecha); });
+              (Array.isArray(v.pagos)?v.pagos:[]).forEach(function(pg){
+                if(!pg||!pg.egreso_id)return;
+                var orig=v.recurrente?fechaVencimiento(v,pg.periodo):v.fecha;
+                revisar(v,pg.egreso_id,orig,pg.fecha);
+              });
+            });
+            if(faltan.length===0)return null;
+            function detalleNuevo(x){
+              var atraso=Math.round((new Date(String(x.pago).substring(0,10)+"T00:00:00")-new Date(x.orig+"T00:00:00"))/86400000);
+              var t="Vencimiento original: "+fmtDate(x.orig)+(atraso>0?" (pagado "+atraso+" día"+(atraso===1?"":"s")+" después)":"");
+              return x.g.detalle?(x.g.detalle+" · "+t):t;
+            }
+            return (
+              <button onClick={function(){
+                var lista=faltan.slice(0,8).map(function(x){return "· "+x.g.concepto+" "+fmt(x.g.monto)+" → "+detalleNuevo(x).replace(/^.*Vencimiento original: /,"venc. ");}).join("\n");
+                if(!window.confirm("Hay "+faltan.length+" pago"+(faltan.length===1?"":"s")+" sin la fecha original de vencimiento en su egreso.\n\n"+lista+(faltan.length>8?"\n· …y "+(faltan.length-8)+" más":"")+"\n\n¿Agregarla al detalle del egreso? No cambia monto, fecha ni área."))return;
+                faltan.forEach(function(x){ onSaveEgreso({...x.g,detalle:detalleNuevo(x)}); });
+              }} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"#0A0F14",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                📅 Agregar la fecha original a {faltan.length} pago{faltan.length===1?"":"s"}
+              </button>
+            );
+          })()}
+          {(function(){
             // Pagos viejos de gremio y obra social: quedaron como "Sueldos"; se pasan a Administrativo del Bodegón.
             var idsAp={};
             (vencimientos||[]).forEach(function(v){ var g0=grupoIdDe(v); if(g0==="gremio"||g0==="obra_social")egresosDe(v).forEach(function(id){ idsAp[id]=true; }); });

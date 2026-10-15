@@ -4743,7 +4743,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -4786,7 +4786,8 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="checklist"&&<PanelChecklist local={localSel} usuario={usuario}/>}
 
       {/* Tab Vencimientos de un local: se cargan y se pagan desde acá; en Novedades aparecen igual que siempre */}
-      {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id)}
+      {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id,"proximos")}
+      {tab==="deuda"&&renderVencimientos&&renderVencimientos(localSel.id,"deuda")}
 
       {tab==="obras"&&(
         <div>
@@ -13535,7 +13536,9 @@ function PanelVencimientos(p){
     var pago=pagoDelPeriodo(v,mesFiltro);
     var dias=fv?Math.round((new Date(fv+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000):null;
     return {v:v,cuota:null,fecha:fv,pago:pago,dias:dias};
-  }).concat(planesDelMes).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");});
+  }).concat(planesDelMes).sort(function(a,b){return (a.fecha||"").localeCompare(b.fecha||"");})
+    // En la pestaña Vencimientos de un local, lo que ya venció sin pagar pasa a la pestaña Deuda.
+    .filter(function(x){ return !(p.modo==="proximos"&&!x.pago&&x.dias!==null&&x.dias<0); });
 
   var delMesTodos=delMes;
   var delMesGrupo=(!grupoFiltro||grupoFiltro==="all")?delMesTodos:delMesTodos.filter(function(x){return grupoIdDe(x.v)===grupoFiltro;});
@@ -13894,6 +13897,175 @@ function PanelVencimientos(p){
 
   var sqlFaltante=faltanColumnas.map(function(k){return SQL_VENCIMIENTOS[k]||("-- falta la columna "+k);}).join("\n");
   var rompePlanes=faltanColumnas.some(function(k){return COLUMNAS_PLAN.indexOf(k)>=0;});
+
+  // El cuadro para marcar un pago: lo usan la lista de vencimientos y la pestaña Deuda.
+  function modalPago(){
+    if(!pagando)return null;
+    return (function(){
+        var vencidoPago=!!(pagando.fecha&&pagando.fecha<hoy&&!pagando.pago);
+        var diasDeMora=vencidoPago?Math.round((new Date(hoy+"T00:00:00")-new Date(pagando.fecha+"T00:00:00"))/86400000):0;
+        return(
+        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
+          <div style={{fontSize:11,color:"#3A7D44",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>✅ Marcar pagado</div>
+          <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:12}}>{pagando.v.concepto} · {mesFiltro}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fecha de pago</label>
+              <input type="date" value={formPago.fecha} onChange={function(e){setFormPago(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>{vencidoPago?"Monto de la cuota":"Monto pagado"}</label>
+              <input type="number" value={formPago.monto} onChange={function(e){cambiarMontoPago(e.target.value);}} style={INP}/>
+            </div>
+            {vencidoPago&&(
+              <div>
+                <label style={{display:"block",fontSize:10,color:"#C1440E",textTransform:"uppercase",marginBottom:5}}>Valor real a pagar</label>
+                <input type="number" value={formPago.total} onChange={function(e){cambiarTotalPago(e.target.value);}} placeholder="lo que hay que pagar hoy" style={{...INP,borderColor:interesDelPago()>0?"#C1440E66":"#2A2A2A"}}/>
+              </div>
+            )}
+          </div>
+          {vencidoPago&&(
+            <div style={{background:"#1A0808",border:"1px solid #C1440E33",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:11,color:"#C1440E"}}>
+                  ⚠️ Venció {pagando.fecha?fmtDate(pagando.fecha):""}{diasDeMora>0?" · "+diasDeMora+" día"+(diasDeMora===1?"":"s")+" de atraso":""}
+                  {pagando.cuota&&(pagando.cuota.vence2||pagando.cuota.vence3)?(
+                    <span style={{color:"#8A5050"}}>
+                      {pagando.cuota.vence2?" · 2º "+fmtDate(pagando.cuota.vence2):""}
+                      {pagando.cuota.vence3?" · corrido "+fmtDate(pagando.cuota.vence3):""}
+                    </span>
+                  ):null}
+                </span>
+                <span style={{fontSize:12,color:"#888"}}>
+                  {(function(){
+                    var base=parseFloat(formPago.monto)||0, inte=interesDelPago(), tot=totalAPagar();
+                    if(tot<base)return <span style={{color:"#D4A017"}}>El valor a pagar es menor que la cuota: se guarda {fmt(tot)}, sin intereses.</span>;
+                    if(inte<=0)return <span>Sin intereses · <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
+                    return <span>Cuota {fmt(base)} + <b style={{color:"#C1440E"}}>intereses {fmt(inte)}</b> ({Math.round(inte/base*1000)/10}%) = <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
+                  })()}
+                </span>
+              </div>
+              <div style={{fontSize:9,color:"#5A3030",marginTop:5}}>Poné <b style={{color:"#8A5050"}}>lo que hay que pagar hoy</b> —el número que da el organismo, con la mora adentro— y el interés sale solo de la diferencia contra la cuota. Es ese total el que sale de la cuenta y el que va al egreso.</div>
+            </div>
+          )}
+          {!formPago.yaCargado&&(
+            <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
+                <button onClick={function(){setPagosPago(function(prev){return[...prev,{medio:"",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar medio</button>
+              </div>
+              {pagosPago.map(function(pago,idx){return(
+                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <select value={pago.medio} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                    <option value="">-- Seleccioná medio --</option>
+                    {GRUPOS_MEDIOS_EGRESO.map(function(grp){
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                    })}
+                  </select>
+                  <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],monto:v};return n;});}} style={{...INP,width:100}}/>
+                  {pagosPago.length>1&&<button onClick={function(){setPagosPago(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
+                </div>
+              );})}
+              {pagosPago.length>1&&(
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadran()?"#0A1A0A":"#1A0A0A"}}>
+                  <span style={{color:"#8C8C8C"}}>Total asignado</span>
+                  <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosPago())} / {fmt(totalAPagar())}{pagosCuadran()?" ✓":" ← diferencia"}</span>
+                </div>
+              )}
+              <div style={{fontSize:9,color:"#7E7E7E",marginTop:6}}>Si se pagó con más de un medio —parte en efectivo, parte por transferencia, o desde dos cuentas— agregá una línea por cada uno.</div>
+            </div>
+          )}
+          <div style={{background:"#14100A",border:"1px solid #D4A01722",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12}}>
+              <input type="checkbox" checked={!!formPago.facturado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,facturado:v};});}}/>
+              <span style={{color:formPago.facturado?"#D4A017":"#888",fontWeight:formPago.facturado?700:400}}>🧾 Este pago tiene factura</span>
+            </label>
+            {formPago.facturado&&(
+              <select value={formPago.facturacion} onChange={function(e){setFormPago(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:7}}>
+                <option value="">-- Seleccioná CUIT --</option>
+                {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
+              </select>
+            )}
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,marginBottom:12}}>
+            <input type="checkbox" checked={!!formPago.yaCargado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,yaCargado:v};});}}/>
+            <span style={{color:"#888"}}>Ya lo cargué en Egresos — no generar el egreso</span>
+          </label>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={confirmarPago} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Confirmar pago</button>
+            <button onClick={function(){setPagando(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
+          </div>
+          {!formPago.yaCargado&&<div style={{fontSize:9,color:"#7E7E7E",marginTop:8,lineHeight:1.6}}>Al confirmar se genera el egreso en 💰 Egresos, área {pagando.v.area}, con este medio de pago{interesDelPago()>0?" y los intereses adentro del monto":""}. No hay que cargarlo de nuevo.</div>}
+        </div>
+        );
+    })();
+  }
+
+  // ── Pestaña Deuda: lo que ya venció y sigue sin pagar, de cualquier mes ──
+  if(p.modo==="deuda"){
+    var itemsD=[];
+    vencimientos.forEach(function(v){
+      if(v.activo===false)return;
+      if(tieneCuotas(v)){
+        cuotasPlan(v).forEach(function(c){
+          if(c.pago||!c.vence||!estaVencida(c,hoy))return;
+          itemsD.push({v:v,cuota:c,fecha:venceFinal(c),pago:null,dias:Math.round((new Date(venceFinal(c)+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),
+            txt:v.concepto+(c.nro===0?" · anticipo":(cuotasPlan(v).length>1?" · cuota "+c.nro:""))});
+        });
+        return;
+      }
+      if(v.recurrente){
+        meses.forEach(function(m){
+          if(m>mesCurrent||!vigenteEnMes(v,m))return;
+          var fv=fechaVencimiento(v,m);
+          if(!fv||fv>=hoy||pagoDelPeriodo(v,m))return;
+          itemsD.push({v:v,cuota:null,fecha:fv,pago:null,periodo:m,dias:Math.round((new Date(fv+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),txt:v.concepto+" · "+m});
+        });
+        return;
+      }
+      if(!v.fecha||v.fecha>=hoy||pagoDelPeriodo(v,periodoDe(v.fecha)))return;
+      itemsD.push({v:v,cuota:null,fecha:v.fecha,pago:null,periodo:periodoDe(v.fecha),dias:Math.round((new Date(v.fecha+"T00:00:00")-new Date(hoy+"T00:00:00"))/86400000),txt:v.concepto});
+    });
+    itemsD.sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+    var totD=itemsD.reduce(function(a,x){return a+(parseFloat(x.cuota?x.cuota.monto:x.v.monto)||0);},0);
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif"}}>
+        {modalPago()}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:12}}>
+          <div style={{fontSize:11,color:"#8C8C8C",lineHeight:1.5}}>Lo que ya pasó de fecha y sigue sin pagar. Al pagarlo sale de acá y queda en Egresos.</div>
+          <div style={{fontSize:20,fontWeight:800,color:itemsD.length?"#E0714A":"#3A7D44",fontFamily:"'Playfair Display',serif",whiteSpace:"nowrap"}}>{fmt(totD)}</div>
+        </div>
+        {itemsD.length===0?(
+          <div style={{textAlign:"center",padding:"30px 0",color:"#3A7D44",fontSize:14}}>✅ No hay deuda: está todo al día.</div>
+        ):GRUPOS_VENC.filter(function(g){return itemsD.some(function(x){return grupoIdDe(x.v)===g.id;});}).map(function(g){
+          var delG=itemsD.filter(function(x){return grupoIdDe(x.v)===g.id;});
+          var totG=delG.reduce(function(a,x){return a+(parseFloat(x.cuota?x.cuota.monto:x.v.monto)||0);},0);
+          return(
+            <div key={g.id} style={{background:"#140807",border:"1px solid #C1440E44",borderRadius:12,padding:"11px 13px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:800,color:g.color}}>{g.label}</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#E0714A",fontFamily:"'Playfair Display',serif"}}>{fmt(totG)}</div>
+              </div>
+              {delG.map(function(x,i){
+                return(
+                  <div key={x.v.id+"_"+(x.cuota?x.cuota.nro:x.periodo)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:i===0?"none":"1px solid #2A1410"}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:12,color:"#F0EDE8",fontWeight:600}}>{x.txt}</div>
+                      <div style={{fontSize:10,color:"#8A5A5A"}}>venció {fmtDate(x.fecha)} · hace {Math.abs(x.dias)} día{Math.abs(x.dias)===1?"":"s"}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                      <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.cuota?x.cuota.monto:x.v.monto)}</span>
+                      <button onClick={function(){ if(x.periodo)setMesFiltro(x.periodo); abrirPago(x); }} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -15183,109 +15355,12 @@ function PanelVencimientos(p){
       })()}
 
       {/* Marcar pagado */}
-      {pagando&&(function(){
-        var vencidoPago=!!(pagando.fecha&&pagando.fecha<hoy&&!pagando.pago);
-        var diasDeMora=vencidoPago?Math.round((new Date(hoy+"T00:00:00")-new Date(pagando.fecha+"T00:00:00"))/86400000):0;
-        return(
-        <div style={{background:"#0A1A0A",border:"1px solid #3A7D4444",borderRadius:12,padding:"16px",marginBottom:14}}>
-          <div style={{fontSize:11,color:"#3A7D44",fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:3}}>✅ Marcar pagado</div>
-          <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:12}}>{pagando.v.concepto} · {mesFiltro}</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:10}}>
-            <div>
-              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fecha de pago</label>
-              <input type="date" value={formPago.fecha} onChange={function(e){setFormPago(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
-            </div>
-            <div>
-              <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>{vencidoPago?"Monto de la cuota":"Monto pagado"}</label>
-              <input type="number" value={formPago.monto} onChange={function(e){cambiarMontoPago(e.target.value);}} style={INP}/>
-            </div>
-            {vencidoPago&&(
-              <div>
-                <label style={{display:"block",fontSize:10,color:"#C1440E",textTransform:"uppercase",marginBottom:5}}>Valor real a pagar</label>
-                <input type="number" value={formPago.total} onChange={function(e){cambiarTotalPago(e.target.value);}} placeholder="lo que hay que pagar hoy" style={{...INP,borderColor:interesDelPago()>0?"#C1440E66":"#2A2A2A"}}/>
-              </div>
-            )}
-          </div>
-          {vencidoPago&&(
-            <div style={{background:"#1A0808",border:"1px solid #C1440E33",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
-                <span style={{fontSize:11,color:"#C1440E"}}>
-                  ⚠️ Venció {pagando.fecha?fmtDate(pagando.fecha):""}{diasDeMora>0?" · "+diasDeMora+" día"+(diasDeMora===1?"":"s")+" de atraso":""}
-                  {pagando.cuota&&(pagando.cuota.vence2||pagando.cuota.vence3)?(
-                    <span style={{color:"#8A5050"}}>
-                      {pagando.cuota.vence2?" · 2º "+fmtDate(pagando.cuota.vence2):""}
-                      {pagando.cuota.vence3?" · corrido "+fmtDate(pagando.cuota.vence3):""}
-                    </span>
-                  ):null}
-                </span>
-                <span style={{fontSize:12,color:"#888"}}>
-                  {(function(){
-                    var base=parseFloat(formPago.monto)||0, inte=interesDelPago(), tot=totalAPagar();
-                    if(tot<base)return <span style={{color:"#D4A017"}}>El valor a pagar es menor que la cuota: se guarda {fmt(tot)}, sin intereses.</span>;
-                    if(inte<=0)return <span>Sin intereses · <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
-                    return <span>Cuota {fmt(base)} + <b style={{color:"#C1440E"}}>intereses {fmt(inte)}</b> ({Math.round(inte/base*1000)/10}%) = <b style={{color:"#F0EDE8",fontSize:14}}>{fmt(tot)}</b></span>;
-                  })()}
-                </span>
-              </div>
-              <div style={{fontSize:9,color:"#5A3030",marginTop:5}}>Poné <b style={{color:"#8A5050"}}>lo que hay que pagar hoy</b> —el número que da el organismo, con la mora adentro— y el interés sale solo de la diferencia contra la cuota. Es ese total el que sale de la cuenta y el que va al egreso.</div>
-            </div>
-          )}
-          {!formPago.yaCargado&&(
-            <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
-                <button onClick={function(){setPagosPago(function(prev){return[...prev,{medio:"",monto:""}];});}} style={{fontSize:11,color:"#1A6B8A",background:"none",border:"1px solid #1A6B8A44",borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ Agregar medio</button>
-              </div>
-              {pagosPago.map(function(pago,idx){return(
-                <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
-                  <select value={pago.medio} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
-                    <option value="">-- Seleccioná medio --</option>
-                    {GRUPOS_MEDIOS_EGRESO.map(function(grp){
-                      return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
-                    })}
-                  </select>
-                  <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],monto:v};return n;});}} style={{...INP,width:100}}/>
-                  {pagosPago.length>1&&<button onClick={function(){setPagosPago(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
-                </div>
-              );})}
-              {pagosPago.length>1&&(
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginTop:6,padding:"5px 8px",borderRadius:6,background:pagosCuadran()?"#0A1A0A":"#1A0A0A"}}>
-                  <span style={{color:"#8C8C8C"}}>Total asignado</span>
-                  <span style={{color:pagosCuadran()?"#3A7D44":"#C1440E",fontWeight:700}}>{fmt(totalPagosPago())} / {fmt(totalAPagar())}{pagosCuadran()?" ✓":" ← diferencia"}</span>
-                </div>
-              )}
-              <div style={{fontSize:9,color:"#7E7E7E",marginTop:6}}>Si se pagó con más de un medio —parte en efectivo, parte por transferencia, o desde dos cuentas— agregá una línea por cada uno.</div>
-            </div>
-          )}
-          <div style={{background:"#14100A",border:"1px solid #D4A01722",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12}}>
-              <input type="checkbox" checked={!!formPago.facturado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,facturado:v};});}}/>
-              <span style={{color:formPago.facturado?"#D4A017":"#888",fontWeight:formPago.facturado?700:400}}>🧾 Este pago tiene factura</span>
-            </label>
-            {formPago.facturado&&(
-              <select value={formPago.facturacion} onChange={function(e){setFormPago(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:7}}>
-                <option value="">-- Seleccioná CUIT --</option>
-                {FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial} — {f.cuit}</option>;})}
-              </select>
-            )}
-          </div>
-          <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,marginBottom:12}}>
-            <input type="checkbox" checked={!!formPago.yaCargado} onChange={function(e){var v=e.target.checked;setFormPago(function(f){return{...f,yaCargado:v};});}}/>
-            <span style={{color:"#888"}}>Ya lo cargué en Egresos — no generar el egreso</span>
-          </label>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={confirmarPago} style={{background:"#3A7D44",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",flex:2,padding:"11px"}}>✓ Confirmar pago</button>
-            <button onClick={function(){setPagando(null);}} style={{padding:"11px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:13,cursor:"pointer",flex:1}}>Cancelar</button>
-          </div>
-          {!formPago.yaCargado&&<div style={{fontSize:9,color:"#7E7E7E",marginTop:8,lineHeight:1.6}}>Al confirmar se genera el egreso en 💰 Egresos, área {pagando.v.area}, con este medio de pago{interesDelPago()>0?" y los intereses adentro del monto":""}. No hay que cargarlo de nuevo.</div>}
-        </div>
-        );
-      })()}
+      {modalPago()}
 
       {/* Lista */}
       {/* Lo vencido y sin pagar de meses anteriores al que se mira: facturas, cuotas y vencimientos de una sola
           vez. Sin esto, algo que venció en septiembre no aparece en ningún mes del selector. */}
-      {!verTodos&&(function(){
+      {!verTodos&&p.modo!=="proximos"&&(function(){
         var items=[];
         vencimientos.forEach(function(v){
           if(v.activo===false)return;
@@ -25557,7 +25632,7 @@ export default function App() {
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
-              renderVencimientos={function(lid){ return panelVencimientos({llave:"venc_"+lid,localFijo:lid}); }}
+              renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}

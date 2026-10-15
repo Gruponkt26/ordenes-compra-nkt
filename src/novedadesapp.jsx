@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { SURL, SH } from "./comun.js";
 
 // A quiénes se les muestra. Para sumar a alguien, agregar su usuario.
-export var NOVEDADES_PARA = ["belen"];
+export var NOVEDADES_PARA = ["sofia", "belen"];
 
 // Más nueva al final. id: AAAA-MM-DD + letra.
 export var NOVEDADES_APP = [

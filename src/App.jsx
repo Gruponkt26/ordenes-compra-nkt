@@ -12098,7 +12098,7 @@ function PanelIIBB(p){
             <div style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>➕ IIBB por fuera de las facturas</div>
             <div style={{fontSize:10,color:"#7E7E7E",marginTop:3,lineHeight:1.5}}>Percepciones o retenciones de IIBB a favor que no vienen de una factura cargada. Se restan del IIBB a pagar del CUIT y el mes que elijas. No crea ningún egreso.</div>
           </div>
-          {!formCred&&<button onClick={function(){setFormCred({id:"",cuit:FACTURACION[0].id,mes:mesFiltro,monto:"",detalle:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar IIBB</button>}
+          {!formCred&&<button onClick={function(){setFormCred({id:"",cuit:FACTURACION[0].id,mes:mesFiltro,monto:"",detalle:"",pct:"4"});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#3A7D44",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar IIBB</button>}
         </div>
         {formCred&&(
           <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:creditosMes.length>0?10:0}}>

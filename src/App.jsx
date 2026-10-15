@@ -11047,7 +11047,7 @@ function PanelFichar(p){
     if(cercaReq){
       if(!posChk){ alert("No pude tomar tu ubicación. Para fichar desde el celular tenés que activarla: candado 🔒 de la barra del navegador → Permisos → Ubicación → Permitir, y recargá."); setFase("camara"); return; }
       var dChk=distanciaMetros(coordsLocal,posChk);
-      if(dChk!=null&&dChk>RADIO_LOCAL){ alert("Estás a "+fmtDistancia(dChk)+" del local. Para fichar tenés que estar en el local (hasta "+RADIO_LOCAL+" m)."); setFase("camara"); return; }
+      if(dChk!=null&&dChk>RADIO_LOCAL){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
     }
     // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
     // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
@@ -11199,7 +11199,7 @@ function PanelFichar(p){
           </div>
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distAct>RADIO_LOCAL?"📍 Estás a "+fmtDistancia(distAct)+" del local":"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distAct>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {ubic==="no"&&fase!=="guardando"&&(
             <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>

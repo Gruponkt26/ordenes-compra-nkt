@@ -238,6 +238,7 @@ function calcPuntualidad(localId, dias, p, datos) {
       tiene = true;
       if (t.franco) return;
       if (e.fecha_alta && f < String(e.fecha_alta).substring(0, 10)) return;
+      if (p.fichajeDesde && f < p.fichajeDesde) return;   // antes de usar el fichaje no hay faltas
       var devacaciones = vacs.some(function (v) { return v.empleado_id === e.id && f >= String(v.fecha_desde).substring(0, 10) && f <= String(v.fecha_hasta).substring(0, 10); });
       if (devacaciones) return;
       var h = entradas[e.id + "|" + f];

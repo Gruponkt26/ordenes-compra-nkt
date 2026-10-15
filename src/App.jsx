@@ -20821,6 +20821,8 @@ function FichaLaboral(p){
 // Fecha de nacimiento, altura, talles, grupo sanguíneo, enfermedad congénita (cuál) y medicación (cuál).
 // Se guardan en la tabla de pautas (ámbito "datos_emp", un registro por empleado) para no tener que tocar la
 // tabla de empleados. La edad se calcula sola a partir de la fecha de nacimiento.
+var BAJA_TIPOS=["Renuncia","Despido con causa","Despido sin causa","Mutuo acuerdo","Fin de contrato / temporada","Abandono de trabajo","Jubilación","Otro"];
+var CONVENIOS_SUGERIDOS=["UTHGRA – Gastronómicos (CCT 389/04)","UTEDyC – Entidades deportivas y civiles","Comercio (CCT 130/75)"];
 var GRUPOS_SANGRE=["A+","A-","B+","B-","AB+","AB-","0+","0-"];
 async function sbLoadDatosEmp(){
   var out={};
@@ -20966,8 +20968,14 @@ function PanelSueldos(p){
                   );})}
                 </div>
               </div>
-
-
+              {formEmp.convenio!=="sin_convenio"&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Convenio</label>
+                  <input list="convenios-lista" placeholder="ej: UTHGRA – Gastronómicos (CCT 389/04)" value={formExtra.convenio_nombre||""} onChange={function(e){var v=e.target.value;setFormExtra(function(x){return{...x,convenio_nombre:v};});}}
+                    style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                  <datalist id="convenios-lista">{CONVENIOS_SUGERIDOS.map(function(c){return <option key={c} value={c}/>;})}</datalist>
+                </div>
+              )}
 
               {/* Fechas */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -20980,6 +20988,11 @@ function PanelSueldos(p){
                   <input type="date" value={formEmp.fecha_baja} onChange={function(e){setFormEmp(function(f){return{...f,fecha_baja:e.target.value};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
                 </div>
               </div>
+              {formEmp.fecha_baja&&(
+                <select value={formExtra.baja_tipo||""} onChange={function(e){var v=e.target.value;setFormExtra(function(x){return{...x,baja_tipo:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}>
+                  <option value="">— Tipo de baja —</option>{BAJA_TIPOS.map(function(t){return <option key={t} value={t}>{t}</option>;})}
+                </select>
+              )}
               {formEmp.fecha_baja&&(
                 <input placeholder="Motivo de baja" value={formEmp.motivo_baja} onChange={function(e){setFormEmp(function(f){return{...f,motivo_baja:e.target.value};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #C1440E33",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13}}/>
               )}
@@ -20996,14 +21009,21 @@ function PanelSueldos(p){
   }
   // Dar de baja no borra nada: la ficha queda inactiva con fecha y motivo, y pasa a la pestaña Bajas junto con todo
   // su historial (marcas, jornadas, vacaciones, sueldos, justificativos y observaciones).
+  var [bajaForm,setBajaForm]=useState(null);   // {emp, fecha, tipo, motivo}
   function darDeBaja(emp){
-    var f=window.prompt("Fecha de baja de "+emp.nombre+" (AAAA-MM-DD):",hoy);
-    if(f===null)return;
-    f=String(f).trim();
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){ alert("La fecha tiene que tener el formato AAAA-MM-DD, por ejemplo "+hoy+"."); return; }
-    var motivo=window.prompt("Motivo de la baja (renuncia, despido, fin de temporada…):",emp.motivo_baja||"");
-    if(motivo===null)return;
-    onSaveEmpleado({...emp,activo:false,fecha_baja:f,motivo_baja:String(motivo).trim()});
+    var ex=datosEmp[emp.id]||{};
+    setBajaForm({emp:emp,fecha:hoy,tipo:ex.baja_tipo||"",motivo:emp.motivo_baja||""});
+  }
+  function confirmarBaja(){
+    var b=bajaForm; if(!b)return;
+    if(!b.fecha){ alert("Poné la fecha de baja."); return; }
+    if(!b.tipo){ alert("Elegí el tipo de baja."); return; }
+    var emp=b.emp;
+    onSaveEmpleado({...emp,activo:false,fecha_baja:b.fecha,motivo_baja:String(b.motivo||"").trim()});
+    var ex={...(datosEmp[emp.id]||{}),baja_tipo:b.tipo};
+    setDatosEmp(function(prev){var n={...prev};n[emp.id]={...ex,empleado_id:emp.id};return n;});
+    sbSaveDatosEmp(emp.id,ex,usuario);
+    setBajaForm(null);
     var uAcc=userDe(emp);
     if(uAcc&&p.onDeleteUser&&window.confirm("¿Eliminar también su acceso a la app (@"+uAcc.usuario+")?\n\nYa no va a poder entrar. Si lo reactivás, hay que crearle el acceso de nuevo."))p.onDeleteUser(uAcc.id);
     setTab("bajas");
@@ -21018,6 +21038,7 @@ function PanelSueldos(p){
     if(!formEmp.nombre.trim())return;
     var emp=armarEmpleado();
     onSaveEmpleado(emp);
+    guardarExtra(emp.id);
     setEmpEdit(emp);
     setGuardadoLab(true); setTimeout(function(){setGuardadoLab(false);},2500);
   }
@@ -21306,7 +21327,7 @@ function PanelSueldos(p){
               <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:700,color:emp.activo!==false?"#F0EDE8":"#7E7E7E"}}>{emp.nombre}{emp.activo===false&&" (inactivo)"}</div>
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"} · Base: {fmt(emp.sueldo_base)}{(function(){ var c=completitudFicha(emp,datosEmp[emp.id]); return <span style={{color:c.pct>=100?"#3A7D44":c.pct>=60?"#D4A017":"#C1440E"}}> · datos {c.pct}%</span>; })()}</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria} · {emp.convenio==="convenio"?"📋 Convenio":"Sin convenio"}{(datosEmp[emp.id]||{}).convenio_nombre&&emp.convenio!=="sin_convenio"?" ("+(datosEmp[emp.id]||{}).convenio_nombre+")":""} · Base: {fmt(emp.sueldo_base)}{(function(){ var c=completitudFicha(emp,datosEmp[emp.id]); return <span style={{color:c.pct>=100?"#3A7D44":c.pct>=60?"#D4A017":"#C1440E"}}> · datos {c.pct}%</span>; })()}</div>
                 </div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={function(){setEmpEdit(emp);setFormEmp({nombre:emp.nombre,local:emp.local,categoria:emp.categoria,activo:emp.activo!==false,convenio:emp.convenio||"sin_convenio",cuil:emp.cuil||"",direccion:emp.direccion||"",telefono:emp.telefono||"",telefono_emergencia:emp.telefono_emergencia||"",enfermedad_congenita:emp.enfermedad_congenita||false,fecha_alta:emp.fecha_alta||"",fecha_baja:emp.fecha_baja||"",motivo_baja:emp.motivo_baja||"",monto_convenio:String(emp.monto_convenio||""),monto_sin_convenio:String(emp.monto_sin_convenio||"")});setShowFormEmp(true);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#888",fontSize:11,cursor:"pointer"}}>✏️</button>
@@ -21340,7 +21361,7 @@ function PanelSueldos(p){
                       {loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}
                       <br/>{emp.fecha_alta?"Alta "+fmtDate(String(emp.fecha_alta).substring(0,10)):"Sin fecha de alta"} → {emp.fecha_baja?"Baja "+fmtDate(String(emp.fecha_baja).substring(0,10)):"Sin fecha de baja"}{tiempo?" · "+tiempo:""}
                     </div>
-                    {emp.motivo_baja&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:2}}>Motivo: {emp.motivo_baja}</div>}
+                    {(ex.baja_tipo||emp.motivo_baja)&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:2}}>{ex.baja_tipo?"Baja: "+ex.baja_tipo:""}{ex.baja_tipo&&emp.motivo_baja?" · ":""}{emp.motivo_baja?"Motivo: "+emp.motivo_baja:""}</div>}
                   </div>
                   <button onClick={function(e){e.stopPropagation();reactivar(emp);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #3A7D4466",background:"none",color:"#3A7D44",fontSize:11,cursor:"pointer",flexShrink:0}}>↩ Reactivar</button>
                 </div>
@@ -21352,7 +21373,7 @@ function PanelSueldos(p){
                       {emp.telefono&&<div>Teléfono: {emp.telefono}{emp.telefono_emergencia?" · Emergencia: "+emp.telefono_emergencia:""}</div>}
                       {emp.direccion&&<div>Dirección: {emp.direccion}</div>}
                       {ex.nacimiento&&<div>Nacimiento: {fmtDate(ex.nacimiento)}{edadDe(ex.nacimiento)!=null?" ("+edadDe(ex.nacimiento)+" años)":""}</div>}
-                      <div>{emp.convenio==="convenio"?"📋 Convenio":emp.convenio==="mixto"?"📋 + Sin convenio":"Sin convenio"}</div>
+                      <div>{emp.convenio==="convenio"?"📋 Convenio":emp.convenio==="mixto"?"📋 + Sin convenio":"Sin convenio"}{ex.convenio_nombre&&emp.convenio!=="sin_convenio"?" · "+ex.convenio_nombre:""}</div>
                     </div>
                     <FichaLaboral emp={emp} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
                       sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
@@ -21701,6 +21722,28 @@ function PanelSueldos(p){
               <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{padding:"10px 16px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
             </div>
             </>)}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BAJA */}
+      {bajaForm&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:400,border:"1px solid #C1440E44"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>📤 Dar de baja a {bajaForm.emp.nombre}</div>
+            <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>Pasa a Bajas con todo su historial.</div>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de baja</label>
+            <input type="date" value={bajaForm.fecha} onChange={function(e){var v=e.target.value;setBajaForm(function(b){return{...b,fecha:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:10}}/>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo de baja</label>
+            <select value={bajaForm.tipo} onChange={function(e){var v=e.target.value;setBajaForm(function(b){return{...b,tipo:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%",marginBottom:10}}>
+              <option value="">— Elegir —</option>{BAJA_TIPOS.map(function(t){return <option key={t} value={t}>{t}</option>;})}
+            </select>
+            <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo</label>
+            <textarea value={bajaForm.motivo} rows={3} placeholder="Qué pasó, en pocas palabras" onChange={function(e){var v=e.target.value;setBajaForm(function(b){return{...b,motivo:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",resize:"vertical",marginBottom:12}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setBajaForm(null);}} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cancelar</button>
+              <button onClick={confirmarBaja} style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:"#C1440E",color:"#fff",fontWeight:800,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Dar de baja</button>
+            </div>
           </div>
         </div>
       )}

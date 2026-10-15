@@ -46,6 +46,9 @@ export var NOVEDADES_APP = [
   { id: "2026-10-15l", titulo: "Fichaje en cualquier local", items: [
     "Galo, Ariana y Alejo pueden fichar en cualquiera de los 3 locales: eligen el local donde están y, si no es el suyo, queda avisado en Novedades.",
     "La distancia máxima para fichar desde el celular ahora es de 150 metros del local." ] },
+  { id: "2026-10-15m", titulo: "Convenio y bajas", items: [
+    "En la ficha, quien tiene convenio ahora lleva el nombre del convenio (por ejemplo UTHGRA – Gastronómicos).",
+    "Al dar de baja se pide la fecha, el tipo de baja (renuncia, despido, mutuo acuerdo…) y el motivo; todo queda en Bajas." ] },
 ];
 
 function ultimoVisto(usuario) {

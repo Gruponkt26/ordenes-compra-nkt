@@ -1,0 +1,96 @@
+// Las novedades de la app: cada vez que se agrega algo, se suma una entrada acá (con un id que ordena por fecha) y a quien
+// corresponda le aparece un cartel con la síntesis. "No volver a mostrar" lo marca como visto hasta la próxima novedad.
+// Lo visto se guarda en la tabla de pautas (ámbito "novedades_vistas", un registro por usuario) y también en el navegador.
+import { useState, useEffect } from "react";
+import { SURL, SH } from "./comun.js";
+
+// A quiénes se les muestra. Para sumar a alguien, agregar su usuario.
+export var NOVEDADES_PARA = ["sofia", "belen"];
+
+// Más nueva al final. id: AAAA-MM-DD + letra.
+export var NOVEDADES_APP = [
+  { id: "2026-10-15a", titulo: "Personal", items: [
+    "Personal se reorganizó en 4 módulos: Colaboradores (Altas, Modificar datos, Vacaciones y Bajas), Sueldos, CUIT e Informe.",
+    "Bajas: al dar de baja a alguien su ficha y todo su historial quedan guardados ahí, y se puede reactivar.",
+    "La ficha tiene fecha de nacimiento (con edad), altura, talles, grupo sanguíneo, enfermedad congénita y medicación, con un % de datos completos. Cada colaborador carga los suyos desde Mi ficha." ] },
+  { id: "2026-10-15b", titulo: "Fichaje", items: [
+    "Se ficha sin foto: con un botón, y queda guardada la ubicación (en el Registro hay un 📍 con el mapa y la distancia al local).",
+    "Si alguien marca la salida sin haber marcado la entrada, la app le pregunta a qué hora entró. Si faltó a un día que le tocaba, al día siguiente le pide el justificativo.",
+    "En el Registro se puede poner en cero las marcas de un mes, de un local o de un empleado (pide confirmación)." ] },
+  { id: "2026-10-15c", titulo: "Info y Caja", items: [
+    "Info para colaboradores: hay una Info general para todos y una por sector (cajeros, salón, cocina) que ve sólo ese sector.",
+    "Cierre de caja: si un día no se vendió nada, el botón «Sin ventas ($0)» lo cierra y no se reclama." ] },
+  { id: "2026-10-15d", titulo: "Vencimientos y egresos", items: [
+    "Los vencimientos se cargan y pagan en cada local (Locales → local → Vencimientos). La Oficina sólo tiene Alquileres, Servicios y Otros.",
+    "Al pagar un vencimiento, el egreso va al área que corresponde y guarda la fecha original en que vencía. Gremio y obra social van a Administrativo.",
+    "Novedades siguen mostrando los vencimientos como siempre." ] },
+  { id: "2026-10-15e", titulo: "Saldar entre locales", items: [
+    "Lo que un local puso de más o de menos por la Oficina ahora se puede saldar (Locales → Oficina → Resumen), igual que los pagos cruzados.",
+    "En Novedades hay una tarjeta «Para saldar entre locales» y, cada mes nuevo, pregunta si se van a saldar o para qué fecha." ] },
+];
+
+function ultimoVisto(usuario) {
+  try { return window.localStorage.getItem("nkt_novedades_" + usuario) || ""; } catch (e) { return ""; }
+}
+
+export default function NovedadesApp(p) {
+  var cu = p.cu;
+  var usuario = String((cu && cu.usuario) || "").toLowerCase();
+  var [visto, setVisto] = useState(null);   // null = todavía no se sabe
+  var [cerrado, setCerrado] = useState(false);
+  var aplica = NOVEDADES_PARA.indexOf(usuario) !== -1;
+
+  useEffect(function () {
+    if (!aplica) return;
+    var vivo = true;
+    var local = ultimoVisto(usuario);
+    fetch(SURL + "/rest/v1/pautas?id=eq.nv_" + encodeURIComponent(usuario), { headers: SH })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var db = "";
+        try { if (Array.isArray(d) && d[0]) db = (JSON.parse(d[0].texto) || {}).hasta || ""; } catch (e) {}
+        if (vivo) setVisto(db > local ? db : local);
+      })
+      .catch(function () { if (vivo) setVisto(local); });
+    return function () { vivo = false; };
+  }, [usuario]);
+
+  if (!aplica || visto === null || cerrado) return null;
+  var nuevas = NOVEDADES_APP.filter(function (n) { return n.id > visto; });
+  if (nuevas.length === 0) return null;
+
+  function noMostrarMas() {
+    var hasta = NOVEDADES_APP[NOVEDADES_APP.length - 1].id;
+    try { window.localStorage.setItem("nkt_novedades_" + usuario, hasta); } catch (e) {}
+    var ahora = new Date().toISOString();
+    fetch(SURL + "/rest/v1/pautas", {
+      method: "POST",
+      headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ id: "nv_" + usuario, ambito: "novedades_vistas", texto: JSON.stringify({ hasta: hasta }), usuario: usuario, created_at: ahora, updated_at: ahora })
+    }).catch(function () {});
+    setCerrado(true);
+  }
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#000000CC", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "'Inter',sans-serif" }}>
+      <div style={{ background: "#111", border: "1px solid #D4A01766", borderRadius: 16, padding: "20px 20px 16px", width: "100%", maxWidth: 520, maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#F0EDE8" }}>🆕 Novedades de la app</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", margin: "4px 0 14px", lineHeight: 1.5 }}>Esto es lo que se agregó, en síntesis.</div>
+        {nuevas.map(function (n) {
+          return (
+            <div key={n.id} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#D4A017", marginBottom: 5 }}>{n.titulo}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#D8D8D8", lineHeight: 1.65 }}>
+                {n.items.map(function (t, i) { return <li key={i} style={{ marginBottom: 3 }}>{t}</li>; })}
+              </ul>
+            </div>
+          );
+        })}
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          <button onClick={function () { setCerrado(true); }} style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1px solid #2A2A2A", background: "none", color: "#9A9A9A", fontFamily: "'Inter',sans-serif", fontSize: 12.5, cursor: "pointer" }}>Cerrar</button>
+          <button onClick={noMostrarMas} style={{ flex: 2, padding: "11px", borderRadius: 10, border: "none", background: "#D4A017", color: "#000", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>No volver a mostrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}

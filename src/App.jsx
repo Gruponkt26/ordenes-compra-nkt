@@ -671,9 +671,6 @@ var INIT_USERS = [
   { id: "u7", nombre: "Alejo",   usuario: "alejo",   password: "Alejo123",    local: "l3", rol: "usuario", seccion: "Salón" },
   { id: "u8", nombre: "Magali",  usuario: "magali",  password: "Magali123",   local: "l1", rol: "usuario", seccion: "Cocina" },
   { id: "u12", nombre: "Florencia", usuario: "florencia", password: "Flor123", local: "l3", rol: "usuario", seccion: "Cocina" },
-  { id: "u9",  nombre: "Cajero Bodegón",      usuario: "cajero_bodegon",     password: "CajeroBod1",  local: "l1", seccion: "Caja", rol: "cajero" },
-  { id: "u10", nombre: "Cajero Kusama",       usuario: "cajero_kusama",      password: "CajeroKus1",  local: "l2", seccion: "Caja", rol: "cajero", puedeCompras: true },
-  { id: "u11", nombre: "Cajero Colantonio's", usuario: "cajero_colantonios", password: "CajeroCol1",  local: "l3", seccion: "Caja", rol: "cajero" },
 ];
 
 // Usuarios que entran a Compras con la misma navegación que Sofía — las dos
@@ -20856,11 +20853,42 @@ function PanelSueldos(p){
   var [showFormSueldo,setShowFormSueldo]=useState(false);
   var [empEdit,setEmpEdit]=useState(null);
   var [bajaAbierta,setBajaAbierta]=useState(null);
+  // Acceso a la app de cada empleado: su usuario, clave, rol, local y permisos.
+  var [formAcc,setFormAcc]=useState(null);
+  var [msgAcc,setMsgAcc]=useState("");
+  var [showAccesos,setShowAccesos]=useState(false);
+  var usersAll=p.users||[];
+  function userDe(emp){ return emp?usersAll.find(function(u){return u.empleado_id===emp.id;})||null:null; }
   var [sueldoEdit,setSueldoEdit]=useState(null);
   var [datosEmp,setDatosEmp]=useState({});      // empleado_id → datos personales ampliados
   var [formExtra,setFormExtra]=useState({});
   useEffect(function(){ var vivo=true; sbLoadDatosEmp().then(function(d){ if(vivo)setDatosEmp(d); }); return function(){vivo=false;}; },[]);
   useEffect(function(){ setFormExtra(empEdit?(datosEmp[empEdit.id]||{}):{}); },[showFormEmp,empEdit&&empEdit.id]);
+  useEffect(function(){
+    if(!empEdit){ setFormAcc(null); return; }
+    var u=userDe(empEdit);
+    setFormAcc(u?{...u,puedeCompras:!!(u.puedeCompras||u.puedecompras)}:{id:null,nombre:empEdit.nombre,usuario:"",password:"",rol:"usuario",local:empEdit.local,seccion:"",puedeCompras:false});
+    setMsgAcc("");
+  },[empEdit&&empEdit.id,showFormEmp,usersAll.length]);
+  function guardarAcceso(){
+    if(!empEdit||!formAcc)return;
+    var usuario=String(formAcc.usuario||"").trim().toLowerCase(), pass=String(formAcc.password||"").trim();
+    if(!usuario||!pass){ setMsgAcc("Completá el usuario y la contraseña."); return; }
+    if(usersAll.some(function(u){return String(u.usuario||"").toLowerCase()===usuario&&u.id!==formAcc.id;})){ setMsgAcc("Ese usuario ya existe: elegí otro."); return; }
+    var u={id:formAcc.id||("u"+Date.now()),nombre:(formAcc.nombre||empEdit.nombre).trim(),usuario:usuario,password:pass,
+      local:formAcc.rol==="admin"?null:(formAcc.local||empEdit.local),rol:formAcc.rol||"usuario",seccion:formAcc.rol==="admin"?"":(formAcc.seccion||""),
+      puedeCompras:formAcc.rol==="cajero"?!!formAcc.puedeCompras:false,empleado_id:empEdit.id};
+    p.onSaveUser(u);
+    setFormAcc({...u});
+    setMsgAcc("✓ Guardado");
+    setTimeout(function(){setMsgAcc("");},2500);
+  }
+  function quitarAcceso(){
+    var u=userDe(empEdit);
+    if(!u||!p.onDeleteUser)return;
+    if(!window.confirm("¿Eliminar el acceso de "+empEdit.nombre+" (@"+u.usuario+")?\n\nYa no va a poder entrar a la app. La ficha y su historial no se tocan."))return;
+    p.onDeleteUser(u.id);
+  }
   var [formEmp,setFormEmp]=useState({nombre:"",local:"l1",categoria:"Cocina",activo:true,convenio:"sin_convenio",cuil:"",direccion:"",telefono:"",telefono_emergencia:"",enfermedad_congenita:false,fecha_alta:"",fecha_baja:"",motivo_baja:"",monto_convenio:"",monto_sin_convenio:""});
   var [formSueldo,setFormSueldo]=useState({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[{medio:"",monto:""}],notas:""});
   var [preCargar,setPreCargar]=useState(false);
@@ -20939,6 +20967,8 @@ function PanelSueldos(p){
     var motivo=window.prompt("Motivo de la baja (renuncia, despido, fin de temporada…):",emp.motivo_baja||"");
     if(motivo===null)return;
     onSaveEmpleado({...emp,activo:false,fecha_baja:f,motivo_baja:String(motivo).trim()});
+    var uAcc=userDe(emp);
+    if(uAcc&&p.onDeleteUser&&window.confirm("¿Eliminar también su acceso a la app (@"+uAcc.usuario+")?\n\nYa no va a poder entrar. Si lo reactivás, hay que crearle el acceso de nuevo."))p.onDeleteUser(uAcc.id);
     setTab("bajas");
   }
   function reactivar(emp){
@@ -21055,7 +21085,7 @@ function PanelSueldos(p){
       {/* Módulos de Personal: Altas · Sueldos · CUIT · Informe. Cada uno agrupa sus pestañas. */}
       {(function(){
         var MODULOS=[
-          {id:"colab",label:"👤 Colaboradores",subs:[["altas","➕ Altas"],["empleados","✏️ Modificar datos"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]]},
+          {id:"colab",label:"👤 Colaboradores",subs:[["altas","➕ Altas"],["empleados","✏️ Modificar datos"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]].concat(p.onSaveUser?[["accesos","🔑 Accesos"]]:[])},
           {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
         ];
         var subsCuit=[].concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]);
@@ -21178,6 +21208,25 @@ function PanelSueldos(p){
           </div>
         );
       })()}
+
+      {/* TAB ACCESOS: todos los usuarios de la app (incluidos los que no tienen ficha de empleado) */}
+      {tab==="accesos"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{fontSize:11,color:"#8C8C8C",lineHeight:1.5}}>El acceso de cada empleado se carga en su ficha (pestaña 🔑 Acceso a la app). Acá están todos los usuarios, incluidos los que no tienen ficha, como las administradoras.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {usersAll.slice().sort(function(a,b){return String(a.nombre||"").localeCompare(String(b.nombre||""));}).map(function(u){
+              var emp=empleados.find(function(e){return e.id===u.empleado_id;}), loc=getLocal(u.local);
+              return <div key={u.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 13px",display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                <div><div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{u.nombre} <span style={{color:"#6E6E6E",fontWeight:400}}>@{u.usuario}</span></div>
+                  <div style={{fontSize:10,color:"#7E7E7E"}}>{u.rol==="admin"?"Admin":u.rol==="cajero"?"Cajero":"Colaborador"}{loc?" · "+loc.emoji+" "+loc.nombre:""}{u.seccion?" · "+u.seccion:""}</div></div>
+                <span style={{fontSize:10,color:emp?"#3A7D44":"#D4A017"}}>{emp?"Ficha: "+emp.nombre:"Sin ficha"}</span>
+              </div>;
+            })}
+          </div>
+          <button onClick={function(){setShowAccesos(true);}} style={{padding:"10px",borderRadius:8,border:"1px solid #4CAF5066",background:"#4CAF5018",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚙️ Crear o editar usuarios sin ficha</button>
+        </div>
+      )}
+      {showAccesos&&<GestUsuarios users={usersAll} empleados={empleados} onClose={function(){setShowAccesos(false);}} onSaveUser={p.onSaveUser} onDeleteUser={p.onDeleteUser}/>}
 
       {/* TAB ALTAS: cargar un colaborador nuevo */}
       {tab==="altas"&&(function(){
@@ -21495,13 +21544,51 @@ function PanelSueldos(p){
             <div style={{fontSize:14,fontWeight:700,color:"#4CAF50",marginBottom:10}}>{empEdit?"Editar":"Nueva"} ficha — Empleado</div>
             {empEdit&&(
               <div style={{display:"flex",gap:6,marginBottom:12}}>
-                {[["personales","👤 Datos personales"],["laborales","💼 Datos laborales"]].map(function(t){
+                {[["personales","👤 Datos personales"],["laborales","💼 Datos laborales"]].concat(p.onSaveUser?[["acceso","🔑 Acceso a la app"]]:[]).map(function(t){
                   var act=tabFicha===t[0];
                   return <button key={t[0]} onClick={function(){setTabFicha(t[0]);}} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid "+(act?"#4CAF50":"#1E1E1E"),background:act?"#4CAF5022":"#0F0F0F",color:act?"#4CAF50":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
               </div>
             )}
-            {empEdit&&tabFicha==="laborales"?(
+            {empEdit&&tabFicha==="acceso"&&formAcc?(
+              <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                <div style={{fontSize:11,color:"#8C8C8C",lineHeight:1.5}}>Con esto {empEdit.nombre} entra a la app con su nombre: ficha, ve lo que le corresponde y, si es cajero, cierra la caja de su local.</div>
+                {!userDe(empEdit)&&usersAll.filter(function(u){return !u.empleado_id&&u.rol!=="admin";}).length>0&&(
+                  <div style={{background:"#0A0F14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"9px 11px"}}>
+                    <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>¿Ya tiene un usuario creado? Vincularlo</label>
+                    <select value="" onChange={function(e){ var u=usersAll.find(function(x){return x.id===e.target.value;}); if(u)p.onSaveUser({...u,empleado_id:empEdit.id}); }} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:12,width:"100%"}}>
+                      <option value="">— Elegir —</option>
+                      {usersAll.filter(function(u){return !u.empleado_id&&u.rol!=="admin";}).map(function(u){return <option key={u.id} value={u.id}>{u.nombre} (@{u.usuario})</option>;})}
+                    </select>
+                  </div>
+                )}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Usuario</label>
+                    <input value={formAcc.usuario||""} autoCapitalize="none" autoCorrect="off" onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,usuario:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+                  <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Contraseña</label>
+                    <input value={formAcc.password||""} autoCapitalize="none" autoCorrect="off" onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,password:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%",boxSizing:"border-box"}}/></div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Rol</label>
+                    <select value={formAcc.rol||"usuario"} onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,rol:v};});}} style={{padding:"9px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%"}}>
+                      <option value="usuario">Colaborador</option><option value="cajero">Cajero (cierra la caja)</option><option value="admin">Admin</option>
+                    </select></div>
+                  <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Sección</label>
+                    <select value={formAcc.seccion||""} onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,seccion:v};});}} style={{padding:"9px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%"}}>
+                      {["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}
+                    </select></div>
+                </div>
+                {formAcc.rol!=="admin"&&<div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Local</label>
+                  <select value={formAcc.local||empEdit.local} onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,local:v};});}} style={{padding:"9px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%"}}>
+                    {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                  </select></div>}
+                {formAcc.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer"}}><input type="checkbox" checked={!!formAcc.puedeCompras} onChange={function(e){var v=e.target.checked;setFormAcc(function(f){return{...f,puedeCompras:v};});}}/>🛒 Ve el módulo Compras (despachar órdenes)</label>}
+                {msgAcc&&<div style={{fontSize:12,color:msgAcc.indexOf("✓")===0?"#3A7D44":"#E0714A"}}>{msgAcc}</div>}
+                <button onClick={guardarAcceso} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>{userDe(empEdit)?"💾 Guardar acceso":"➕ Crear acceso"}</button>
+                {userDe(empEdit)&&p.onDeleteUser&&<button onClick={quitarAcceso} style={{width:"100%",padding:"9px",borderRadius:8,border:"1px solid #C1440E44",background:"none",color:"#C1440E",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:12}}>🗑️ Eliminar el acceso</button>}
+                <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>Cerrar</button>
+              </div>
+            ):empEdit&&tabFicha==="laborales"?(
               <div>
                 <div style={{background:"#0A0A0A",border:"1px solid #4CAF5033",borderRadius:12,padding:"12px 14px",marginBottom:10}}>
                   <div style={{fontSize:9.5,color:"#4CAF50",textTransform:"uppercase",letterSpacing:1.2,marginBottom:8,fontWeight:700}}>Situación laboral</div>
@@ -24551,6 +24638,7 @@ function ChatIA(p) {
 
 export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
+  var [usersDeBase,setUsersDeBase]=useState(false);
   var [cu,setCu]=useState(null);
   // Al abrir, si había alguien logueado se lo recupera de la lista de usuarios. Si ese
   // usuario ya no existe —lo borraron, le cambiaron el id— simplemente pide login de nuevo.
@@ -24740,8 +24828,20 @@ export default function App() {
   useEffect(function(){cargarDatos();},[cu]);
   // Usuarios se cargan aparte, sin depender del login (hacen falta para poder loguearse).
   useEffect(function(){
-    sbLoadUsuarios().then(function(d){if(d)setUsers(d);}).catch(function(){});
+    sbLoadUsuarios().then(function(d){if(d){setUsers(d);setUsersDeBase(true);}}).catch(function(){});
   },[]);
+  // Las cuentas compartidas de cajero (una por local) se eliminan en cuanto cada cajero tiene la suya: Galo, Ariana y Alejo con rol
+  // cajero. Mientras falte alguno no se toca nada, para que nadie se quede sin poder entrar. Sólo lo hace el panel completo.
+  useEffect(function(){
+    if(!usersDeBase||!cu||PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())===-1)return;
+    var COMPARTIDAS=["cajero_bodegon","cajero_kusama","cajero_colantonios"];
+    var aBorrar=users.filter(function(u){return COMPARTIDAS.indexOf(String(u.usuario||"").toLowerCase())!==-1;});
+    if(aBorrar.length===0)return;
+    var personalesOk=["galo","ariana","alejo"].every(function(n){return users.some(function(u){return String(u.usuario||"").toLowerCase()===n&&u.rol==="cajero";});});
+    if(!personalesOk)return;
+    aBorrar.forEach(function(u){ sbDeleteUsuario(u.id); });
+    setUsers(function(prev){return prev.filter(function(u){return COMPARTIDAS.indexOf(String(u.usuario||"").toLowerCase())===-1;});});
+  },[usersDeBase,users,cu]);
 
   function guardarReceta(r){
     sbSaveReceta(r).then(function(err){if(err)alert("No se pudo guardar la receta en la base:\n\n"+err+"\n\nSi el error menciona la tabla recetas, hay que crearla en Supabase.");});
@@ -25145,6 +25245,15 @@ export default function App() {
     );
   }
 
+  // Altas, cambios y bajas de usuarios (se manejan desde la ficha de cada empleado, en Personal).
+  function guardarUsuario(u){
+    sbSaveUsuario(u).then(function(err){if(err)alert("No se pudo guardar el usuario en la base:\n\n"+err+"\n\nSi el error menciona la columna puedeCompras, hay que agregarla en la tabla usuarios de Supabase (tipo bool).");});
+    setUsers(function(prev){return[...prev.filter(function(x){return x.id!==u.id;}),u];});
+  }
+  function borrarUsuario(id){
+    sbDeleteUsuario(id);
+    setUsers(function(prev){return prev.filter(function(x){return x.id!==id;});});
+  }
   function limpiarTabs(){
     setSubCompras(null);
     setVistaProv("gestion");
@@ -25315,7 +25424,6 @@ export default function App() {
               {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
-              {id:"usuarios",emoji:"👤",label:"Colaboradores",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -25351,7 +25459,6 @@ export default function App() {
                   {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichar");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
-                  {id:"usuarios",emoji:"👤",label:"Colaboradores",color:"#8B2FC9",action:function(){abrirModulo("usuarios","usuarios_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
                   {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -25627,7 +25734,7 @@ export default function App() {
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
               </div>
-              <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
+              <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
                 tabInicial={vista==="vacaciones"?"vacaciones":vista==="faltantes"?"faltantes":undefined}
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
@@ -25985,7 +26092,7 @@ export default function App() {
 
           {/* PERSONAL — sin tab F.931 */}
           {esSofia&&modulo==="admin"&&vista==="personal"&&(
-            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               showF931={false}
               cargasSociales={cargasSociales}
@@ -26117,7 +26224,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="sueldos"&&(
-            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif}
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var f=prev.filter(function(x){return x.id!==e.id;});return[e,...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}

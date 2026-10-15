@@ -37,6 +37,8 @@ export var NOVEDADES_APP = [
     "Para que funcione, cargá la ubicación de cada local parado ahí: Fichajes → Registro → 📍 Locales." ] },
   { id: "2026-10-15i", titulo: "Quién entró a la app", items: [
     "En Fichajes → Registro, cada empleado muestra si está en la app en este momento, a qué hora entró hoy y cuál fue su último ingreso (y desde qué aparato). Hace falta que su usuario esté vinculado a su ficha." ] },
+  { id: "2026-10-15j", titulo: "Mapa de cada marca", items: [
+    "En Fichajes → Registro, al tocar el 📍 de una marca se abre un mapa con el punto exacto donde marcó y la distancia al local. Las marcas fuera del local se destacan en rojo con «ver mapa»." ] },
 ];
 
 function ultimoVisto(usuario) {

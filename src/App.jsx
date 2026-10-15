@@ -11618,6 +11618,7 @@ function PanelFichajes(p){
   var [localF,setLocalF]=useState("all");
   var [abierto,setAbierto]=useState({});
   var [foto,setFoto]=useState(null);
+  var [mapaDe,setMapaDe]=useState(null);   // la marca cuyo mapa se está viendo
   var [showManual,setShowManual]=useState(false);
   var [manual,setManual]=useState({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
   var [showUbic,setShowUbic]=useState(false);
@@ -11716,9 +11717,9 @@ function PanelFichajes(p){
         {f.lat!=null&&f.lng!=null
           ?(function(){
               var d=distanciaMetros(localesDatos[f.local],{lat:f.lat,lng:f.lng}), lejos=d!=null&&d>RADIO_LOCAL;
-              return <a href={"https://maps.google.com/?q="+f.lat+","+f.lng} target="_blank" rel="noreferrer"
+              return <button onClick={function(){setMapaDe(f);}}
                 title={d!=null?("Marcó a "+fmtDistancia(d)+" del local · tocá para ver el mapa"):"Tocá para ver dónde marcó"}
-                style={{fontSize:10,fontWeight:700,textDecoration:"none",color:lejos?"#C1440E":"#3A7D44"}}>📍{d!=null?fmtDistancia(d):"mapa"}</a>;
+                style={{fontSize:10,fontWeight:700,color:lejos?"#C1440E":"#3A7D44",background:lejos?"#C1440E18":"none",border:lejos?"1px solid #C1440E66":"none",borderRadius:6,padding:lejos?"2px 6px":0,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>📍{d!=null?fmtDistancia(d):"mapa"}{lejos?" 🗺️ ver mapa":""}</button>;
             })()
           :(!f.manual&&<span title="Esta marca no tiene ubicación" style={{fontSize:10,color:"#D4A017"}}>📍✕</span>)}
         {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }}
@@ -11922,6 +11923,27 @@ function PanelFichajes(p){
           </div>
         );
       })}
+
+      {mapaDe&&(function(){
+        var f=mapaDe, d=distanciaMetros(localesDatos[f.local],{lat:f.lat,lng:f.lng}), lejos=d!=null&&d>RADIO_LOCAL;
+        var loc=localesDatos[f.local];
+        return(
+          <div onClick={function(){setMapaDe(null);}} style={{position:"fixed",inset:0,background:"#000D",zIndex:95,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div onClick={function(e){e.stopPropagation();}} style={{background:"#111",border:"1px solid "+(lejos?"#C1440E88":"#2A2A2A"),borderRadius:14,padding:14,width:"100%",maxWidth:520}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>{f.empleado_nombre} · {f.tipo==="salida"?"🔴 Salida":"🟢 Entrada"} {f.hora}</div>
+              <div style={{fontSize:11,color:"#8C8C8C",margin:"3px 0 9px"}}>{fmtDate(f.fecha)} · {(getLocal(f.local)||{}).nombre||f.local} · {f.aparato||"—"}</div>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:d==null?"#D4A017":(lejos?"#C1440E":"#3A7D44")}}>{d==null?"El local no tiene su ubicación cargada: no se puede medir la distancia.":(lejos?"⚠️ Marcó a "+fmtDistancia(d)+" del local":"✅ Marcó en el local · a "+fmtDistancia(d))}</div>
+              <iframe title="Dónde marcó" src={"https://maps.google.com/maps?q="+f.lat+","+f.lng+"&z=17&output=embed"} loading="lazy"
+                style={{width:"100%",height:300,border:"1px solid #222",borderRadius:10,background:"#0A0A0A"}}/>
+              <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                <a href={"https://maps.google.com/?q="+f.lat+","+f.lng} target="_blank" rel="noreferrer" style={{...GH,padding:"8px 12px",fontSize:12,textDecoration:"none"}}>Abrir en Google Maps</a>
+                {loc&&loc.lat!=null&&<a href={"https://maps.google.com/?q="+loc.lat+","+loc.lng} target="_blank" rel="noreferrer" style={{...GH,padding:"8px 12px",fontSize:12,textDecoration:"none"}}>Ver dónde está el local</a>}
+                <button onClick={function(){setMapaDe(null);}} style={{...GH,padding:"8px 12px",fontSize:12,marginLeft:"auto"}}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {foto&&(
         <div onClick={function(){setFoto(null);}} style={{position:"fixed",inset:0,background:"#000D",zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>

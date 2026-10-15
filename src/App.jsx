@@ -10871,7 +10871,8 @@ function PanelFichar(p){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
   });
   // Quien entra con su usuario vinculado a una ficha ficha con su celular: nunca cuenta como tablet del local.
-  var kiosco=kioscoGuardado&&!p.empleadoId;
+  var atadoAEmp=false; try{ atadoAEmp=!!window.localStorage.getItem("nkt_fichaje_empleado"); }catch(e){}
+  var kiosco=kioscoGuardado&&!p.empleadoId&&!multiLocal&&!atadoAEmp;
   var [elegido,setElegido]=useState(null);
   var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
   var [pin,setPin]=useState("");          // lo que va tecleando

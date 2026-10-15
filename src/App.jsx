@@ -1831,26 +1831,6 @@ function GestUsuarios(p) {
     setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});
     setEditando(null);
   }
-  // Cuándo entró cada uno a la app (se registra mientras la tienen abierta).
-  var [accesos,setAccesos]=useState({});
-  function cargarAccesos(){
-    fetch(SURL+"/rest/v1/pautas?ambito=eq.acceso&limit=500",{headers:SH}).then(function(r){return r.json();}).then(function(d){
-      var m={};
-      if(Array.isArray(d))d.forEach(function(f){ try{ var x=JSON.parse(f.texto); if(x&&x.ultimo)m[String(f.usuario||f.id.replace(/^acc_/,"")).toLowerCase()]=x; }catch(e){} });
-      setAccesos(m);
-    }).catch(function(){});
-  }
-  useEffect(function(){ cargarAccesos(); var t=setInterval(cargarAccesos,60000); return function(){clearInterval(t);}; },[]);
-  function textoAcceso(u){
-    var a=accesos[String(u.usuario||"").toLowerCase()];
-    if(!a)return {txt:"Todavía no entró",col:"#6E6E6E",on:false};
-    var d=new Date(a.ultimo), min=Math.round((Date.now()-d.getTime())/60000);
-    var hora=function(x){return new Date(x).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});};
-    var hoyA=fechaLocal(new Date());
-    if(min<=6)return {txt:"🟢 En la app ahora"+(a.dia===hoyA&&a.primera?" · entró hoy "+hora(a.primera):"")+(a.aparato?" · "+a.aparato:""),col:"#3A7D44",on:true};
-    var cuando=a.dia===hoyA?"hoy "+hora(a.ultimo):fmtDate(a.dia||fechaLocal(d))+" "+hora(a.ultimo);
-    return {txt:"Último ingreso: "+cuando+(a.dia===hoyA&&a.primera?" · entró hoy "+hora(a.primera):"")+(a.aparato?" · "+a.aparato:""),col:"#9A9A9A",on:false};
-  }
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
       <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",overflow:"hidden"}}>
@@ -1917,7 +1897,7 @@ function GestUsuarios(p) {
               return(
                 <div key={u.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"10px 13px",display:"flex",alignItems:"center",gap:9}}>
                   <div style={{width:32,height:32,borderRadius:"50%",background:(u.rol==="admin"?"#C1440E":lc)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{u.rol==="admin"?"👑":"👤"}</div>
-                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{u.nombre}</div><div style={{fontSize:11,color:"#8C8C8C",marginTop:2}}>@{u.usuario} <span style={{marginLeft:5,color:lc}}>· {ll}</span></div>{(function(){ var ac=textoAcceso(u); return <div style={{fontSize:10,color:ac.col,marginTop:2}}>{ac.txt}</div>; })()}</div>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{u.nombre}</div><div style={{fontSize:11,color:"#8C8C8C",marginTop:2}}>@{u.usuario} <span style={{marginLeft:5,color:lc}}>· {ll}</span></div></div>
                   <div style={{display:"flex",gap:5}}><button onClick={function(){setEditando({...u});}} style={{...GH,padding:"5px 8px",fontSize:12}}>✏️</button><button onClick={function(){doDel(u.id);}} style={{...GH,padding:"5px 8px",fontSize:12,color:"#C1440E",borderColor:"#C1440E33"}}>🗑️</button></div>
                 </div>
               );
@@ -11589,9 +11569,45 @@ function PanelJornadas(p){
   );
 }
 
+// Cuándo entró cada usuario a la app: se lee de lo que la app registra mientras la tienen abierta (pautas, ámbito "acceso").
+function useAccesos(){
+  var [accesos,setAccesos]=useState({});
+  useEffect(function(){
+    var vivo=true;
+    function cargar(){
+      fetch(SURL+"/rest/v1/pautas?ambito=eq.acceso&limit=500",{headers:SH}).then(function(r){return r.json();}).then(function(d){
+        if(!vivo)return;
+        var m={};
+        if(Array.isArray(d))d.forEach(function(f){ try{ var x=JSON.parse(f.texto); if(x&&x.ultimo)m[String(f.usuario||String(f.id).replace(/^acc_/,"")).toLowerCase()]=x; }catch(e){} });
+        setAccesos(m);
+      }).catch(function(){});
+    }
+    cargar();
+    var t=setInterval(cargar,60000);
+    return function(){ vivo=false; clearInterval(t); };
+  },[]);
+  return accesos;
+}
+function textoAcceso(a){
+  if(!a)return {txt:"Todavía no entró a la app",col:"#6E6E6E",on:false};
+  var d=new Date(a.ultimo), min=Math.round((Date.now()-d.getTime())/60000);
+  var hora=function(x){return new Date(x).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});};
+  var hoyA=fechaLocal(new Date());
+  var entroHoy=(a.dia===hoyA&&a.primera)?" · entró hoy "+hora(a.primera):"";
+  if(min<=6)return {txt:"🟢 En la app ahora"+entroHoy+(a.aparato?" · "+a.aparato:""),col:"#3A7D44",on:true};
+  var cuando=a.dia===hoyA?"hoy "+hora(a.ultimo):fmtDate(a.dia||fechaLocal(d))+" "+hora(a.ultimo);
+  return {txt:"Último ingreso: "+cuando+entroHoy+(a.aparato?" · "+a.aparato:""),col:"#9A9A9A",on:false};
+}
+
 // El parte para la administración: quién marcó, cuánto trabajó y la foto de cada marca.
 function PanelFichajes(p){
   var fichajes=p.fichajes||[], empleados=p.empleados||[];
+  var accesos=useAccesos();
+  // El usuario de cada empleado (por el vínculo "Es el empleado" de Colaboradores).
+  function accesoDe(emp){
+    var u=(p.users||[]).find(function(x){return x.empleado_id===emp.id;});
+    return textoAcceso(u?accesos[String(u.usuario||"").toLowerCase()]:null);
+  }
   // Corregir a mano y borrar marcas cambia lo que se le paga a alguien: es de Sofía y de
   // nadie más. Hoy el Registro ya sólo se abre desde su módulo, pero el permiso viaja
   // explícito para que un cambio de navegación no lo regale sin querer.
@@ -11851,6 +11867,7 @@ function PanelFichajes(p){
                   {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
                   {!x.tieneJornada?<span style={{color:"#D4A017"}}> · sin jornada</span>:null}
                 </div>
+                {(function(){ var ac=accesoDe(x.e); return <div style={{fontSize:10,color:ac.col,marginTop:2}}>📱 {ac.txt}</div>; })()}
               </span>
               <span style={{textAlign:"right"}}>
                 <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</div>
@@ -25637,7 +25654,7 @@ export default function App() {
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
               {vista==="fichajes_registro"
-                ?<PanelFichajes fichajes={fichajes} empleados={empleados} usuario={cu.nombre}
+                ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
                    localesDatos={localesDatos}

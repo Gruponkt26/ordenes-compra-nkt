@@ -10865,9 +10865,11 @@ function PanelFichar(p){
   var local=localElegido||p.localSugerido||"l1";
   var multiLocal=USUARIOS_EN_CUALQUIER_LOCAL.indexOf(String(p.usuarioLogin||"").toLowerCase())!==-1;
   var [eligioLocal,setEligioLocal]=useState(false);   // los que pueden fichar en cualquier local arrancan en el suyo
-  var [kiosco,setKiosco]=useState(function(){
+  var [kioscoGuardado,setKiosco]=useState(function(){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"; }catch(e){ return false; }
   });
+  // Quien entra con su usuario vinculado a una ficha ficha con su celular: nunca cuenta como tablet del local.
+  var kiosco=kioscoGuardado&&!p.empleadoId;
   var [elegido,setElegido]=useState(null);
   var [fase,setFase]=useState("lista");   // lista | pin | camara | guardando | listo
   var [pin,setPin]=useState("");          // lo que va tecleando

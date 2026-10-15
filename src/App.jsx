@@ -462,7 +462,7 @@ async function sbLoadPautas() {
   try {
     // Sin los mensajes del chat, las opiniones de clientes ni las suscripciones de avisos: son muchas filas
     // y, como la base devuelve como máximo 1000, desplazarían a las pautas y créditos más viejos.
-    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado,datos_emp,novedades_vistas))&order=created_at.desc", { headers: SH });
+    var r = await fetch(SURL + "/rest/v1/pautas?or=(ambito.is.null,ambito.not.in.(chat_todos,chat_priv_sofia_oficina,chat_visto,chat_push_ok,push_sub,opinion,justif_falta,obs_empleado,datos_emp,novedades_vistas,acceso))&order=created_at.desc", { headers: SH });
     var d = await r.json();
     if(Array.isArray(d))return d;
     // Si el filtro no lo entendió la base, se vuelve a la lista completa de antes: nunca queda vacía.
@@ -1831,6 +1831,26 @@ function GestUsuarios(p) {
     setLista(function(l){return l.map(function(u){return u.id===editando.id?editando:u;});});
     setEditando(null);
   }
+  // Cuándo entró cada uno a la app (se registra mientras la tienen abierta).
+  var [accesos,setAccesos]=useState({});
+  function cargarAccesos(){
+    fetch(SURL+"/rest/v1/pautas?ambito=eq.acceso&limit=500",{headers:SH}).then(function(r){return r.json();}).then(function(d){
+      var m={};
+      if(Array.isArray(d))d.forEach(function(f){ try{ var x=JSON.parse(f.texto); if(x&&x.ultimo)m[String(f.usuario||f.id.replace(/^acc_/,"")).toLowerCase()]=x; }catch(e){} });
+      setAccesos(m);
+    }).catch(function(){});
+  }
+  useEffect(function(){ cargarAccesos(); var t=setInterval(cargarAccesos,60000); return function(){clearInterval(t);}; },[]);
+  function textoAcceso(u){
+    var a=accesos[String(u.usuario||"").toLowerCase()];
+    if(!a)return {txt:"Todavía no entró",col:"#6E6E6E",on:false};
+    var d=new Date(a.ultimo), min=Math.round((Date.now()-d.getTime())/60000);
+    var hora=function(x){return new Date(x).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});};
+    var hoyA=fechaLocal(new Date());
+    if(min<=6)return {txt:"🟢 En la app ahora"+(a.dia===hoyA&&a.primera?" · entró hoy "+hora(a.primera):"")+(a.aparato?" · "+a.aparato:""),col:"#3A7D44",on:true};
+    var cuando=a.dia===hoyA?"hoy "+hora(a.ultimo):fmtDate(a.dia||fechaLocal(d))+" "+hora(a.ultimo);
+    return {txt:"Último ingreso: "+cuando+(a.dia===hoyA&&a.primera?" · entró hoy "+hora(a.primera):"")+(a.aparato?" · "+a.aparato:""),col:"#9A9A9A",on:false};
+  }
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(5,5,5,0.9)",zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(6px)"}}>
       <div style={{background:"#141414",border:"1px solid #2A2A2A",borderRadius:18,width:"min(600px,96vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",overflow:"hidden"}}>
@@ -1897,7 +1917,7 @@ function GestUsuarios(p) {
               return(
                 <div key={u.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:12,padding:"10px 13px",display:"flex",alignItems:"center",gap:9}}>
                   <div style={{width:32,height:32,borderRadius:"50%",background:(u.rol==="admin"?"#C1440E":lc)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{u.rol==="admin"?"👑":"👤"}</div>
-                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{u.nombre}</div><div style={{fontSize:11,color:"#8C8C8C",marginTop:2}}>@{u.usuario} <span style={{marginLeft:5,color:lc}}>· {ll}</span></div></div>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{u.nombre}</div><div style={{fontSize:11,color:"#8C8C8C",marginTop:2}}>@{u.usuario} <span style={{marginLeft:5,color:lc}}>· {ll}</span></div>{(function(){ var ac=textoAcceso(u); return <div style={{fontSize:10,color:ac.col,marginTop:2}}>{ac.txt}</div>; })()}</div>
                   <div style={{display:"flex",gap:5}}><button onClick={function(){setEditando({...u});}} style={{...GH,padding:"5px 8px",fontSize:12}}>✏️</button><button onClick={function(){doDel(u.id);}} style={{...GH,padding:"5px 8px",fontSize:12,color:"#C1440E",borderColor:"#C1440E33"}}>🗑️</button></div>
                 </div>
               );
@@ -24503,6 +24523,33 @@ export default function App() {
     if(u)setCu(perfilEfectivo(u));
   },[users]);
   function entrar(u){ guardarSesion(u&&u.id); setCu(perfilEfectivo(u)); }
+  // Se deja registrado cuándo entra cada usuario y hasta cuándo estuvo con la app abierta: un registro por usuario (pautas,
+  // ámbito "acceso") que se actualiza cada pocos minutos mientras la app está abierta. Se ve en Colaboradores.
+  var ultimoPingAcceso=useRef(0);
+  useEffect(function(){
+    if(!cu||!cu.usuario)return;
+    var u=String(cu.usuario).toLowerCase();
+    function ping(){
+      if(typeof document!=="undefined"&&document.visibilityState==="hidden")return;
+      var ahora=new Date();
+      if(ahora.getTime()-ultimoPingAcceso.current<60000)return;
+      ultimoPingAcceso.current=ahora.getTime();
+      var hoyA=fechaLocal(ahora), prim=ahora.toISOString();
+      try{
+        var g=JSON.parse(window.localStorage.getItem("nkt_acc_"+u)||"{}");
+        if(g.dia===hoyA&&g.primera)prim=g.primera;
+        window.localStorage.setItem("nkt_acc_"+u,JSON.stringify({dia:hoyA,primera:prim}));
+      }catch(e){}
+      var aparato=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent||"")?"celular":"computadora";
+      var iso=ahora.toISOString();
+      fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates,return=minimal"},
+        body:JSON.stringify({id:"acc_"+u,ambito:"acceso",texto:JSON.stringify({ultimo:iso,dia:hoyA,primera:prim,aparato:aparato}),usuario:u,created_at:iso,updated_at:iso})}).catch(function(){});
+    }
+    ping();
+    var t=setInterval(ping,240000);
+    document.addEventListener("visibilitychange",ping);
+    return function(){ clearInterval(t); document.removeEventListener("visibilitychange",ping); };
+  },[cu&&cu.usuario]);
   function salir(){ guardarSesion(null); setCu(null); }
   var [proveedores,setProveedores]=useState(INIT_PROVEEDORES);
   var [productos,setProductos]=useState(INIT_PRODUCTOS);

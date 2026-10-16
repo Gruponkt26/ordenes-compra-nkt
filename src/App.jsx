@@ -4699,7 +4699,7 @@ function PanelResumenOficina(p){
   );
 }
 
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderCuit, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var hoy=new Date().toISOString().split("T")[0];
@@ -4818,7 +4818,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"&&renderCuit?[["cuit","🏛️ CUIT"]]:[]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -4863,6 +4863,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {/* Tab Vencimientos de un local: se cargan y se pagan desde acá; en Novedades aparecen igual que siempre */}
       {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id,"proximos")}
       {tab==="deuda"&&renderVencimientos&&renderVencimientos(localSel.id,"deuda")}
+      {tab==="cuit"&&localSel.id!=="l4"&&renderCuit&&renderCuit(localSel.id)}
 
       {tab==="obras"&&(
         <div>
@@ -20206,6 +20207,31 @@ function PanelResultados(p){
 // ─── PANEL SUELDOS ────────────────────────────────────────────────────────────
 
 // ─── PANEL CUIT F.931 ─────────────────────────────────────────────────────────
+// El CUIT de un local: Bodegón factura con el CUIT de Colantonio Carlos Nicolas (c1); Kusama y Colantonio's, con el de la SRL (c2).
+function CuitDeLocal(p){
+  var hoy=new Date().toISOString().split("T")[0];
+  var mesCurrent="2026-07";
+  var [showFormCarga,setShowFormCarga]=useState(false);
+  var [cargaEdit,setCargaEdit]=useState(null);
+  var [formCarga,setFormCarga]=useState({cuit:p.cuitFijo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+  return <PanelCuit
+    cuitFijo={p.cuitFijo}
+    cargasSociales={p.cargasSociales}
+    empleados={p.empleados}
+    cuitAportes={p.cuitAportes||{}}
+    onAsignarCuit={p.onAsignarCuit}
+    mesCurrent={mesCurrent}
+    showFormCarga={showFormCarga} setShowFormCarga={setShowFormCarga}
+    cargaEdit={cargaEdit} setCargaEdit={setCargaEdit}
+    formCarga={formCarga} setFormCarga={setFormCarga}
+    onDeleteCargaSocial={p.onDeleteCargaSocial}
+    onSaveCargaSocial={p.onSaveCargaSocial}
+    onSaveEgresoF931={p.onSaveEgresoF931}
+    gastos={p.gastos||[]}
+    onBorrarEgreso={p.onBorrarEgreso}
+    ESTADOS_SUELDO={p.ESTADOS_SUELDO}
+  />;
+}
 function PanelCuit(props){
   var cargasSociales=props.cargasSociales||[];
   var mesCurrent=props.mesCurrent||"";
@@ -20214,7 +20240,7 @@ function PanelCuit(props){
   var formCarga=props.formCarga||{}, setFormCarga=props.setFormCarga;
   var onDeleteCargaSocial=props.onDeleteCargaSocial;
   var ESTADOS_SUELDO=props.ESTADOS_SUELDO||[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
-  var [cuitActivo,setCuitActivo]=useState("c1");
+  var [cuitActivo,setCuitActivo]=useState(props.cuitFijo||"c1");
   var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var CUITS_LIST=[
     {id:"c1",cuit:"20-26958479-4",razon:"Colantonio Carlos Nicolas",label:"Bodegón",color:"#C1440E"},
@@ -20229,7 +20255,7 @@ function PanelCuit(props){
   var hoy=new Date().toISOString().split("T")[0];
   var [showModal,setShowModal]=useState(false);
   var [editReg,setEditReg]=useState(null);
-  var [form,setForm]=useState({cuit:"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
+  var [form,setForm]=useState({cuit:props.cuitFijo||"c1",periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
   function totalCargaLocal(f){return(parseFloat(f.seg_social)||0)+(parseFloat(f.obra_social)||0)+(parseFloat(f.art)||0)+(parseFloat(f.seguro_vida)||0);}
@@ -20325,9 +20351,9 @@ function PanelCuit(props){
 
   return(
     <div>
-      {/* Selector CUIT */}
+      {/* Selector CUIT (dentro de un local el CUIT ya viene fijado) */}
       <div style={{display:"flex",gap:8,marginBottom:14}}>
-        {CUITS_LIST.map(function(c){return(
+        {CUITS_LIST.filter(function(c){return !props.cuitFijo||c.id===props.cuitFijo;}).map(function(c){return(
           <button key={c.id} onClick={function(){setCuitActivo(c.id);}} style={{flex:1,padding:"12px",borderRadius:10,border:"2px solid "+(cuitActivo===c.id?c.color:"#1E1E1E"),background:cuitActivo===c.id?c.color+"22":"#111",color:cuitActivo===c.id?c.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontWeight:700,cursor:"pointer",textAlign:"center"}}>
             <div style={{fontSize:11,marginBottom:3}}>{c.label}</div>
             <div style={{fontSize:9,color:cuitActivo===c.id?c.color+"99":"#7E7E7E"}}>{c.cuit}</div>
@@ -21273,13 +21299,16 @@ function PanelSueldos(p){
       {/* Módulos de Personal: Altas · Sueldos · CUIT · Informe. Cada uno agrupa sus pestañas. */}
       {(function(){
         var MODULOS=[
-          {id:"colab",label:"👤 Colaboradores",subs:[["altas","➕ Altas"],["empleados","✏️ Modificar datos"],["vacaciones","🏖️ Vacaciones"],["bajas","📤 Bajas"]].concat(p.onSaveUser?[["accesos","🔑 Accesos"]]:[])},
+          {id:"altas",label:"➕ Altas",subs:[["altas","➕ Altas"]]},
+          {id:"bajas",label:"📤 Bajas",subs:[["bajas","📤 Bajas"]]},
+          {id:"vacaciones",label:"🏖️ Vacaciones",subs:[["vacaciones","🏖️ Vacaciones"]]},
+          {id:"empleados",label:"✏️ Modificar datos",subs:[["empleados","✏️ Modificar datos"]]}
+        ].concat(p.onSaveUser?[{id:"accesos",label:"🔑 Accesos",subs:[["accesos","🔑 Accesos"]]}]:[]).concat([
           {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
-        ];
-        var subsCuit=[].concat(p.showCuit?[["cuit","🏛️ CUIT"]]:[]).concat(p.showF931!==false?[["cargas","🏛️ F.931"]]:[]);
-        if(subsCuit.length>0)MODULOS.push({id:"cuit",label:"🏛️ CUIT",subs:subsCuit});
-        if(p.showInforme)MODULOS.push({id:"informe",label:"📊 Informe",subs:[["informe","📊 Informe"]]});
-        var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS[1]||MODULOS[0];
+        ]);
+        if(p.showF931!==false)MODULOS.push({id:"cuit",label:"🏛️ F.931",subs:[["cargas","🏛️ F.931"]]});
+        if(p.showInforme)MODULOS.push({id:"informe",label:"📊 Informes",subs:[["informe","📊 Informes"]]});
+        var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS.find(function(m){return m.id==="sueldos";})||MODULOS[0];
         return(
           <div style={{marginBottom:14}}>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:actual.subs.length>1?8:0}}>
@@ -26183,6 +26212,15 @@ export default function App() {
             <PanelLocales
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
+              renderCuit={function(lid){
+                return <CuitDeLocal key={"cuit_"+lid} cuitFijo={lid==="l1"?"c1":"c2"}
+                  cargasSociales={cargasSociales} empleados={empleados} cuitAportes={cuitAportes} onAsignarCuit={asignarCuitAporte}
+                  onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(prev){var f=prev.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+                  onDeleteCargaSocial={borrarCargaSocial}
+                  onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+                  gastos={gastos} onBorrarEgreso={borrarEgresoSolo}
+                  />;
+              }}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}

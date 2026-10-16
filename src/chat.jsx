@@ -69,7 +69,7 @@ export default function ChatEquipo(p) {
   var cu = p.cu, users = p.users || [];
   var esSofia = cu.usuario === "sofia";
   // El privado es entre Sofía y la Oficina: Belen (aunque no tenga cargado el local de la Oficina) y cualquiera del local 4.
-  var esOficina = cu.local === "l4" || String(cu.usuario || "").toLowerCase() === "belen";
+  var esOficina = cu.local === "l4" || ["belen", "bel"].indexOf(String(cu.usuario || "").toLowerCase()) !== -1;
   var veePrivado = esSofia || esOficina;
 
   var [abierto, setAbierto] = useState(false);

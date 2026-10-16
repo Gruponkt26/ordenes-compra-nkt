@@ -10769,17 +10769,30 @@ function pasosCamara(){
        "Recargá la página."];
 }
 
-function ubicacionAhora(){
+// La mejor lectura de GPS que se consiga en unos segundos: se sigue escuchando hasta tener una precisión de 40 m o hasta
+// que se acaba el tiempo, y se devuelve la más precisa. {lat,lng,acc}, con acc = el error estimado en metros.
+function ubicacionAhora(fresco){
   return new Promise(function(res){
     if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
-    var listo=false;
-    function fin(v){ if(listo)return; listo=true; res(v); }
-    setTimeout(function(){ fin(null); },9000);
-    navigator.geolocation.getCurrentPosition(
-      function(pos){ fin({lat:pos.coords.latitude,lng:pos.coords.longitude}); },
-      function(){ fin(null); },
-      {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+    var listo=false, mejor=null, id=null;
+    function fin(){ if(listo)return; listo=true; try{ if(id!=null)navigator.geolocation.clearWatch(id); }catch(e){} res(mejor); }
+    var t=setTimeout(fin,9000);
+    function leer(pos){
+      var c=pos.coords, acc=(typeof c.accuracy==="number")?c.accuracy:9999;
+      if(!mejor||acc<mejor.acc)mejor={lat:c.latitude,lng:c.longitude,acc:Math.round(acc)};
+      if(acc<=40){ clearTimeout(t); fin(); }
+    }
+    function error(){ if(!mejor){ clearTimeout(t); fin(); } }
+    try{ id=navigator.geolocation.watchPosition(leer,error,{enableHighAccuracy:true,timeout:8000,maximumAge:fresco?0:30000}); }
+    catch(e){ clearTimeout(t); fin(); }
   });
+}
+// Distancia al local descontando el error del GPS (hasta 150 m): una lectura imprecisa, típica adentro de un local, no
+// deja afuera a quien sí está.
+function distanciaEfectiva(coords,pos){
+  var d=distanciaMetros(coords,pos);
+  if(d==null)return null;
+  return Math.max(0,d-Math.min((pos&&pos.acc)||0,150));
 }
 function sacarFoto(v){
   return new Promise(function(res){
@@ -11096,7 +11109,13 @@ function PanelFichar(p){
     if(cercaReq){
       if(!posChk){ alert("No pude tomar tu ubicación. Para fichar desde el celular tenés que activarla: candado 🔒 de la barra del navegador → Permisos → Ubicación → Permitir, y recargá."); setFase("camara"); return; }
       var dChk=distanciaMetros(coordsLocal,posChk);
-      if(dChk!=null&&dChk>RADIO_LOCAL){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
+      if(dChk!=null&&distanciaEfectiva(coordsLocal,posChk)>RADIO_LOCAL){
+        // La lectura de cuando se abrió la pantalla puede ser vieja o imprecisa: se mide de nuevo antes de rechazar.
+        var pos2=await ubicacionAhora(true);
+        if(pos2&&(!posChk.acc||pos2.acc<=posChk.acc||distanciaEfectiva(coordsLocal,pos2)<distanciaEfectiva(coordsLocal,posChk)))posChk=pos2;
+        dChk=distanciaMetros(coordsLocal,posChk);
+      }
+      if(dChk!=null&&distanciaEfectiva(coordsLocal,posChk)>RADIO_LOCAL){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" (error del GPS: ±"+(posChk.acc||"?")+" m) y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
     }
     // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
     // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
@@ -11236,7 +11255,8 @@ function PanelFichar(p){
     var est=estadoDe(elegido.id);
     var sugerido=est.adentro?"salida":"entrada";
     var distAct=(cercaReq&&posAct)?distanciaMetros(coordsLocal,posAct):null;
-    var fueraLocal=cercaReq&&(ubic==="no"||(distAct!=null&&distAct>RADIO_LOCAL));
+    var distEf=(cercaReq&&posAct)?distanciaEfectiva(coordsLocal,posAct):null;
+    var fueraLocal=cercaReq&&(ubic==="no"||(distEf!=null&&distEf>RADIO_LOCAL));
     var puede=!fueraLocal;
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
@@ -11248,7 +11268,7 @@ function PanelFichar(p){
           </div>
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distAct>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {ubic==="no"&&fase!=="guardando"&&(
             <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>

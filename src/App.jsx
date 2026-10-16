@@ -4701,7 +4701,8 @@ function PanelResumenOficina(p){
 
 // F.931 sin pagar de este local: el del CUIT propio vive en El Bodegón y el de la SRL en Kusama. Vence el día 10 del mes
 // siguiente al período; antes de esa fecha figura entre los vencimientos y después, en la deuda.
-function F931DeLocal({localId, cargas, modo, ir}){
+function F931DeLocal({localId, cargas, modo, renderPago}){
+  var [pagando,setPagando]=useState(null);
   var cuitId=localId==="l1"?"c1":localId==="l2"?"c2":"";
   if(!cuitId)return null;
   var hoyS=fechaLocal(new Date());
@@ -4726,14 +4727,15 @@ function F931DeLocal({localId, cargas, modo, ir}){
           <span style={{flex:1,minWidth:150,fontSize:12,color:"#F0EDE8"}}>{cuitId==="c2"?"F.931 SRL (Calzon Gitano)":"F.931 Bodegón (CUIT propio)"} · {x.c.periodo}
             <span style={{display:"block",fontSize:10,color:col}}>vence {fmtDate(x.vence)}{x.c.estado==="parcial"?" · pago parcial":""}</span></span>
           <b style={{fontSize:12,color:"#F0EDE8"}}>{"$"+Math.round(parseFloat(x.c.total)||0).toLocaleString("es-AR")}</b>
-          {ir&&<button onClick={ir} style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+col+"66",background:col+"18",color:col,fontSize:11,fontWeight:700,cursor:"pointer"}}>Pagar en Sueldos →</button>}
+          {renderPago&&<button onClick={function(){setPagando(x.c.id);}} style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+col+"66",background:col+"18",color:col,fontSize:11,fontWeight:700,cursor:"pointer"}}>Pagar</button>}
         </div>;
       })}
-      <div style={{fontSize:10,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Se carga y se paga en Colaboradores → Sueldos → F931. Vence el día 10 del mes siguiente.</div>
+      <div style={{fontSize:10,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Se carga en Colaboradores → Sueldos → F931 y se paga desde acá. Vence el día 10 del mes siguiente.</div>
+      {pagando&&renderPago&&renderPago(pagando,cuitId,function(){setPagando(null);})}
     </div>
   );
 }
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, cargasSocialesRL, irF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var [vistaObras,setVistaObras]=useState("obras");   // obras | informe
@@ -4896,7 +4898,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       {tab==="checklist"&&<PanelChecklist local={localSel} usuario={usuario}/>}
 
       {/* Tab Vencimientos de un local: se cargan y se pagan desde acá; en Novedades aparecen igual que siempre */}
-      {(tab==="vencimientos"||tab==="deuda")&&<F931DeLocal localId={localSel.id} cargas={cargasSocialesRL||[]} modo={tab==="deuda"?"deuda":"proximos"} ir={irF931}/>}
+      {(tab==="vencimientos"||tab==="deuda")&&<F931DeLocal localId={localSel.id} cargas={cargasSocialesRL||[]} modo={tab==="deuda"?"deuda":"proximos"} renderPago={renderPagoF931}/>}
       {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id,"proximos")}
       {tab==="deuda"&&renderVencimientos&&renderVencimientos(localSel.id,"deuda")}
 
@@ -20347,8 +20349,19 @@ function PanelCuit(props){
     }
   }
 
+  // Desde Vencimientos / Deuda de un local se abre sólo el formulario de pago de ese F.931.
+  var abrioPago=useRef(false);
+  useEffect(function(){
+    if(!props.abrirPagarId)return;
+    var c=(cargasSociales||[]).find(function(x){return x.id===props.abrirPagarId;});
+    if(c){ abrioPago.current=true; abrirRegistro(c,true); }
+    else if(props.onCerrarPago)props.onCerrarPago();
+  },[props.abrirPagarId]);
+  useEffect(function(){ if(props.abrirPagarId&&abrioPago.current&&!showModal){ abrioPago.current=false; if(props.onCerrarPago)props.onCerrarPago(); } },[showModal]);
+
   return(
     <div>
+      <div style={props.abrirPagarId?{display:"none"}:undefined}>
       {/* Selector CUIT (dentro de un local el CUIT ya viene fijado) */}
       <div style={{display:"flex",gap:8,marginBottom:14}}>
         {CUITS_LIST.filter(function(c){return !props.cuitFijo||c.id===props.cuitFijo;}).map(function(c){return(
@@ -20433,6 +20446,7 @@ function PanelCuit(props){
       {/* Botón nuevo */}
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
         <button onClick={function(){setShowModal(true);setEditReg(null);setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
+      </div>
       </div>
 
       {/* Modal */}
@@ -26209,7 +26223,15 @@ export default function App() {
             <PanelLocales
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
-              cargasSocialesRL={cargasSociales} irF931={function(){abrirModulo("personal","f931");}}
+              cargasSocialesRL={cargasSociales}
+              renderPagoF931={function(cid,cuitId,cerrar){
+                return <PanelCuit key={"pagof931_"+cid} abrirPagarId={cid} onCerrarPago={cerrar} cuitFijo={cuitId}
+                  cargasSociales={cargasSociales} empleados={empleados} cuitAportes={cuitAportes} mesCurrent={"2026-07"}
+                  onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(prev){var f=prev.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+                  onDeleteCargaSocial={borrarCargaSocial}
+                  onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+                  gastos={gastos}/>;
+              }}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}

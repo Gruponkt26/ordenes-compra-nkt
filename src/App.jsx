@@ -1752,7 +1752,7 @@ function OrdenCard(p) {
         else alert("✓ Entrega confirmada. Todo llegó correctamente.");
       }}/>}
       <div style={{background:"#111",border:"1px solid "+(open?bc+"44":"#1A1A1A"),borderRadius:12,overflow:"hidden",transition:"border-color 0.3s"}}>
-        <div onClick={function(){setOpen(function(o){return !o;});}} style={{padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:9}}>
+        <div onClick={function(){setOpen(function(o){return !o;});}} style={{padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:9,flexWrap:"wrap"}}>
           <div style={{width:4,height:36,background:bc,borderRadius:2,flexShrink:0}}/>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2,flexWrap:"wrap"}}>
@@ -1772,6 +1772,18 @@ function OrdenCard(p) {
             <div style={{fontSize:14,fontWeight:800,fontFamily:"'Playfair Display',serif"}}>${tot.toFixed(2)}</div>
             <div style={{fontSize:10,color:"#6E6E6E"}}>{fmtDate(orden.fecha)}</div>
             {orden.createdAt&&<div style={{fontSize:10,color:"#7E7E7E"}}>⏱ {fmtDateTime(orden.createdAt)}</div>}
+          </div>
+          <div onClick={function(e){e.stopPropagation();}} style={{display:"flex",gap:5,alignItems:"center",flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",maxWidth:210}}>
+            {(function(){
+              var IC={width:32,height:32,borderRadius:9,border:"1px solid #2A2A2A",background:"#0F0F0F",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0};
+              return <>
+                <button title="Enviar por WhatsApp" onClick={function(){setWspCompleto(true);}} style={{...IC,borderColor:"#25D36666",background:"#25D36618"}}>📲</button>
+                {esAdmin&&<button title="Editar la orden" onClick={function(){setEditMode(true);setOpen(false);}} style={{...IC,borderColor:"#D4A01755"}}>✏️</button>}
+                {esAdmin&&<button title="Borrar la orden" onClick={function(){onDelete(orden.id);}} style={{...IC,borderColor:"#C1440E55"}}>🗑️</button>}
+                {(orden.status==="borrador"||orden.status==="pendiente")&&<button title={orden.status==="borrador"?"Emitir la orden":"Marcar como enviada"} onClick={function(){onUpdate(orden.id,{status:NS[orden.status]});}} style={{...IC,borderColor:"#1A6B8A88",background:"#1A6B8A18"}}>📤</button>}
+                {orden.status==="enviada"&&<button title="Confirmar recepción" onClick={function(){setConfirmarModal(true);}} style={{...IC,borderColor:"#3A7D4488",background:"#3A7D4418"}}>✅</button>}
+              </>;
+            })()}
           </div>
           <div style={{color:"#6E6E6E",fontSize:11}}>{open?"▴":"▾"}</div>
         </div>
@@ -1794,18 +1806,7 @@ function OrdenCard(p) {
             {orden.notas&&<div style={{fontSize:11,color:"#7E7E7E",fontStyle:"italic",marginBottom:9}}>📝 {orden.notas}</div>}
             {fact&&<div style={{fontSize:11,color:"#D4A017",marginBottom:9}}>🧾 {fact.razonSocial} · CUIT {fact.cuit}</div>}
             <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              <button onClick={function(){setWspCompleto(true);}} style={{background:"#25D366",border:"none",borderRadius:8,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",padding:"6px 11px"}}>📲 Enviar por WhatsApp</button>
-              {NS[orden.status]&&<button onClick={function(){
-  if(orden.status==="enviada"){
-    setConfirmarModal(true);
-  } else {
-    onUpdate(orden.id,{status:NS[orden.status]});
-  }
-}} style={{...BS("#C1440E"),padding:"6px 10px",fontSize:11}}>{NL[orden.status]}</button>}
               {!["cancelada","confirmada"].includes(orden.status)&&<button onClick={function(){onUpdate(orden.id,{status:"cancelada"});}} style={{...GH,padding:"6px 10px",fontSize:11}}>Cancelar</button>}
-              {esAdmin&&<button onClick={function(){setEditMode(true);setOpen(false);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#D4A017",borderColor:"#D4A01744"}}>✏️ Editar</button>}
-              {esAdmin&&<button onClick={function(){onDelete(orden.id);}} style={{...GH,padding:"6px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E44"}}>🗑️ Eliminar</button>}
-
             </div>
           </div>
         )}
@@ -26793,7 +26794,18 @@ export default function App() {
                 <div style={{textAlign:"center",padding:"44px 20px"}}><div style={{fontSize:36,marginBottom:10}}>📋</div><div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#6E6E6E",marginBottom:4}}>Sin órdenes</div><div style={{fontSize:12,color:"#6E6E6E"}}>{la?"No hay órdenes de "+la.nombre+" todavía":"Creá tu primera orden"}</div></div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                  {filtered.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden} esAdmin={esAdmin} p={{proveedores:proveedores}}/>;  })}
+                  {LOCALES.filter(function(l){return filtered.some(function(o){return o.local===l.id;});}).concat(filtered.some(function(o){return !getLocal(o.local);})?[{id:"__otro",nombre:"Sin local",emoji:"❔",color:"#7E7E7E"}]:[]).map(function(l){
+                    var delLocal=filtered.filter(function(o){return l.id==="__otro"?!getLocal(o.local):o.local===l.id;});
+                    var totL=delLocal.reduce(function(a,o){return a+(o.provSections||[]).reduce(function(b,sec){return b+sec.items.reduce(function(c,i){return c+parseFloat(i.cantidad||0)*parseFloat(i.precio||0);},0);},0);},0);
+                    return <div key={l.id} style={{display:"flex",flexDirection:"column",gap:5,marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 4px",borderBottom:"1px solid "+l.color+"44"}}>
+                        <span style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:800,color:l.color}}>{l.emoji} {l.nombre}</span>
+                        <span style={{fontSize:10,color:"#7E7E7E"}}>{delLocal.length} orden{delLocal.length===1?"":"es"}</span>
+                        <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:"#9A9A9A"}}>{"$"+Math.round(totL).toLocaleString("es-AR")}</span>
+                      </div>
+                      {delLocal.map(function(o){return <OrdenCard key={o.id} orden={o} proveedores={proveedores} onUpdate={updOrden} onDelete={delOrden} esAdmin={esAdmin} p={{proveedores:proveedores}}/>;  })}
+                    </div>;
+                  })}
                 </div>
               )}
             </div>

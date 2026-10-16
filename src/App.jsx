@@ -25985,6 +25985,11 @@ export default function App() {
                 </button>
                 )}
                 {esAdmin&&(
+                <button onClick={function(){setVista("analytics");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="analytics"?"#555":"#1E1E1E"),background:vista==="analytics"?"#222":"#111",color:vista==="analytics"?"#F0EDE8":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  📊 Análisis
+                </button>
+                )}
+                {esAdmin&&(
                 <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#7E7E7E",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   ⚙️ Config
                 </button>
@@ -26051,7 +26056,7 @@ export default function App() {
               {id:"finanzas",label:"📈 Finanzas",color:"#8B2FC9"},
               {id:"config",label:"⚙️ Config",color:"#8C8C8C"},
             ];
-            var vistaFinanzas=["iva","iibb","cruzados","resultados","analytics","ventasegresos"].includes(vista);
+            var vistaFinanzas=["iva","iibb","cruzados","resultados","ventasegresos"].includes(vista);
             var modActivo=vista==="dashboard"?"dashboard":vista==="egresos"||vista==="gastos"?"egresos":vista==="cierres"?"cierres":vista==="vencimientos"?"vencimientos":vistaFinanzas?"finanzas":"egresos";
             return(
               <div>
@@ -26082,7 +26087,7 @@ export default function App() {
                 {/* Sub-tabs de Finanzas */}
                 {modActivo==="finanzas"&&(
                   <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["iibb","🧾 IIBB","#D4A017"],["cruzados","🔀 Cruzados","#E07B00"],["analytics","📊 Análisis","#D4A017"],["ventasegresos","🧮 Ventas y Egresos","#1A6B8A"]].map(function(t){return(
+                    {[["resultados","📈 Resultados","#8B2FC9"],["iva","🧾 IVA","#3A7D44"],["iibb","🧾 IIBB","#D4A017"],["cruzados","🔀 Cruzados","#E07B00"],["ventasegresos","🧮 Ventas y Egresos","#1A6B8A"]].map(function(t){return(
                       <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
                     );})}
                   </div>
@@ -26651,7 +26656,7 @@ export default function App() {
             />
           )}
 
-          {((esAdmin&&!esSofia&&vista==="analytics")||(esSofia&&modulo==="admin"&&vista==="analytics"))&&(
+          {esAdmin&&enOrdenes&&vista==="analytics"&&(
             <PanelAnalytics ordenes={ordenes} proveedores={proveedores}/>
           )}
 

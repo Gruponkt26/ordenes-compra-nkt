@@ -92,10 +92,12 @@ async function sbSaveProveedor(prov) {
 }
 async function sbDeleteProveedor(id) {
   try {
-    await fetch(SURL + "/rest/v1/proveedores?id=eq." + id, { method: "DELETE", headers: SH });
+    // Primero lo que cuelga del proveedor y al final el proveedor: si no, una restricción de la base puede frenar el borrado.
     await fetch(SURL + "/rest/v1/productos?prov_id=eq." + id, { method: "DELETE", headers: SH });
     await fetch(SURL + "/rest/v1/precios?prov_id=eq." + id, { method: "DELETE", headers: SH });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/proveedores?id=eq." + id, { method: "DELETE", headers: SH });
+    if(!r.ok){ var t=""; try{ t=await r.text(); }catch(e2){} alert("No se pudo borrar el proveedor de la base (volverá a aparecer al recargar).\n\n"+t.slice(0,300)); }
+  } catch(e) { alert("No se pudo borrar el proveedor: "+String((e&&e.message)||e)); }
 }
 
 // Usuarios (login) — requiere una tabla "usuarios" en Supabase con columnas:
@@ -2619,7 +2621,12 @@ function GestProveedoresPanel(p) {
   }
 
   function addProv(){if(!newP.nombre.trim())return;var id=genProv();setProvs(function(a){return[...a,{id,...newP}];});setProds(function(a){var n={...a};n[id]=[];return n;});setNewP({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});setShowAdd(false);setSel(id);}
-  function delProv(id){if(!window.confirm("¿Eliminar proveedor?"))return;setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
+  function delProv(id){
+    var pvDel=(provs||[]).find(function(x){return x.id===id;});
+    if(!window.confirm("¿Eliminar a \""+(pvDel?pvDel.nombre:"este proveedor")+"\"?\n\nSe borran también sus productos y precios. Las órdenes que ya se hicieron con él van a mostrarlo sin nombre."))return;
+    // Antes sólo se sacaba de la pantalla y nunca de la base: al recargar volvía.
+    if(p.onDelete)p.onDelete(id);
+    setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
   function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad",contenido:parseFloat(newProd.contenido)||null};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg",contenido:""});}
   function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
   function saveEdProd(){if(!edProd)return;

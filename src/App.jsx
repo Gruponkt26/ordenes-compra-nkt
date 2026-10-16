@@ -26387,6 +26387,14 @@ export default function App() {
                     que es el módulo que los junta: repetirlos acá era la misma novedad dos
                     veces, en dos lugares distintos. */}
 
+                {/* El mes en curso, grande: todas las tarjetas de abajo son de este mes */}
+                <div style={{textAlign:"center",margin:"2px 0 18px",padding:"14px 10px",background:"#0F0F0F",border:"1px solid #D4A01733",borderRadius:14}}>
+                  <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:2,marginBottom:4}}>Mes en curso</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:40,fontWeight:800,color:"#D4A017",textTransform:"capitalize",lineHeight:1.1}}>
+                    {["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(mesCurrent.split("-")[1],10)]} {mesCurrent.split("-")[0]}
+                  </div>
+                </div>
+
                 {/* Cards resumen */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                   <div style={{background:"#111",border:"1px solid #C1440E33",borderRadius:10,padding:"12px 14px"}}>

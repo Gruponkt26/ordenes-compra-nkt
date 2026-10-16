@@ -10774,17 +10774,26 @@ function pasosCamara(){
 function ubicacionAhora(fresco){
   return new Promise(function(res){
     if(typeof navigator==="undefined"||!navigator.geolocation)return res(null);
-    var listo=false, mejor=null, id=null;
-    function fin(){ if(listo)return; listo=true; try{ if(id!=null)navigator.geolocation.clearWatch(id); }catch(e){} res(mejor); }
-    var t=setTimeout(fin,9000);
-    function leer(pos){
+    var listo=false, mejor=null, id=null, t=null;
+    function fin(){ if(listo)return; listo=true; clearTimeout(t); try{ if(id!=null)navigator.geolocation.clearWatch(id); }catch(e){} res(mejor); }
+    function guardar(pos){
       var c=pos.coords, acc=(typeof c.accuracy==="number")?c.accuracy:9999;
       if(!mejor||acc<mejor.acc)mejor={lat:c.latitude,lng:c.longitude,acc:Math.round(acc)};
-      if(acc<=40){ clearTimeout(t); fin(); }
+      return acc;
     }
-    function error(){ if(!mejor){ clearTimeout(t); fin(); } }
-    try{ id=navigator.geolocation.watchPosition(leer,error,{enableHighAccuracy:true,timeout:8000,maximumAge:fresco?0:30000}); }
-    catch(e){ clearTimeout(t); fin(); }
+    function leer(pos){ if(guardar(pos)<=40)fin(); }
+    // Un error pasajero (señal que tarda, lectura que no llegó) no corta nada: se sigue esperando. Sólo el permiso
+    // negado termina de una.
+    function error(err){ if(err&&err.code===1)fin(); }
+    // Si en 9 s no hubo nada con GPS, se prueba con la ubicación por red / Wi-Fi, que adentro de un local suele andar.
+    t=setTimeout(function(){
+      if(mejor||listo){ fin(); return; }
+      try{
+        navigator.geolocation.getCurrentPosition(function(pos){ guardar(pos); fin(); },function(){ fin(); },{enableHighAccuracy:false,timeout:6000,maximumAge:300000});
+      }catch(e){ fin(); }
+    },9000);
+    try{ id=navigator.geolocation.watchPosition(leer,error,{enableHighAccuracy:true,timeout:15000,maximumAge:fresco?0:30000}); }
+    catch(e){ fin(); }
   });
 }
 // Distancia al local que se compara con el límite (RADIO_LOCAL).

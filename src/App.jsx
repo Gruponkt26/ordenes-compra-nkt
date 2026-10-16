@@ -25958,7 +25958,7 @@ export default function App() {
               {[].concat(
                 esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0}]:[],
                 puedeCompras?[
-                  {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
+                  {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, análisis y, por local, historial y faltantes":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
                 esSofia?[{id:"proveedores",emoji:"🏭",label:"Proveedores",desc:"Alta, edición y productos de cada proveedor",color:"#D4A017",badge:0},
@@ -26005,15 +26005,10 @@ export default function App() {
                 {verDespacho&&(
                 <button onClick={function(){setVista("despacho");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="despacho"?"#C1440E":"#1E1E1E"),background:vista==="despacho"?"#C1440E":"#111",color:vista==="despacho"?"#fff":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>🚀 Despacho</button>
                 )}
-                <button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>
+                {!esAdmin&&<button onClick={function(){setVista("historial");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="historial"?"#555":"#1E1E1E"),background:vista==="historial"?"#222":"#111",color:vista==="historial"?"#F0EDE8":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>📋 Historial</button>}
                 {!esAdmin&&puedeCompras&&(
                 <button onClick={function(){setShowMisProds(true);}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
                   📦 Mis Productos
-                </button>
-                )}
-                {esAdmin&&(
-                <button onClick={function(){setVista("faltantes");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="faltantes"?"#C1440E":"#1E1E1E"),background:vista==="faltantes"?"#C1440E11":"#111",color:vista==="faltantes"?"#C1440E":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  ⚠️ Faltantes {faltantes.length>0?"("+faltantes.length+")":""}
                 </button>
                 )}
                 {esAdmin&&(
@@ -26021,7 +26016,25 @@ export default function App() {
                   📊 Análisis
                 </button>
                 )}
+                {esAdmin&&LOCALES.map(function(l){
+                  var act=(vista==="historial"||vista==="faltantes")&&filtroLocal===l.id;
+                  var cnt=ordenes.filter(function(o){return o.local===l.id;}).length;
+                  return <button key={l.id} onClick={function(){setFiltroLocal(l.id);setVista(vista==="faltantes"?"faltantes":"historial");}}
+                    style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",color:act?l.color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    {l.emoji} {l.nombre}{cnt>0?" ("+cnt+")":""}
+                  </button>;
+                })}
               </div>
+              {esAdmin&&(vista==="historial"||vista==="faltantes")&&filtroLocal!=="all"&&(function(){
+                var l=getLocal(filtroLocal)||{color:"#888",nombre:""};
+                var nFalt=faltantes.filter(function(f){return f.local===filtroLocal;}).length;
+                return <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
+                  {[["historial","📋 Historial"],["faltantes","⚠️ Faltantes"+(nFalt>0?" ("+nFalt+")":"")]].map(function(t){
+                    var act=vista===t[0];
+                    return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",color:act?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+                  })}
+                </div>;
+              })()}
             </div>
           )}
 
@@ -26699,19 +26712,21 @@ export default function App() {
             );
           })()}
 
-          {esAdmin&&enOrdenes&&vista==="faltantes"&&(
+          {esAdmin&&enOrdenes&&vista==="faltantes"&&(function(){
+            var faltantesVista=filtroLocal==="all"?faltantes:faltantes.filter(function(f){return f.local===filtroLocal;});
+            return (
             <div>
               <div style={{fontSize:11,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:14}}>
-                {faltantes.length===0?"Sin faltantes pendientes":faltantes.length+" producto"+( faltantes.length!==1?"s":"")+" faltante"+(faltantes.length!==1?"s":"")}
+                {faltantesVista.length===0?"Sin faltantes pendientes":faltantesVista.length+" producto"+( faltantesVista.length!==1?"s":"")+" faltante"+(faltantesVista.length!==1?"s":"")}
               </div>
-              {faltantes.length===0?(
+              {faltantesVista.length===0?(
                 <div style={{textAlign:"center",padding:"40px 20px"}}>
                   <div style={{fontSize:36,marginBottom:10}}>✅</div>
                   <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#3A7D44"}}>Sin faltantes pendientes</div>
                 </div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                  {faltantes.map(function(f){
+                  {faltantesVista.map(function(f){
                     var loc=getLocal(f.local);
                     return(
                       <div key={f.id} style={{background:"#111",border:"1px solid #C1440E33",borderRadius:12,padding:"12px 15px",display:"flex",alignItems:"center",gap:12}}>
@@ -26731,7 +26746,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {/* Mi ficha: lo laboral del propio empleado, sin sueldos ni observaciones */}
@@ -26762,12 +26778,12 @@ export default function App() {
           {enOrdenes&&vista==="historial"&&(
             <div>
               <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
-                {esAdmin&&(
+                {esAdmin&&filtroLocal==="all"&&(
                   <button onClick={function(){setFiltroLocal("all");}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal==="all"?"#555":"#1A1A1A"),background:filtroLocal==="all"?"#222":"none",color:filtroLocal==="all"?"#F0EDE8":"#7E7E7E",fontSize:11,cursor:"pointer"}}>
                     Todos
                   </button>
                 )}
-                {esAdmin&&LOCALES.map(function(l){
+                {esAdmin&&filtroLocal==="all"&&LOCALES.map(function(l){
                   var cnt=ordenes.filter(function(o){return o.local===l.id;}).length;
                   return(
                     <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>

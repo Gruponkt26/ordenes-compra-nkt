@@ -11272,7 +11272,7 @@ function PanelFichar(p){
           </div>
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {ubic==="no"&&fase!=="guardando"&&(
             <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>

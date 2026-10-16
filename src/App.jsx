@@ -713,14 +713,14 @@ var USUARIOS_ORDENES_STOCK = ["sol", "solange", "magali", "maga", "cinthia", "ci
 var USUARIOS_RECETAS = ["sol", "solange", "magali", "maga", "cinthia", "cintia", "cin", "florencia", "flor"];
 
 // Quién ve el panel completo (todos los módulos): Sofía y Belen.
-var PANEL_COMPLETO = ["sofia", "belen"];
+var PANEL_COMPLETO = ["sofia", "belen", "bel"];   // "bel" es el acceso que Belen tiene vinculado a su ficha
 // Perfiles que se fijan acá, sin importar lo que diga la base de usuarios:
 //  · Belen es administradora y ve el panel completo igual que Sofía.
 //  · Araceli es una colaboradora más (Bodegón, sección Cocina, sin permisos de administración): ve Mi ficha, Fichar, Ideas e Info.
 function perfilEfectivo(u){
   if(!u)return u;
   var k=String(u.usuario||"").toLowerCase();
-  if(k==="belen")return {...u, rol:"admin"};
+  if(k==="belen"||k==="bel")return {...u, rol:"admin"};
   if(k==="araceli")return {...u, rol:"usuario", local:"l1", seccion:"Cocina"};
   return u;
 }

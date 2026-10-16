@@ -4702,6 +4702,7 @@ function PanelResumenOficina(p){
 function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderCuit, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
+  var [vistaObras,setVistaObras]=useState("obras");   // obras | informe
   var hoy=new Date().toISOString().split("T")[0];
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
@@ -4818,7 +4819,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"&&renderCuit?[["cuit","🏛️ F931"]]:[]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"&&renderCuit?[["cuit","🏛️ F931"]]:[]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -4867,6 +4868,11 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {tab==="obras"&&(
         <div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[["obras","🏗️ Obras"],["informe","📊 Informe"]].map(function(v){var act=vistaObras===v[0]; return <button key={v[0]} onClick={function(){setVistaObras(v[0]);}} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(act?localSel.color:"#1A1A1A"),background:act?localSel.color+"22":"none",color:act?localSel.color:"#8C8C8C",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>{v[1]}</button>;})}
+          </div>
+          {vistaObras==="informe"&&<PanelInformeLocal local={localSel} localesObras={localesObras}/>}
+          {vistaObras!=="informe"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:11,color:"#8C8C8C"}}>Total invertido: <span style={{color:localSel.color,fontWeight:700}}>{fmt(totalObras)}</span></div>
             <button onClick={function(){setShowFormObra(true);setEditObra(null);setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]}); }} style={{padding:"7px 14px",borderRadius:8,border:"none",background:localSel.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nueva obra</button>
@@ -4984,27 +4990,10 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
               </div>
             </div>
           )}
+        </div>}
         </div>
       )}
 
-      {/* Tab Informe — obras de este local */}
-      {tab==="informe"&&(
-        <PanelInformeLocal
-          local={localSel}
-          localesObras={localesObras}
-        />
-      )}
-
-      {/* Tab Historial */}
-      {tab==="historial"&&(
-        <div>
-          <div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>Registro automático de cambios — próximamente</div>
-          <div style={{background:"#0F0F0F",borderRadius:10,padding:"14px",textAlign:"center",color:"#6E6E6E"}}>
-            <div style={{fontSize:28,marginBottom:8}}>🕐</div>
-            <div style={{fontSize:12}}>El historial se irá completando con los cambios realizados en el local</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -25801,7 +25801,6 @@ export default function App() {
               {id:"novedades",emoji:"🔔",label:"Novedades",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
               {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-              {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
@@ -25836,7 +25835,6 @@ export default function App() {
                   {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
                   {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-                  {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
@@ -25871,7 +25869,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -25931,6 +25929,7 @@ export default function App() {
                   {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
+                esSofia?[{id:"proveedores",emoji:"🏭",label:"Proveedores",desc:"Proveedores, productos y comparador de precios",color:"#D4A017",badge:0}]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
@@ -26112,7 +26111,7 @@ export default function App() {
 
           {/* DASHBOARD */}
           {/* MÓDULO PROVEEDORES */}
-          {esSofia&&modulo==="proveedores"&&(
+          {esSofia&&(modulo==="proveedores"||(modulo==="compras"&&subCompras==="proveedores"))&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:16}}>
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>

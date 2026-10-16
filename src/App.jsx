@@ -21293,10 +21293,9 @@ function PanelSueldos(p){
           {id:"vacaciones",label:"🏖️ Vacaciones",subs:[["vacaciones","🏖️ Vacaciones"]]},
           {id:"empleados",label:"✏️ Modificar datos",subs:[["empleados","✏️ Modificar datos"]]}
         ].concat(p.onSaveUser?[{id:"accesos",label:"🔑 Accesos",subs:[["accesos","🔑 Accesos"]]}]:[]).concat([
-          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]]}
+          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"]].concat(p.showInforme?[["informe","📊 Informe"]]:[])}
         ]);
         if(p.showF931!==false)MODULOS.push({id:"cuit",label:"🏛️ F.931",subs:[["cargas","🏛️ F.931"]]});
-        if(p.showInforme)MODULOS.push({id:"informe",label:"📊 Informes",subs:[["informe","📊 Informes"]]});
         var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS.find(function(m){return m.id==="sueldos";})||MODULOS[0];
         return(
           <div style={{marginBottom:14}}>

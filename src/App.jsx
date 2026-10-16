@@ -675,6 +675,14 @@ var INIT_USERS = [
   { id: "u12", nombre: "Florencia", usuario: "florencia", password: "Flor123", local: "l3", rol: "usuario", seccion: "Cocina" },
 ];
 
+// En qué locales se usa cada producto de un proveedor. Un producto sin restricción se usa en todos; con restricción sólo aparece
+// al armar la orden de esos locales. {provId: {nombreProducto: [localId,…]}}
+var PROD_LOCALES={};
+var GUARDAR_PROD_LOCALES=function(){};
+function prodEnLocal(provId, nombre, localId){
+  var m=PROD_LOCALES[provId], l=m&&m[nombre];
+  return !l||l.length===0||l.indexOf(localId)!==-1;
+}
 // Usuarios que entran a Compras con la misma navegación que Sofía — las dos
 // tarjetas, Órdenes de compra y Stock — pero siempre limitados a su propio
 // local y sin Faltantes ni Config, que siguen siendo de admin.
@@ -1227,7 +1235,10 @@ function NuevaOrden(p) {
     var prods=p.productos[actProv]||[];
     var sec=orden.provSections.find(function(x){return x.provId===actProv;});
     var previos=(sec&&sec.items)||[];
-    var filas=prods.map(function(pr){
+    var filas=prods.filter(function(pr){
+      var pn0=typeof pr==="string"?pr:(pr.nombre||"");
+      return prodEnLocal(actProv,pn0,orden.local);
+    }).map(function(pr){
       var pn=typeof pr==="string"?pr:(pr.nombre||"");
       var un=typeof pr==="string"?"unidad":(pr.unidad||"unidad");
       var ya=previos.find(function(i){return i.nombre===pn;});
@@ -2462,6 +2473,18 @@ function GestProveedoresPanel(p) {
   // guardado: si no, la pantalla muestra algo que la base no tiene.
   useEffect(function(){ setProds(p.productos||{}); },[p.productos]);
   var [sel,setSel]=useState(null);
+  var [plMap,setPlMap]=useState(PROD_LOCALES);
+  useEffect(function(){ setPlMap(PROD_LOCALES); },[JSON.stringify(PROD_LOCALES)]);
+  function toggleLocalProd(provId,nombre,localId,locsProv){
+    var base=(plMap[provId]&&plMap[provId][nombre])||locsProv.slice();
+    var nueva=base.indexOf(localId)!==-1?base.filter(function(x){return x!==localId;}):base.concat([localId]);
+    var mapa={...(plMap[provId]||{})};
+    // con todos los locales del proveedor, vuelve a ser "sin restricción"
+    if(locsProv.every(function(l){return nueva.indexOf(l)!==-1;}))delete mapa[nombre]; else mapa[nombre]=nueva;
+    var todo={...plMap,[provId]:mapa};
+    setPlMap(todo); PROD_LOCALES=todo;
+    GUARDAR_PROD_LOCALES(provId,mapa);
+  }
   var [newP,setNewP]=useState({nombre:"",categoria:"Otro",compartido:true,whatsapp:""});
   var [newProd,setNewProd]=useState({nombre:"",unidad:"kg",contenido:""});
   var [showAdd,setShowAdd]=useState(false);
@@ -2850,6 +2873,20 @@ function GestProveedoresPanel(p) {
                         <div style={{flex:1,minWidth:0}}>
                           <span style={{fontSize:12,color:"#BBB"}}>📦 {nombre}</span>
                           <span style={{fontSize:10,color:"#8C8C8C",background:"#1A1A1A",borderRadius:4,padding:"1px 5px",marginLeft:5}}>{pres.cantidad!==1?pres.cantidad+" ":""}{unidad}</span>
+                          {(function(){
+                            var pvSel=(provs||[]).find(function(x){return x.id===sel;})||{};
+                            var locsProv=(pvSel.locales&&pvSel.locales.length>0?pvSel.locales:LOCALES.map(function(l){return l.id;}));
+                            if(locsProv.length<2)return null;
+                            var activos=(plMap[sel]&&plMap[sel][nombre])||locsProv;
+                            return <span style={{display:"inline-flex",gap:3,marginLeft:6,verticalAlign:"middle"}}>
+                              {locsProv.map(function(lid){
+                                var l=getLocal(lid); if(!l)return null;
+                                var on=activos.indexOf(lid)!==-1;
+                                return <button key={lid} title={(on?"Se usa en ":"No se usa en ")+l.nombre+" (tocá para cambiar)"} onClick={function(){toggleLocalProd(sel,nombre,lid,locsProv);}}
+                                  style={{padding:"1px 5px",borderRadius:6,border:"1px solid "+(on?l.color:"#2A2A2A"),background:on?l.color+"22":"none",opacity:on?1:0.35,fontSize:11,cursor:"pointer"}}>{l.emoji}</button>;
+                              })}
+                            </span>;
+                          })()}
                           {pres.fuente==="nombre"&&<span title={"Se dedujo del nombre que trae "+pres.cantidad+" "+pres.unidad+". Si no es así, cargalo a mano."} style={{fontSize:9,color:"#6B5B2E",marginLeft:4}}>auto</span>}
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
@@ -25325,6 +25362,13 @@ export default function App() {
   });
   F931_VENCE=f931Vence;
   GUARDAR_F931_VENCE=function(cid,fecha){ guardarOfPauta("f931_vence",{id:"f931v_"+cid,fecha:fecha}); };
+  var prodLoc={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="prod_locales")return;
+    try{ var dpl=JSON.parse(x.texto||"{}"); if(dpl.map)prodLoc[String(x.id).replace(/^prodloc_/,"")]=dpl.map; }catch(e){}
+  });
+  PROD_LOCALES=prodLoc;
+  GUARDAR_PROD_LOCALES=function(provId,mapa){ guardarOfPauta("prod_locales",{id:"prodloc_"+provId,map:mapa}); };
   var percReales={};
   pautas.forEach(function(x){
     if(x.ambito!=="perc_fact")return;

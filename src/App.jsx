@@ -21459,10 +21459,25 @@ function PanelSueldos(p){
               return <div key={u.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 13px",display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
                 <div><div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{u.nombre} <span style={{color:"#6E6E6E",fontWeight:400}}>@{u.usuario}</span></div>
                   <div style={{fontSize:10,color:"#7E7E7E"}}>{u.rol==="admin"?"Admin":u.rol==="cajero"?"Cajero":"Colaborador"}{loc?" · "+loc.emoji+" "+loc.nombre:""}{u.seccion?" · "+u.seccion:""}</div></div>
-                <span style={{fontSize:10,color:emp?"#3A7D44":"#D4A017"}}>{emp?"Ficha: "+emp.nombre:"Sin ficha"}</span>
+                {(function(){
+                  var repetida=!!emp&&usersAll.filter(function(x){return x.empleado_id===u.empleado_id;}).length>1;
+                  return <span style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:10,color:repetida?"#E0714A":(emp?"#3A7D44":"#D4A017"),fontWeight:repetida?700:400}}>{emp?(repetida?"⚠️ Ficha repetida: ":"Ficha: ")+emp.nombre:"Sin ficha"}</span>
+                    {p.onDeleteUser&&<button title="Eliminar este acceso" onClick={function(){ if(window.confirm("¿Eliminar el acceso de "+u.nombre+" (@"+u.usuario+")?\n\nYa no va a poder entrar a la app. La ficha no se toca."))p.onDeleteUser(u.id); }} style={{background:"none",border:"1px solid #C1440E44",borderRadius:6,color:"#C1440E",fontSize:11,padding:"2px 7px",cursor:"pointer"}}>🗑</button>}
+                  </span>;
+                })()}
               </div>;
             })}
           </div>
+          {(function(){
+            var sin=empleados.filter(function(e){return e.activo!==false&&!userDe(e);});
+            if(sin.length===0)return null;
+            return <div style={{background:"#14100A",border:"1px solid #D4A01744",borderRadius:10,padding:"10px 13px"}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:4}}>Colaboradores sin acceso a la app ({sin.length})</div>
+              <div style={{fontSize:11,color:"#B8B8B8",lineHeight:1.6}}>{sin.map(function(e){return e.nombre;}).join(" · ")}</div>
+              <div style={{fontSize:10,color:"#7E7E7E",marginTop:4}}>Para darles acceso: Modificar datos → su ficha → 🔑 Acceso a la app.</div>
+            </div>;
+          })()}
           <button onClick={function(){setShowAccesos(true);}} style={{padding:"10px",borderRadius:8,border:"1px solid #4CAF5066",background:"#4CAF5018",color:"#4CAF50",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⚙️ Crear o editar usuarios sin ficha</button>
         </div>
       )}

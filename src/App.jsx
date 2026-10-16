@@ -4699,6 +4699,15 @@ function PanelResumenOficina(p){
   );
 }
 
+// Vencimiento del F.931: el día 10 del mes siguiente al período, salvo que se haya cargado otra fecha.
+var F931_VENCE={};
+var GUARDAR_F931_VENCE=function(){};
+function venceF931(c){
+  if(c&&F931_VENCE[c.id])return F931_VENCE[c.id];
+  var pr=String((c&&c.periodo)||"").split("-"), a=parseInt(pr[0],10), m=parseInt(pr[1],10);
+  if(!a||!m)return "";
+  return fechaLocal(new Date(a,m,10));   // m es 1-based: como índice, es el mes que sigue
+}
 // F.931 sin pagar de este local: el del CUIT propio vive en El Bodegón y el de la SRL en Kusama. Vence el día 10 del mes
 // siguiente al período; antes de esa fecha figura entre los vencimientos y después, en la deuda.
 function F931DeLocal({localId, cargas, modo, renderPago}){
@@ -4706,12 +4715,7 @@ function F931DeLocal({localId, cargas, modo, renderPago}){
   var cuitId=localId==="l1"?"c1":localId==="l2"?"c2":"";
   if(!cuitId)return null;
   var hoyS=fechaLocal(new Date());
-  function venceDe(c){
-    var pr=String(c.periodo||"").split("-"), a=parseInt(pr[0],10), m=parseInt(pr[1],10);
-    if(!a||!m)return "";
-    var d=new Date(a,m,10);   // mes siguiente (m ya es 1-based = índice del mes que sigue)
-    return fechaLocal(d);
-  }
+  function venceDe(c){ return venceF931(c); }
   var items=(cargas||[]).filter(function(c){return c.cuit===cuitId&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0;})
     .map(function(c){return {c:c,vence:venceDe(c)};})
     .filter(function(x){return x.vence&&(modo==="deuda"?x.vence<hoyS:x.vence>=hoyS);})
@@ -4730,7 +4734,7 @@ function F931DeLocal({localId, cargas, modo, renderPago}){
           {renderPago&&<button onClick={function(){setPagando(x.c.id);}} style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+col+"66",background:col+"18",color:col,fontSize:11,fontWeight:700,cursor:"pointer"}}>Pagar</button>}
         </div>;
       })}
-      <div style={{fontSize:10,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Se carga en Colaboradores → Sueldos → F931 y se paga desde acá. Vence el día 10 del mes siguiente.</div>
+      <div style={{fontSize:10,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Se carga en Colaboradores → Sueldos → F931 y se paga desde acá. Vence el día 10 del mes siguiente, salvo que hayas cargado otra fecha.</div>
       {pagando&&renderPago&&renderPago(pagando,cuitId,function(){setPagando(null);})}
     </div>
   );
@@ -20312,6 +20316,7 @@ function PanelCuit(props){
     var medios={};
     (c.distribucion||[]).forEach(function(d){ if(d.medio)medios[d.local]=d.medio; });
     setEditReg(c);
+    setVenceF(venceF931(c));
     setForm({cuit:c.cuit,periodo:c.periodo,estado:pagar?"pagado":c.estado,seg_social:String(c.seg_social||""),obra_social:String(c.obra_social||""),art:String(c.art||""),seguro_vida:String(c.seguro_vida||""),fecha_pago:pagar?hoy:(c.fecha_pago||hoy),notas:c.notas||"",medios:medios});
     setShowModal(true);
   }
@@ -20332,6 +20337,7 @@ function PanelCuit(props){
     if(pagaConMedios)distribucion=distribucion.map(function(d){return {...d,medio:medioDeLocal(d.local)};});
     var obj={id,cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,distribucion:distribucion,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
     if(props.onSaveCargaSocial)props.onSaveCargaSocial(obj);
+    if(venceF&&venceF!==venceF931({id:"__x",periodo:form.periodo}))GUARDAR_F931_VENCE(id,venceF);
     // Generar egresos por local — solo si está pagado o parcial
     if(total>0&&props.onSaveEgresoF931&&(form.estado==="pagado"||form.estado==="parcial")){
       distribucion.forEach(function(d){
@@ -20350,6 +20356,7 @@ function PanelCuit(props){
   }
 
   // Desde Vencimientos / Deuda de un local se abre sólo el formulario de pago de ese F.931.
+  var [venceF,setVenceF]=useState("");
   var abrioPago=useRef(false);
   useEffect(function(){
     if(!props.abrirPagarId)return;
@@ -20445,7 +20452,7 @@ function PanelCuit(props){
 
       {/* Botón nuevo */}
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-        <button onClick={function(){setShowModal(true);setEditReg(null);setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
+        <button onClick={function(){setShowModal(true);setEditReg(null);setVenceF("");setForm({cuit:cuitActivo,periodo:mesCurrent,estado:"pendiente",seg_social:"",obra_social:"",art:"",seguro_vida:"",fecha_pago:hoy,notas:""});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:cuitObj.color,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Registrar pago F.931</button>
       </div>
       </div>
 
@@ -20468,6 +20475,10 @@ function PanelCuit(props){
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
               <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Período</label><input type="month" value={form.periodo} onChange={function(e){setForm(function(f){return{...f,periodo:e.target.value};});}} style={INP}/></div>
               <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Fecha pago</label><input type="date" value={form.fecha_pago} onChange={function(e){setForm(function(f){return{...f,fecha_pago:e.target.value};});}} style={INP}/></div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Vence (por defecto, el 10 del mes siguiente)</label>
+              <input type="date" value={venceF||venceF931({id:"__x",periodo:form.periodo})} onChange={function(e){setVenceF(e.target.value);}} style={INP}/>
             </div>
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Estado</label>
@@ -25209,6 +25220,13 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  var f931Vence={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="f931_vence")return;
+    try{ var dv=JSON.parse(x.texto||"{}"); if(dv.fecha)f931Vence[String(x.id).replace(/^f931v_/,"")]=dv.fecha; }catch(e){}
+  });
+  F931_VENCE=f931Vence;
+  GUARDAR_F931_VENCE=function(cid,fecha){ guardarOfPauta("f931_vence",{id:"f931v_"+cid,fecha:fecha}); };
   var percReales={};
   pautas.forEach(function(x){
     if(x.ambito!=="perc_fact")return;
@@ -25216,6 +25234,10 @@ export default function App() {
   });
   PERC_REALES=percReales;
   GUARDAR_PERC=function(gid,d){ guardarOfPauta("perc_fact",{id:"perc_"+gid,iva:d.iva,iibb:d.iibb}); };
+  // F.931 sin pagar como vencimientos (sólo para los avisos y la deuda de Novedades): el del CUIT propio en El Bodegón, el de la SRL en Kusama.
+  var f931Virtuales=(cargasSociales||[]).filter(function(c){return (c.cuit==="c1"||c.cuit==="c2")&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0&&venceF931(c);})
+    .map(function(c){return {id:"f931v_"+c.id,local:c.cuit==="c1"?"l1":"l2",grupo:"afip",area:"Administrativo",concepto:"F.931 "+(c.cuit==="c1"?"Bodegón (CUIT propio)":"SRL (Calzon Gitano)")+" "+c.periodo,
+      monto:parseFloat(c.total)||0,recurrente:false,activo:true,fecha:venceF931(c),virtualF931:true};});
   var cfgFichaje=null;
   pautas.forEach(function(x){ if(x.ambito==="config_fichaje"){ try{ var d0=JSON.parse(x.texto||"{}").desde; if(d0)cfgFichaje=d0; }catch(e){} } });
   var primeraMarca="";
@@ -26170,7 +26192,7 @@ export default function App() {
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
             <PanelNovedades ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
-              cierres={cierres} vencimientos={vencimientos} aportes={aportes} retiros={retiros}
+              cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}
               proveedores={proveedores} saldosProveedores={saldosProveedores}

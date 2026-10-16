@@ -26117,10 +26117,10 @@ export default function App() {
                 )}
                 {esAdmin&&LOCALES.map(function(l){
                   var act=(vista==="historial"||vista==="faltantes")&&filtroLocal===l.id;
-                  var cnt=ordenes.filter(function(o){return o.local===l.id;}).length;
-                  return <button key={l.id} onClick={function(){setFiltroLocal(l.id);setVista(vista==="faltantes"?"faltantes":"historial");}}
+                  var nProvs=proveedores.filter(function(pv){return localesDeProv(pv).indexOf(l.id)!==-1;}).length;
+                  return <button key={l.id} onClick={function(){setFiltroLocal(l.id);setVista(vista==="faltantes"?"faltantes":"historial");}} title={nProvs+" proveedor"+(nProvs===1?"":"es")+" trabajan con este local"}
                     style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",color:act?l.color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                    {l.emoji} {l.nombre}{cnt>0?" ("+cnt+")":""}
+                    {l.emoji} {l.nombre} <span style={{fontSize:11,fontWeight:600,opacity:0.75}}>· {nProvs} prov.</span>
                   </button>;
                 })}
               </div>

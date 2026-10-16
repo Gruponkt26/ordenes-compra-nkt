@@ -26361,9 +26361,18 @@ export default function App() {
             var mesCurrent=hoy.substring(0,7);
             var fmt=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
             var cierresToday=cierres.filter(function(c){return c.fecha===hoy;});
-            var ventasHoy=cierresToday.reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
-            var gastosMes=gastos.filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
-            var ventasMes=cierres.filter(function(c){return c.fecha&&c.fecha.slice(0,7)===mesCurrent;}).reduce(function(a,c){return a+parseFloat(c.total_ventas||0);},0);
+            // Mismas cuentas que Ventas y Egresos (Finanzas) y que el Resumen de cada local, para que los números no se contradigan:
+            // ventas de los cierres con la corrección manual, y egresos operativos sin los pagos de deuda. Sólo Bodegón, Kusama y Colantonio's.
+            var localesDash=LOCALES.filter(function(l){return l.id!=="l4";});
+            var retirosDash=retiros.filter(esMovDinero), aportesDash=aportes.filter(esMovDinero);
+            var ventasHoy=cierresToday.filter(function(c){return c.local!=="l4";}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+            var ventasMes=localesDash.reduce(function(a,l){
+              var cl=cierres.filter(function(c){return c.local===l.id&&c.fecha&&c.fecha.slice(0,7)===mesCurrent;});
+              return a+cl.reduce(function(x,c){return x+ventasDeCierre(c);},0)+correccionVentas(cierres,l.id,mesCurrent,corrResultados);
+            },0);
+            var gastosMes=localesDash.reduce(function(a,l){
+              return a+egresosOperativos(gastos,sueldos,adelantos,l.id,mesCurrent,cierres,retirosDash,true,aportesDash).total;
+            },0);
             return(
               <div style={{fontFamily:"'Inter',sans-serif"}}>
                 <div style={{marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
@@ -26393,6 +26402,7 @@ export default function App() {
                   <div style={{background:"#111",border:"1px solid #D4A01733",borderRadius:10,padding:"12px 14px"}}>
                     <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Egresos del mes</div>
                     <div style={{fontSize:22,fontWeight:800,color:"#D4A017",fontFamily:"'Playfair Display',serif"}}>{fmt(gastosMes)}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>Igual que Ventas y Egresos · sin pagos de deuda</div>
                   </div>
                   <div style={{background:"#111",border:"1px solid #3A7D4433",borderRadius:10,padding:"12px 14px"}}>
                     <div style={{fontSize:9,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Resultado estimado</div>

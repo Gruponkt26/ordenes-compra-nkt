@@ -10701,7 +10701,7 @@ function fmtDistancia(m){
 }
 // Hasta acá se considera "en el local". El GPS de un celular adentro de una cocina se va
 // fácil un par de cuadras, así que apretar más sería marcar de dudosa media planilla.
-var RADIO_LOCAL=150;
+var RADIO_LOCAL=250;
 // Quiénes pueden fichar en cualquiera de los tres locales (cubren puestos en los tres). Si marcan en un local que no es el suyo,
 // queda avisado en Novedades. Para sumar a alguien, agregar su usuario.
 var USUARIOS_EN_CUALQUIER_LOCAL=["galo","ariana","alejo"];
@@ -10787,13 +10787,8 @@ function ubicacionAhora(fresco){
     catch(e){ clearTimeout(t); fin(); }
   });
 }
-// Distancia al local descontando el error del GPS (hasta 150 m): una lectura imprecisa, típica adentro de un local, no
-// deja afuera a quien sí está.
-function distanciaEfectiva(coords,pos){
-  var d=distanciaMetros(coords,pos);
-  if(d==null)return null;
-  return Math.max(0,d-Math.min((pos&&pos.acc)||0,150));
-}
+// Distancia al local que se compara con el límite (RADIO_LOCAL).
+function distanciaEfectiva(coords,pos){ return distanciaMetros(coords,pos); }
 function sacarFoto(v){
   return new Promise(function(res){
     try{

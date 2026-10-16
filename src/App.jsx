@@ -25801,7 +25801,6 @@ export default function App() {
               {id:"novedades",emoji:"🔔",label:"Novedades",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
               {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-              {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
@@ -25836,7 +25835,6 @@ export default function App() {
                   {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
                   {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-                  {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
@@ -25871,7 +25869,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -25931,6 +25929,8 @@ export default function App() {
                   {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, historial, faltantes y configuración":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
                 ]:[],
+                esSofia?[{id:"proveedores",emoji:"🏭",label:"Proveedores",desc:"Alta, edición y productos de cada proveedor",color:"#D4A017",badge:0},
+                              {id:"comparador",emoji:"⚖️",label:"Comparador de precios",desc:"Buscar y comparar el precio de un producto entre proveedores",color:"#3A7D44",badge:0}]:[],
                 esCocina?[{id:"recetas",emoji:"🍳",label:"Recetas",desc:"El recetario del local",color:"#D4A017",badge:0}]:[],
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
@@ -25989,20 +25989,7 @@ export default function App() {
                   📊 Análisis
                 </button>
                 )}
-                {esAdmin&&(
-                <button onClick={function(){setVista("configcompras");}} style={{padding:"9px 18px",borderRadius:10,border:"1px solid "+(vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#555":"#1E1E1E"),background:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#222":"#111",color:vista==="configcompras"||vista==="proveedores"||vista==="precios"?"#888":"#7E7E7E",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  ⚙️ Config
-                </button>
-                )}
               </div>
-              {esAdmin&&(vista==="configcompras"||vista==="proveedores"||vista==="precios")&&(
-                <div style={{display:"flex",gap:5,marginTop:8,flexWrap:"wrap"}}>
-                  {[["proveedores","🏭 Proveedores","#D4A017"],["precios","💲 Precios","#3A7D44"]].map(function(t){return(
-                    <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(vista===t[0]?t[2]:"#1E1E1E"),background:vista===t[0]?t[2]+"22":"#111",color:vista===t[0]?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
-                  );})}
-                  <button onClick={function(){setShowEditorCats(true);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏷️ Categorías</button>
-                </div>
-              )}
             </div>
           )}
 
@@ -26112,22 +26099,22 @@ export default function App() {
 
           {/* DASHBOARD */}
           {/* MÓDULO PROVEEDORES */}
-          {esSofia&&modulo==="proveedores"&&(
+          {/* PROVEEDORES y COMPARADOR DE PRECIOS — dentro de Compras, al lado de Órdenes y Stock */}
+          {esSofia&&modulo==="compras"&&subCompras==="proveedores"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+              <div style={{marginBottom:12}}>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
               </div>
-              <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-                {[["gestion","🏭 Gestión","#D4A017"],["comparador","⚖️ Comparador","#3A7D44"]].map(function(t){
-                  var act=vistaProv===t[0];
-                  return <button key={t[0]} onClick={function(){setVistaProv(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
-                })}
+              {renderGestProveedores()}
+            </div>
+          )}
+          {esSofia&&modulo==="compras"&&subCompras==="comparador"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:12}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚖️ Comparador de precios</div>
               </div>
-              {vistaProv==="comparador"?(
-                <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
-                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
-              ):renderGestProveedores()}
+              <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
+                onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
             </div>
           )}
 
@@ -26533,36 +26520,6 @@ export default function App() {
           )}
 
           {/* CONFIG COMPRAS */}
-          {enOrdenes&&vista==="configcompras"&&(
-            <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:12}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>⚙️ Config Compras</div>
-              </div>
-              <div style={{fontSize:11,color:"#7E7E7E"}}>Seleccioná Proveedores o Precios del menú.</div>
-            </div>
-          )}
-
-          {/* PRECIOS */}
-          {enOrdenes&&vista==="precios"&&(
-            <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:12}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💲 Precios</div>
-              </div>
-              <ComparadorPrecios proveedores={proveedores} productos={productos} precios={precios}
-                  onSavePrecio={function(provId,nombre,valor){sbSavePrecio(provId,nombre,valor);setPrecios(function(prev){var n={...prev};if(!n[provId])n[provId]={};n[provId][nombre]=parseFloat(valor)||0;return n;});}}/>
-            </div>
-          )}
-
-          {/* PROVEEDORES */}
-          {enOrdenes&&vista==="proveedores"&&(
-            <div style={{fontFamily:"'Inter',sans-serif"}}>
-              <div style={{marginBottom:12}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏭 Proveedores</div>
-              </div>
-              {renderGestProveedores()}
-            </div>
-          )}
-
           {esSofia&&modulo==="admin"&&vista==="egresos"&&(
             <PanelEgresos gastos={gastos} usuario={cu.nombre} proveedores={proveedores} cierres={cierres} adelantos={adelantos}
               conceptosCustom={conceptosGastos}
@@ -26851,7 +26808,6 @@ export default function App() {
         setProductos(quedan2);setShowMisProds(false);
       }}/>}
       {showExportarGastos&&<ExportarGastosModal gastos={gastos} onClose={function(){setShowExportarGastos(false);}}/>}
-      {showEditorCats&&<EditorCategoriasGastos categorias={categoriasGastos} onClose={function(){setShowEditorCats(false);}} onSave={function(cats){setCategoriasGastos(cats);setShowEditorCats(false);}}/>}
       {showEditorMenu&&<EditorMenuStock onClose={function(){setShowEditorMenu(false);}} onSave={function(m){
         // Save to Supabase
         Object.keys(m).forEach(function(localId){

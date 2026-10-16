@@ -2603,7 +2603,14 @@ function GestProveedoresPanel(p) {
   function delProv(id){if(!window.confirm("¿Eliminar proveedor?"))return;setProvs(function(a){return a.filter(function(x){return x.id!==id;});});setProds(function(a){var n={...a};delete n[id];return n;});if(sel===id)setSel(null);}
   function addProd(){if(!newProd.nombre.trim()||!sel)return;var prod={nombre:newProd.nombre.trim(),unidad:newProd.unidad||"unidad",contenido:parseFloat(newProd.contenido)||null};setProds(function(a){var n={...a};n[sel]=[...(n[sel]||[]),prod];return n;});setNewProd({nombre:"",unidad:"kg",contenido:""});}
   function delProd(pid,idx){setProds(function(a){var n={...a};n[pid]=n[pid].filter(function(_,i){return i!==idx;});return n;});}
-  function saveEdProd(){if(!edProd)return;setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad,contenido:parseFloat(edProd.contenido)||null}:p;});return n;});setEdProd(null);}
+  function saveEdProd(){if(!edProd)return;
+    // Si se le cambia el nombre, las restricciones de local lo siguen.
+    var viejoP=(prods[sel]||[])[edProd.idx], vn=viejoP?getProdNombre(viejoP):"";
+    if(vn&&vn!==edProd.nombre&&plMap[sel]&&plMap[sel][vn]){
+      var mp={...plMap[sel]}; mp[edProd.nombre]=mp[vn]; delete mp[vn];
+      var todoP={...plMap,[sel]:mp}; setPlMap(todoP); PROD_LOCALES=todoP; GUARDAR_PROD_LOCALES(sel,mp);
+    }
+    setProds(function(a){var n={...a};n[sel]=n[sel].map(function(p,i){return i===edProd.idx?{nombre:edProd.nombre,unidad:edProd.unidad,contenido:parseFloat(edProd.contenido)||null}:p;});return n;});setEdProd(null);}
   function getProdNombre(prod){return typeof prod==="string"?prod:prod.nombre;}
   function getProdUnidad(prod){return typeof prod==="string"?"unidad":prod.unidad||"unidad";}
   function saveEd(){setProvs(function(a){return a.map(function(x){return x.id===ed.id?ed:x;});});setEd(null);}

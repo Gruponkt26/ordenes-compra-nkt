@@ -16886,6 +16886,18 @@ function PanelCierresSofia(p) {
       });
       return out.sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
     })();
+    // Varias veces "coincidió" del mismo cajero, local y día se ven en un solo renglón (×N, con la hora de la última). Las que NO
+    // coinciden quedan siempre aparte: cada una es un aviso que hay que resolver.
+    var lineasVerif=[], idxGrupoVerif={};
+    function horaDe(a){ try{ return a.created_at?new Date(a.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""; }catch(e){ return ""; } }
+    avisosMes.forEach(function(a){
+      var ok=Math.round(parseFloat(a.diferencia||0))===0;
+      if(!ok){ lineasVerif.push({a:a,n:1,horas:[]}); return; }
+      var k=a.local+"|"+a.fecha+"|"+(a.usuario||"");
+      if(idxGrupoVerif[k]!==undefined){ var g=lineasVerif[idxGrupoVerif[k]]; g.n++; g.horas.push(horaDe(a)); return; }
+      idxGrupoVerif[k]=lineasVerif.length;
+      lineasVerif.push({a:a,n:1,horas:[horaDe(a)]});
+    });
     return(
       <div style={{fontFamily:"'Inter',sans-serif",position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -16916,7 +16928,8 @@ function PanelCierresSofia(p) {
           <div style={{fontSize:12,color:"#6E6E6E",textAlign:"center",padding:"30px 0"}}>Sin verificaciones en {mesFiltro}.</div>
         ):(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {avisosMes.map(function(a){
+            {lineasVerif.map(function(g){
+              var a=g.a;
               var l=getLocal(a.local);
               var coincide=Math.round(parseFloat(a.diferencia||0))===0;
               return(
@@ -16924,8 +16937,9 @@ function PanelCierresSofia(p) {
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:12,fontWeight:700,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:a.local} · {fmtDate(a.fecha)}</div>
                     <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>
-                      {coincide?"Coincidió":"Contó "+plataAR(a.contado)+" · esperado "+plataAR(a.esperado)}
+                      {coincide?("Coincidió"+(g.n>1?" ×"+g.n:"")):"Contó "+plataAR(a.contado)+" · esperado "+plataAR(a.esperado)}
                       {a.usuario?" · "+a.usuario:""}
+                      {coincide&&g.n>1&&g.horas.length>0?<span title={"Horas: "+g.horas.slice().reverse().join(" · ")}> · última a las {g.horas[0]||"—"} (primera {g.horas[g.horas.length-1]||"—"})</span>:(coincide&&g.horas[0]?" · "+g.horas[0]:"")}
                     </div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>

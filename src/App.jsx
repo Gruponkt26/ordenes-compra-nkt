@@ -4710,7 +4710,7 @@ function venceF931(c){
 }
 // F.931 sin pagar de este local: el del CUIT propio vive en El Bodegón y el de la SRL en Kusama. Vence el día 10 del mes
 // siguiente al período; antes de esa fecha figura entre los vencimientos y después, en la deuda.
-function F931DeLocal({localId, cargas, modo, renderPago}){
+function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
   var [pagando,setPagando]=useState(null);
   var cuitId=localId==="l1"?"c1":localId==="l2"?"c2":"";
   if(!cuitId)return null;
@@ -4725,7 +4725,7 @@ function F931DeLocal({localId, cargas, modo, renderPago}){
   var col=modo==="deuda"?"#E0714A":"#4CAF50";
   return(
     <div style={{background:"#0F0F0F",border:"1px solid "+col+"55",borderRadius:12,padding:"11px 13px",marginBottom:12}}>
-      <div style={{fontSize:12,fontWeight:800,color:col,marginBottom:6}}>🏛️ F.931 {modo==="deuda"?"vencido sin pagar":"por pagar"} · {"$"+Math.round(total).toLocaleString("es-AR")}</div>
+      <div style={{fontSize:12,fontWeight:800,color:col,marginBottom:6}}>🏛️ F.931 {etiqueta?((getLocal(localId)||{}).nombre+" · "):""}{modo==="deuda"?"vencido sin pagar":"por pagar"} · {"$"+Math.round(total).toLocaleString("es-AR")}</div>
       {items.map(function(x){
         return <div key={x.c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #1A1A1A",flexWrap:"wrap"}}>
           <span style={{flex:1,minWidth:150,fontSize:12,color:"#F0EDE8"}}>{cuitId==="c2"?"F.931 SRL (Calzon Gitano)":"F.931 Bodegón (CUIT propio)"} · {x.c.periodo}
@@ -25529,6 +25529,14 @@ export default function App() {
   }
 
   // El panel de vencimientos: el general (Administración) y el de cada local (módulo Locales) usan los mismos datos.
+  function renderPagoF931(cid,cuitId,cerrar){
+    return <PanelCuit key={"pagof931_"+cid} abrirPagarId={cid} onCerrarPago={cerrar} cuitFijo={cuitId}
+      cargasSociales={cargasSociales} empleados={empleados} cuitAportes={cuitAportes} mesCurrent={"2026-07"}
+      onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(prev){var f=prev.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
+      onDeleteCargaSocial={borrarCargaSocial}
+      onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
+      gastos={gastos}/>;
+  }
   function panelVencimientos(extra){
     return (
       <PanelVencimientos key={(extra&&extra.llave)||"venc_general"} {...extra}
@@ -26246,14 +26254,7 @@ export default function App() {
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}
-              renderPagoF931={function(cid,cuitId,cerrar){
-                return <PanelCuit key={"pagof931_"+cid} abrirPagarId={cid} onCerrarPago={cerrar} cuitFijo={cuitId}
-                  cargasSociales={cargasSociales} empleados={empleados} cuitAportes={cuitAportes} mesCurrent={"2026-07"}
-                  onSaveCargaSocial={function(c){sbSaveCargaSocial(c);setCargasSociales(function(prev){var f=prev.filter(function(x){return x.id!==c.id;});return[c,...f];});}}
-                  onDeleteCargaSocial={borrarCargaSocial}
-                  onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
-                  gastos={gastos}/>;
-              }}
+              renderPagoF931={renderPagoF931}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}
@@ -26523,7 +26524,13 @@ export default function App() {
               avisosCaja={avisosCaja} onResolverAvisoCaja={resolverAvisoCaja}/>
           )}
 
-          {esSofia&&modulo==="admin"&&vista==="vencimientos"&&panelVencimientos({grupoInicial:vencGrupo})}
+          {esSofia&&modulo==="admin"&&vista==="vencimientos"&&(
+            <div>
+              {["l1","l2"].map(function(lid){ return <F931DeLocal key={"f931d_"+lid} localId={lid} cargas={cargasSociales} modo="deuda" renderPago={renderPagoF931} etiqueta={true}/>; })}
+              {["l1","l2"].map(function(lid){ return <F931DeLocal key={"f931p_"+lid} localId={lid} cargas={cargasSociales} modo="proximos" renderPago={renderPagoF931} etiqueta={true}/>; })}
+              {panelVencimientos({grupoInicial:vencGrupo})}
+            </div>
+          )}
 
           {esSofia&&modulo==="admin"&&vista==="cruzados"&&(
             <PanelCruzados gastos={gastos} saldos={saldosCruzados}

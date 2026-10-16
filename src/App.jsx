@@ -675,6 +675,14 @@ var INIT_USERS = [
   { id: "u12", nombre: "Florencia", usuario: "florencia", password: "Flor123", local: "l3", rol: "usuario", seccion: "Cocina" },
 ];
 
+// En qué locales trabaja cada proveedor. Lo que se marca en Proveedores manda sobre lo que traiga el proveedor; sin nada, trabaja con todos.
+var PROV_LOCALES={};
+var GUARDAR_PROV_LOCALES=function(){};
+function localesDeProv(pv){
+  var o=pv&&PROV_LOCALES[pv.id];
+  if(o&&o.length)return o;
+  return (pv&&pv.locales&&pv.locales.length)?pv.locales:LOCALES.map(function(l){return l.id;});
+}
 // En qué locales se usa cada producto de un proveedor. Un producto sin restricción se usa en todos; con restricción sólo aparece
 // al armar la orden de esos locales. {provId: {nombreProducto: [localId,…]}}
 var PROD_LOCALES={};
@@ -1254,7 +1262,7 @@ function NuevaOrden(p) {
   var local=getLocal(orden.local);
   var lc=local?local.color:"#C1440E";
   var precios=p.precios||{};
-  var provsDisponibles = orden.local ? p.proveedores.filter(function(pv){ return !pv.locales || pv.locales.includes(orden.local); }) : p.proveedores;
+  var provsDisponibles = orden.local ? p.proveedores.filter(function(pv){ return localesDeProv(pv).includes(orden.local); }) : p.proveedores;
   function getPrecio(provId, prod){
     var pn=typeof prod==="string"?prod:(prod.nombre||"");
     // Nuevo formato: precios[provId][producto]
@@ -2473,6 +2481,17 @@ function GestProveedoresPanel(p) {
   // guardado: si no, la pantalla muestra algo que la base no tiene.
   useEffect(function(){ setProds(p.productos||{}); },[p.productos]);
   var [sel,setSel]=useState(null);
+  var [filtroLocProv,setFiltroLocProv]=useState("all");
+  var [pvlMap,setPvlMap]=useState(PROV_LOCALES);
+  useEffect(function(){ setPvlMap(PROV_LOCALES); },[JSON.stringify(PROV_LOCALES)]);
+  function toggleLocalProv(pv,localId){
+    var base=localesDeProv(pv);
+    var nueva=base.indexOf(localId)!==-1?base.filter(function(x){return x!==localId;}):base.concat([localId]);
+    if(nueva.length===0){ alert("Un proveedor tiene que trabajar con al menos un local."); return; }
+    var todo={...pvlMap,[pv.id]:nueva};
+    setPvlMap(todo); PROV_LOCALES=todo;
+    GUARDAR_PROV_LOCALES(pv.id,nueva);
+  }
   var [plMap,setPlMap]=useState(PROD_LOCALES);
   useEffect(function(){ setPlMap(PROD_LOCALES); },[JSON.stringify(PROD_LOCALES)]);
   function toggleLocalProd(provId,nombre,localId,locsProv){
@@ -2635,8 +2654,14 @@ function GestProveedoresPanel(p) {
             </div>
           </div>
         )}
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+          {[{id:"all",emoji:"",nombre:"Todos",color:"#D4A017"}].concat(LOCALES).map(function(l){
+            var act=filtroLocProv===l.id;
+            return <button key={l.id} onClick={function(){setFiltroLocProv(l.id);}} title={l.nombre} style={{padding:"4px 9px",borderRadius:20,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"none",color:act?l.color:"#8C8C8C",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l.emoji?l.emoji:"Todos"}</button>;
+          })}
+        </div>
         <div style={{display:"flex",flexDirection:"column",gap:3}}>
-          {provs.map(function(pv){return(
+          {provs.filter(function(pv){return filtroLocProv==="all"||localesDeProv(pv).indexOf(filtroLocProv)!==-1;}).map(function(pv){return(
             <div key={pv.id} onClick={function(){setSel(pv.id);setEd(null);}} style={{padding:"9px 11px",borderRadius:8,cursor:"pointer",background:sel===pv.id?"#1C1C1C":"#0F0F0F",border:"1px solid "+(sel===pv.id?"#D4A01744":"#1A1A1A"),borderLeft:"3px solid "+(sel===pv.id?"#D4A017":"transparent")}}>
               <div style={{fontSize:12,fontWeight:600,color:sel===pv.id?"#F0EDE8":"#888"}}>{pv.nombre}</div>
               <div style={{fontSize:10,color:"#7E7E7E"}}>{pv.categoria} · {(prods[pv.id]||[]).length} productos</div>
@@ -2683,6 +2708,14 @@ function GestProveedoresPanel(p) {
                   <div>
                     <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700}}>{sp?sp.nombre:""}</div>
                     <div style={{fontSize:12,color:"#8C8C8C",marginTop:3}}>{sp?sp.categoria:""}{sp&&sp.whatsapp&&<span style={{color:"#25D366",marginLeft:6}}>📱 {sp.whatsapp}</span>}</div>
+                    {sp&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:7,flexWrap:"wrap"}}>
+                      <span style={{fontSize:10,color:"#7E7E7E"}}>Trabaja con:</span>
+                      {LOCALES.map(function(l){
+                        var on=localesDeProv(sp).indexOf(l.id)!==-1;
+                        return <button key={l.id} title={(on?"Trabaja con ":"No trabaja con ")+l.nombre+" (tocá para cambiar)"} onClick={function(){toggleLocalProv(sp,l.id);}}
+                          style={{padding:"2px 7px",borderRadius:7,border:"1px solid "+(on?l.color:"#2A2A2A"),background:on?l.color+"22":"none",opacity:on?1:0.35,fontSize:12,cursor:"pointer"}}>{l.emoji}</button>;
+                      })}
+                    </div>}
                   </div>
                   <div style={{display:"flex",gap:5}}>
                     <button onClick={function(){setEd(sp);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",cursor:"pointer",fontSize:11}}>✏️</button>
@@ -2882,7 +2915,7 @@ function GestProveedoresPanel(p) {
                           <span style={{fontSize:10,color:"#8C8C8C",background:"#1A1A1A",borderRadius:4,padding:"1px 5px",marginLeft:5}}>{pres.cantidad!==1?pres.cantidad+" ":""}{unidad}</span>
                           {(function(){
                             var pvSel=(provs||[]).find(function(x){return x.id===sel;})||{};
-                            var locsProv=(pvSel.locales&&pvSel.locales.length>0?pvSel.locales:LOCALES.map(function(l){return l.id;}));
+                            var locsProv=localesDeProv(pvSel);
                             if(locsProv.length<2)return null;
                             var activos=(plMap[sel]&&plMap[sel][nombre])||locsProv;
                             return <span style={{display:"inline-flex",gap:3,marginLeft:6,verticalAlign:"middle"}}>
@@ -25109,6 +25142,7 @@ export default function App() {
   var [productos,setProductos]=useState(INIT_PRODUCTOS);
   var [ordenes,setOrdenes]=useState([]);
   var [showOrden,setShowOrden]=useState(false);
+  var [ordenLocal,setOrdenLocal]=useState("");   // local con el que se abre «Nueva orden» desde la pestaña de un local (administración)
   var [showGest,setShowGest]=useState(false);
   var [showMisProds,setShowMisProds]=useState(false);
   var [showPrecios,setShowPrecios]=useState(false);
@@ -25369,6 +25403,13 @@ export default function App() {
   });
   F931_VENCE=f931Vence;
   GUARDAR_F931_VENCE=function(cid,fecha){ guardarOfPauta("f931_vence",{id:"f931v_"+cid,fecha:fecha}); };
+  var provLoc={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="prov_locales")return;
+    try{ var dpv=JSON.parse(x.texto||"{}"); if(dpv.locales)provLoc[String(x.id).replace(/^provloc_/,"")]=dpv.locales; }catch(e){}
+  });
+  PROV_LOCALES=provLoc;
+  GUARDAR_PROV_LOCALES=function(provId,locs){ guardarOfPauta("prov_locales",{id:"provloc_"+provId,locales:locs}); };
   var prodLoc={};
   pautas.forEach(function(x){
     if(x.ambito!=="prod_locales")return;
@@ -25868,7 +25909,7 @@ export default function App() {
             <RelojEncabezado/>
             <span style={{fontSize:11,color:"#7E7E7E",borderLeft:"1px solid #222",borderRight:"1px solid #222",padding:"0 9px",marginRight:2}}>👤 {cu.nombre}</span>
             {esAdmin&&!esSofia&&<button onClick={function(){setShowUsers(true);}} style={{...GH,padding:"5px 10px",fontSize:12}}>👥 Colaboradores</button>}
-            {enOrdenes&&puedeCompras&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
+            {enOrdenes&&puedeCompras&&!esAdmin&&<button onClick={function(){setShowOrden(true);}} style={{...BS("#C1440E"),padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva Orden</button>}
             <button onClick={handleRefresh} disabled={refrescando} style={{...GH,padding:"6px 10px",fontSize:12,color:refrescando?"#1A6B8A":"#8C8C8C"}} title="Actualizar datos">{refrescando?"⏳":"🔄"}</button>
             <button onClick={salir} style={{...GH,padding:"6px 8px",fontSize:12,color:"#8C8C8C"}} title="Cerrar sesión">🚪</button>
           </div>
@@ -26084,6 +26125,7 @@ export default function App() {
                     var act=vista===t[0];
                     return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",color:act?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                   })}
+                  {puedeCompras&&<button onClick={function(){setOrdenLocal(filtroLocal);setShowOrden(true);}} style={{...BS("#C1440E"),marginLeft:"auto",padding:"7px 15px",fontSize:12,boxShadow:"0 4px 14px #C1440E33"}}>+ Nueva orden · {l.emoji} {l.nombre}</button>}
                 </div>;
               })()}
             </div>
@@ -26880,7 +26922,7 @@ export default function App() {
         </div>
       </div>
 
-      {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={lf} onClose={function(){setShowOrden(false);}} onSave={saveOrden}/>}
+      {showOrden&&<NuevaOrden proveedores={proveedores} productos={productos} precios={precios} localFijo={ordenLocal||lf} onClose={function(){setShowOrden(false);setOrdenLocal("");}} onSave={function(o){setOrdenLocal("");return saveOrden(o);}}/>}
       {showGest&&<GestProveedores proveedores={proveedores} productos={productos} ordenes={ordenes} precios={precios} onClose={function(){setShowGest(false);}} onSave={function(pv,pd){
         pv.forEach(function(p){ sbSaveProveedor(p); });
         // Para cada proveedor: borrar primero, luego guardar

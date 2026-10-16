@@ -26407,16 +26407,6 @@ export default function App() {
                   💼 Retiro de caja menor
                 </button>
 
-                {/* Accesos rápidos */}
-                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Accesos rápidos</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                  {[["egresos","💰 Egresos","#1A6B8A"],["resultados","📈 Resultados","#8B2FC9"],["cierres","🏪 Cierres","#C1440E"],["iva","🧾 IVA","#3A7D44"],["cruzados","🔀 Cruzados","#E07B00"],["stock","📦 Stock","#8B2FC9"]].map(function(t){return(
-                    <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"12px 8px",borderRadius:10,border:"1px solid "+t[2]+"33",background:t[2]+"11",color:t[2],fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"center"}}>
-                      {t[1]}
-                    </button>
-                  );})}
-                </div>
-
                 {/* Modal de retiro menor */}
                 {retiroMenorForm&&(function(){
                   var localesRM=LOCALES.filter(function(l){return l.id!=="l4";});

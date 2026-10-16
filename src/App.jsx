@@ -25110,9 +25110,25 @@ export default function App() {
         });
       }).catch(function(){});
   }
+  // Lo que cargan los cajeros (cierres y verificaciones de caja) también se vuelve a traer solo: el panel completo suele
+  // quedar abierto horas y, si no, no veía lo que se cargó después de abrirlo hasta recargar la página.
+  function refrescarCajas(){
+    var d0=fechaLocal(new Date(Date.now()-3*86400000));
+    fetch(SURL+"/rest/v1/cierres_caja?fecha=gte."+d0+"&order=created_at.desc",{headers:{...SH,"Cache-Control":"no-cache","Pragma":"no-cache"}})
+      .then(function(r){return r.json();})
+      .then(function(nuevos){
+        if(!Array.isArray(nuevos))return;
+        setCierres(function(prev){
+          var ids={}; nuevos.forEach(function(c){ids[c.id]=true;});
+          return nuevos.concat((prev||[]).filter(function(c){return !ids[c.id];}));
+        });
+      }).catch(function(){});
+    sbLoadAvisosCaja().then(function(d){ if(Array.isArray(d)&&d.length>0)setAvisosCaja(d); }).catch(function(){});
+  }
   useEffect(function(){
     if(!cu)return;
-    function r(){ if(typeof document!=="undefined"&&document.visibilityState==="hidden")return; refrescarFichajes(); }
+    var panelCompleto=PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())!==-1;
+    function r(){ if(typeof document!=="undefined"&&document.visibilityState==="hidden")return; refrescarFichajes(); if(panelCompleto)refrescarCajas(); }
     r();
     var t=setInterval(r,60000);
     document.addEventListener("visibilitychange",r);

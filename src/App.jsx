@@ -2161,6 +2161,7 @@ function autoContenido(nombre){
 // mano proveedor por proveedor, así que para cruzarlos se normalizan y se les
 // saca la presentación.
 function ComparadorPrecios(p) {
+  var [sugAbierto,setSugAbierto]=useState(false);
   var proveedores=p.proveedores||[], productos=p.productos||{};
   var [busca,setBusca]=useState("");
   var [soloComunes,setSoloComunes]=useState(true); // sólo lo que cotiza más de un proveedor
@@ -2265,6 +2266,21 @@ function ComparadorPrecios(p) {
     return a.nombre.localeCompare(b.nombre);
   });
 
+  // Mientras se escribe, se anticipan los productos: primero los que EMPIEZAN con lo escrito y después los que tienen alguna palabra que empieza así.
+  var qSug=sinAcentos(busca).trim();
+  var sugerencias=[];
+  if(qSug.length>=2){
+    var vistoSug={};
+    filas.forEach(function(f){
+      var n=sinAcentos(f.nombre);
+      var rank=n.indexOf(qSug)===0?0:(n.split(/[^a-z0-9ñ]+/).some(function(w){return w.indexOf(qSug)===0;})?1:-1);
+      if(rank<0||vistoSug[n])return;
+      vistoSug[n]=true;
+      sugerencias.push({nombre:f.nombre,rank:rank});
+    });
+    sugerencias.sort(function(a,b){ return a.rank!==b.rank?a.rank-b.rank:a.nombre.localeCompare(b.nombre); });
+    sugerencias=sugerencias.slice(0,8);
+  }
   var colProvs=proveedores.filter(function(pv){
     return visibles.some(function(f){return f.items[pv.id];});
   });
@@ -2296,7 +2312,22 @@ function ComparadorPrecios(p) {
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:11}}>
-        <input placeholder="🔍 Buscar producto..." value={busca} onChange={function(e){setBusca(e.target.value);}} style={{...INP,flex:1,minWidth:150}}/>
+        <div style={{position:"relative",flex:1,minWidth:150}}>
+          <input placeholder="🔍 Buscar producto..." value={busca} autoComplete="off"
+            onChange={function(e){setBusca(e.target.value);setSugAbierto(true);}}
+            onFocus={function(){setSugAbierto(true);}} onBlur={function(){setTimeout(function(){setSugAbierto(false);},150);}}
+            style={{...INP,width:"100%",boxSizing:"border-box"}}/>
+          {sugAbierto&&sugerencias.length>0&&sugerencias[0].nombre!==busca&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,marginTop:3,background:"#141414",border:"1px solid #2A2A2A",borderRadius:10,overflow:"hidden",boxShadow:"0 8px 24px #000a"}}>
+              {sugerencias.map(function(sg){
+                return <div key={sg.nombre} onMouseDown={function(e){e.preventDefault();setBusca(sg.nombre);setSugAbierto(false);}}
+                  style={{padding:"9px 12px",fontSize:12.5,color:"#F0EDE8",cursor:"pointer",borderBottom:"1px solid #1A1A1A"}}>
+                  {sg.nombre}
+                </div>;
+              })}
+            </div>
+          )}
+        </div>
         <button onClick={function(){setSoloComunes(!soloComunes);}} style={{padding:"9px 13px",borderRadius:8,border:"1px solid "+(soloComunes?"#3A7D44":"#1E1E1E"),background:soloComunes?"#3A7D4422":"#111",color:soloComunes?"#3A7D44":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
           {soloComunes?"✓ Sólo comparables":"Todos los productos"}
         </button>

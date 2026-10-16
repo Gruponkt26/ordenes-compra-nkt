@@ -10798,6 +10798,9 @@ function ubicacionAhora(fresco){
 }
 // Distancia al local que se compara con el límite (RADIO_LOCAL).
 function distanciaEfectiva(coords,pos){ return distanciaMetros(coords,pos); }
+// Una lectura con un error mayor que el límite no sirve para decidir si alguien está lejos: se deja marcar y la marca queda avisada.
+function lecturaImprecisa(pos){ return !!pos&&typeof pos.acc==="number"&&pos.acc>RADIO_LOCAL; }
+function muyLejos(coords,pos){ var d=distanciaEfectiva(coords,pos); return d!=null&&d>RADIO_LOCAL&&!lecturaImprecisa(pos); }
 function sacarFoto(v){
   return new Promise(function(res){
     try{
@@ -11113,13 +11116,13 @@ function PanelFichar(p){
     if(cercaReq){
       if(!posChk){ alert("No pude tomar tu ubicación. Para fichar desde el celular tenés que activarla: candado 🔒 de la barra del navegador → Permisos → Ubicación → Permitir, y recargá."); setFase("camara"); return; }
       var dChk=distanciaMetros(coordsLocal,posChk);
-      if(dChk!=null&&distanciaEfectiva(coordsLocal,posChk)>RADIO_LOCAL){
+      if(dChk!=null&&muyLejos(coordsLocal,posChk)){
         // La lectura de cuando se abrió la pantalla puede ser vieja o imprecisa: se mide de nuevo antes de rechazar.
         var pos2=await ubicacionAhora(true);
         if(pos2&&(!posChk.acc||pos2.acc<=posChk.acc||distanciaEfectiva(coordsLocal,pos2)<distanciaEfectiva(coordsLocal,posChk)))posChk=pos2;
         dChk=distanciaMetros(coordsLocal,posChk);
       }
-      if(dChk!=null&&distanciaEfectiva(coordsLocal,posChk)>RADIO_LOCAL){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" (error del GPS: ±"+(posChk.acc||"?")+" m) y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
+      if(dChk!=null&&muyLejos(coordsLocal,posChk)){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" (error del GPS: ±"+(posChk.acc||"?")+" m) y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
     }
     // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
     // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
@@ -11143,7 +11146,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):""};
+      con_pin:!!pinDe(elegido), notas:(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -11260,7 +11263,8 @@ function PanelFichar(p){
     var sugerido=est.adentro?"salida":"entrada";
     var distAct=(cercaReq&&posAct)?distanciaMetros(coordsLocal,posAct):null;
     var distEf=(cercaReq&&posAct)?distanciaEfectiva(coordsLocal,posAct):null;
-    var fueraLocal=cercaReq&&(ubic==="no"||(distEf!=null&&distEf>RADIO_LOCAL));
+    var fueraLocal=cercaReq&&(ubic==="no"||(distEf!=null&&muyLejos(coordsLocal,posAct)));
+    var imprecisa=cercaReq&&lecturaImprecisa(posAct)&&distEf!=null&&distEf>RADIO_LOCAL;
     var puede=!fueraLocal;
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
@@ -11272,7 +11276,7 @@ function PanelFichar(p){
           </div>
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(imprecisa?"⚠️ Tu ubicación es imprecisa (GPS ±"+posAct.acc+" m): podés marcar y queda avisado":distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {ubic==="no"&&fase!=="guardando"&&(
             <div style={{fontSize:11,color:"#8A8A8A",marginTop:8,lineHeight:1.6,textAlign:"left"}}>
@@ -11918,6 +11922,7 @@ function PanelFichajes(p){
               <span style={{fontSize:12.5,fontWeight:700,color:f.tipo==="salida"?"#C1440E":"#3A7D44",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
               <span style={{fontSize:11,color:otro?"#D4A017":(loc?loc.color:"#8C8C8C")}}>{loc?loc.emoji+" "+loc.nombre:f.local}{otro?" ⚠️":""}</span>
               {f.manual&&<span title="Carga manual" style={{fontSize:10,color:"#7E7E7E"}}>✎</span>}
+              {String(f.notas||"").indexOf("Ubicación imprecisa")===0&&<span title={f.notas} style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⚠️ GPS impreciso</span>}
               {f.lat!=null&&f.lng!=null?<button onClick={function(){setMapaDe(f);}} style={{background:"none",border:"none",padding:0,fontSize:10,cursor:"pointer",color:lej?"#C1440E":"#3A7D44",fontWeight:700}}>📍{lej?fmtDistancia(lej):""}</button>:(!f.manual&&<span title="Sin ubicación" style={{fontSize:10,color:"#D4A017"}}>📍✕</span>)}
               {puedeEditar&&<button onClick={function(){ if(window.confirm("¿Borrar la marca de "+f.empleado_nombre+" del "+fmtDate(f.fecha)+" a las "+f.hora+"?"))p.onDelete(f.id); }} style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11,padding:"0 2px",marginLeft:"auto"}} title="Borrar">🗑</button>}
             </div>

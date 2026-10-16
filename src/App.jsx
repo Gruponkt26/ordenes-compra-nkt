@@ -678,14 +678,21 @@ var INIT_USERS = [
 // Usuarios que entran a Compras con la misma navegación que Sofía — las dos
 // tarjetas, Órdenes de compra y Stock — pero siempre limitados a su propio
 // local y sin Faltantes ni Config, que siguen siendo de admin.
-var COMPRAS_SUBMODULOS = ["sol", "magali", "cinthia", "florencia", "flor", "ariana"];
+var COMPRAS_SUBMODULOS = ["sol", "solange", "magali", "maga", "cinthia", "cintia", "cin", "florencia", "flor", "ariana", "ari"];
+// Cocina con Órdenes de compra, Stock y Recetas. Se reconocen por el nombre de usuario o por el primer nombre de su ficha
+// (los usuarios reales son @maga, @cin…, no siempre el nombre entero).
+function enListaDe(lista, cu){
+  var u=String((cu&&cu.usuario)||"").toLowerCase();
+  var n=String((cu&&cu.nombre)||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().split(/\s+/)[0];
+  return lista.indexOf(u)!==-1||(!!n&&lista.indexOf(n)!==-1);
+}
 // Qué ve cada colaborador en su app, además de Mi ficha, Fichar, Ideas e Info (que ven todos):
 //  · Cajeros: Caja, Órdenes de compra y Stock.
 //  · Sol, Magali, Cinthia y Flor: Órdenes de compra, Stock y Recetas.
 //  · Ariana (encargada de Kusama): Órdenes de compra y Stock, como hasta ahora.
 //  · Los demás (Araceli, Lola, Gabriel, Guillermina…): sólo lo de todos.
-var USUARIOS_ORDENES_STOCK = ["sol", "magali", "cinthia", "florencia", "flor", "ariana"];
-var USUARIOS_RECETAS = ["sol", "magali", "cinthia", "florencia", "flor"];
+var USUARIOS_ORDENES_STOCK = ["sol", "solange", "magali", "maga", "cinthia", "cintia", "cin", "florencia", "flor", "ariana", "ari"];
+var USUARIOS_RECETAS = ["sol", "solange", "magali", "maga", "cinthia", "cintia", "cin", "florencia", "flor"];
 
 // Quién ve el panel completo (todos los módulos): Sofía y Belen.
 var PANEL_COMPLETO = ["sofia", "belen"];
@@ -25460,16 +25467,16 @@ export default function App() {
   // El permiso de compras del cajero puede venir de Supabase con la columna en
   // minúsculas, según cómo se haya creado; se aceptan las dos formas.
   var cajeroCompras=!!(cu.puedeCompras||cu.puedecompras);
-  var puedeCompras=esAdmin||esCajero||USUARIOS_ORDENES_STOCK.indexOf(String(cu.usuario||"").toLowerCase())!==-1;
+  var puedeCompras=esAdmin||esCajero||enListaDe(USUARIOS_ORDENES_STOCK,cu);
   // Sofia navega por modulos; el resto de los usuarios vive siempre dentro de Compras
   var enCompras=!esSofia||modulo==="compras";
   // Encargadas con la navegación completa de Compras (las dos tarjetas), pero
   // acotadas a su local y sin Faltantes ni Config. Los cajeros habilitados entran
   // a la misma pantalla, con una tarjeta más para el cierre de caja.
-  var verSubCompras=!esAdmin&&(esCajero?cajeroCompras:COMPRAS_SUBMODULOS.indexOf(String(cu.usuario||"").toLowerCase())!==-1);
+  var verSubCompras=!esAdmin&&(esCajero?cajeroCompras:enListaDe(COMPRAS_SUBMODULOS,cu));
   // Cocina ve el recetario de su local, en modo lectura. Administración lo carga
   // y lo edita desde el módulo Locales.
-  var esCocina=USUARIOS_RECETAS.indexOf(String(cu.usuario||"").toLowerCase())!==-1;
+  var esCocina=enListaDe(USUARIOS_RECETAS,cu);
   // Todos entran por la pantalla de tarjetas: es la puerta a Ideas, que ahora es
   // un módulo principal para cualquiera y no un botón en el encabezado.
   // El despacho sigue siendo de quienes ya lo tenían: sumar cocina al recetario no

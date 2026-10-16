@@ -4818,7 +4818,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"&&renderCuit?[["cuit","🏛️ CUIT"]]:[]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
+        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"&&renderCuit?[["cuit","🏛️ F931"]]:[]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"],["historial","📝 Historial"],["informe","📊 Informe"]]).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -6605,7 +6605,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
 
 
       {planillaMesTotal.length===0?(
-        <div style={{textAlign:"center",padding:"20px",color:"#6E6E6E",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Personal → Planilla anual.</div>
+        <div style={{textAlign:"center",padding:"20px",color:"#6E6E6E",fontSize:12}}>Sin planilla para {mesFiltro}. Cargá los estimativos en Colaboradores → Sueldos → Planilla anual.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {planillaMesTotal.map(function(pl){
@@ -13477,7 +13477,7 @@ function PanelNovedades(p){
         })()}
 
         {(altas.length+bajas.length)>0&&(
-        <Seccion titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Personal">
+        <Seccion titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Colaboradores">
           <div>
             {altas.length>0&&<Sub primera={true}>Entraron · {altas.length}</Sub>}
             {altas.map(function(e,i){
@@ -21271,7 +21271,7 @@ function PanelSueldos(p){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
         <div>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Colaboradores</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {tab==="estado"&&<select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11,cursor:"pointer"}}>
@@ -25696,7 +25696,7 @@ export default function App() {
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
               {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
               {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
-              {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+              {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -25731,7 +25731,7 @@ export default function App() {
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
                   {id:"proveedores",emoji:"🏭",label:"Proveedores",color:"#D4A017",action:function(){abrirModulo("proveedores","prov_inicio");}},
                   {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
-                  {id:"personal",emoji:"👥",label:"Personal",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
+                  {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -26024,7 +26024,7 @@ export default function App() {
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Personal</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Colaboradores</div>
               </div>
               <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
                 tabInicial={vista==="vacaciones"?"vacaciones":vista==="faltantes"?"faltantes":undefined}

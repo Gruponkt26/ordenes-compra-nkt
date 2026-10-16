@@ -757,7 +757,8 @@ function initContadores(ordenes) {
   _contadores = conteos;
 }
 function genProv() { return "p" + String(Date.now()).slice(-8); }
-function genUser() { return "u" + _uc++; }
+// Id único entre sesiones: con un contador que arrancaba en 100 cada vez, un usuario nuevo podía pisar a uno ya guardado.
+function genUser() { return "u" + Date.now() + "_" + Math.random().toString(36).slice(2,6); }
 function getFact(id) { return FACTURACION.find(function(f) { return f.id === id; }) || null; }
 function fmtDateTime(s) {
   if (!s) return "—";
@@ -1813,7 +1814,7 @@ function GestUsuarios(p) {
   var [lista,setLista]=useState(p.users), [nuevo,setNuevo]=useState({nombre:"",usuario:"",password:"",local:"l1",rol:"usuario"}), [showAdd,setShowAdd]=useState(false), [editando,setEditando]=useState(null), [err,setErr]=useState("");
   function doAdd(){
     if(!nuevo.nombre.trim()||!nuevo.usuario.trim()||!nuevo.password.trim()){setErr("Completá todos los campos.");return;}
-    if(lista.find(function(u){return u.usuario===nuevo.usuario.trim();})){setErr("Ese usuario ya existe.");return;}
+    if(lista.find(function(u){return String(u.usuario||"").toLowerCase()===nuevo.usuario.trim().toLowerCase();})){setErr("Ese usuario ya existe.");return;}
     var u={id:genUser(),...nuevo};
     p.onSaveUser(u);
     setLista(function(l){return[...l,u];});

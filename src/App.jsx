@@ -9435,8 +9435,8 @@ function PanelEgresos(p){
         </div>
 
         {/* Pestañas por local — clickear un local lleva a su pantalla única */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
-          {LOCALES.map(function(l){
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8,marginBottom:12}}>
+          {LOCALES.concat([CONCESION]).map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
             var mpArr=mesFiltroGrid.split("-");var mpY=parseInt(mpArr[0]);var mpM=parseInt(mpArr[1])-1;if(mpM===0){mpM=12;mpY--;}
             var perAnt=mpY+"-"+(mpM<10?"0"+mpM:String(mpM));
@@ -9471,7 +9471,7 @@ function PanelEgresos(p){
 
         {/* Pantalla única del local seleccionado */}
         <div style={{maxWidth:640,margin:"0 auto"}}>
-          {LOCALES.filter(function(l){return l.id===localGrid;}).map(function(l){
+          {LOCALES.concat([CONCESION]).filter(function(l){return l.id===localGrid;}).map(function(l){
             var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             // Sueldos del mes anterior (julio aparece en agosto)

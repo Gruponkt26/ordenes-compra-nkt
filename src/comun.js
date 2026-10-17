@@ -15,7 +15,10 @@ export var LOCALES = [
   { id: "l3", nombre: "Colantonio's",    emoji: "🍝", color: "#1A6B8A" },
   { id: "l4", nombre: "Oficina",         emoji: "🏢", color: "#3A7D44" },
 ];
-export function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || null; }
+// La Concesión NKT (el módulo Deportes) es una dependencia más a la hora de los pagos cruzados, pero no es un local con caja,
+// cierres ni órdenes: por eso no está en LOCALES (que recorren decenas de pantallas) y sólo la reconoce getLocal.
+export var CONCESION = { id: "dep", nombre: "Concesión NKT", emoji: "🏅", color: "#D4A017" };
+export function getLocal(id) { return LOCALES.find(function(l) { return l.id === id; }) || (id === "dep" ? CONCESION : null); }
 
 // ─── FECHAS ───────────────────────────────────────────────────────────────────
 export function fmtDate(s) { if (!s) return "—"; var p = s.split("-"); return p[2]+"/"+p[1]+"/"+p[0]; }

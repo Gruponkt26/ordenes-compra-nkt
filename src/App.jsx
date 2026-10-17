@@ -8860,10 +8860,10 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Retiros","Aportes"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Adquisiciones","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
-  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44",
+  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44","Adquisiciones":"#2AA6A6",
   "Retiros":"#8B4513",
   "Aportes":"#3A7D44",
   "F.931":"#4CAF50"
@@ -8964,6 +8964,15 @@ var CONCEPTOS_POR_AREA={
     items:[
       {nombre:"Redes sociales",sub:"Digital"},{nombre:"Google Ads",sub:"Digital"},
       {nombre:"Flyers",sub:"Impresión"},{nombre:"Banner",sub:"Impresión"},
+    ]
+  },
+  "Adquisiciones":{
+    grupos:["Equipamiento","Muebles","Tecnología","Herramientas","Otros"],
+    items:[
+      {nombre:"Equipamiento de cocina",sub:"Equipamiento"},{nombre:"Heladera / freezer",sub:"Equipamiento"},
+      {nombre:"Mesas y sillas",sub:"Muebles"},{nombre:"Vajilla y cristalería",sub:"Equipamiento"},
+      {nombre:"Computadora / tablet",sub:"Tecnología"},{nombre:"Impresora / posnet",sub:"Tecnología"},
+      {nombre:"Herramientas",sub:"Herramientas"},
     ]
   },
   "Obras":{

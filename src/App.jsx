@@ -4955,7 +4955,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
       <div style={{fontFamily:"'Inter',sans-serif"}}>
         <div style={{marginBottom:16}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏪 Locales</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏪 Dependencias</div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {locales.map(function(l){return(
@@ -13642,7 +13642,7 @@ function PanelNovedades(p){
           var pend=pendientesDeSaldar(p.gastos||[]);
           if(pend.length===0)return null;
           return(
-            <Seccion titulo={"💸 Para saldar entre locales"} color="#E07B00">
+            <Seccion titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
               {(function(){
                 // Desde el primer día del mes siguiente al que se empezó a llevar, si queda algo sin saldar se pregunta qué se va a hacer.
                 var hoyP=diaDeNegocio(), mesP=hoyP.substring(0,7), plan=p.planSaldar;
@@ -13657,7 +13657,7 @@ function PanelNovedades(p){
                 if(!preguntar||!p.onPlanSaldar)return null;
                 return(
                   <div style={{background:"#14100A",border:"1px solid #D4A01766",borderRadius:10,padding:"11px 13px",marginBottom:10}}>
-                    <div style={{fontSize:12,fontWeight:800,color:"#D4A017"}}>Empezó un mes nuevo y quedó plata sin saldar entre locales</div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#D4A017"}}>Empezó un mes nuevo y quedó plata sin saldar entre dependencias</div>
                     <div style={{fontSize:11,color:"#B8B8B8",margin:"4px 0 9px",lineHeight:1.5}}>¿Los vas a saldar? Podés dejarlo así por este mes o poner una fecha estimada, y te lo vuelvo a preguntar cuando pase.</div>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                       <button onClick={function(){p.onPlanSaldar({decision:"dejar",mes:mesP});setCambiandoPlan(false);}} style={{padding:"8px 13px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#D8D8D8",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Lo dejo así</button>
@@ -16332,8 +16332,8 @@ function PanelCruzados(p){
       <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Inter',sans-serif"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>🔀 Saldos entre locales</div>
-            <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>{mesFiltro} — pagos realizados con medios de otro local</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#F0EDE8"}}>🔀 Saldos entre dependencias</div>
+            <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>{mesFiltro} — pagos realizados con medios de otra dependencia</div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <select value={mesFiltro} onChange={function(e){setMesFiltro(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
@@ -16346,7 +16346,7 @@ function PanelCruzados(p){
         {/* Lo que se debe entre locales, acumulado, con el botón para saldarlo: cuando un local devuelve la plata,
             sale de su caja o cuenta y entra a la del otro. */}
         <div style={{marginBottom:18}}>
-          <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Saldo acumulado entre locales · desde {SALDOS_CRUZADOS_DESDE}</div>
+          <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>💰 Saldo acumulado entre dependencias · desde {SALDOS_CRUZADOS_DESDE}</div>
           {localesPrincipales.map(function(la){
             return localesPrincipales.filter(function(lb){return lb.id>la.id;}).map(function(lb){
               var neto=netoPar(la.id,lb.id);
@@ -16384,7 +16384,7 @@ function PanelCruzados(p){
         {saldando&&(
           <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
             <div style={{background:"#111",borderRadius:14,padding:18,width:"100%",maxWidth:380,border:"1px solid #3A7D4444"}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#4C9A5A",marginBottom:2}}>💸 Saldar entre locales</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#4C9A5A",marginBottom:2}}>💸 Saldar entre dependencias</div>
               <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12}}>
                 {(getLocal(saldando.deudor)||{}).nombre} le devuelve a {(getLocal(saldando.acreedor)||{}).nombre}. La plata sale de la caja o la cuenta del primero y entra a la del segundo.
               </div>
@@ -16438,7 +16438,7 @@ function PanelCruzados(p){
             </div>
 
             {/* Tabla de saldos netos por par de locales */}
-            <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Saldo neto entre locales</div>
+            <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Saldo neto entre dependencias</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {localesPrincipales.map(function(l1){
                 return localesPrincipales.filter(function(l2){return l2.id>l1.id;}).map(function(l2){
@@ -26045,7 +26045,7 @@ export default function App() {
               {id:"novedades",emoji:"🔔",label:"Novedades",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
               {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-              {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
+              {id:"locales",emoji:"🏪",label:"Dependencias",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
@@ -26079,7 +26079,7 @@ export default function App() {
                   {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
                   {id:"compras",emoji:"🛒",label:"Compras",color:"#C1440E",action:function(){abrirModulo("compras","despacho");}},
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
-                  {id:"locales",emoji:"🏪",label:"Locales",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
+                  {id:"locales",emoji:"🏪",label:"Dependencias",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},

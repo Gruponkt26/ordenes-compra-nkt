@@ -19889,6 +19889,7 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <th key={l.id} style={{textAlign:"right",padding:"8px",color:l.color,fontWeight:700,minWidth:100}}>{l.emoji} {l.nombre}</th>
                   );})}
+                  <th style={{textAlign:"right",padding:"8px",color:CONCESION.color,fontWeight:700,minWidth:100}}>{CONCESION.emoji} {CONCESION.nombre}</th>
                   <th style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:700,minWidth:100}}>Grupo</th>
                 </tr>
               </thead>
@@ -19899,7 +19900,8 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(datos[l.id].ventas+datos[l.id].corrMonto)}</td>
                   );})}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0))}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(concIng)}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0)+concIng)}</td>
                 </tr>
                 {/* Total ingresos */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#071207"}}>
@@ -19907,6 +19909,7 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(datos[l.id].ventasCorregidas)}</td>
                   );})}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(concIng)}</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:12}}>{fmt(totalVentas)}</td>
                 </tr>
                 {/* Egresos por área */}
@@ -19921,6 +19924,7 @@ function PanelResultados(p){
                         var m=datos[l.id].porCat[cat]||0;
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#6E6E6E",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totCat)}</td>
                     </tr>
                   );
@@ -19931,6 +19935,7 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:600}}>{fmt(datos[l.id].totalGastos)}</td>
                   );})}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#C1440E",fontWeight:600,fontSize:12}}>{fmt(concEg)}</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:800}}>{fmt(totalGastos)}</td>
                 </tr>
                 {/* Resultado */}
@@ -19940,6 +19945,7 @@ function PanelResultados(p){
                     var res=datos[l.id].resultado;
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:res>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{res>=0?"":"-"}{fmt(Math.abs(res))}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:concRes>=0?"#3A7D44":"#C1440E",fontWeight:800,fontSize:12}}>{concRes>=0?"":"-"}{fmt(Math.abs(concRes))}</td>
                   <td style={{textAlign:"right",padding:"8px",color:totalResultado>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{totalResultado>=0?"":"-"}{fmt(Math.abs(totalResultado))}</td>
                 </tr>
                 {/* Margen */}
@@ -19950,6 +19956,7 @@ function PanelResultados(p){
                     var m=d.ventasCorregidas>0?((d.resultado/d.ventasCorregidas)*100).toFixed(1):"—";
                     return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:parseFloat(m)>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:600}}>{m!=="—"?m+"%":"—"}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#8C8C8C",fontWeight:600,fontSize:10}}>{concIng>0?(concRes/concIng*100).toFixed(1)+"%":"—"}</td>
                   <td style={{textAlign:"right",padding:"6px 8px",fontSize:10,fontWeight:600,color:totalResultado>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—"}</td>
                 </tr>
                 {/* Movimientos de socios — debajo de la línea: no son gasto ni venta, son reparto y capital */}
@@ -19961,9 +19968,9 @@ function PanelResultados(p){
                   var totDespues=totalResultado+totNeto;
                   return(
                     <>
-                      <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
+                      <tr><td colSpan={localesFiltro.length+3} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
                       <tr style={{background:"#0A0A0A"}}>
-                        <td colSpan={localesFiltro.length+2} style={{padding:"6px 8px",color:"#8C8C8C",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>Movimientos de socios — fuera del resultado operativo</td>
+                        <td colSpan={localesFiltro.length+3} style={{padding:"6px 8px",color:"#8C8C8C",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>Movimientos de socios — fuera del resultado operativo</td>
                       </tr>
                       {totApo>0&&(
                         <tr style={{borderBottom:"1px solid #0A0A0A"}}>
@@ -19972,6 +19979,7 @@ function PanelResultados(p){
                             var m=datos[l.id].aportesModMonto||0;
                             return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#3A7D44":"#6E6E6E",fontSize:10}}>{m>0?"+"+fmt(m):"—"}</td>;
                           })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                           <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>+{fmt(totApo)}</td>
                         </tr>
                       )}
@@ -19982,6 +19990,7 @@ function PanelResultados(p){
                             var m=datos[l.id].retirosTotales||0;
                             return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#8B2FC9":"#6E6E6E",fontSize:10}}>{m>0?"−"+fmt(m):"—"}</td>;
                           })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                           <td style={{textAlign:"right",padding:"6px 8px",color:"#8B2FC9",fontWeight:600,fontSize:10}}>−{fmt(totRet)}</td>
                         </tr>
                       )}
@@ -19991,13 +20000,14 @@ function PanelResultados(p){
                           var v=datos[l.id].resultadoDespuesSocios;
                           return <td key={l.id} style={{textAlign:"right",padding:"7px 8px",color:v>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:700}}>{v>=0?"":"-"}{fmt(Math.abs(v))}</td>;
                         })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                         <td style={{textAlign:"right",padding:"7px 8px",color:totDespues>=0?"#3A7D44":"#C1440E",fontWeight:800,fontSize:10}}>{totDespues>=0?"":"-"}{fmt(Math.abs(totDespues))}</td>
                       </tr>
                     </>
                   );
                 })()}
                 {/* Separador */}
-                <tr><td colSpan={localesFiltro.length+2} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
+                <tr><td colSpan={localesFiltro.length+3} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>
                 {/* Traspaso del mes anterior — saldo inicial de la caja, no es ingreso del mes:
                     por eso va acá, junto a la disponibilidad, y fuera del resultado. */}
                 {(function(){
@@ -20010,6 +20020,7 @@ function PanelResultados(p){
                         var tr=datos[l.id].traspaso?datos[l.id].traspaso.total:0;
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:tr>0?"#D4A017":"#6E6E6E",fontSize:10}}>{tr>0?fmt(tr):"—"}</td>;
                       })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#D4A017",fontSize:10,fontWeight:600}}>{fmt(totTr)}</td>
                     </tr>
                   );
@@ -20017,7 +20028,7 @@ function PanelResultados(p){
                 {/* Caja mayor: la disponibilidad general del negocio, distinta de la caja
                     menor de cada local — ésta arrastra el traspaso mes a mes. */}
                 <tr style={{background:"#0A0A0A"}}>
-                  <td colSpan={localesFiltro.length+2} style={{padding:"6px 8px",color:"#8C8C8C",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>🏦 Caja mayor — disponibilidad general del negocio</td>
+                  <td colSpan={localesFiltro.length+3} style={{padding:"6px 8px",color:"#8C8C8C",fontSize:9,textTransform:"uppercase",letterSpacing:1.2}}>🏦 Caja mayor — disponibilidad general del negocio</td>
                 </tr>
                 {/* Disponibilidad efectivo */}
                 <tr style={{background:"#0A0F0A"}}>
@@ -20027,6 +20038,7 @@ function PanelResultados(p){
                     var disp=d.dispEfectivo||0;
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:disp>=0?"#3A7D44":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(disp)}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0))}</td>
                 </tr>
                 {/* Lo que todavía está en el cajón de cada local: no es de Caja Mayor hasta que se retira */}
@@ -20036,6 +20048,7 @@ function PanelResultados(p){
                     var v=datos[l.id].efectivoCajon||0;
                     return <td key={l.id} style={{textAlign:"right",padding:"4px 8px",color:v<0?"#C1440E":"#9A9A9A",fontSize:10}}>{fmt(v)}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                   <td style={{textAlign:"right",padding:"4px 8px",color:"#9A9A9A",fontWeight:700,fontSize:10}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].efectivoCajon||0);},0))}</td>
                 </tr>
                 {/* Disponibilidad electrónico */}
@@ -20046,6 +20059,7 @@ function PanelResultados(p){
                     var dispElec=(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:dispElec>=0?"#1A6B8A":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(dispElec)}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
                 </tr>
                 {/* Total disponible */}
@@ -20056,6 +20070,7 @@ function PanelResultados(p){
                     var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:tot>=0?"#F0EDE8":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
                 </tr>
                 {/* Débito pendiente de acreditar */}
@@ -20071,6 +20086,7 @@ function PanelResultados(p){
                         {tandas.map(function(t){return <div key={t.fecha} style={{fontSize:9,fontWeight:400,color:"#B8963A",marginTop:2}}>{fmtFecha(t.fecha)} · {fmt(t.monto*fNeto)}</div>;})}
                       </td>;
                     })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                     <td style={{textAlign:"right",padding:"8px",color:"#D4A017",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].debitoPendienteNeto||0);},0))}</td>
                   </tr>
                 )}
@@ -20082,6 +20098,7 @@ function PanelResultados(p){
                     var totHoy=(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:totHoy>=0?"#888":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(totHoy)}</td>;
                   })}
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                   <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);},0))}</td>
                 </tr>
               </tbody>

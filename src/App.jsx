@@ -19937,7 +19937,7 @@ function PanelResultados(p){
                 </tr>
                 {/* Egresos por área */}
                 {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
-                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0)+(concPorCat[cat]||0);
+                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0);
                   if(totCat===0)return null;
                   var color=AREA_COLORES[cat]||"#555";
                   return(
@@ -19947,7 +19947,7 @@ function PanelResultados(p){
                         var m=datos[l.id].porCat[cat]||0;
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#6E6E6E",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>{concPorCat[cat]>0?fmt(concPorCat[cat]):"—"}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totCat)}</td>
                     </tr>
                   );
@@ -19966,8 +19966,8 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:600}}>{fmt(datos[l.id].totalGastos)}</td>
                   );})}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#C1440E",fontWeight:600,fontSize:12}}>{fmt(concEg)}</td>
-                  <td style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:800}}>{fmt(totalGastos)}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#C1440E",fontWeight:600,fontSize:12}}>—</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#C1440E",fontWeight:800}}>{fmt((totalGastos-concEg))}</td>
                 </tr>
                 {/* Resultado */}
                 <tr style={{background:"#111"}}>
@@ -19976,8 +19976,8 @@ function PanelResultados(p){
                     var res=datos[l.id].resultado;
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:res>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{res>=0?"":"-"}{fmt(Math.abs(res))}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:concRes>=0?"#3A7D44":"#C1440E",fontWeight:800,fontSize:12}}>{concRes>=0?"":"-"}{fmt(Math.abs(concRes))}</td>
-                  <td style={{textAlign:"right",padding:"8px",color:totalResultado>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{totalResultado>=0?"":"-"}{fmt(Math.abs(totalResultado))}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:800,fontSize:12}}>—</td>
+                  <td style={{textAlign:"right",padding:"8px",color:(totalResultado+concEg)>=0?"#3A7D44":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{(totalResultado+concEg)>=0?"":"-"}{fmt(Math.abs((totalResultado+concEg)))}</td>
                 </tr>
                 {/* Margen */}
                 <tr style={{background:"#0A0A0A"}}>
@@ -19987,8 +19987,8 @@ function PanelResultados(p){
                     var m=d.ventasCorregidas>0?((d.resultado/d.ventasCorregidas)*100).toFixed(1):"—";
                     return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:parseFloat(m)>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:600}}>{m!=="—"?m+"%":"—"}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#8C8C8C",fontWeight:600,fontSize:10}}>{concIng>0?(concRes/concIng*100).toFixed(1)+"%":"—"}</td>
-                  <td style={{textAlign:"right",padding:"6px 8px",fontSize:10,fontWeight:600,color:totalResultado>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?(totalResultado/totalVentas*100).toFixed(1)+"%":"—"}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#8C8C8C",fontWeight:600,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",fontSize:10,fontWeight:600,color:(totalResultado+concEg)>=0?"#3A7D44":"#C1440E"}}>{totalVentas>0?((totalResultado+concEg)/totalVentas*100).toFixed(1)+"%":"—"}</td>
                 </tr>
                 {/* Movimientos de socios — debajo de la línea: no son gasto ni venta, son reparto y capital */}
                 {(function(){
@@ -19996,7 +19996,7 @@ function PanelResultados(p){
                   var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retirosTotales||0);},0);
                   if(totApo===0&&totRet===0)return null;
                   var totNeto=totApo-totRet;
-                  var totDespues=totalResultado+totNeto;
+                  var totDespues=(totalResultado+concEg)+totNeto;
                   return(
                     <>
                       <tr><td colSpan={localesFiltro.length+3} style={{padding:"4px",background:"#0A0A0A"}}></td></tr>

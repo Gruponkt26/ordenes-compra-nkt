@@ -20560,9 +20560,11 @@ function PanelCuit(props){
   function totalCargaLocal(f){return(parseFloat(f.seg_social)||0)+(parseFloat(f.obra_social)||0)+(parseFloat(f.art)||0)+(parseFloat(f.seguro_vida)||0);}
 
   // Calcular distribución proporcional por empleados activos
-  function calcDistribucion(cuitId, total){
+  function calcDistribucion(cuitId, total, marcos){
     if(cuitId==="c1"){
-      // Solo Bodegón
+      // Bodegón, menos lo de Marcos Bracamonte (el F.931 es de todos los empleados del CUIT): eso va a la Concesión.
+      var mc=Math.min(Math.max(parseFloat(marcos)||0,0),total);
+      if(mc>0)return[{local:"l1",nombre:"Bodegón",monto:total-mc,pct:Math.round((total-mc)/total*100)},{local:"dep",nombre:"Concesión NKT",monto:mc,pct:Math.round(mc/total*100)}];
       return[{local:"l1",nombre:"Bodegón",monto:total,pct:100}];
     } else {
       // SRL: un tercio del F.931 se reparte fijo entre los tres locales (50% Bodegón, 30%
@@ -20612,7 +20614,7 @@ function PanelCuit(props){
     (c.distribucion||[]).forEach(function(d){ if(d.medio)medios[d.local]=d.medio; });
     setEditReg(c);
     setVenceF(venceF931(c));
-    setForm({cuit:c.cuit,periodo:c.periodo,estado:pagar?"pagado":c.estado,seg_social:String(c.seg_social||""),obra_social:String(c.obra_social||""),art:String(c.art||""),seguro_vida:String(c.seguro_vida||""),fecha_pago:pagar?hoy:(c.fecha_pago||hoy),notas:c.notas||"",medios:medios});
+    setForm({cuit:c.cuit,periodo:c.periodo,estado:pagar?"pagado":c.estado,seg_social:String(c.seg_social||""),obra_social:String(c.obra_social||""),art:String(c.art||""),seguro_vida:String(c.seguro_vida||""),fecha_pago:pagar?hoy:(c.fecha_pago||hoy),notas:c.notas||"",medios:medios,marcos:String(((c.distribucion||[]).find(function(d){return d.local==="dep";})||{}).monto||"")});
     setShowModal(true);
   }
 
@@ -20627,7 +20629,7 @@ function PanelCuit(props){
   function doSave(){
     var total=totalCargaLocal(form);
     var id=editReg?editReg.id:String(Date.now());
-    var distribucion=calcDistribucion(form.cuit,total);
+    var distribucion=calcDistribucion(form.cuit,total,form.marcos);
     var pagaConMedios=form.cuit==="c2"&&(form.estado==="pagado"||form.estado==="parcial");
     if(pagaConMedios)distribucion=distribucion.map(function(d){return {...d,medio:medioDeLocal(d.local)};});
     var obj={id,cuit:form.cuit,periodo:form.periodo,estado:form.estado,total:total,seg_social:parseFloat(form.seg_social)||0,obra_social:parseFloat(form.obra_social)||0,art:parseFloat(form.art)||0,seguro_vida:parseFloat(form.seguro_vida)||0,fecha_pago:form.fecha_pago,notas:form.notas,distribucion:distribucion,usuario:"",created_at:editReg?editReg.created_at:new Date().toISOString()};
@@ -20636,7 +20638,7 @@ function PanelCuit(props){
     // Generar egresos por local — solo si está pagado o parcial
     if(total>0&&props.onSaveEgresoF931&&(form.estado==="pagado"||form.estado==="parcial")){
       distribucion.forEach(function(d){
-        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:form.cuit==="c2"?"F.931 SRL (Calzon Gitano) "+form.periodo:"F.931 Bodegón (CUIT propio) "+form.periodo,subramo:form.cuit==="c2"?d.nombre+" · "+d.pct+"% del F.931 de la SRL":d.nombre+" · 100% (CUIT propio)",detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:d.medio||"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:d.medio?[{medio:d.medio,monto:d.monto}]:[]};
+        var egreso={id:"f931_"+id+"_"+d.local,local:d.local,concepto:form.cuit==="c2"?"F.931 SRL (Calzon Gitano) "+form.periodo:"F.931 Bodegón (CUIT propio) "+form.periodo,subramo:form.cuit==="c2"?d.nombre+" · "+d.pct+"% del F.931 de la SRL":(d.local==="dep"?"Cargas de Marcos Bracamonte · Concesión NKT":d.nombre+" · "+d.pct+"% (CUIT propio)"),detalle:"Seg.Social: "+fmt(parseFloat(form.seg_social)||0)+", Obra Social: "+fmt(parseFloat(form.obra_social)||0)+", ART: "+fmt(parseFloat(form.art)||0)+", Seg.Vida: "+fmt(parseFloat(form.seguro_vida)||0),monto:d.monto,forma_pago:d.medio||"",facturado:false,facturacion:"",categoria:"F.931",area:"F.931",notas:form.notas||"",fecha:form.fecha_pago,usuario:"",created_at:new Date().toISOString(),pagos:d.medio?[{medio:d.medio,monto:d.monto}]:[]};
         props.onSaveEgresoF931(egreso);
       });
     }
@@ -20691,7 +20693,7 @@ function PanelCuit(props){
         var ids={};
         (props.cargasSociales||[]).forEach(function(c){ids[c.id]=true;});
         var huerfanos=(props.gastos||[]).filter(function(g){
-          var m=/^f931_(.+)_(l\d+)$/.exec(String(g.id));
+          var m=/^f931_(.+)_(l\d+|dep)$/.exec(String(g.id));
           return m&&!ids[m[1]];
         });
         if(huerfanos.length===0||!props.onBorrarEgreso)return null;
@@ -20794,6 +20796,14 @@ function PanelCuit(props){
                 <span style={{fontSize:15,fontWeight:800,color:"#4CAF50",fontFamily:"'Playfair Display',serif"}}>{fmt(totalCargaLocal(form))}</span>
               </div>
             </div>
+            {form.cuit==="c1"&&(
+              <div style={{background:"#0A0A0A",border:"1px solid #D4A01744",borderRadius:10,padding:"12px",marginBottom:10}}>
+                <div style={{fontSize:9,color:"#D4A017",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🏅 De este F.931, lo de Marcos Bracamonte (Concesión)</div>
+                <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>El F.931 es de todos los empleados del CUIT. Poné cuánto del total corresponde a Marcos: esa parte va a los egresos de la Concesión y el resto queda en El Bodegón.</div>
+                <input type="number" placeholder="0" value={form.marcos||""} onChange={function(e){var v=e.target.value;setForm(function(fm){return {...fm,marcos:v};});}} style={INP}/>
+                {(parseFloat(form.marcos)||0)>0&&<div style={{fontSize:10,color:"#8C8C8C",marginTop:6}}>Bodegón {fmt(Math.max(totalCargaLocal(form)-(parseFloat(form.marcos)||0),0))} · Concesión {fmt(Math.min(parseFloat(form.marcos)||0,totalCargaLocal(form)))}</div>}
+              </div>
+            )}
             {form.cuit==="c2"&&totalCargaLocal(form)>0&&(function(){
               var dist=calcDistribucion("c2",totalCargaLocal(form));
               var conMedio=form.estado==="pagado"||form.estado==="parcial";

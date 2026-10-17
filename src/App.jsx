@@ -16095,7 +16095,7 @@ function pendientesDeSaldar(gastos){
 function detectarLocalMedio(medio){
   if(!medio)return null;
   if(medio.includes("Concesión")||medio.includes("Belo Nicolás")||medio.includes("Lemon Sofía"))return "dep";
-  if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))return "l1";
+  if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia")||medio.includes("Patagonia Personas"))return "l1";
   if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
   if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano")||medio.includes("Calzon"))return "l3";
   if(medio.includes("Oficina"))return "l4";

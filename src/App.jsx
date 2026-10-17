@@ -19627,8 +19627,19 @@ function PanelResultados(p){
   }  // Lo que todavía está en el cajón de cada local (informativo: no es de Caja Mayor).
   localesFiltro.forEach(function(l){ datos[l.id].efectivoCajon=efectivoEnCajaMenor(l.id); });
 
-  var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0);
-  var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0);
+  // Concesión NKT (el módulo Deportes): lo cobrado de entradas, clases y turnos es ingreso y lo pagado en salidas y obras es
+  // egreso, del mes que se mira. Aunque sus ingresos sean pocos, entra en el estado de resultados del grupo.
+  var depRegs=p.deportes||[];
+  function depDelMes(x){ return String(x.fecha||"").slice(0,7)===mesFiltro; }
+  function depSuma(lista){ return lista.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0); }
+  var concIngRegs=depRegs.filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado"&&depDelMes(x);});
+  var concEgRegs=depRegs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&depDelMes(x);});
+  var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs), concRes=concIng-concEg;
+  var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
+    .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))}])
+    .filter(function(r){return r.total>0;});
+  var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0)+concIng;
+  var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;
   var totalResultado=totalVentas-totalGastos;
 
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
@@ -20392,6 +20403,34 @@ function PanelResultados(p){
             </div>
           );
         })}
+        {/* Concesión NKT (módulo Deportes): ya está sumada a los totales del grupo de arriba */}
+        <div style={{background:"#0F0F0F",border:"1px solid #D4A01744",borderRadius:12,padding:"14px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:"#D4A017"}}>🏅 Concesión NKT</div>
+              <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>Módulo Deportes · incluida en los totales del grupo</div>
+            </div>
+            <div style={{fontSize:18,fontWeight:800,color:concRes>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{concRes>=0?"":"-"}{fmt(Math.abs(concRes))}</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1}}>Ingresos</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#3A7D44",fontFamily:"'Playfair Display',serif"}}>{fmt(concIng)}</div>
+              </div>
+              <div style={{fontSize:10,color:"#7E7E7E",marginTop:4}}>{concIngRegs.length} cobro{concIngRegs.length===1?"":"s"} (entradas, clases y turnos)</div>
+            </div>
+            <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1}}>Egresos</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(concEg)}</div>
+              </div>
+              {concRubros.length===0?<div style={{fontSize:10,color:"#7E7E7E",marginTop:4}}>Sin salidas pagadas en el mes</div>:concRubros.map(function(r){
+                return <div key={r.label} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#9A9A9A",marginTop:3}}><span>{r.label}</span><span>{fmt(r.total)}</span></div>;
+              })}
+            </div>
+          </div>
+        </div>
       </div>
         </div>
       )}
@@ -26751,7 +26790,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+            <PanelResultados deportes={deportes} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               transfPropias={transfPropias} onSaveTransfPropia={function(x){guardarOfPauta("transf_propia",x);}} impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){

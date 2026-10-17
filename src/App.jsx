@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { SURL, SKEY, SH, LOCALES, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
+import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
@@ -8241,6 +8241,8 @@ var MEDIO_LOCAL_MAP={
   "visa provincia":"l1","visa patagonia personas":"l1","mastercard patagonia personas":"l1",
   "visa patagonia":"l1","mastercard patagonia":"l1",
   "efectivo - oficina":"l4",
+  // Medios de la Concesión NKT
+  "belo nicolás":"dep","belo nicolas":"dep","lemon sofía":"dep","lemon sofia":"dep",
 };
 function getLocalFromMedio(medio){
   if(!medio)return null;
@@ -8259,6 +8261,7 @@ var CAJA_MAYOR_MEDIO_MAP={
   "caja mayor - bodegón":"l1","caja mayor - bodegon":"l1",
   "caja mayor - kusama":"l2",
   "caja mayor - colantonio's":"l3","caja mayor - colantonios":"l3",
+  "caja mayor - concesión":"dep","caja mayor - concesion":"dep",
 };
 // Medio de pago "Caja Mayor" de cada local (el mismo texto que ofrece la lista de medios).
 // Los egresos de caja anotados antes de esta fecha no generan aviso: ya se cargaron a mano.
@@ -16029,12 +16032,18 @@ function pendientesDeSaldar(gastos){
     var o=netoOficinaPar(gastos,t[0],t[1]);
     if(Math.abs(o)>=1)out.push(o>0?{deudor:t[0],acreedor:t[1],m:o,tipo:"oficina"}:{deudor:t[1],acreedor:t[0],m:-o,tipo:"oficina"});
   });
+  // Lo que la Concesión NKT le debe a cada local (o al revés) por pagos cruzados; la Oficina no entra en esa cuenta.
+  ["l1","l2","l3"].forEach(function(lid){
+    var cd=netoComunPar(gastos,SALDOS_CRUZADOS,"dep",lid);
+    if(Math.abs(cd)>=1)out.push(cd>0?{deudor:"dep",acreedor:lid,m:cd,tipo:"cruzado"}:{deudor:lid,acreedor:"dep",m:-cd,tipo:"cruzado"});
+  });
   return out;
 }
 // Deudas entre locales por pagos cruzados (un local paga con el medio de otro). Las usan Pagos cruzados y Novedades.
 // Calcular deudas entre locales por medio de pago
 function detectarLocalMedio(medio){
   if(!medio)return null;
+  if(medio.includes("Concesión")||medio.includes("Belo Nicolás")||medio.includes("Lemon Sofía"))return "dep";
   if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia"))return "l1";
   if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
   if(medio.includes("Colantonio")||medio.includes("Patagonia Empresas")||medio.includes("Calzon Gitano")||medio.includes("Calzon"))return "l3";
@@ -16160,6 +16169,10 @@ var MEDIOS_POR_LOCAL={
   "l3":[
     "Efectivo","Efectivo - Colantonio's","Efectivo - Colantonios","Caja Mayor - Colantonio's",
     "Transferencia - Patagonia Empresas","Transferencia - Mercado Pago Calzon Gitano"
+  ],
+  // Concesión NKT (módulo Deportes)
+  "dep":[
+    "Caja Mayor - Concesión","Transferencia - Belo Nicolás","Transferencia - Lemon Sofía"
   ]
 };
 
@@ -16268,7 +16281,7 @@ function PanelCruzados(p){
     return true;
   }).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
 
-  var cruzadosPorLocal={l1:[],l2:[],l3:[]};
+  var cruzadosPorLocal={l1:[],l2:[],l3:[],dep:[]};
   gastosFiltrados.forEach(function(g){if(cruzadosPorLocal[g.local])cruzadosPorLocal[g.local].push(g);});
 
   var totalCruzado=gastosFiltrados.reduce(function(a,g){return a+parseFloat(g.monto||0);},0);
@@ -16290,7 +16303,7 @@ function PanelCruzados(p){
   }
 
   if(vistaDeudas){
-    var localesPrincipales=LOCALES.filter(function(l){return l.id!=="l4";});
+    var localesPrincipales=LOCALES.filter(function(l){return l.id!=="l4";}).concat([CONCESION]);
     return(
       <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#0A0A0A",zIndex:999,overflowY:"auto",padding:"16px",fontFamily:"'Inter',sans-serif"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -16381,8 +16394,8 @@ function PanelCruzados(p){
             {/* Resumen de deudas */}
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
               {deudas.sort(function(a,b){return b.total-a.total;}).map(function(d){
-                var locD=LOCALES.find(function(l){return l.id===d.deudor;});
-                var locA=LOCALES.find(function(l){return l.id===d.acreedor;});
+                var locD=getLocal(d.deudor);
+                var locA=getLocal(d.acreedor);
                 var iconoMedio=d.medio==="Efectivo"?"💵":d.medio==="Transferencia"?"📲":"💳";
                 return(
                   <div key={d.deudor+d.acreedor+d.medio} style={{background:"#0F0F0F",border:"1px solid #E07B0044",borderRadius:12,padding:"14px 16px"}}>
@@ -16483,7 +16496,7 @@ function PanelCruzados(p){
               <div style={{fontSize:14,fontWeight:800,color:"#E07B00",fontFamily:"'Playfair Display',serif"}}>${totalCruzado.toLocaleString("es-AR")}</div>
             </div>
           )}
-          {["l1","l2","l3"].map(function(lid){
+          {["l1","l2","l3","dep"].map(function(lid){
             var lista=cruzadosPorLocal[lid]||[];
             if(lista.length===0)return null;
             var l=getLocal(lid);

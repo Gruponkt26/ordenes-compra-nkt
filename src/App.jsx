@@ -19692,6 +19692,10 @@ function PanelResultados(p){
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
     .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))}])
     .filter(function(r){return r.total>0;});
+  // Los rubros de la Concesión caen en las mismas áreas que usan los locales, así se comparan fila contra fila.
+  var DEP_RUBRO_AREA={mantenimiento:"Mantenimiento",servicios:"Servicios",obras:"Obras",canchero:"Sueldos",otros:"Administrativo"};
+  var concPorCat={};
+  concEgRegs.forEach(function(x){ var a=DEP_RUBRO_AREA[x.rubro]||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(x.monto)||0); });
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0)+concIng;
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;
   var totalResultado=totalVentas-totalGastos;
@@ -19900,21 +19904,9 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(datos[l.id].ventas+datos[l.id].corrMonto)}</td>
                   );})}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>—</td>
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0))}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(concIng)}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0)+concIng)}</td>
                 </tr>
-                {[["entrada","Entradas"],["clase","Clases"],["turno","Turnos"],["uso","Clases de pádel"]].map(function(t){
-                  var m=depSuma(concIngRegs.filter(function(x){return x.tipo===t[0];}));
-                  if(m===0)return null;
-                  return(
-                    <tr key={"ci"+t[0]} style={{borderBottom:"1px solid #0A0A0A",background:"#0A1A0A"}}>
-                      <td style={{padding:"6px 8px 6px 18px",color:CONCESION.color,fontSize:10}}>{CONCESION.emoji} Concesión · {t[1]}</td>
-                      {localesFiltro.map(function(l){return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontSize:10}}>—</td>;})}
-                      <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>{fmt(m)}</td>
-                      <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>{fmt(m)}</td>
-                    </tr>
-                  );
-                })}
                 {/* Total ingresos */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#071207"}}>
                   <td style={{padding:"8px",color:"#3A7D44",fontWeight:800,fontFamily:"'Playfair Display',serif",fontSize:12}}>Total ingresos</td>
@@ -19926,7 +19918,7 @@ function PanelResultados(p){
                 </tr>
                 {/* Egresos por área */}
                 {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
-                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0);
+                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0)+(concPorCat[cat]||0);
                   if(totCat===0)return null;
                   var color=AREA_COLORES[cat]||"#555";
                   return(
@@ -19936,19 +19928,11 @@ function PanelResultados(p){
                         var m=datos[l.id].porCat[cat]||0;
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#6E6E6E",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>{concPorCat[cat]>0?fmt(concPorCat[cat]):"—"}</td>
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totCat)}</td>
                     </tr>
                   );
                 })}
-                {concRubros.map(function(r){return(
-                  <tr key={"ce"+r.label} style={{borderBottom:"1px solid #0A0A0A"}}>
-                    <td style={{padding:"6px 8px",color:CONCESION.color,fontSize:10}}>{CONCESION.emoji} Concesión · {r.label}</td>
-                    {localesFiltro.map(function(l){return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontSize:10}}>—</td>;})}
-                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontSize:10}}>{fmt(r.total)}</td>
-                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(r.total)}</td>
-                  </tr>
-                );})}
                 {/* Total egresos — sin retiros ni aportes: esos son movimientos de socios, van abajo */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#100A0A"}}>
                   <td style={{padding:"8px",color:"#C1440E",fontWeight:700}}>💸 Total egresos</td>

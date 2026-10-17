@@ -19904,9 +19904,21 @@ function PanelResultados(p){
                   {localesFiltro.map(function(l){return(
                     <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(datos[l.id].ventas+datos[l.id].corrMonto)}</td>
                   );})}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>{fmt(concIng)}</td>
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0)+concIng)}</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:11}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+datos[l.id].ventas+datos[l.id].corrMonto;},0))}</td>
                 </tr>
+                {[["entrada","Entradas"],["clase","Clases"],["turno","Turnos"],["uso","Clases de pádel"]].map(function(t){
+                  var m=depSuma(concIngRegs.filter(function(x){return x.tipo===t[0];}));
+                  if(m===0)return null;
+                  return(
+                    <tr key={"ci"+t[0]} style={{borderBottom:"1px solid #0A0A0A",background:"#0A1A0A"}}>
+                      <td style={{padding:"6px 8px 6px 18px",color:CONCESION.color,fontSize:10}}>{CONCESION.emoji} Concesión · {t[1]}</td>
+                      {localesFiltro.map(function(l){return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontSize:10}}>—</td>;})}
+                      <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>{fmt(m)}</td>
+                      <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>{fmt(m)}</td>
+                    </tr>
+                  );
+                })}
                 {/* Total ingresos */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#071207"}}>
                   <td style={{padding:"8px",color:"#3A7D44",fontWeight:800,fontFamily:"'Playfair Display',serif",fontSize:12}}>Total ingresos</td>
@@ -19933,6 +19945,14 @@ function PanelResultados(p){
                     </tr>
                   );
                 })}
+                {concRubros.map(function(r){return(
+                  <tr key={"ce"+r.label} style={{borderBottom:"1px solid #0A0A0A"}}>
+                    <td style={{padding:"6px 8px",color:CONCESION.color,fontSize:10}}>{CONCESION.emoji} Concesión · {r.label}</td>
+                    {localesFiltro.map(function(l){return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontSize:10}}>—</td>;})}
+                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontSize:10}}>{fmt(r.total)}</td>
+                    <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(r.total)}</td>
+                  </tr>
+                );})}
                 {/* Total egresos — sin retiros ni aportes: esos son movimientos de socios, van abajo */}
                 <tr style={{borderBottom:"2px solid #1A1A1A",background:"#100A0A"}}>
                   <td style={{padding:"8px",color:"#C1440E",fontWeight:700}}>💸 Total egresos</td>

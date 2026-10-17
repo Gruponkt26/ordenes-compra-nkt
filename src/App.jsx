@@ -7152,10 +7152,32 @@ var DEP_RUBROS=[
 // Por dónde entra la plata del alquiler. Son sólo estos tres: agregar uno es
 // sumarlo acá, sin tocar ni el formulario ni el resumen.
 var DEP_MEDIOS=[
-  {id:"efectivo", label:"💵 Efectivo",            corto:"Efectivo"},
-  {id:"mp_sofia", label:"📱 Mercado Pago Sofía",  corto:"MP Sofía"},
-  {id:"belo",     label:"🔷 Belo",                corto:"Belo"},
+  {id:"efectivo",    label:"💵 Caja Mayor Concesión", corto:"Caja Mayor"},
+  {id:"belo",        label:"🔷 Belo Nicolás",         corto:"Belo Nicolás"},
+  {id:"lemon_sofia", label:"🍋 Lemon Sofía",          corto:"Lemon Sofía"},
 ];
+// Lo que ya se cargó con el medio anterior (Mercado Pago Sofía) se sigue mostrando, pero ya no se ofrece.
+var DEP_MEDIOS_VIEJOS=[{id:"mp_sofia", label:"📱 Mercado Pago Sofía (anterior)", corto:"MP Sofía"}];
+// Con qué se paga una salida u obra: los tres medios de la Concesión o el medio de cualquier otra dependencia. Si es de otra
+// dependencia, el pago queda cruzado: la Concesión le debe. El id es el texto del medio, el mismo que usan los demás pagos.
+var DEP_MEDIOS_SALIDA=[
+  {id:"Caja Mayor - Concesión",            label:"🏅 Caja Mayor Concesión"},
+  {id:"Transferencia - Belo Nicolás",      label:"🏅 Belo Nicolás"},
+  {id:"Transferencia - Lemon Sofía",       label:"🏅 Lemon Sofía"},
+  {id:"Caja Mayor - Bodegón",              label:"🍷 Caja Mayor Bodegón · cruzado"},
+  {id:"Transferencia - Patagonia Personas",label:"🍷 Transf. Patagonia Personas · cruzado"},
+  {id:"Transferencia - Provincia Personas",label:"🍷 Transf. Provincia Personas · cruzado"},
+  {id:"Transferencia - Mercado Pago Nicolás",label:"🍷 Transf. MP Nicolás · cruzado"},
+  {id:"Caja Mayor - Kusama",               label:"🌸 Caja Mayor Kusama · cruzado"},
+  {id:"Transferencia - Galicia Empresas",  label:"🌸 Transf. Galicia Empresas · cruzado"},
+  {id:"Caja Mayor - Colantonio's",         label:"🍝 Caja Mayor Colantonio's · cruzado"},
+  {id:"Transferencia - Patagonia Empresas",label:"🍝 Transf. Patagonia Empresas · cruzado"},
+  {id:"Transferencia - Mercado Pago Calzon Gitano",label:"🍝 Transf. MP Calzon Gitano · cruzado"},
+  // Cargados antes de este cambio:
+  {id:"efectivo",label:"💵 Efectivo (anterior)"},{id:"belo",label:"🔷 Belo (anterior)"},{id:"mp_sofia",label:"📱 MP Sofía (anterior)"},
+];
+// Los medios con id viejo, a su nombre de medio de pago.
+var DEP_MEDIO_TEXTO={efectivo:"Caja Mayor - Concesión",belo:"Transferencia - Belo Nicolás",lemon_sofia:"Transferencia - Lemon Sofía",mp_sofia:"Transferencia - Lemon Sofía"};
 
 // Lo que importa de una clase o un alquiler es si ya se cobró: por eso los tres
 // estados son de cobranza y no de agenda.
@@ -7205,7 +7227,7 @@ var DEP_CAMPOS={
     {k:"nombre",    label:"Concepto",      tipo:"text",  req:true, ph:"Qué se pagó"},
     {k:"rubro",     label:"Rubro",         tipo:"select",req:true, opciones:DEP_RUBROS},
     {k:"monto",     label:"Monto $",       tipo:"num",   ph:"0"},
-    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS_SALIDA},
   ],
   uso:[
     {k:"fecha",     label:"Fecha",         tipo:"date",  req:true},
@@ -7221,7 +7243,7 @@ var DEP_CAMPOS={
     {k:"profe",     label:"A cargo de",    tipo:"text",  ph:"Quién la hace", sug:"obras"},
     {k:"contacto",  label:"Teléfono",      tipo:"text",  ph:"Opcional"},
     {k:"monto",     label:"Costo $",       tipo:"num",   ph:"0"},
-    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS},
+    {k:"medio_pago",label:"Medio de pago", tipo:"select",opciones:DEP_MEDIOS_SALIDA},
   ],
   profe:[
     {k:"nombre",     label:"Profe",      tipo:"text",  req:true, ph:"Nombre y apellido"},
@@ -7249,7 +7271,7 @@ function depMediosDe(x){
   if(lista.length>0)return lista.map(function(pg){return {medio:pg.medio||"",monto:parseFloat(pg.monto)||0};});
   return [{medio:x.medio_pago||"",monto:depNum(x.monto)}];
 }
-function depMedio(id){ return DEP_MEDIOS.find(function(m){return m.id===id;})||null; }
+function depMedio(id){ return DEP_MEDIOS.concat(DEP_MEDIOS_VIEJOS).concat(DEP_MEDIOS_SALIDA).find(function(m){return m.id===id;})||null; }
 function depRubro(id){ return DEP_RUBROS.find(function(r){return r.id===id;})||null; }
 // El estado que significa "la plata se movió": cobrado para lo que entra, pagado
 // para lo que sale.
@@ -7353,7 +7375,7 @@ function depQueEs(x){
 // que baja la disponibilidad del Bodegón sin tocar su Resultado. Los registros viven en la tabla
 // de pautas (ámbito "dep_sueldo"), uno por sueldo o aguinaldo, con sus pagos adentro.
 var DEP_EMPLEADO="Marcos Bracamonte";
-var DEP_MEDIOS_PAGO=[["Caja Mayor - Bodegón","Caja Mayor Bodegón"],["Transferencia - Patagonia Personas","Transf. Patagonia Personas"],["Transferencia - Provincia Personas","Transf. Provincia Personas"],["Transferencia - Mercado Pago Nicolás","Transf. MP Nicolás"]];
+var DEP_MEDIOS_PAGO=DEP_MEDIOS_SALIDA.filter(function(m){return m.id.indexOf(" - ")!==-1;}).map(function(m){return [m.id,m.label];});
 function depSueldoPagado(r){ return (r.pagos||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0); }
 function PanelSueldoDeportes(p){
   var registros=(p.registros||[]).slice().sort(function(a,b){return String(b.mes||"").localeCompare(String(a.mes||""))||String(b.id).localeCompare(String(a.id));});
@@ -7369,9 +7391,7 @@ function PanelSueldoDeportes(p){
     var pago={id:pid,monto:monto,fecha:fecha,medio:medio};
     // Y también una salida de Deportes, para que el total de salidas del predio la cuente.
     p.onSaveSalida({id:"depsal_"+pid,disciplina:"caja",tipo:"salida",estado:"pagado",nombre:"Sueldo "+DEP_EMPLEADO+" — "+rec.concepto+" "+rec.mes,rubro:"canchero",
-      fecha:fecha,monto:monto,medio_pago:null,notas:"Pagado desde "+((DEP_MEDIOS_PAGO.find(function(m){return m[0]===medio;})||[0,medio])[1])+" (retiro de Nicolás)",usuario:p.usuario||"",created_at:new Date().toISOString()});
-    p.onSaveRetiro({id:"retdep_"+pid,socio:"Nicolás",local:"l1",local_cuenta:"l1",monto:monto,tipo_retiro:medio,clase:"dinero",bien:"",cotizacion:0,usd:0,
-      notas:"Pago sueldo y/o aguinaldo "+DEP_EMPLEADO+" — "+rec.concepto+" "+rec.mes,fecha:fecha,usuario:p.usuario||"",created_at:new Date().toISOString()});
+      fecha:fecha,monto:monto,medio_pago:medio,notas:"Pagado con "+((DEP_MEDIOS_PAGO.find(function(m){return m[0]===medio;})||[0,medio])[1]),usuario:p.usuario||"",created_at:new Date().toISOString()});
     return {...rec,pagos:(rec.pagos||[]).concat([pago])};
   }
   function guardar(){
@@ -7396,13 +7416,13 @@ function PanelSueldoDeportes(p){
     setPagando(null);
   }
   function borrarPago(rec,pago){
-    if(!window.confirm("¿Eliminar este pago? También se borra el retiro de Nicolás que generó."))return;
+    if(!window.confirm("¿Eliminar este pago? También se borra la salida y el cruzado que generó."))return;
     p.onDeleteRetiro("retdep_"+pago.id);
     p.onDeleteSalida("depsal_"+pago.id);
     p.onSave({...rec,pagos:(rec.pagos||[]).filter(function(x){return x.id!==pago.id;})});
   }
   function borrarRegistro(rec){
-    if(!window.confirm("¿Eliminar este sueldo? Se borran también sus pagos y los retiros de Nicolás que generaron."))return;
+    if(!window.confirm("¿Eliminar este sueldo? Se borran también sus pagos y lo que generaron."))return;
     (rec.pagos||[]).forEach(function(pg){p.onDeleteRetiro("retdep_"+pg.id);p.onDeleteSalida("depsal_"+pg.id);});
     p.onDelete(rec.id);
   }
@@ -7411,9 +7431,9 @@ function PanelSueldoDeportes(p){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
         <div>
           <div style={{fontSize:13,fontWeight:700,color:"#B07AE0"}}>💼 Sueldo {DEP_EMPLEADO}</div>
-          <div style={{fontSize:10,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Cada pago sale de la Caja Mayor del Bodegón como retiro de socio de Nicolás (baja la disponibilidad, no el Resultado) y cuenta como salida de Deportes.</div>
+          <div style={{fontSize:10,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Cada pago cuenta como salida de la Concesión. Si se paga con un medio de otra dependencia (por ejemplo la Caja Mayor del Bodegón) queda como cruzado: la Concesión se lo debe y se salda desde Cruzados. Los pagos anteriores, que salieron como retiro de Nicolás, quedan como estaban.</div>
         </div>
-        {!form&&<button onClick={function(){setForm({mes:hoy.slice(0,7),concepto:"Sueldo",monto:"",modo:"ninguno",parcial:"",fecha:hoy,medio:"Caja Mayor - Bodegón"});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#8B2FC9",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar sueldo</button>}
+        {!form&&<button onClick={function(){setForm({mes:hoy.slice(0,7),concepto:"Sueldo",monto:"",modo:"ninguno",parcial:"",fecha:hoy,medio:"Caja Mayor - Concesión"});}} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#8B2FC9",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Cargar sueldo</button>}
       </div>
       {form&&(
         <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:10,padding:"12px",marginBottom:10}}>
@@ -7494,7 +7514,7 @@ function PanelSueldoDeportes(p){
                     </div>
                   </div>
                 ):(
-                  <button onClick={function(){setPagando({id:r.id,monto:String(Math.round(falta)),fecha:hoy,medio:"Caja Mayor - Bodegón"});}} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4466",background:"none",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
+                  <button onClick={function(){setPagando({id:r.id,monto:String(Math.round(falta)),fecha:hoy,medio:"Caja Mayor - Concesión"});}} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid #3A7D4466",background:"none",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Registrar pago</button>
                 ))}
               </div>
             );
@@ -7709,10 +7729,14 @@ function PanelDeportes(p){
       return a+depMediosDe(x).filter(function(pg){return (pg.medio||"")===id;}).reduce(function(b,pg){return b+pg.monto;},0);
     },0);
   }
-  var porMedio=!conCobranza?[]:DEP_MEDIOS.map(function(m){
-    return {id:m.id,corto:m.corto,label:m.label,total:sumaMedio(m.id)};
+  var porMedio=!conCobranza?[]:((sec.id==="salidas"||sec.id==="obras")?DEP_MEDIOS_SALIDA:DEP_MEDIOS.concat(DEP_MEDIOS_VIEJOS)).map(function(m){
+    return {id:m.id,corto:m.corto||m.label,label:m.label,total:sumaMedio(m.id)};
   }).concat([{id:"",corto:"Sin medio",label:"❓ Sin medio",total:sumaMedio("")}])
-    .filter(function(m){return m.id!==""||m.total>0;});
+    .filter(function(m){
+      if(m.id==="")return m.total>0;
+      // En entradas se muestran siempre los tres medios; en salidas y obras, sólo los que se usaron (son muchos).
+      return (sec.id==="salidas"||sec.id==="obras")?m.total>0:true;
+    });
 
   // Las salidas, además, por rubro: es la pregunta que se hace uno al mirar los gastos
   // del predio (cuánto se fue en mantenimiento, cuánto en el canchero).
@@ -25649,11 +25673,32 @@ export default function App() {
   function guardarIdea(x){
     sbSaveIdea(x).then(function(err){if(err)alert("No se pudo guardar la idea en la base:\n\n"+err+"\n\nSi el error menciona la columna ambito, hay que agregarla en la tabla ideas de Supabase (el alter está en el README).");});
   }
+  // Una salida u obra pagada de la Concesión se espeja como un egreso del local "dep": así los cruzados y la disponibilidad de la
+  // cuenta con que se pagó (la del Bodegón, por ejemplo) la cuentan como cualquier otro gasto. Si deja de estar pagada, se borra.
+  function espejarEgresoConcesion(x){
+    if(!x||(x.tipo!=="salida"&&x.tipo!=="obra"))return;
+    var gid="depg_"+x.id;
+    var medioTxt=DEP_MEDIO_TEXTO[x.medio_pago]||x.medio_pago||"";
+    var monto=parseFloat(x.monto)||0;
+    if(x.estado!=="pagado"||!medioTxt||monto<=0){
+      if(gastos.some(function(g){return g.id===gid;})){ sbDeleteGasto(gid); setGastos(function(p){return p.filter(function(g){return g.id!==gid;});}); }
+      return;
+    }
+    var rubro=(DEP_RUBROS.find(function(r){return r.id===x.rubro;})||{}).corto||"Concesión";
+    var g={id:gid,local:"dep",concepto:x.nombre||"Concesión NKT",subramo:rubro,detalle:"Concesión NKT · "+(x.tipo==="obra"?"obra":"salida"),monto:monto,forma_pago:medioTxt,
+      facturado:false,facturacion:"",categoria:"Concesión NKT",area:"Concesión NKT",notas:x.notas||"",fecha:x.fecha,usuario:x.usuario||"",created_at:x.created_at||new Date().toISOString(),
+      pagos:[{medio:medioTxt,monto:monto}]};
+    sbSaveGasto(g);
+    setGastos(function(prev){var f=prev.filter(function(y){return y.id!==gid;});return[g,...f];});
+  }
   function guardarDeporte(x){
     sbSaveDeporte(x).then(function(err){if(err)alert("No se pudo guardar en la base:\n\n"+err+"\n\nSi el error menciona la tabla deportes, hay que crearla en Supabase (el SQL está en el README). Si menciona la columna pagos (medios divididos), corré: alter table deportes add column if not exists pagos jsonb;");});
     setDeportes(function(prev){var f=prev.filter(function(y){return y.id!==x.id;});return[x,...f];});
+    espejarEgresoConcesion(x);
   }
   function borrarDeporte(id){
+    var gidD="depg_"+id;
+    if(gastos.some(function(g){return g.id===gidD;})){ sbDeleteGasto(gidD); setGastos(function(p){return p.filter(function(g){return g.id!==gidD;});}); }
     sbDeleteDeporte(id);
     setDeportes(function(prev){return prev.filter(function(x){return x.id!==id;});});
   }

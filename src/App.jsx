@@ -5145,7 +5145,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
                         <option value="">-- Medio --</option>
                         {["Efectivo","Caja Mayor","Transferencia","Otros"].map(function(grp){
                           var items=MEDIOS_OBRA.filter(function(m){return m.grupo===grp;});
-                          return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                          return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;
                         })}
                       </select>
                       <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setFormObra(function(f){var n=[...(f.pagos||[])];n[idx]={...n[idx],monto:v};return{...f,pagos:n};});}} style={{...INP,width:90}}/>
@@ -9006,6 +9006,13 @@ var MEDIOS_EGRESO=[
   {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
+// Al lado de cada medio, la dependencia a la que pertenece (salvo que el nombre ya la diga).
+function etiquetaMedioEg(m){
+  var lid=detectarLocalMedio(m.value), loc=lid&&getLocal(lid);
+  if(!loc)return m.label;
+  var corto=loc.nombre.split(" ")[0].replace("'s","");
+  return m.label.indexOf(corto)===-1?m.label+" · "+loc.emoji+" "+loc.nombre:m.label;
+}
 var GRUPOS_MEDIOS_EGRESO=["Efectivo","Caja Mayor","Transferencia","Tarjeta","Otros"];
 // "Deuda": un egreso que se carga normal —con su medio de pago, así que baja la disponibilidad y
 // cuenta en Resultados— pero que paga algo que no es de este mes, y por eso no entra en Ventas
@@ -9311,7 +9318,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                     <option value="">-- Seleccioná medio --</option>
                     {grupos_medios.map(function(grp){
                       var items=MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;});
-                      return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;
                     })}
                   </select>
                   <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],monto:e.target.value};return n;});}} style={{...INP,width:90}}/>
@@ -14479,7 +14486,7 @@ function PanelVencimientos(p){
                   <select value={pago.medio} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
                     <option value="">-- Seleccioná medio --</option>
                     {GRUPOS_MEDIOS_EGRESO.map(function(grp){
-                      return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}</optgroup>;
+                      return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;
                     })}
                   </select>
                   <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],monto:v};return n;});}} style={{...INP,width:100}}/>
@@ -14993,7 +15000,7 @@ function PanelVencimientos(p){
                 <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Se debita de</label>
                 <select value={form.debito_cuenta} onChange={function(e){setForm(function(f){return{...f,debito_cuenta:e.target.value};});}} style={INP}>
                   <option value="">— No se debita solo —</option>
-                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}
                 </select>
               </div>
               <div>
@@ -15456,7 +15463,7 @@ function PanelVencimientos(p){
                 <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Se debita de</label>
                 <select value={formPlan.debito_cuenta} onChange={function(e){setFormPlan(function(f){return{...f,debito_cuenta:e.target.value};});}} style={INP}>
                   <option value="">— No se debita solo —</option>
-                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                  {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}
                 </select>
               </div>
               <div>
@@ -15617,7 +15624,7 @@ function PanelVencimientos(p){
                             <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>🔁 Se debita de</label>
                             <select value={editPlan.debito_cuenta} onChange={function(e){var x=e.target.value;setEditPlan(function(f){return{...f,debito_cuenta:x};});}} style={INP}>
                               <option value="">— No se debita solo —</option>
-                              {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                              {cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}
                             </select>
                           </div>
                           <div>
@@ -20824,7 +20831,7 @@ function PanelCuit(props){
                         <div style={{fontSize:9,color:"#6E6E6E"}}>{fmt(d.fijo)} del tercio ({d.local==="l1"?50:d.local==="l3"?30:20}% del tercio){d.monto-d.fijo>0?" + "+fmt(d.monto-d.fijo)+" de los otros dos tercios, por empleados":""}</div>
                         {conMedio&&(
                           <select value={medioDeLocal(d.local)} onChange={function(e){var v=e.target.value;setForm(function(f){var m={...(f.medios||{})};m[d.local]=v;return{...f,medios:m};});}} style={{...INP,marginTop:5,fontSize:12,padding:"7px 10px"}}>
-                            {MEDIOS_EGRESO.filter(function(m){return m.value!=="Efectivo - Oficina";}).map(function(m){return <option key={m.value} value={m.value}>{m.label}</option>;})}
+                            {MEDIOS_EGRESO.filter(function(m){return m.value!=="Efectivo - Oficina";}).map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}
                           </select>
                         )}
                       </div>

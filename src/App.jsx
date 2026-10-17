@@ -8990,6 +8990,9 @@ var MEDIOS_EGRESO=[
   {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
   {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
   {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Colantonio's",value:"Caja Mayor - Colantonio's"},
+  {grupo:"Caja Mayor",label:"🏅 Caja Mayor — Concesión",value:"Caja Mayor - Concesión"},
+  {grupo:"Transferencia",label:"🏅 Belo Nicolás (Concesión)",value:"Transferencia - Belo Nicolás"},
+  {grupo:"Transferencia",label:"🏅 Lemon Sofía (Concesión)",value:"Transferencia - Lemon Sofía"},
   {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
   {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
   {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
@@ -9243,7 +9246,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Local</label>
               <div style={{display:"flex",gap:5}}>
-                {localesFiltro.map(function(l){return(
+                {localesFiltro.concat([CONCESION]).map(function(l){return(
                   <button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#2A2A2A"),background:form.local===l.id?l.color+"22":"#0F0F0F",color:form.local===l.id?l.color:"#8C8C8C",fontSize:11,fontWeight:700,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
                 );})}
               </div>
@@ -19688,13 +19691,17 @@ function PanelResultados(p){
   function depSuma(lista){ return lista.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0); }
   var concIngRegs=depRegs.filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado"&&depDelMes(x);});
   var concEgRegs=depRegs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&depDelMes(x);});
-  var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs), concRes=concIng-concEg;
+  // Gastos cargados directo en Egresos con la Concesión como local (los espejados de Deportes ya están contados arriba).
+  var concGastosCargados=(p.gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0&&String(g.fecha||"").slice(0,7)===mesFiltro&&!esGastoDeuda(g);});
+  var concEgCargados=concGastosCargados.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+  var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs)+concEgCargados, concRes=concIng-concEg;
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
-    .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))}])
+    .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))},{label:"Cargados en Egresos",total:concEgCargados}])
     .filter(function(r){return r.total>0;});
   // Los rubros de la Concesión caen en las mismas áreas que usan los locales, así se comparan fila contra fila.
   var DEP_RUBRO_AREA={mantenimiento:"Mantenimiento",servicios:"Servicios",obras:"Obras",canchero:"Sueldos",otros:"Administrativo"};
   var concPorCat={};
+  concGastosCargados.forEach(function(g){ var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(g.monto)||0); });
   concEgRegs.forEach(function(x){ var a=DEP_RUBRO_AREA[x.rubro]||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(x.monto)||0); });
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0)+concIng;
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;

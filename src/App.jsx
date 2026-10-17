@@ -4863,10 +4863,11 @@ function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
     </div>
   );
 }
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
-  var [vistaObras,setVistaObras]=useState("obras");   // obras | informe
+  var [vistaObras,setVistaObras]=useState("obras");
+  var [verConcesion,setVerConcesion]=useState(false);   // la Concesión NKT (módulo Deportes) vive acá, como una dependencia más   // obras | informe
   var hoy=new Date().toISOString().split("T")[0];
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
@@ -4950,6 +4951,17 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     setFormObra({titulo:"",descripcion:"",mano_obra:"",materiales:"",servicios:"",fecha:hoy,estado:"en curso",notas:"",pagos:[{medio:"",monto:""}]});
   }
 
+  if(verConcesion&&renderConcesion){
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <button onClick={function(){setVerConcesion(false);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Volver</button>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:CONCESION.color}}>{CONCESION.emoji} {CONCESION.nombre}</div>
+        </div>
+        {renderConcesion()}
+      </div>
+    );
+  }
   if(!localSel){
     return(
       <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -4965,6 +4977,11 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
               <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Ver detalle →</div>
             </button>
           );})}
+          {renderConcesion&&<button onClick={function(){setVerConcesion(true);}} style={{background:"#0F0F0F",border:"2px solid "+CONCESION.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+            <div style={{fontSize:36,marginBottom:8}}>{CONCESION.emoji}</div>
+            <div style={{fontSize:15,fontWeight:800,color:CONCESION.color,fontFamily:"'Playfair Display',serif"}}>{CONCESION.nombre}</div>
+            <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Tenis, pádel y galpón →</div>
+          </button>}
         </div>
       </div>
     );
@@ -7780,8 +7797,8 @@ function PanelDeportes(p){
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{marginBottom:14}}>
-        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Deportes</div>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Dependencia</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Tenis, pádel y galpón</div>
       </div>
 
       {/* Sueldo del empleado de deportes: plegado, un toque lo abre */}
@@ -25847,6 +25864,16 @@ export default function App() {
       onSaveEgresoF931={function(g){sbSaveGasto(g);setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});}}
       gastos={gastos}/>;
   }
+  // El módulo Deportes es la Concesión NKT, una dependencia más: vive adentro de Dependencias.
+  function panelConcesion(){
+    return (
+      <PanelDeportes deportes={deportes} usuario={cu.nombre}
+        onSave={guardarDeporte} onDelete={borrarDeporte}
+        sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
+        onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
+        onDeleteRetiroDep={function(id){sbDeleteRetiro(id);setRetiros(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
+    );
+  }
   function panelVencimientos(extra){
     return (
       <PanelVencimientos key={(extra&&extra.llave)||"venc_general"} {...extra}
@@ -26052,7 +26079,6 @@ export default function App() {
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
-              {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
               {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
@@ -26086,7 +26112,6 @@ export default function App() {
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
                   {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
-                  {id:"deportes",emoji:"🏅",label:"Deportes",color:"#E07B00",action:function(){abrirModulo("deportes","deportes_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                   {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
@@ -26505,13 +26530,6 @@ export default function App() {
           )}
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
-          {esSofia&&modulo==="deportes"&&(
-            <PanelDeportes deportes={deportes} usuario={cu.nombre}
-              onSave={guardarDeporte} onDelete={borrarDeporte}
-              sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
-              onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
-              onDeleteRetiroDep={function(id){sbDeleteRetiro(id);setRetiros(function(prev){return prev.filter(function(x){return x.id!==id;});});}}/>
-          )}
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
@@ -26570,7 +26588,7 @@ export default function App() {
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}
-              renderPagoF931={renderPagoF931}
+              renderPagoF931={renderPagoF931} renderConcesion={panelConcesion}
               localInicial={locInicial} tabInicial={locTab} onLocalInicialUsado={function(){setLocInicial(null);setLocTab(null);}}
               onBorrarEgresoOficina={borrarEgreso}
               cierresRL={cierres} sueldosRL={sueldos} adelantosRL={adelantos} retirosRL={retiros} aportesRL={aportes} corrRL={corrResultados}

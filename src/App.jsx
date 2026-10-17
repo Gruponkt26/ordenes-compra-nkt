@@ -19696,7 +19696,7 @@ function PanelResultados(p){
   var concEgCargados=concGastosCargados.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
   var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs)+concEgCargados, concRes=concIng-concEg;
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
-    .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))}],{label:"Cargados en Egresos",total:concEgCargados}])
+    .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))},{label:"Cargados en Egresos",total:concEgCargados}])
     .filter(function(r){return r.total>0;});
   // Los rubros de la Concesión caen en las mismas áreas que usan los locales, así se comparan fila contra fila.
   var DEP_RUBRO_AREA={mantenimiento:"Mantenimiento",servicios:"Servicios",obras:"Obras",canchero:"Sueldos",otros:"Administrativo"};

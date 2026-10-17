@@ -19692,6 +19692,10 @@ function PanelResultados(p){
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
     .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))}])
     .filter(function(r){return r.total>0;});
+  // Los rubros de la Concesión caen en las mismas áreas que usan los locales, así se comparan fila contra fila.
+  var DEP_RUBRO_AREA={mantenimiento:"Mantenimiento",servicios:"Servicios",obras:"Obras",canchero:"Sueldos",otros:"Administrativo"};
+  var concPorCat={};
+  concEgRegs.forEach(function(x){ var a=DEP_RUBRO_AREA[x.rubro]||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(x.monto)||0); });
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0)+concIng;
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;
   var totalResultado=totalVentas-totalGastos;
@@ -19926,7 +19930,7 @@ function PanelResultados(p){
                 </tr>
                 {/* Egresos por área */}
                 {[...AREAS_BASE,"Aguinaldos",...(areasCustomGastos||[])].filter(function(a){return !esAreaSocios(a);}).map(function(cat){
-                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0);
+                  var totCat=localesFiltro.reduce(function(a,l){return a+(datos[l.id].porCat[cat]||0);},0)+(concPorCat[cat]||0);
                   if(totCat===0)return null;
                   var color=AREA_COLORES[cat]||"#555";
                   return(
@@ -19936,7 +19940,7 @@ function PanelResultados(p){
                         var m=datos[l.id].porCat[cat]||0;
                         return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#F0EDE8":"#6E6E6E",fontSize:10}}>{m>0?fmt(m):"—"}</td>;
                       })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>{concPorCat[cat]>0?fmt(concPorCat[cat]):"—"}</td>
                       <td style={{textAlign:"right",padding:"6px 8px",color:"#F0EDE8",fontWeight:600,fontSize:10}}>{fmt(totCat)}</td>
                     </tr>
                   );

@@ -8863,7 +8863,7 @@ function EditorCategoriasGastos(p) {
 var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Adquisiciones","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
-  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44","Adquisiciones":"#2AA6A6",
+  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44","Adquisiciones":"#2AA6A6","Concesión NKT":"#D4A017",
   "Retiros":"#8B4513",
   "Aportes":"#3A7D44",
   "F.931":"#4CAF50"
@@ -9534,7 +9534,7 @@ function PanelEgresos(p){
                 })()}
 
                 {/* Un bloque por cada área/tab */}
-                {[...AREAS_BASE.filter(function(a){return !esAreaSocios(a);}), ...(p.areasCustom||[])].map(function(area){
+                {[...AREAS_BASE.filter(function(a){return !esAreaSocios(a);}), ...(p.areasCustom||[]), ...(l.id==="dep"?["Concesión NKT"]:[])].map(function(area){
                   var items=gl.filter(function(g){
                     // Excluir aguinaldos del bloque de áreas normales
                     if((g.area==="Sueldos"||g.categoria==="Sueldos")&&g.subramo&&g.subramo.startsWith("Aguinaldo"))return false;

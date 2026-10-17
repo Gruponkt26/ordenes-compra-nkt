@@ -7771,7 +7771,15 @@ function PanelDeportes(p){
   var totalSalidas=registros.filter(function(x){
     return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enMes(x);
   }).reduce(function(a,x){return a+depNum(x.monto);},0);
-  var saldo=totalEntradas-totalSalidas;
+  // Lo que se pagó con el medio de otra dependencia no sale de la plata de la Concesión: queda como deuda (cruzado) y
+  // el saldo disponible solo baja por lo pagado con sus propios medios.
+  function depEsPropio(medio){ var t=DEP_MEDIO_TEXTO[medio]||medio; if(!t)return true; var l=detectarLocalMedio(t); return !l||l==="dep"; }
+  var salidasCruzadas=registros.filter(function(x){
+    return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enMes(x);
+  }).reduce(function(a,x){
+    return a+depMediosDe(x).filter(function(pg){return !depEsPropio(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);
+  },0);
+  var saldo=totalEntradas-(totalSalidas-salidasCruzadas);
 
   // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
   // los nombres del módulo hacía que al cargar un profe aparecieran los que alquilaron
@@ -7864,6 +7872,7 @@ function PanelDeportes(p){
         <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
           <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+          {salidasCruzadas>0&&<div style={{fontSize:9,color:"#E07B00",marginTop:2}}>sin ${Math.round(salidasCruzadas).toLocaleString("es-AR")} pagados por otras dependencias</div>}
         </div>
       </div>
 
@@ -7982,7 +7991,10 @@ function PanelDeportes(p){
                   </div>
                 )}
               </div>
-              <div style={{fontSize:26,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:26,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
+                {salidasCruzadas>0&&<div style={{fontSize:10,color:"#E07B00"}}>sin ${Math.round(salidasCruzadas).toLocaleString("es-AR")} pagados por otras dependencias (cruzado)</div>}
+              </div>
             </div>
 
             {tarjetasMes.length>0&&(

@@ -17005,7 +17005,7 @@ function PanelCierresSofia(p) {
     // Varias veces "coincidió" del mismo cajero, local y día se ven en un solo renglón (×N, con la hora de la última). Las que NO
     // coinciden quedan siempre aparte: cada una es un aviso que hay que resolver.
     var lineasVerif=[], idxGrupoVerif={};
-    function horaDe(a){ try{ return a.created_at?new Date(a.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""; }catch(e){ return ""; } }
+    function horaDe(a){ try{ return a.created_at?new Date(a.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false}):""; }catch(e){ return ""; } }
     avisosMes.forEach(function(a){
       var ok=Math.round(parseFloat(a.diferencia||0))===0;
       if(!ok){ lineasVerif.push({a:a,n:1,horas:[]}); return; }

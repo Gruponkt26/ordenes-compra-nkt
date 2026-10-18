@@ -4863,7 +4863,54 @@ function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
     </div>
   );
 }
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+// Resumen de la Concesión NKT, igual que el de cada local: por mes, lo que ingresó y lo que egresó, con el saldo.
+function ResumenConcesion({deportes, gastos}){
+  var fmtP=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var num=function(v){return parseFloat(v)||0;};
+  var regs=deportes||[];
+  var cargados=(gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0&&!esGastoDeuda(g);});
+  var meses={};
+  regs.forEach(function(x){ if(x.fecha&&((["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado")||((x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado")))meses[String(x.fecha).slice(0,7)]=1; });
+  cargados.forEach(function(g){ if(g.fecha)meses[String(g.fecha).slice(0,7)]=1; });
+  var lista=Object.keys(meses).sort().reverse().map(function(m){
+    var delMes=function(x){return String(x.fecha||"").slice(0,7)===m;};
+    var ent=DEP_CONCEPTOS.map(function(c){
+      var l=regs.filter(function(x){return c.test(x)&&x.estado==="cobrado"&&delMes(x);});
+      return {label:c.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+    }).filter(function(f){return f.n>0;});
+    var salReg=regs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&delMes(x);});
+    var sal=DEP_RUBROS.map(function(r){
+      var l=salReg.filter(function(x){return x.rubro===r.id;});
+      return {label:r.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+    });
+    var sr=salReg.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});});
+    if(sr.length)sal.push({label:"❓ Sin rubro",monto:sr.reduce(function(a,x){return a+num(x.monto);},0),n:sr.length});
+    var porArea={};
+    cargados.filter(delMes).forEach(function(g){ var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros"; porArea[a]=porArea[a]||{label:a,monto:0,n:0}; porArea[a].monto+=num(g.monto); porArea[a].n++; });
+    Object.keys(porArea).forEach(function(k){ sal.push(porArea[k]); });
+    sal=sal.filter(function(f){return f.n>0;});
+    var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
+    return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
+  });
+  if(lista.length===0)return <div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {lista.map(function(t){return(
+        <div key={t.m} style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"33",borderRadius:12,padding:"13px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:800,color:CONCESION.color}}>{t.m}</div>
+            <div style={{fontSize:16,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{fmtP(Math.abs(t.saldo))}</div>
+          </div>
+          <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:4}}>Ingresó · {fmtP(t.totE)}</div>
+          {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+          <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:8}}>Egresó · {fmtP(t.totS)}</div>
+          {t.sal.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+        </div>
+      );})}
+    </div>
+  );
+}
+function PanelLocales({deportes, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var [vistaObras,setVistaObras]=useState("obras");
@@ -4885,6 +4932,9 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Colantonio's",value:"Caja Mayor - Colantonio's"},
+    {grupo:"Caja Mayor",label:"🏅 Caja Mayor — Concesión",value:"Caja Mayor - Concesión"},
+    {grupo:"Transferencia",label:"🏅 Belo Nicolás (Concesión)",value:"Transferencia - Belo Nicolás"},
+    {grupo:"Transferencia",label:"🏅 Lemon Sofía (Concesión)",value:"Transferencia - Lemon Sofía"},
     {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
     {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
@@ -4977,7 +5027,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
               <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Ver detalle →</div>
             </button>
           );})}
-          {renderConcesion&&<button onClick={function(){setVerConcesion(true);}} style={{background:"#0F0F0F",border:"2px solid "+CONCESION.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+          {renderConcesion&&<button onClick={function(){abrirLocal(CONCESION);}} style={{background:"#0F0F0F",border:"2px solid "+CONCESION.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
             <div style={{fontSize:36,marginBottom:8}}>{CONCESION.emoji}</div>
             <div style={{fontSize:15,fontWeight:800,color:CONCESION.color,fontFamily:"'Playfair Display',serif"}}>{CONCESION.nombre}</div>
             <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Tenis, pádel y galpón →</div>
@@ -5000,16 +5050,18 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]]).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
 
       {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
-      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
+      {tab==="metricas"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
-      {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
+      {tab==="resumen"&&localSel.id==="dep"&&<ResumenConcesion deportes={deportes} gastos={gastosTodos}/>}
+      {tab==="gestion"&&localSel.id==="dep"&&renderConcesion&&renderConcesion()}
+      {tab==="resumen"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina} onSaldar={onSaldarOficina}/>}
@@ -5955,7 +6007,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
   var INP={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
 
   // "all": todos los sueldos juntos, ordenados por local.
-  var ordenLocal=LOCALES.map(function(l){return l.id;});
+  var ordenLocal=LOCALES.concat([CONCESION]).map(function(l){return l.id;});
   var emps=empleados.filter(function(e){return e.activo!==false&&(localFiltro==="all"||e.local===localFiltro);});
   if(localFiltro==="all")emps=emps.slice().sort(function(a,b){return (ordenLocal.indexOf(a.local)-ordenLocal.indexOf(b.local))||String(a.nombre).localeCompare(String(b.nombre));});
 
@@ -6027,7 +6079,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
           <button onClick={function(){setAnio(anio+1);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,padding:"5px 10px",color:"#888",cursor:"pointer"}}>›</button>
         </div>
         <button onClick={function(){setLocalFiltro("all");}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro==="all"?"#D4A017":"#1A1A1A"),background:localFiltro==="all"?"#D4A01722":"none",color:localFiltro==="all"?"#D4A017":"#7E7E7E",fontSize:11,cursor:"pointer"}}>👥 Todos juntos</button>
-        {LOCALES.map(function(l){return(
+        {LOCALES.concat([CONCESION]).map(function(l){return(
           <button key={l.id} onClick={function(){setLocalFiltro(l.id);}} style={{padding:"5px 10px",borderRadius:20,border:"1px solid "+(localFiltro===l.id?l.color:"#1A1A1A"),background:localFiltro===l.id?l.color+"22":"none",color:localFiltro===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
         <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
@@ -6037,7 +6089,7 @@ function PlanillaInline({empleados, planilla, sueldos, adelantos, onSave, onDele
           <button onClick={function(){
             var mesNombres=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
             var loc=localFiltro;
-            var locNombre=loc==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===loc;})||{nombre:loc}).nombre;
+            var locNombre=loc==="all"?"todos los locales":(getLocal(loc)||{nombre:loc}).nombre;
             var aEliminar=(planilla||[]).filter(function(x){return parseInt(x.mes)===mesReset&&parseInt(x.anio)===anio&&(loc==="all"||x.local===loc);});
             if(aEliminar.length===0){alert("No hay planilla en "+mesNombres[mesReset]+" "+anio+" para "+locNombre);return;}
             if(!window.confirm("¿Borrar "+aEliminar.length+" registro(s) de "+mesNombres[mesReset]+" "+anio+" en "+locNombre+"?"))return;
@@ -7809,15 +7861,7 @@ function PanelDeportes(p){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Tenis, pádel y galpón</div>
       </div>
 
-      {/* Sueldo del empleado de deportes: plegado, un toque lo abre */}
-      {p.sueldosDep&&(
-        <div style={{marginBottom:12}}>
-          <button onClick={function(){setVerSueldo(!verSueldo);}} style={{width:"100%",textAlign:"left",padding:"9px 13px",borderRadius:10,border:"1px solid "+(verSueldo?"#8B2FC9":"#1E1E1E"),background:verSueldo?"#8B2FC911":"#111",color:verSueldo?"#B07AE0":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            💼 Sueldo {DEP_EMPLEADO} {verSueldo?"▲":"▼"}
-          </button>
-          {verSueldo&&<div style={{marginTop:8}}><PanelSueldoDeportes registros={p.sueldosDep} usuario={p.usuario} onSave={p.onSaveSueldoDep} onDelete={p.onDeleteSueldoDep} onSaveRetiro={p.onSaveRetiroDep} onDeleteRetiro={p.onDeleteRetiroDep} onSaveSalida={p.onSave} onDeleteSalida={p.onDelete}/></div>}
-        </div>
-      )}
+      {/* El sueldo de Marcos se carga como el de cualquier empleado, desde Colaboradores → Sueldos (local Concesión NKT). */}
 
       {/* Si la base no está lista, decirlo antes de que se cargue nada */}
       {problemaTabla&&(
@@ -19720,8 +19764,12 @@ function PanelResultados(p){
   var concIngRegs=depRegs.filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado"&&depDelMes(x);});
   var concEgRegs=depRegs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&depDelMes(x);});
   // Gastos cargados directo en Egresos con la Concesión como local (los espejados de Deportes ya están contados arriba).
-  var concGastosCargados=(p.gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0&&String(g.fecha||"").slice(0,7)===mesFiltro&&!esGastoDeuda(g);});
-  var concEgCargados=concGastosCargados.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+  // Todo lo que figura a nombre de la Concesión por afuera de Deportes: gastos cargados en Egresos, sueldos y adelantos de
+  // sus empleados (Sueldos). Los espejados de salidas (depg_) ya están contados arriba, por eso se restan.
+  var concEgOp=egresosOperativos(p.gastos||[],p.sueldos||[],p.adelantos||[],"dep",mesFiltro,[],[],false,[]);
+  var concEspejados=(concEgOp.gl||[]).filter(function(g){return String(g.id).indexOf("depg_")===0;}).reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+  var concGastosCargados=(concEgOp.gl||[]).filter(function(g){return String(g.id).indexOf("depg_")!==0;});
+  var concEgCargados=Math.max(0,concEgOp.total-concEspejados);
   var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs)+concEgCargados, concRes=concIng-concEg;
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
     .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))},{label:"Cargados en Egresos",total:concEgCargados}])
@@ -19730,6 +19778,8 @@ function PanelResultados(p){
   var DEP_RUBRO_AREA={mantenimiento:"Mantenimiento",servicios:"Servicios",obras:"Obras",canchero:"Sueldos",otros:"Administrativo"};
   var concPorCat={};
   concGastosCargados.forEach(function(g){ var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(g.monto)||0); });
+  var concSueldosExtra=concEgCargados-concGastosCargados.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0);
+  if(concSueldosExtra>0.5)concPorCat["Sueldos"]=(concPorCat["Sueldos"]||0)+concSueldosExtra;
   concEgRegs.forEach(function(x){ var a=DEP_RUBRO_AREA[x.rubro]||"Administrativo"; concPorCat[a]=(concPorCat[a]||0)+(parseFloat(x.monto)||0); });
   var totalVentas=localesFiltro.reduce(function(a,l){return a+datos[l.id].ventasCorregidas;},0)+concIng;
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;
@@ -21439,7 +21489,7 @@ function PanelSueldos(p){
   var [mesHasta,setMesHasta]=useState(mesCurrent);
   var CATEGORIAS_EMP=["Cocina","Salón","Barra","Administración","Limpieza","Seguridad","Otro"];
   var ESTADOS_SUELDO=[["pendiente","⏳ Pendiente","#D4A017"],["parcial","🔸 Parcial","#E07B00"],["pagado","✅ Pagado","#3A7D44"]];
-  var localesFiltro=LOCALES;
+  var localesFiltro=LOCALES.concat([CONCESION]);
   // Meses disponibles desde la planilla de sueldos
   var mesesDisp=[...new Set((p.planillaSueldos||[]).map(function(pl){
     var m=parseInt(pl.mes)+1;return pl.anio+"-"+(m<10?"0"+m:String(m));
@@ -21629,7 +21679,7 @@ function PanelSueldos(p){
           
           {(tab==="empleados"||tab==="bajas")&&<button onClick={function(){setTab("altas");}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #333",background:"#111",color:"#888",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>+ Nuevo colaborador</button>}
           {tab==="estado"&&<button onClick={function(){
-            var loc=localFiltro==="all"?"todos los locales":(LOCALES.find(function(l){return l.id===localFiltro;})||{nombre:localFiltro}).nombre;
+            var loc=localFiltro==="all"?"todos los locales":(getLocal(localFiltro)||{nombre:localFiltro}).nombre;
             var aEliminar=sueldosMes.filter(function(s){return localFiltro==="all"||s.local===localFiltro;});
             if(aEliminar.length===0){alert("No hay pagos registrados en "+mesFiltro+" para "+loc);return;}
             if(!window.confirm("¿Resetear "+aEliminar.length+" pago(s) de "+mesFiltro+" en "+loc+"?"))return;
@@ -21733,7 +21783,7 @@ function PanelSueldos(p){
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {planillaMesTotal.map(function(pl){
                   var emp=empleados.find(function(e){return e.id===pl.empleado_id;})||{nombre:pl.empleado_nombre,local:pl.local,categoria:""};
-                  var loc=LOCALES.find(function(l){return l.id===pl.local;});
+                  var loc=getLocal(pl.local);
                   var pagoEmp=pl._esAguinaldo
                     ?aguinaldosMesPagos.find(function(s){return s.empleado_id===pl.empleado_id&&s.concepto_extra===pl.tipo;})
                     :sueldosMes.filter(function(s){return !s.concepto_extra;}).find(function(s){return s.empleado_id===pl.empleado_id;});
@@ -21826,7 +21876,7 @@ function PanelSueldos(p){
               <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.2,marginBottom:6}}>Últimas altas</div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 {recientes.map(function(emp){
-                  var loc=LOCALES.find(function(l){return l.id===emp.local;});
+                  var loc=getLocal(emp.local);
                   return <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 14px"}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{emp.nombre}</div>
                     <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:emp.local} · {emp.categoria}{emp.fecha_alta?" · alta "+fmtDate(String(emp.fecha_alta).substring(0,10)):""}</div>
@@ -21844,7 +21894,7 @@ function PanelSueldos(p){
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {empleadosFiltro.filter(function(e){return e.activo!==false;}).length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Sin empleados activos. Agregá uno con el botón +</div>}
           {empleadosFiltro.filter(function(e){return e.activo!==false;}).map(function(emp){
-            var loc=LOCALES.find(function(l){return l.id===emp.local;});
+            var loc=getLocal(emp.local);
             return(
               <div key={emp.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
@@ -21870,7 +21920,7 @@ function PanelSueldos(p){
           <div style={{fontSize:11,color:"#7E7E7E",lineHeight:1.5}}>Acá queda la ficha de quien ya no trabaja en el grupo, con todo su historial: marcas, jornadas, vacaciones, sueldos, justificativos y observaciones. Para pasar a alguien desde Empleados, usá el botón «📤 Baja».</div>
           {bajas.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>No hay bajas registradas.</div>}
           {bajas.map(function(emp){
-            var loc=LOCALES.find(function(l){return l.id===emp.local;});
+            var loc=getLocal(emp.local);
             var ab=bajaAbierta===emp.id;
             var tiempo=antiguedadTexto(emp.fecha_alta,emp.fecha_baja);
             var ex=datosEmp[emp.id]||{};
@@ -21913,7 +21963,7 @@ function PanelSueldos(p){
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){
             var est=ESTADOS_SUELDO.find(function(e){return e[0]===s.estado;})||ESTADOS_SUELDO[0];
-            var loc=LOCALES.find(function(l){return l.id===s.local;});
+            var loc=getLocal(s.local);
             return(
               <div key={s.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
@@ -26651,6 +26701,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
+              deportes={deportes}
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}

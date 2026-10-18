@@ -4957,6 +4957,8 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
       );})}
     </div>
   );
+  var porCobrar=(deportes||[]).filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="pendiente";}).reduce(function(a,x){return a+num(x.monto);},0);
+  var porPagar=(deportes||[]).filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pendiente";}).reduce(function(a,x){return a+num(x.monto);},0);
   var tarjetaDisp=(
     <div style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"55",borderRadius:12,padding:"13px"}}>
       <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Disponible hoy</div>
@@ -4972,6 +4974,7 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
         </div>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:12}}><span style={{color:"#8C8C8C"}}>Total</span><b style={{color:disp.total<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.total)}</b></div>
+      {(porCobrar>0||porPagar>0)&&<div style={{fontSize:10,color:"#D4A017",marginTop:6}}>{[porCobrar>0?fmtP(porCobrar)+" por cobrar":null,porPagar>0?fmtP(porPagar)+" por pagar":null].filter(Boolean).join(" · ")}</div>}
       <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Cobros menos pagos con medios propios, más aportes y menos retiros de socios. Lo pagado con medios de otras dependencias queda como cruzado y no resta.</div>
     </div>
   );
@@ -7975,7 +7978,7 @@ function PanelDeportes(p){
 
       {/* La caja: entradas y salidas */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {DEP_SECCIONES.filter(function(s){return s.principal;}).map(function(s){
+        {DEP_SECCIONES.filter(function(s){return s.principal&&s.id!=="resumen";}).map(function(s){
           var act=seccion===s.id;
           var tps=depTiposDe(s.id);
           var cuenta=registros.filter(function(x){return tps.indexOf(x.tipo)!==-1;}).length;
@@ -8017,7 +8020,7 @@ function PanelDeportes(p){
           todo dejaría los artículos y los profes cargados sin ninguna pantalla donde
           verlos. Si estás parado en una de ellas, la fila queda abierta sola. */}
       {(function(){
-        var otras=DEP_SECCIONES.filter(function(s){return !s.principal;});
+        var otras=DEP_SECCIONES.filter(function(s){return !s.principal&&s.id!=="resumen";});
         var enOtra=otras.some(function(s){return s.id===seccion;});
         var abiertaFila=verFichas||enOtra;
         return(

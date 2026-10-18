@@ -4864,7 +4864,30 @@ function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
   );
 }
 // Resumen de la Concesión NKT, igual que el de cada local: por mes, lo que ingresó y lo que egresó, con el saldo.
-function ResumenConcesion({deportes, gastos}){
+// Plata disponible de la Concesión, como en los locales: en efectivo (Caja Mayor Concesión) y electrónico (Belo Nicolás, Lemon Sofía).
+// Acumulado de todo lo cobrado y pagado con sus propios medios, más aportes y menos retiros de socios por sus cuentas.
+function dispConcesion(deportes, extras, aportes, retiros){
+  var b={ef:0,belo:0,lemon:0};
+  var buc=function(m){ var t=String(DEP_MEDIO_TEXTO[m]||m||""); if(t.indexOf("Belo")!==-1)return "belo"; if(t.indexOf("Lemon")!==-1)return "lemon"; if(t.indexOf("Concesión")!==-1||t==="Efectivo"||t.indexOf("Caja Mayor")!==-1&&t.indexOf("Concesión")!==-1)return "ef"; return null; };
+  (deportes||[]).forEach(function(x){
+    var entra=["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado";
+    var sale=(x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado";
+    if(!entra&&!sale)return;
+    depMediosDe(x).forEach(function(pg){ var k=buc(pg.medio); if(k)b[k]+=(entra?1:-1)*pg.monto; });
+  });
+  (extras||[]).forEach(function(e){ e.medios.forEach(function(pg){ var k=buc(pg.medio); if(k)b[k]-=pg.monto; }); });
+  (aportes||[]).filter(function(a){return esMovDinero(a)&&(a.local_cuenta||a.local)==="dep";}).forEach(function(a){
+    var t=String(a.tipo_aporte||""), k=t.indexOf("Belo")!==-1?"belo":t.indexOf("Lemon")!==-1?"lemon":(t.indexOf("Efectivo")===0||t.indexOf("Caja Mayor")===0)?"ef":null;
+    if(k)b[k]+=parseFloat(a.monto)||0;
+  });
+  (retiros||[]).filter(function(r){return esMovDinero(r)&&(r.local_cuenta||r.local)==="dep";}).forEach(function(r){
+    var t=String(r.tipo_retiro||""), k=t.indexOf("Belo")!==-1?"belo":t.indexOf("Lemon")!==-1?"lemon":t.indexOf("Caja Mayor")===0?"ef":null;
+    if(k)b[k]-=parseFloat(r.monto)||0;
+  });
+  return {efectivo:b.ef, electronico:b.belo+b.lemon, belo:b.belo, lemon:b.lemon, total:b.ef+b.belo+b.lemon};
+}
+function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
+  var disp=dispConcesion(deportes,extras,aportes,retiros);
   var fmtP=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var num=function(v){return parseFloat(v)||0;};
   var regs=deportes||[];
@@ -4892,9 +4915,28 @@ function ResumenConcesion({deportes, gastos}){
     var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
     return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
   });
-  if(lista.length===0)return <div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div>;
+  var tarjetaDisp=(
+    <div style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"55",borderRadius:12,padding:"13px"}}>
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Disponible hoy</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div style={{background:"#0A0A0A",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:10,color:"#3A7D44"}}>💵 Efectivo · Caja Mayor</div>
+          <div style={{fontSize:17,fontWeight:800,color:disp.efectivo<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.efectivo)}</div>
+        </div>
+        <div style={{background:"#0A0A0A",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:10,color:"#1A6B8A"}}>📲 Electrónico</div>
+          <div style={{fontSize:17,fontWeight:800,color:disp.electronico<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.electronico)}</div>
+          <div style={{fontSize:9,color:"#6E6E6E",marginTop:2}}>Belo {fmtP(disp.belo)} · Lemon {fmtP(disp.lemon)}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:12}}><span style={{color:"#8C8C8C"}}>Total</span><b style={{color:disp.total<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.total)}</b></div>
+      <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Cobros menos pagos con medios propios, más aportes y menos retiros de socios. Lo pagado con medios de otras dependencias queda como cruzado y no resta.</div>
+    </div>
+  );
+  if(lista.length===0)return <div style={{display:"flex",flexDirection:"column",gap:10}}>{tarjetaDisp}<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div></div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {tarjetaDisp}
       {lista.map(function(t){return(
         <div key={t.m} style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"33",borderRadius:12,padding:"13px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
@@ -4910,7 +4952,7 @@ function ResumenConcesion({deportes, gastos}){
     </div>
   );
 }
-function PanelLocales({deportes, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var [vistaObras,setVistaObras]=useState("obras");
@@ -5059,7 +5101,7 @@ function PanelLocales({deportes, locales, localesDatos, localesObras, recetas, u
       {tab==="metricas"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
-      {tab==="resumen"&&localSel.id==="dep"&&<ResumenConcesion deportes={deportes} gastos={gastosTodos}/>}
+      {tab==="resumen"&&localSel.id==="dep"&&<ResumenConcesion deportes={deportes} gastos={gastosTodos} extras={extrasDep} aportes={aportesRL} retiros={retirosRL}/>}
       {tab==="gestion"&&localSel.id==="dep"&&renderConcesion&&renderConcesion()}
       {tab==="resumen"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
@@ -7834,7 +7876,10 @@ function PanelDeportes(p){
   var extrasMes=(p.extrasDep||[]).filter(function(e){return filtroMes==="todos"||e.mes===filtroMes;});
   totalSalidas+=extrasMes.reduce(function(a,e){return a+e.monto;},0);
   salidasCruzadas+=extrasMes.reduce(function(a,e){return a+e.medios.filter(function(pg){return !depEsPropio(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);},0);
-  var saldo=totalEntradas-(totalSalidas-salidasCruzadas);
+  // Aportes y retiros de socios por cuentas de la Concesión: suben o bajan lo disponible.
+  var aporDepMes=(p.aportesDep||[]).filter(function(a){return esMovDinero(a)&&(a.local_cuenta||a.local)==="dep"&&enMes(a);}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0);
+  var retDepMes=(p.retirosDep||[]).filter(function(r){return esMovDinero(r)&&(r.local_cuenta||r.local)==="dep"&&enMes(r);}).reduce(function(t,r){return t+(parseFloat(r.monto)||0);},0);
+  var saldo=totalEntradas-(totalSalidas-salidasCruzadas)+aporDepMes-retDepMes;
 
   // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
   // los nombres del módulo hacía que al cargar un profe aparecieran los que alquilaron
@@ -18007,6 +18052,7 @@ function PanelRetiros(p) {
   // La plata de un retiro siempre sale de la Caja Mayor del local o de un medio electrónico
   // de ese local (nunca del cajón ni de una cuenta que no sea suya).
   function origenesDe(lid){
+    if(lid==="dep")return ["Caja Mayor - Concesión","Transferencia - Belo Nicolás","Transferencia - Lemon Sofía"];
     var loc=getLocal(lid)||{};
     var lista=(lid==="l1"||lid==="l2"||lid==="l3")?["Caja Mayor - "+loc.nombre]:[];
     (MEDIOS_POR_LOCAL[lid]||[]).forEach(function(m){
@@ -18176,7 +18222,7 @@ function PanelRetiros(p) {
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el retiro?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){if(form.cuentaTocada||l.id==="l4")setForm(function(f){return{...f,local:l.id};});else{setForm(function(f){return{...f,local:l.id};});cambiarCuenta(l.id);setForm(function(f){return{...f,cuentaTocada:false};});}}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+              {LOCALES.concat([CONCESION]).map(function(l){return(<button key={l.id} onClick={function(){if(form.cuentaTocada||l.id==="l4")setForm(function(f){return{...f,local:l.id};});else{setForm(function(f){return{...f,local:l.id};});cambiarCuenta(l.id);setForm(function(f){return{...f,cuentaTocada:false};});}}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
             <div style={{fontSize:9,color:"#6E6E6E",marginTop:6}}>Se imputa acá en Movimientos de socios y en la cuenta corriente del socio.</div>
           </div>
@@ -18205,7 +18251,7 @@ function PanelRetiros(p) {
           {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿De qué local salió la plata?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-              {LOCALES.filter(function(l){return l.id!=="l4"||form.local_cuenta==="l4";}).map(function(l){return(<button key={l.id} onClick={function(){cambiarCuenta(l.id);}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+              {LOCALES.concat([CONCESION]).filter(function(l){return l.id!=="l4"||form.local_cuenta==="l4";}).map(function(l){return(<button key={l.id} onClick={function(){cambiarCuenta(l.id);}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>¿De dónde sale la plata?</label>
             <select value={origenActual} onChange={function(e){var t=partirTipo(e.target.value);setForm(function(f){return{...f,tipo_retiro:t.tipo,subtipo:t.subtipo};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}>
@@ -18242,7 +18288,7 @@ function PanelRetiros(p) {
         </div>
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Por local</div>
-          {LOCALES.map(function(l){
+          {LOCALES.concat([CONCESION]).map(function(l){
             var tot=filtered.filter(function(r){return r.local===l.id;}).reduce(function(a,r){return a+parseFloat(r.monto||0);},0);
             if(tot===0)return null;
             return <div key={l.id} style={{fontSize:11,color:l.color,display:"flex",justifyContent:"space-between"}}><span>{l.emoji} {l.nombre}</span><span>${tot.toLocaleString("es-AR")}</span></div>;
@@ -18261,7 +18307,7 @@ function PanelRetiros(p) {
           </select>
         )}
         <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
-        {LOCALES.map(function(l){return(
+        {LOCALES.concat([CONCESION]).map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
       </div>
@@ -18336,9 +18382,9 @@ function PanelAportes(p) {
   var TIPOS_APORTE=["Caja Mayor","Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cheque"];
   var SUBTIPOS={
     // Efectivo y Caja Mayor: en los dos casos la plata entra directo a la Caja Mayor del local.
-    "Caja Mayor":["Bodegón","Kusama","Colantonio's"],
+    "Caja Mayor":["Bodegón","Kusama","Colantonio's","Concesión"],
     "Efectivo":["Efectivo El Bodegón Nkt","Efectivo Kusama","Efectivo Colantonio's"],
-    "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano"],
+    "Transferencia":["Patagonia Personas","Patagonia Empresas","Galicia Empresas","Provincia Personas","Mercado Pago Nicolás","Mercado Pago Calzon Gitano","Belo Nicolás","Lemon Sofía"],
     "Tarjeta de débito":["Mastercard ML Calzon Gitano","Mastercard ML Nicolás","Visa Provincia Personas","Visa Patagonia Empresas","Visa Patagonia Personas"],
     "Tarjeta de crédito":["Mastercard Patagonia Personas","Visa Patagonia Personas"]
   };
@@ -18531,7 +18577,7 @@ function PanelAportes(p) {
           <div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local le corresponde el aporte?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id,local_cuenta:f.cuentaTocada?f.local_cuenta:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+              {LOCALES.concat([CONCESION]).map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local:l.id,local_cuenta:f.cuentaTocada?f.local_cuenta:l.id};});}} style={{padding:"7px 12px",borderRadius:8,border:"2px solid "+(form.local===l.id?l.color:"#1E1E1E"),background:form.local===l.id?l.color+"22":"#111",color:form.local===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
             <div style={{fontSize:9,color:"#6E6E6E",marginTop:6}}>Se imputa acá en Movimientos de socios y en la cuenta corriente del socio.</div>
           </div>
@@ -18579,7 +18625,7 @@ function PanelAportes(p) {
           {form.clase!=="bien"&&(<div style={{marginBottom:12}}>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:7}}>¿A qué local entró la plata?</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {LOCALES.map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local_cuenta:l.id,cuentaTocada:true};});}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
+              {LOCALES.concat([CONCESION]).map(function(l){return(<button key={l.id} onClick={function(){setForm(function(f){return{...f,local_cuenta:l.id,cuentaTocada:true};});}} style={{padding:"6px 11px",borderRadius:8,border:"2px solid "+(form.local_cuenta===l.id?l.color:"#1E1E1E"),background:form.local_cuenta===l.id?l.color+"22":"#111",color:form.local_cuenta===l.id?l.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:600,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>);})}
             </div>
             {form.local_cuenta!==form.local?(
               <div style={{fontSize:10,color:"#E07B00",marginTop:6,lineHeight:1.5}}>
@@ -18615,7 +18661,7 @@ function PanelAportes(p) {
         </div>
         <div style={{background:"#111",border:"1px solid #181818",borderRadius:11,padding:"11px 14px"}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Por local</div>
-          {LOCALES.map(function(l){
+          {LOCALES.concat([CONCESION]).map(function(l){
             var tot=filtered.filter(function(a){return a.local===l.id;}).reduce(function(acc,a){return acc+parseFloat(a.monto||0);},0);
             if(tot===0)return null;
             return <div key={l.id} style={{fontSize:11,color:l.color,display:"flex",justifyContent:"space-between"}}><span>{l.emoji} {l.nombre}</span><span>${tot.toLocaleString("es-AR")}</span></div>;
@@ -18688,7 +18734,7 @@ function PanelAportes(p) {
           </select>
         )}
         <div style={{width:1,height:16,background:"#222",margin:"0 4px"}}/>
-        {LOCALES.map(function(l){return(
+        {LOCALES.concat([CONCESION]).map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
       </div>
@@ -19795,6 +19841,11 @@ function PanelResultados(p){
   var concGastosCargados=(concEgOp.gl||[]).filter(function(g){return String(g.id).indexOf("depg_")!==0;});
   var concEgCargados=Math.max(0,concEgOp.total-concEspejados);
   var concIng=depSuma(concIngRegs), concEg=depSuma(concEgRegs)+concEgCargados, concRes=concIng-concEg;
+  // Aportes y retiros de socios de la Concesión: movimientos de socios, fuera del resultado operativo.
+  var concDelMes=function(x){ return String(x.fecha||"").slice(0,7)===mesFiltro; };
+  var concApo=aportesSocios.filter(function(a){return a.local==="dep"&&concDelMes(a);}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0);
+  var concRet=retirosSocios.filter(function(r){return r.local==="dep"&&concDelMes(r);}).reduce(function(t,r){return t+(parseFloat(r.monto)||0);},0);
+  var concDesp=concRes+concApo-concRet;
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
     .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))},{label:"Cargados en Egresos",total:concEgCargados}])
     .filter(function(r){return r.total>0;});
@@ -20074,8 +20125,8 @@ function PanelResultados(p){
                 </tr>
                 {/* Movimientos de socios — debajo de la línea: no son gasto ni venta, son reparto y capital */}
                 {(function(){
-                  var totApo=localesFiltro.reduce(function(a,l){return a+(datos[l.id].aportesModMonto||0);},0);
-                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retirosTotales||0);},0);
+                  var totApo=localesFiltro.reduce(function(a,l){return a+(datos[l.id].aportesModMonto||0);},0)+concApo;
+                  var totRet=localesFiltro.reduce(function(a,l){return a+(datos[l.id].retirosTotales||0);},0)+concRet;
                   if(totApo===0&&totRet===0)return null;
                   var totNeto=totApo-totRet;
                   var totDespues=totalResultado+totNeto;
@@ -20092,7 +20143,7 @@ function PanelResultados(p){
                             var m=datos[l.id].aportesModMonto||0;
                             return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#3A7D44":"#6E6E6E",fontSize:10}}>{m>0?"+"+fmt(m):"—"}</td>;
                           })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:concApo>0?"#3A7D44":"#6E6E6E",fontSize:10}}>{concApo>0?"+"+fmt(concApo):"—"}</td>
                           <td style={{textAlign:"right",padding:"6px 8px",color:"#3A7D44",fontWeight:600,fontSize:10}}>+{fmt(totApo)}</td>
                         </tr>
                       )}
@@ -20103,7 +20154,7 @@ function PanelResultados(p){
                             var m=datos[l.id].retirosTotales||0;
                             return <td key={l.id} style={{textAlign:"right",padding:"6px 8px",color:m>0?"#8B2FC9":"#6E6E6E",fontSize:10}}>{m>0?"−"+fmt(m):"—"}</td>;
                           })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"6px 8px",color:concRet>0?"#8B2FC9":"#6E6E6E",fontSize:10}}>{concRet>0?"−"+fmt(concRet):"—"}</td>
                           <td style={{textAlign:"right",padding:"6px 8px",color:"#8B2FC9",fontWeight:600,fontSize:10}}>−{fmt(totRet)}</td>
                         </tr>
                       )}
@@ -20113,7 +20164,7 @@ function PanelResultados(p){
                           var v=datos[l.id].resultadoDespuesSocios;
                           return <td key={l.id} style={{textAlign:"right",padding:"7px 8px",color:v>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:700}}>{v>=0?"":"-"}{fmt(Math.abs(v))}</td>;
                         })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
+                  <td style={{textAlign:"right",padding:"7px 8px",color:concDesp>=0?"#3A7D44":"#C1440E",fontSize:10,fontWeight:700}}>{concDesp>=0?"":"-"}{fmt(Math.abs(concDesp))}</td>
                         <td style={{textAlign:"right",padding:"7px 8px",color:totDespues>=0?"#3A7D44":"#C1440E",fontWeight:800,fontSize:10}}>{totDespues>=0?"":"-"}{fmt(Math.abs(totDespues))}</td>
                       </tr>
                     </>
@@ -20596,6 +20647,13 @@ function PanelResultados(p){
             </div>
             <div style={{fontSize:18,fontWeight:800,color:concRes>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{concRes>=0?"":"-"}{fmt(Math.abs(concRes))}</div>
           </div>
+          {(concApo>0||concRet>0)&&(
+            <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",marginBottom:10,fontSize:11}}>
+              {concApo>0&&<span style={{color:"#3A7D44"}}>🤝 Aportes +{fmt(concApo)}</span>}
+              {concRet>0&&<span style={{color:"#8B2FC9"}}>💼 Retiros −{fmt(concRet)}</span>}
+              <span style={{color:"#8C8C8C"}}>Después de socios: <b style={{color:concDesp>=0?"#3A7D44":"#C1440E"}}>{concDesp>=0?"":"-"}{fmt(Math.abs(concDesp))}</b></span>
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             <div style={{background:"#0A0A0A",borderRadius:10,padding:"12px"}}>
               <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -26029,7 +26087,7 @@ export default function App() {
   }
   function panelConcesion(){
     return (
-      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()}
+      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()} aportesDep={aportes} retirosDep={retiros}
         onSave={guardarDeporte} onDelete={borrarDeporte}
         sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
         onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}
@@ -26747,7 +26805,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
-              deportes={deportes}
+              deportes={deportes} extrasDep={extrasDeConcesion()}
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}

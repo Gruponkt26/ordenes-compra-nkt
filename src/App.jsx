@@ -19412,7 +19412,7 @@ function PanelResultados(p){
           if(pagoLocal!==lid)return;
           var esEf=esEfectivoOCajaMayor(medioStr);
           if(esEf)gastoEfectivo+=pm;else gastoElectronico+=pm;
-          detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
+          detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+((getLocal(g.local)||{}).emoji||"")+" "+((getLocal(g.local)||{}).nombre||"")+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
         });
       } else {
         var fp=(g.forma_pago||"").toLowerCase();
@@ -19421,7 +19421,7 @@ function PanelResultados(p){
         if(pagoLocal!==lid)return;
         var esEf2=esEfectivoOCajaMayor(fp);
         if(esEf2)gastoEfectivo+=gm;else gastoElectronico+=gm;
-        detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+(LOCALES.find(function(x){return x.id===g.local;})||{}).nombre+")",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:true});
+        detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+((getLocal(g.local)||{}).emoji||"")+" "+((getLocal(g.local)||{}).nombre||"")+")",medio:g.forma_pago||"",monto:gm,tipo:esEf2?"efectivo":"electronico",cruzado:true});
       }
     });
 

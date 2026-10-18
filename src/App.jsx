@@ -8074,7 +8074,14 @@ function PanelDeportes(p){
       })()}
 
       {/* Alta / edición */}
-      {seccion!=="resumen"&&(!abierto&&!eligiendo?(
+      {(seccion==="salidas"||seccion==="obras")&&!abierto&&(
+        <div style={{fontSize:11,color:"#8C8C8C",background:"#0F0F0F",border:"1px dashed #2A2A2A",borderRadius:10,padding:"10px 12px",lineHeight:1.5}}>
+          {seccion==="salidas"
+            ?"Los egresos de la Concesión se cargan desde Egresos (local 🏅 Concesión NKT) y los sueldos desde Sueldos. Acá se ven, junto con lo que ya estaba anotado."
+            :"Las obras de la Concesión se cargan desde Dependencias → Concesión → pestaña 🏗️ Obras. Acá se ven las que ya estaban anotadas."}
+        </div>
+      )}
+      {seccion!=="resumen"&&((seccion!=="salidas"&&seccion!=="obras")||abierto)&&(!abierto&&!eligiendo?(
         <button onClick={function(){
           if(sec.id==="entradas"||sec.id==="salidas")setEligiendo(true);
           else abrirForm(sec.disciplina,sec.tipo);

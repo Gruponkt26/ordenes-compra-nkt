@@ -7831,6 +7831,9 @@ function PanelDeportes(p){
   }).reduce(function(a,x){
     return a+depMediosDe(x).filter(function(pg){return !depEsPropio(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);
   },0);
+  var extrasMes=(p.extrasDep||[]).filter(function(e){return filtroMes==="todos"||e.mes===filtroMes;});
+  totalSalidas+=extrasMes.reduce(function(a,e){return a+e.monto;},0);
+  salidasCruzadas+=extrasMes.reduce(function(a,e){return a+e.medios.filter(function(pg){return !depEsPropio(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);},0);
   var saldo=totalEntradas-(totalSalidas-salidasCruzadas);
 
   // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
@@ -8265,6 +8268,20 @@ function PanelDeportes(p){
           </div>
         </div>
       ))}
+
+      {seccion==="salidas"&&extrasMes.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #8B2FC933",borderRadius:12,padding:"11px 13px",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#B07AE0",marginBottom:2}}>💼 Sueldos y egresos cargados desde Sueldos y Egresos</div>
+          <div style={{fontSize:10,color:"#6E6E6E",marginBottom:6}}>Se editan en su lugar de origen; acá se suman a lo que salió.</div>
+          {extrasMes.map(function(e){
+            var mp=e.medios.map(function(pg){var m=DEP_MEDIOS_PAGO.find(function(x){return x[0]===(DEP_MEDIO_TEXTO[pg.medio]||pg.medio);});return m?m[1]:(pg.medio||"sin medio");}).join(" + ");
+            return <div key={e.id} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:"1px solid #161616"}}>
+              <div style={{minWidth:0}}><div style={{fontSize:12,color:"#F0EDE8"}}>{e.label}</div><div style={{fontSize:10,color:"#7E7E7E"}}>{e.mes} · {mp}</div></div>
+              <b style={{fontSize:13,color:"#F0EDE8",whiteSpace:"nowrap"}}>${Math.round(e.monto).toLocaleString("es-AR")}</b>
+            </div>;
+          })}
+        </div>
+      )}
 
       {/* Listado */}
       {seccion==="resumen"?null:lista.length===0?(
@@ -25981,9 +25998,29 @@ export default function App() {
       gastos={gastos}/>;
   }
   // El módulo Deportes es la Concesión NKT, una dependencia más: vive adentro de Dependencias.
+  // Lo de la Concesión que se carga por afuera de Deportes: los sueldos de sus empleados (Sueldos) y los gastos cargados en Egresos.
+  // Se muestran en Gestión → Salidas, de sólo lectura, y cuentan en lo que salió.
+  function extrasDeConcesion(){
+    var out=[];
+    var sigMes=function(per){ var a=String(per||"").split("-"), y=parseInt(a[0],10), m=parseInt(a[1],10); if(!y||!m)return ""; m++; if(m>12){m=1;y++;} return y+"-"+(m<10?"0"+m:m); };
+    (sueldos||[]).filter(function(s){return s.local==="dep"&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
+      var emp=(empleados||[]).find(function(e){return e.id===s.empleado_id;});
+      var monto=s.estado==="parcial"?(parseFloat(s.monto_parcial)||0):(parseFloat(s.monto)||0);
+      if(monto<=0)return;
+      var medios=(Array.isArray(s.pagos)&&s.pagos.length>0)?s.pagos.map(function(pg){return {medio:pg.medio||"",monto:parseFloat(pg.monto)||0};}):[{medio:s.medio_pago||"",monto:monto}];
+      out.push({id:"sue_"+s.id,label:"💼 "+((emp&&emp.nombre)||s.empleado_nombre||"Sueldo")+" · "+(s.concepto_extra&&s.concepto_extra!=="null"?"aguinaldo ":"sueldo ")+s.periodo+(s.estado==="parcial"?" · pago parcial":""),mes:sigMes(s.periodo),monto:monto,medios:medios});
+    });
+    (gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0;}).forEach(function(g){
+      var monto=parseFloat(g.monto)||0;
+      if(monto<=0)return;
+      var medios=(Array.isArray(g.pagos)&&g.pagos.length>0)?g.pagos.map(function(pg){return {medio:pg.medio||pg.tipo||"",monto:parseFloat(pg.monto)||0};}):[{medio:g.forma_pago||"",monto:monto}];
+      out.push({id:"gas_"+g.id,label:(g.area?g.area+" · ":"")+(g.concepto||"Egreso")+(g.subramo?" · "+g.subramo:""),mes:String(g.fecha||"").slice(0,7),monto:monto,medios:medios});
+    });
+    return out;
+  }
   function panelConcesion(){
     return (
-      <PanelDeportes deportes={deportes} usuario={cu.nombre}
+      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()}
         onSave={guardarDeporte} onDelete={borrarDeporte}
         sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
         onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}

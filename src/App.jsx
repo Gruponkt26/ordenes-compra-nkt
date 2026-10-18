@@ -7861,15 +7861,7 @@ function PanelDeportes(p){
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏅 Tenis, pádel y galpón</div>
       </div>
 
-      {/* Sueldo del empleado de deportes: plegado, un toque lo abre */}
-      {p.sueldosDep&&(
-        <div style={{marginBottom:12}}>
-          <button onClick={function(){setVerSueldo(!verSueldo);}} style={{width:"100%",textAlign:"left",padding:"9px 13px",borderRadius:10,border:"1px solid "+(verSueldo?"#8B2FC9":"#1E1E1E"),background:verSueldo?"#8B2FC911":"#111",color:verSueldo?"#B07AE0":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            💼 Sueldo {DEP_EMPLEADO} {verSueldo?"▲":"▼"}
-          </button>
-          {verSueldo&&<div style={{marginTop:8}}><PanelSueldoDeportes registros={p.sueldosDep} usuario={p.usuario} onSave={p.onSaveSueldoDep} onDelete={p.onDeleteSueldoDep} onSaveRetiro={p.onSaveRetiroDep} onDeleteRetiro={p.onDeleteRetiroDep} onSaveSalida={p.onSave} onDeleteSalida={p.onDelete}/></div>}
-        </div>
-      )}
+      {/* El sueldo de Marcos se carga como el de cualquier empleado, desde Colaboradores → Sueldos (local Concesión NKT). */}
 
       {/* Si la base no está lista, decirlo antes de que se cargue nada */}
       {problemaTabla&&(

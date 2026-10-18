@@ -4866,25 +4866,40 @@ function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
 // Resumen de la Concesión NKT, igual que el de cada local: por mes, lo que ingresó y lo que egresó, con el saldo.
 // Plata disponible de la Concesión, como en los locales: en efectivo (Caja Mayor Concesión) y electrónico (Belo Nicolás, Lemon Sofía).
 // Acumulado de todo lo cobrado y pagado con sus propios medios, más aportes y menos retiros de socios por sus cuentas.
-function dispConcesion(deportes, extras, aportes, retiros){
-  var b={ef:0,belo:0,lemon:0};
-  var buc=function(m){ var t=String(DEP_MEDIO_TEXTO[m]||m||""); if(t.indexOf("Belo")!==-1)return "belo"; if(t.indexOf("Lemon")!==-1)return "lemon"; if(t.indexOf("Concesión")!==-1||t==="Efectivo"||t.indexOf("Caja Mayor")!==-1&&t.indexOf("Concesión")!==-1)return "ef"; return null; };
+function movimientosConcesion(deportes, extras, aportes, retiros){
+  var out=[];
+  var buc=function(m){ var t=String(DEP_MEDIO_TEXTO[m]||m||""); if(t.indexOf("Belo")!==-1)return "belo"; if(t.indexOf("Lemon")!==-1)return "lemon"; if(t.indexOf("Concesión")!==-1)return "ef"; return null; };
   (deportes||[]).forEach(function(x){
     var entra=["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado";
     var sale=(x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado";
     if(!entra&&!sale)return;
-    depMediosDe(x).forEach(function(pg){ var k=buc(pg.medio); if(k)b[k]+=(entra?1:-1)*pg.monto; });
+    depMediosDe(x).forEach(function(pg){ var k=buc(pg.medio); if(k)out.push({k:k,t:entra?"ing":"sal",m:pg.monto,mes:String(x.fecha||"").slice(0,7)}); });
   });
-  (extras||[]).forEach(function(e){ e.medios.forEach(function(pg){ var k=buc(pg.medio); if(k)b[k]-=pg.monto; }); });
+  (extras||[]).forEach(function(e){ e.medios.forEach(function(pg){ var k=buc(pg.medio); if(k)out.push({k:k,t:"sal",m:pg.monto,mes:e.mes}); }); });
   (aportes||[]).filter(function(a){return esMovDinero(a)&&(a.local_cuenta||a.local)==="dep";}).forEach(function(a){
     var t=String(a.tipo_aporte||""), k=t.indexOf("Belo")!==-1?"belo":t.indexOf("Lemon")!==-1?"lemon":(t.indexOf("Efectivo")===0||t.indexOf("Caja Mayor")===0)?"ef":null;
-    if(k)b[k]+=parseFloat(a.monto)||0;
+    if(k)out.push({k:k,t:"apo",m:parseFloat(a.monto)||0,mes:String(a.fecha||"").slice(0,7)});
   });
   (retiros||[]).filter(function(r){return esMovDinero(r)&&(r.local_cuenta||r.local)==="dep";}).forEach(function(r){
     var t=String(r.tipo_retiro||""), k=t.indexOf("Belo")!==-1?"belo":t.indexOf("Lemon")!==-1?"lemon":t.indexOf("Caja Mayor")===0?"ef":null;
-    if(k)b[k]-=parseFloat(r.monto)||0;
+    if(k)out.push({k:k,t:"ret",m:parseFloat(r.monto)||0,mes:String(r.fecha||"").slice(0,7)});
   });
+  return out;
+}
+function dispConcesion(deportes, extras, aportes, retiros){
+  var b={ef:0,belo:0,lemon:0};
+  movimientosConcesion(deportes,extras,aportes,retiros).forEach(function(x){ b[x.k]+=(x.t==="ing"||x.t==="apo"?1:-1)*x.m; });
   return {efectivo:b.ef, electronico:b.belo+b.lemon, belo:b.belo, lemon:b.lemon, total:b.ef+b.belo+b.lemon};
+}
+// Por medio y por período: lo que ingresó, lo que salió, aportes y retiros, y lo disponible hoy.
+function tablaMediosConcesion(deportes, extras, aportes, retiros, mes){
+  var movs=movimientosConcesion(deportes,extras,aportes,retiros);
+  var hoyDisp=dispConcesion(deportes,extras,aportes,retiros);
+  return [["ef","💵 Caja Mayor Concesión",hoyDisp.efectivo],["belo","🔷 Belo Nicolás",hoyDisp.belo],["lemon","🍋 Lemon Sofía",hoyDisp.lemon]].map(function(m){
+    var en=movs.filter(function(x){return x.k===m[0]&&(mes==="todos"||x.mes===mes);});
+    var sum=function(t){return en.filter(function(x){return x.t===t;}).reduce(function(a,x){return a+x.m;},0);};
+    return {id:m[0],label:m[1],ing:sum("ing"),sal:sum("sal"),apo:sum("apo"),ret:sum("ret"),disp:m[2]};
+  });
 }
 function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
   var disp=dispConcesion(deportes,extras,aportes,retiros);
@@ -4915,6 +4930,33 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
     var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
     return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
   });
+  var [mesMedios,setMesMedios]=useState("todos");
+  var mesesMedios=Object.keys(meses).sort().reverse();
+  var filasMedios=tablaMediosConcesion(deportes,extras,aportes,retiros,mesMedios);
+  var tarjetaMedios=(
+    <div style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"33",borderRadius:12,padding:"13px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Por medio de pago</div>
+        <select value={mesMedios} onChange={function(e){setMesMedios(e.target.value);}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontSize:11}}>
+          <option value="todos">Todos los meses</option>
+          {mesesMedios.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+      {filasMedios.map(function(f){return(
+        <div key={f.id} style={{padding:"8px 0",borderTop:"1px solid #161616"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+            <span style={{fontSize:12,color:"#F0EDE8",fontWeight:700}}>{f.label}</span>
+            <span style={{fontSize:10,color:"#7E7E7E"}}>disponible hoy <b style={{fontSize:13,color:f.disp<0?"#C1440E":"#F0EDE8"}}>{fmtP(f.disp)}</b></span>
+          </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,marginTop:3}}>
+            <span style={{color:"#3A7D44"}}>Ingresó {fmtP(f.ing)}</span>
+            <span style={{color:"#C1440E"}}>Salió {fmtP(f.sal)}</span>
+            {(f.apo>0||f.ret>0)&&<span style={{color:"#8B2FC9"}}>Socios {f.apo>0?"+"+fmtP(f.apo):""}{f.ret>0?" −"+fmtP(f.ret):""}</span>}
+          </div>
+        </div>
+      );})}
+    </div>
+  );
   var tarjetaDisp=(
     <div style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"55",borderRadius:12,padding:"13px"}}>
       <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Disponible hoy</div>
@@ -4933,10 +4975,11 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
       <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Cobros menos pagos con medios propios, más aportes y menos retiros de socios. Lo pagado con medios de otras dependencias queda como cruzado y no resta.</div>
     </div>
   );
-  if(lista.length===0)return <div style={{display:"flex",flexDirection:"column",gap:10}}>{tarjetaDisp}<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div></div>;
+  if(lista.length===0)return <div style={{display:"flex",flexDirection:"column",gap:10}}>{tarjetaDisp}{tarjetaMedios}<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div></div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {tarjetaDisp}
+      {tarjetaMedios}
       {lista.map(function(t){return(
         <div key={t.m} style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"33",borderRadius:12,padding:"13px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>

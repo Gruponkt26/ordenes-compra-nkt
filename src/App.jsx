@@ -9484,6 +9484,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
             </div>
 
             {/* Medios de pago múltiples */}
+            {form.local==="l4"&&<RepartoOficinaBar total={form.monto} onRepartir={function(rows){setPagosEgreso(rows);}}/>}
             <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <label style={{fontSize:9,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1}}>💳 Medios de pago</label>
@@ -14490,7 +14491,9 @@ function PanelVencimientos(p){
     // quedar en ese mes en Egresos, aunque corresponda a un vencimiento de antes. Se puede cambiar.
     setFormPago({...FORM_PAGO,fecha:hoy,monto:monto,total:monto});
     // Si se debita solo, el medio ya se sabe: es la cuenta de la que sale.
-    setPagosPago([{medio:x.v.debito_cuenta||"",monto:monto===""?"":String(monto)}]);
+    setPagosPago(x.v.local==="l4"&&parseFloat(monto)>0&&!x.v.debito_cuenta
+      ?repartoEfectivoOficina(monto).map(function(r){return {medio:r.medio,monto:String(r.monto)};})
+      :[{medio:x.v.debito_cuenta||"",monto:monto===""?"":String(monto)}]);
   }
   // Un vencimiento se puede pagar con más de un medio —medio en efectivo y medio por
   // transferencia, o desde dos cuentas—: cada línea es un medio con su monto, y entre todas
@@ -14652,6 +14655,7 @@ function PanelVencimientos(p){
               <div style={{fontSize:9,color:"#5A3030",marginTop:5}}>Poné <b style={{color:"#8A5050"}}>lo que hay que pagar hoy</b> —el número que da el organismo, con la mora adentro— y el interés sale solo de la diferencia contra la cuota. Es ese total el que sale de la cuenta y el que va al egreso.</div>
             </div>
           )}
+          {!formPago.yaCargado&&pagando&&pagando.v&&pagando.v.local==="l4"&&<RepartoOficinaBar total={totalAPagar()} onRepartir={function(rows){setPagosPago(rows);}}/>}
           {!formPago.yaCargado&&(
             <div style={{background:"#0A0A14",border:"1px solid #1A6B8A33",borderRadius:10,padding:"12px",marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -24733,6 +24737,22 @@ function repartirSueldoOficina(pagos, partes){
 // en tres, uno por local, con la misma proporción que el resto de la Oficina: 50% Bodegón, 30%
 // Colantonio's, 20% Kusama. La plata sale de los medios con que se cargó (si el medio es de otro
 // local, esa parte queda como gasto cruzado) y "Efectivo - Oficina" se reparte en las tres cajas.
+// Aviso y atajo para todo pago de la Oficina: se reparte 50% Bodegón, 30% Colantonio's y 20% Kusama. "Repartir" arma los tres
+// medios (la Caja Mayor de cada local con su parte), que después se pueden cambiar: cada local pone con el medio que quiera
+// y el costo igual queda 50/30/20 (lo que puso de más o de menos se ve en el Resumen de la Oficina).
+function RepartoOficinaBar({total, onRepartir}){
+  var m=parseFloat(total)||0;
+  var r=repartoEfectivoOficina(m);
+  var fmtO=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  return(
+    <div style={{background:"#0A0F14",border:"1px solid #1A6B8A55",borderRadius:9,padding:"9px 11px",marginBottom:10}}>
+      <div style={{fontSize:10,color:"#1A6B8A",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🏢 Gasto de la Oficina · se reparte entre los 3 locales</div>
+      <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.6}}>🍷 Bodegón 50% <b style={{color:"#F0EDE8"}}>{fmtO(r[0].monto)}</b> · 🍝 Colantonio's 30% <b style={{color:"#F0EDE8"}}>{fmtO(r[1].monto)}</b> · 🌸 Kusama 20% <b style={{color:"#F0EDE8"}}>{fmtO(r[2].monto)}</b></div>
+      <button type="button" onClick={function(){onRepartir(r.map(function(x){return {medio:x.medio,monto:String(x.monto)};}));}} disabled={m<=0} style={{marginTop:6,padding:"6px 11px",borderRadius:7,border:"1px solid #1A6B8A66",background:"#1A6B8A22",color:m>0?"#1A6B8A":"#555",fontSize:11,fontWeight:700,cursor:m>0?"pointer":"default"}}>Repartir 50/30/20 con la Caja Mayor de cada local</button>
+      <div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Después podés cambiar el medio de cada línea: el costo queda igual 50/30/20 y lo que cada local puso de más o de menos se ve en el Resumen de la Oficina.</div>
+    </div>
+  );
+}
 function partirEgresoOficina(g){
   var monto=parseFloat(g.monto)||0;
   var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:monto}];

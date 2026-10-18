@@ -4863,7 +4863,54 @@ function F931DeLocal({localId, cargas, modo, renderPago, etiqueta}){
     </div>
   );
 }
-function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+// Resumen de la Concesión NKT, igual que el de cada local: por mes, lo que ingresó y lo que egresó, con el saldo.
+function ResumenConcesion({deportes, gastos}){
+  var fmtP=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var num=function(v){return parseFloat(v)||0;};
+  var regs=deportes||[];
+  var cargados=(gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0&&!esGastoDeuda(g);});
+  var meses={};
+  regs.forEach(function(x){ if(x.fecha&&((["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado")||((x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado")))meses[String(x.fecha).slice(0,7)]=1; });
+  cargados.forEach(function(g){ if(g.fecha)meses[String(g.fecha).slice(0,7)]=1; });
+  var lista=Object.keys(meses).sort().reverse().map(function(m){
+    var delMes=function(x){return String(x.fecha||"").slice(0,7)===m;};
+    var ent=DEP_CONCEPTOS.map(function(c){
+      var l=regs.filter(function(x){return c.test(x)&&x.estado==="cobrado"&&delMes(x);});
+      return {label:c.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+    }).filter(function(f){return f.n>0;});
+    var salReg=regs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&delMes(x);});
+    var sal=DEP_RUBROS.map(function(r){
+      var l=salReg.filter(function(x){return x.rubro===r.id;});
+      return {label:r.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+    });
+    var sr=salReg.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});});
+    if(sr.length)sal.push({label:"❓ Sin rubro",monto:sr.reduce(function(a,x){return a+num(x.monto);},0),n:sr.length});
+    var porArea={};
+    cargados.filter(delMes).forEach(function(g){ var a=(g.area&&g.area.trim())||(g.categoria&&g.categoria.trim())||"Otros"; porArea[a]=porArea[a]||{label:a,monto:0,n:0}; porArea[a].monto+=num(g.monto); porArea[a].n++; });
+    Object.keys(porArea).forEach(function(k){ sal.push(porArea[k]); });
+    sal=sal.filter(function(f){return f.n>0;});
+    var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
+    return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
+  });
+  if(lista.length===0)return <div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {lista.map(function(t){return(
+        <div key={t.m} style={{background:"#0F0F0F",border:"1px solid "+CONCESION.color+"33",borderRadius:12,padding:"13px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+            <div style={{fontSize:13,fontWeight:800,color:CONCESION.color}}>{t.m}</div>
+            <div style={{fontSize:16,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{fmtP(Math.abs(t.saldo))}</div>
+          </div>
+          <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:4}}>Ingresó · {fmtP(t.totE)}</div>
+          {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+          <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:8}}>Egresó · {fmtP(t.totS)}</div>
+          {t.sal.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+        </div>
+      );})}
+    </div>
+  );
+}
+function PanelLocales({deportes, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var [vistaObras,setVistaObras]=useState("obras");
@@ -4885,6 +4932,9 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Bodegón",value:"Caja Mayor - Bodegón"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Kusama",value:"Caja Mayor - Kusama"},
     {grupo:"Caja Mayor",label:"🏦 Caja Mayor — Colantonio's",value:"Caja Mayor - Colantonio's"},
+    {grupo:"Caja Mayor",label:"🏅 Caja Mayor — Concesión",value:"Caja Mayor - Concesión"},
+    {grupo:"Transferencia",label:"🏅 Belo Nicolás (Concesión)",value:"Transferencia - Belo Nicolás"},
+    {grupo:"Transferencia",label:"🏅 Lemon Sofía (Concesión)",value:"Transferencia - Lemon Sofía"},
     {grupo:"Transferencia",label:"📲 Provincia Personas",value:"Transferencia - Provincia Personas"},
     {grupo:"Transferencia",label:"📲 Mercado Pago Nicolás",value:"Transferencia - Mercado Pago Nicolás"},
     {grupo:"Transferencia",label:"📲 Galicia Empresas",value:"Transferencia - Galicia Empresas"},
@@ -4977,7 +5027,7 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
               <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Ver detalle →</div>
             </button>
           );})}
-          {renderConcesion&&<button onClick={function(){setVerConcesion(true);}} style={{background:"#0F0F0F",border:"2px solid "+CONCESION.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+          {renderConcesion&&<button onClick={function(){abrirLocal(CONCESION);}} style={{background:"#0F0F0F",border:"2px solid "+CONCESION.color+"44",borderRadius:14,padding:"20px",textAlign:"center",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
             <div style={{fontSize:36,marginBottom:8}}>{CONCESION.emoji}</div>
             <div style={{fontSize:15,fontWeight:800,color:CONCESION.color,fontFamily:"'Playfair Display',serif"}}>{CONCESION.nombre}</div>
             <div style={{fontSize:10,color:"#7E7E7E",marginTop:4,textTransform:"uppercase",letterSpacing:1}}>Tenis, pádel y galpón →</div>
@@ -5000,16 +5050,18 @@ function PanelLocales({locales, localesDatos, localesObras, recetas, usuario, on
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]]).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
 
       {/* Tab Métricas de un local: día por día, todos los meses lado a lado */}
-      {tab==="metricas"&&localSel.id!=="l4"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
+      {tab==="metricas"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelMetricasLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} adelantos={adelantosRL} sueldos={sueldosRL} retiros={retirosRL} aportes={aportesRL}/>}
 
       {/* Tab Resumen de un local (Bodegón, Kusama, Colantonio's): ingresó / egresos por mes */}
-      {tab==="resumen"&&localSel.id!=="l4"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
+      {tab==="resumen"&&localSel.id==="dep"&&<ResumenConcesion deportes={deportes} gastos={gastosTodos}/>}
+      {tab==="gestion"&&localSel.id==="dep"&&renderConcesion&&renderConcesion()}
+      {tab==="resumen"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina} onSaldar={onSaldarOficina}/>}
@@ -26651,6 +26703,7 @@ export default function App() {
 
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
+              deportes={deportes}
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}

@@ -7927,6 +7927,8 @@ function PanelDeportes(p){
   // Aportes y retiros de socios por cuentas de la Concesión: suben o bajan lo disponible.
   var aporDepMes=(p.aportesDep||[]).filter(function(a){return esMovDinero(a)&&(a.local_cuenta||a.local)==="dep"&&enMes(a);}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0);
   var retDepMes=(p.retirosDep||[]).filter(function(r){return esMovDinero(r)&&(r.local_cuenta||r.local)==="dep"&&enMes(r);}).reduce(function(t,r){return t+(parseFloat(r.monto)||0);},0);
+  var retDepEf=(p.retirosDep||[]).filter(function(r){return esMovDinero(r)&&(r.local_cuenta||r.local)==="dep"&&enMes(r)&&String(r.tipo_retiro||"").indexOf("Caja Mayor")===0;}).reduce(function(t,r){return t+(parseFloat(r.monto)||0);},0);
+  var aporDepEf=(p.aportesDep||[]).filter(function(a){return esMovDinero(a)&&(a.local_cuenta||a.local)==="dep"&&enMes(a)&&(String(a.tipo_aporte||"").indexOf("Efectivo")===0||String(a.tipo_aporte||"").indexOf("Caja Mayor")===0);}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0);
   var saldo=totalEntradas-(totalSalidas-salidasCruzadas)+aporDepMes-retDepMes;
 
   // Las sugerencias se separan por lo que pide cada campo. Una sola lista con todos
@@ -8015,6 +8017,13 @@ function PanelDeportes(p){
           {salidasCruzadas>0&&<div style={{fontSize:9,color:"#E07B00",marginTop:2}}>sin ${Math.round(salidasCruzadas).toLocaleString("es-AR")} pagados por otras dependencias</div>}
         </div>
       </div>
+      {(aporDepMes>0||retDepMes>0)&&(
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#8C8C8C",marginTop:-4,marginBottom:12}}>
+          {retDepMes>0&&<span style={{color:"#8B2FC9"}}>💼 Retiros −${Math.round(retDepMes).toLocaleString("es-AR")} (💵 efectivo ${Math.round(retDepEf).toLocaleString("es-AR")} · 📲 electrónico ${Math.round(retDepMes-retDepEf).toLocaleString("es-AR")})</span>}
+          {aporDepMes>0&&<span style={{color:"#3A7D44"}}>🤝 Aportes +${Math.round(aporDepMes).toLocaleString("es-AR")} (💵 efectivo ${Math.round(aporDepEf).toLocaleString("es-AR")} · 📲 electrónico ${Math.round(aporDepMes-aporDepEf).toLocaleString("es-AR")})</span>}
+          <span>Saldo = entró − salió{retDepMes>0?" − retiros":""}{aporDepMes>0?" + aportes":""}</span>
+        </div>
+      )}
 
       {/* Obras, profes y galpón no son el día a día: las obras ya se ven en Salidas y
           los otros dos son fichas que se miran de vez en cuando. Por eso no ocupan una

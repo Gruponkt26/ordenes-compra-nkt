@@ -4895,10 +4895,11 @@ function dispConcesion(deportes, extras, aportes, retiros, hasta){
 function tablaMediosConcesion(deportes, extras, aportes, retiros, mes){
   var movs=movimientosConcesion(deportes,extras,aportes,retiros);
   var hoyDisp=dispConcesion(deportes,extras,aportes,retiros);
-  return [["ef","💵 Caja Mayor Concesión",hoyDisp.efectivo],["belo","🔷 Belo Nicolás",hoyDisp.belo],["lemon","🍋 Lemon Sofía",hoyDisp.lemon]].map(function(m){
-    var en=movs.filter(function(x){return x.k===m[0]&&(mes==="todos"||x.mes===mes);});
-    var sum=function(t){return en.filter(function(x){return x.t===t;}).reduce(function(a,x){return a+x.m;},0);};
-    return {id:m[0],label:m[1],ing:sum("ing"),sal:sum("sal"),apo:sum("apo"),ret:sum("ret"),disp:m[2]};
+  // Como en los locales: lo electrónico va todo junto (Belo Nicolás + Lemon Sofía); acá solo se ve de qué cuenta entraron los cobros.
+  return [["ef","💵 Caja Mayor Concesión",hoyDisp.efectivo],["el","📲 Electrónico",hoyDisp.electronico]].map(function(m){
+    var en=movs.filter(function(x){return (m[0]==="ef"?x.k==="ef":x.k!=="ef")&&(mes==="todos"||x.mes===mes);});
+    var sum=function(t,k){return en.filter(function(x){return x.t===t&&(!k||x.k===k);}).reduce(function(a,x){return a+x.m;},0);};
+    return {id:m[0],label:m[1],ing:sum("ing"),sal:sum("sal"),apo:sum("apo"),ret:sum("ret"),disp:m[2],belo:sum("ing","belo"),lemon:sum("ing","lemon")};
   });
 }
 function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
@@ -4948,6 +4949,7 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
             <span style={{fontSize:12,color:"#F0EDE8",fontWeight:700}}>{f.label}</span>
             <span style={{fontSize:10,color:"#7E7E7E"}}>disponible hoy <b style={{fontSize:13,color:f.disp<0?"#C1440E":"#F0EDE8"}}>{fmtP(f.disp)}</b></span>
           </div>
+          {f.id==="el"&&(f.belo>0||f.lemon>0)&&<div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>Cobrado por Belo Nicolás {fmtP(f.belo)} · Lemon Sofía {fmtP(f.lemon)}</div>}
           <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,marginTop:3}}>
             <span style={{color:"#3A7D44"}}>Ingresó {fmtP(f.ing)}</span>
             <span style={{color:"#C1440E"}}>Salió {fmtP(f.sal)}</span>
@@ -4970,7 +4972,7 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
         <div style={{background:"#0A0A0A",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:10,color:"#1A6B8A"}}>📲 Electrónico</div>
           <div style={{fontSize:17,fontWeight:800,color:disp.electronico<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.electronico)}</div>
-          <div style={{fontSize:9,color:"#6E6E6E",marginTop:2}}>Belo {fmtP(disp.belo)} · Lemon {fmtP(disp.lemon)}</div>
+          <div style={{fontSize:9,color:"#6E6E6E",marginTop:2}}>Belo Nicolás + Lemon Sofía</div>
         </div>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:12}}><span style={{color:"#8C8C8C"}}>Total</span><b style={{color:disp.total<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.total)}</b></div>

@@ -4599,9 +4599,14 @@ function PanelResumenOficina(p){
   // Cuánto le costó la Oficina a cada local, y en qué: sueldos, gastos fijos, obras y otros egresos.
   function tipoOf(g){
     var k=String(g.id).replace(/_l[123]$/,"");
-    return /^egr_sueldo_/.test(k)?"Sueldos":/^egr_of_/.test(k)?"Gastos fijos":/^egr_obra_/.test(k)?"Obras":"Otros";
+    // Lo que no es sueldo, gasto fijo ni obra se detalla por su área (Servicios, Mantenimiento, Alquileres, F.931…), no como "Otros".
+    return /^egr_sueldo_/.test(k)?"Sueldos":/^egr_of_/.test(k)?"Gastos fijos":/^egr_obra_/.test(k)?"Obras":(String(g.area||g.categoria||"").trim()||"Otros");
   }
-  var TIPOS_COSTO=["Sueldos","Gastos fijos","Obras","Otros"];
+  var TIPOS_BASE=["Sueldos","Gastos fijos","Obras"];
+  function tiposDe(lid){
+    var ct=costoTipo[lid]||{};
+    return TIPOS_BASE.concat(Object.keys(ct).filter(function(k){return TIPOS_BASE.indexOf(k)===-1;}).sort(function(a,b){return (ct[b]||0)-(ct[a]||0);}));
+  }
   var costoTipo={l1:{},l3:{},l2:{}};
   partes.filter(delMes).forEach(function(g){
     var t=tipoOf(g); costoTipo[g.local][t]=(costoTipo[g.local][t]||0)+(parseFloat(g.monto)||0);
@@ -4647,7 +4652,7 @@ function PanelResumenOficina(p){
             <div key={t[0]} style={{background:"#0C0C0C",border:"1px solid "+(l?l.color:"#1E1E1E")+"44",borderRadius:12,padding:"11px 13px"}}>
               <div style={{fontSize:11,fontWeight:700,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:t[1]}</div>
               <div style={{fontSize:21,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif",margin:"2px 0 6px"}}>{fmt(costo[t[0]])}</div>
-              {TIPOS_COSTO.filter(function(k){return (costoTipo[t[0]][k]||0)>0;}).map(function(k){
+              {tiposDe(t[0]).filter(function(k){return (costoTipo[t[0]][k]||0)>0;}).map(function(k){
                 return <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#8C8C8C"}}><span>{k}</span><span style={{color:"#B8B8B8"}}>{fmt(costoTipo[t[0]][k])}</span></div>;
               })}
               <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,paddingTop:5,borderTop:"1px solid #151515"}}>Temporada (oct–mar): <b style={{color:"#9A9A9A"}}>{fmt(temporadaOf[t[0]])}</b></div>

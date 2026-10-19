@@ -5687,6 +5687,65 @@ function PanelInformePersonal({sueldos, gastos, cargasSociales, empleados}){
 
 
 // ─── PANEL VACACIONES ─────────────────────────────────────────────────────────
+// Vacaciones que le corresponden a cada empleado según su fecha de alta (LCT art. 150): por la antigüedad al 31/12 del año
+// —hasta 5 años 14 días, más de 5 y hasta 10 21, más de 10 y hasta 20 28, más de 20 35, corridos— o, si en el año trabajó menos de seis
+// meses, un día por cada 20 trabajados (se cuenta con los días corridos desde el alta, es una aproximación).
+function vacacionesQueCorresponden(fechaAlta, anio){
+  var alta=String(fechaAlta||"").substring(0,10);
+  if(!alta)return null;
+  var a=new Date(alta+"T00:00:00"), fin=new Date(anio+"-12-31T00:00:00"), ini=new Date(anio+"-01-01T00:00:00");
+  if(isNaN(a.getTime())||a>fin)return {dias:0,antig:0,regla:"Todavía no había ingresado"};
+  var antig=(fin-a)/(365.25*86400000);
+  var desde=a>ini?a:ini;
+  var trabajados=Math.round((fin-desde)/86400000)+1;
+  if(antig<0.5||trabajados<183)return {dias:Math.floor(trabajados/20),antig:antig,regla:"Menos de 6 meses: 1 día cada 20 trabajados ("+trabajados+" días)"};
+  var dias=antig>20?35:antig>10?28:antig>5?21:14;
+  return {dias:dias,antig:antig,regla:dias+" días por antigüedad"};
+}
+function diasTomadosEnAnio(vacaciones, empId, anio){
+  var ini=new Date(anio+"-01-01T00:00:00"), fin=new Date(anio+"-12-31T00:00:00"), total=0;
+  (vacaciones||[]).forEach(function(v){
+    if(v.empleado_id!==empId||!v.fecha_desde||!v.fecha_hasta)return;
+    var d=new Date(String(v.fecha_desde).substring(0,10)+"T00:00:00"), h=new Date(String(v.fecha_hasta).substring(0,10)+"T00:00:00");
+    if(isNaN(d.getTime())||isNaN(h.getTime()))return;
+    if(d<ini)d=ini; if(h>fin)h=fin;
+    if(h>=d)total+=Math.round((h-d)/86400000)+1;
+  });
+  return total;
+}
+function ResumenVacaciones({empleados, vacaciones, anio}){
+  var filas=(empleados||[]).map(function(e){
+    var c=vacacionesQueCorresponden(e.fecha_alta,anio);
+    var tomo=diasTomadosEnAnio(vacaciones,e.id,anio);
+    return {emp:e,c:c,tomo:tomo,quedan:c?c.dias-tomo:null};
+  }).sort(function(a,b){return String(a.emp.nombre||"").localeCompare(String(b.emp.nombre||""));});
+  return(
+    <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginTop:16}}>
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Días de vacaciones {anio} · por fecha de alta</div>
+      <div style={{overflowX:"auto"}}>
+        <div style={{display:"flex",fontSize:9,color:"#7E7E7E",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",minWidth:420}}>
+          <div style={{flex:1}}>Empleado</div><div style={{width:70,textAlign:"right"}}>Corresponden</div><div style={{width:60,textAlign:"right"}}>Tomó</div><div style={{width:60,textAlign:"right"}}>Quedan</div>
+        </div>
+        {filas.map(function(f){
+          var q=f.quedan;
+          return(
+            <div key={f.emp.id} style={{display:"flex",alignItems:"flex-start",fontSize:12,padding:"6px 0",borderTop:"1px solid #141414",minWidth:420}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#F0EDE8",fontWeight:600}}>{(getLocal(f.emp.local)||{}).emoji||""} {f.emp.nombre}</div>
+                <div style={{fontSize:9,color:"#7E7E7E"}}>{f.c?("Alta "+fmtDate(String(f.emp.fecha_alta).substring(0,10))+" · "+f.c.regla):"Sin fecha de alta cargada"}</div>
+              </div>
+              <div style={{width:70,textAlign:"right",color:"#C8C8C8"}}>{f.c?f.c.dias:"—"}</div>
+              <div style={{width:60,textAlign:"right",color:"#C8C8C8"}}>{f.tomo}</div>
+              <div style={{width:60,textAlign:"right",fontWeight:800,color:q===null?"#6E6E6E":q<0?"#C1440E":q===0?"#4CAF50":"#E0A030"}}>{q===null?"—":q}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{fontSize:9,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Días corridos. Hasta 5 años de antigüedad al 31/12: 14 · más de 5: 21 · más de 10: 28 · más de 20: 35. Con menos de 6 meses en el año: 1 día cada 20 trabajados (aproximado, con días corridos desde el alta). "Tomó" suma los días de las vacaciones cargadas en el calendario.</div>
+    </div>
+  );
+}
+
 function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [mes,setMes]=useState(new Date().getMonth());
@@ -5875,6 +5934,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
           </div>
         </div>
       )}
+      <ResumenVacaciones empleados={empsActivos} vacaciones={vacaciones} anio={anio}/>
     </div>
   );
 }

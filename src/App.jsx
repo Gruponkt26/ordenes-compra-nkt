@@ -5717,24 +5717,38 @@ function diasTomadosEnAnio(vacaciones, empId, anio){
   });
   return total;
 }
+// Desde qué año se lleva la cuenta de lo que se les debe: los años anteriores se dan por tomados.
+var VAC_DESDE=2025;
 function ResumenVacaciones({empleados, vacaciones, anio}){
   var filas=(empleados||[]).map(function(e){
     var c=vacacionesQueCorresponden(e.fecha_alta,anio);
     var aj=(VAC_AJUSTES[e.id+"_"+anio]||{}).dias||0;
     var tomo=diasTomadosEnAnio(vacaciones,e.id,anio)+aj;
-    return {emp:e,c:c,tomo:tomo,aj:aj,quedan:c?c.dias-tomo:null};
+    // Acumulado: lo que le correspondió desde el año de alta (no antes de VAC_DESDE) hasta este año, menos todo lo tomado en esos años.
+    var altaAnio=parseInt(String(e.fecha_alta||"").substring(0,4),10);
+    var acum=null;
+    if(altaAnio){
+      var corr=0, usado=0;
+      for(var y=Math.max(altaAnio,VAC_DESDE);y<=anio;y++){
+        var cy=vacacionesQueCorresponden(e.fecha_alta,y);
+        corr+=cy?cy.dias:0;
+        usado+=diasTomadosEnAnio(vacaciones,e.id,y)+((VAC_AJUSTES[e.id+"_"+y]||{}).dias||0);
+      }
+      acum={corr:corr,usado:usado,debe:corr-usado};
+    }
+    return {emp:e,c:c,tomo:tomo,aj:aj,acum:acum,quedan:c?c.dias-tomo:null};
   }).sort(function(a,b){return String(a.emp.nombre||"").localeCompare(String(b.emp.nombre||""));});
   return(
     <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginTop:16}}>
       <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Días de vacaciones {anio} · por fecha de alta</div>
       <div style={{overflowX:"auto"}}>
-        <div style={{display:"flex",fontSize:9,color:"#7E7E7E",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",minWidth:420}}>
-          <div style={{flex:1}}>Empleado</div><div style={{width:70,textAlign:"right"}}>Corresponden</div><div style={{width:60,textAlign:"right"}}>Tomó</div><div style={{width:60,textAlign:"right"}}>Quedan</div>
+        <div style={{display:"flex",fontSize:9,color:"#7E7E7E",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",minWidth:520}}>
+          <div style={{flex:1}}>Empleado</div><div style={{width:70,textAlign:"right"}}>Corresponden</div><div style={{width:60,textAlign:"right"}}>Tomó</div><div style={{width:60,textAlign:"right"}}>Quedan</div><div style={{width:84,textAlign:"right"}}>Se le deben (acum.)</div>
         </div>
         {filas.map(function(f){
           var q=f.quedan;
           return(
-            <div key={f.emp.id} style={{display:"flex",alignItems:"flex-start",fontSize:12,padding:"6px 0",borderTop:"1px solid #141414",minWidth:420}}>
+            <div key={f.emp.id} style={{display:"flex",alignItems:"flex-start",fontSize:12,padding:"6px 0",borderTop:"1px solid #141414",minWidth:520}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{color:"#F0EDE8",fontWeight:600}}>{(getLocal(f.emp.local)||{}).emoji||""} {f.emp.nombre}</div>
                 <div style={{fontSize:9,color:"#7E7E7E"}}>{f.c?("Alta "+fmtDate(String(f.emp.fecha_alta).substring(0,10))+" · "+f.c.regla):"Sin fecha de alta cargada"}</div>
@@ -5743,11 +5757,12 @@ function ResumenVacaciones({empleados, vacaciones, anio}){
               <div style={{width:60,textAlign:"right",color:"#C8C8C8"}}>{f.tomo}{f.aj!==0&&<div style={{fontSize:8,color:"#D4A017"}}>({f.aj>0?"+":""}{f.aj} ajuste)</div>}
                 <button onClick={function(){var r=window.prompt("Ajuste de días tomados de "+f.emp.nombre+" en "+anio+" que NO están en el calendario.\nPor ejemplo 10 si ya tomó 10 días antes de usar la app, o -3 para corregir.\n(0 para borrar el ajuste)",String(f.aj||0)); if(r===null)return; var n=parseFloat(String(r).replace(",","."));if(isNaN(n)){alert("Poné un número.");return;} var nota=n!==0?(window.prompt("Motivo (opcional)",((VAC_AJUSTES[f.emp.id+"_"+anio]||{}).nota)||"")||""):""; GUARDAR_VAC_AJUSTE(f.emp.id,anio,n,nota);}} title="Ajustar días tomados" style={{background:"none",border:"none",color:"#6E6E6E",fontSize:10,cursor:"pointer",padding:0}}>✏️</button></div>
               <div style={{width:60,textAlign:"right",fontWeight:800,color:q===null?"#6E6E6E":q<0?"#C1440E":q===0?"#4CAF50":"#E0A030"}}>{q===null?"—":q}</div>
+              <div style={{width:84,textAlign:"right",fontWeight:800,color:!f.acum?"#6E6E6E":f.acum.debe<0?"#C1440E":f.acum.debe===0?"#4CAF50":"#E0A030"}}>{f.acum?f.acum.debe:"—"}{f.acum&&<div style={{fontSize:8,fontWeight:400,color:"#7E7E7E"}}>{f.acum.corr} − {f.acum.usado}</div>}</div>
             </div>
           );
         })}
       </div>
-      <div style={{fontSize:9,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Días corridos. Hasta 5 años de antigüedad al 31/12: 14 · más de 5: 21 · más de 10: 28 · más de 20: 35. Con menos de 6 meses en el año: 1 día cada 20 trabajados (aproximado, con días corridos desde el alta). "Tomó" suma los días de las vacaciones cargadas en el calendario.</div>
+      <div style={{fontSize:9,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Días corridos. Hasta 5 años de antigüedad al 31/12: 14 · más de 5: 21 · más de 10: 28 · más de 20: 35. Con menos de 6 meses en el año: 1 día cada 20 trabajados (aproximado, con días corridos desde el alta). "Tomó" suma los días de las vacaciones cargadas en el calendario. "Se le deben (acum.)" junta lo que le correspondió desde su alta —sin contar antes de {VAC_DESDE}— menos todo lo tomado en esos años: ej. 19 − 4 = 15; se arregla con el ajuste (✏️) del año que corresponda.</div>
     </div>
   );
 }

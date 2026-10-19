@@ -4886,9 +4886,9 @@ function movimientosConcesion(deportes, extras, aportes, retiros){
   });
   return out;
 }
-function dispConcesion(deportes, extras, aportes, retiros){
+function dispConcesion(deportes, extras, aportes, retiros, hasta){
   var b={ef:0,belo:0,lemon:0};
-  movimientosConcesion(deportes,extras,aportes,retiros).forEach(function(x){ b[x.k]+=(x.t==="ing"||x.t==="apo"?1:-1)*x.m; });
+  movimientosConcesion(deportes,extras,aportes,retiros).filter(function(x){return !hasta||!x.mes||x.mes<=hasta;}).forEach(function(x){ b[x.k]+=(x.t==="ing"||x.t==="apo"?1:-1)*x.m; });
   return {efectivo:b.ef, electronico:b.belo+b.lemon, belo:b.belo, lemon:b.lemon, total:b.ef+b.belo+b.lemon};
 }
 // Por medio y por período: lo que ingresó, lo que salió, aportes y retiros, y lo disponible hoy.
@@ -19896,6 +19896,8 @@ function PanelResultados(p){
   var concApo=aportesSocios.filter(function(a){return a.local==="dep"&&concDelMes(a);}).reduce(function(t,a){return t+(parseFloat(a.monto)||0);},0);
   var concRet=retirosSocios.filter(function(r){return r.local==="dep"&&concDelMes(r);}).reduce(function(t,r){return t+(parseFloat(r.monto)||0);},0);
   var concDesp=concRes+concApo-concRet;
+  // Disponible de la Concesión al cierre del mes que se mira: efectivo (Caja Mayor) y electrónico (Belo + Lemon).
+  var concDisp=dispConcesion(p.deportes||[],p.extrasDep||[],p.aportes||[],p.retiros||[],mesFiltro);
   var concRubros=DEP_RUBROS.map(function(r){ return {label:r.corto,total:depSuma(concEgRegs.filter(function(x){return x.rubro===r.id;}))}; })
     .concat([{label:"Sin rubro",total:depSuma(concEgRegs.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});}))},{label:"Cargados en Egresos",total:concEgCargados}])
     .filter(function(r){return r.total>0;});
@@ -20252,8 +20254,8 @@ function PanelResultados(p){
                     var disp=d.dispEfectivo||0;
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:disp>=0?"#3A7D44":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(disp)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
-                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:700,fontSize:11}}>{fmt(concDisp.efectivo)}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#3A7D44",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){return a+(datos[l.id].dispEfectivo||0);},0)+concDisp.efectivo)}</td>
                 </tr>
                 {/* Lo que todavía está en el cajón de cada local: no es de Caja Mayor hasta que se retira */}
                 <tr style={{background:"#0A0F0A"}}>
@@ -20273,8 +20275,8 @@ function PanelResultados(p){
                     var dispElec=(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:dispElec>=0?"#1A6B8A":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(dispElec)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
-                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:700,fontSize:11}}>{fmt(concDisp.electronico)}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#1A6B8A",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0)+concDisp.electronico)}</td>
                 </tr>
                 {/* Total disponible */}
                 <tr style={{background:"#111",borderTop:"2px solid #1A1A1A"}}>
@@ -20284,8 +20286,8 @@ function PanelResultados(p){
                     var tot=(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:tot>=0?"#F0EDE8":"#C1440E",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(tot)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
-                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:700,fontSize:11}}>{fmt(concDisp.total)}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#F0EDE8",fontWeight:800,fontFamily:"'Playfair Display',serif"}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispTransferencia||0)+(d.dispDebito||0)+(d.dispCredito||0)+(d.dispOtros||0)+(d.dispMp||0);},0)+concDisp.total)}</td>
                 </tr>
                 {/* Débito pendiente de acreditar */}
                 {localesFiltro.some(function(l){return(datos[l.id].debitoPendiente||0)>0;})&&(
@@ -20312,8 +20314,8 @@ function PanelResultados(p){
                     var totHoy=(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);
                     return <td key={l.id} style={{textAlign:"right",padding:"8px",color:totHoy>=0?"#888":"#C1440E",fontWeight:700,fontSize:11}}>{fmt(totHoy)}</td>;
                   })}
-                  <td style={{textAlign:"right",padding:"6px 8px",color:"#6E6E6E",fontWeight:400,fontSize:10}}>—</td>
-                  <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);},0))}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:700,fontSize:11}}>{fmt(concDisp.total)}</td>
+                  <td style={{textAlign:"right",padding:"8px",color:"#888",fontWeight:800,fontSize:11}}>{fmt(localesFiltro.reduce(function(a,l){var d=datos[l.id];return a+(d.dispEfectivo||0)+(d.dispElectronicoHoy||0);},0)+concDisp.total)}</td>
                 </tr>
               </tbody>
             </table>
@@ -20696,6 +20698,11 @@ function PanelResultados(p){
               <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>Módulo Deportes · incluida en los totales del grupo</div>
             </div>
             <div style={{fontSize:18,fontWeight:800,color:concRes>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{concRes>=0?"":"-"}{fmt(Math.abs(concRes))}</div>
+          </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:10,fontSize:11,color:"#8C8C8C"}}>
+            <span>Disponible al cierre:</span>
+            <span>💵 Efectivo <b style={{color:concDisp.efectivo<0?"#C1440E":"#F0EDE8"}}>{fmt(concDisp.efectivo)}</b></span>
+            <span>📲 Electrónico <b style={{color:concDisp.electronico<0?"#C1440E":"#F0EDE8"}}>{fmt(concDisp.electronico)}</b></span>
           </div>
           {(concApo>0||concRet>0)&&(
             <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",marginBottom:10,fontSize:11}}>
@@ -27153,7 +27160,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados deportes={deportes} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+            <PanelResultados deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               transfPropias={transfPropias} onSaveTransfPropia={function(x){guardarOfPauta("transf_propia",x);}} impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){

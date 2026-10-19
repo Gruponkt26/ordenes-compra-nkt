@@ -4560,6 +4560,7 @@ function PanelResumenOficina(p){
   var [mes,setMes]=useState(hoy.slice(0,7));
   var [abierto,setAbierto]=useState({});
   var [saldarOf,setSaldarOf]=useState(null);
+  var [costoAbierto,setCostoAbierto]=useState(null);   // "<local>|<tipo>" de la tarjeta que se está detallando
   var LOC=[["l1","Bodegón",50],["l3","Colantonio's",30],["l2","Kusama",20]];
   function esParteOficina(g){ return esParteOficinaGasto(g); }
   var partes=gastos.filter(esParteOficina);
@@ -4653,7 +4654,14 @@ function PanelResumenOficina(p){
               <div style={{fontSize:11,fontWeight:700,color:l?l.color:"#F0EDE8"}}>{l?l.emoji+" "+l.nombre:t[1]}</div>
               <div style={{fontSize:21,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif",margin:"2px 0 6px"}}>{fmt(costo[t[0]])}</div>
               {tiposDe(t[0]).filter(function(k){return (costoTipo[t[0]][k]||0)>0;}).map(function(k){
-                return <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#8C8C8C"}}><span>{k}</span><span style={{color:"#B8B8B8"}}>{fmt(costoTipo[t[0]][k])}</span></div>;
+                var clave=t[0]+"|"+k, abiertoK=costoAbierto===clave;
+                var det=abiertoK?partes.filter(delMes).filter(function(g){return g.local===t[0]&&tipoOf(g)===k;}).sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));}):[];
+                return <div key={k}>
+                  <div onClick={function(){setCostoAbierto(abiertoK?null:clave);}} style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#8C8C8C",cursor:"pointer",padding:"1px 0"}}><span>{abiertoK?"▾":"▸"} {k}</span><span style={{color:"#B8B8B8"}}>{fmt(costoTipo[t[0]][k])}</span></div>
+                  {abiertoK&&<div style={{background:"#080808",borderRadius:6,padding:"4px 7px",margin:"2px 0 4px"}}>
+                    {det.map(function(g){return <div key={g.id} style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:10,color:"#9A9A9A",padding:"2px 0"}}><span style={{minWidth:0}}>{String(g.fecha||"").slice(5).split("-").reverse().join("/")} · {g.concepto||"Egreso"}</span><b style={{color:"#D8D8D8",whiteSpace:"nowrap"}}>{fmt(parseFloat(g.monto)||0)}</b></div>;})}
+                  </div>}
+                </div>;
               })}
               <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,paddingTop:5,borderTop:"1px solid #151515"}}>Temporada (oct–mar): <b style={{color:"#9A9A9A"}}>{fmt(temporadaOf[t[0]])}</b></div>
             </div>

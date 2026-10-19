@@ -21229,8 +21229,8 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
       </div>}
       {vistos.length===0&&<div style={{textAlign:"center",padding:"16px 0",color:"#4CAF50",fontSize:12,marginBottom:12}}>✅ No falta pagar ningún sueldo{mes==="todos"?"":" en "+nombrePeriodo(mes)}.</div>}
       <div style={{overflowX:"auto"}}>
-        <div style={soloPeriodo?{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"start"}:{display:"grid",gridTemplateColumns:"repeat(4,minmax(190px,1fr))",gap:10,minWidth:790,alignItems:"start"}}>
-          {LOCALES.filter(function(l){return !soloPeriodo||vistos.some(function(i){return i.emp.local===l.id;});}).map(function(l){
+        <div style={soloPeriodo?{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,alignItems:"start"}:{display:"grid",gridTemplateColumns:"repeat(5,minmax(190px,1fr))",gap:10,minWidth:990,alignItems:"start"}}>
+          {LOCALES.concat([CONCESION]).filter(function(l){return !soloPeriodo||vistos.some(function(i){return i.emp.local===l.id;});}).map(function(l){
             var delLocal=vistos.filter(function(i){return i.emp.local===l.id;});
             var totalLocal=delLocal.reduce(function(a,i){return a+i.falta;},0);
             // Un bloque por empleado, con sus meses adentro.

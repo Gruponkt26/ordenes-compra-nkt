@@ -5718,7 +5718,7 @@ function diasTomadosEnAnio(vacaciones, empId, anio){
   return total;
 }
 // Desde qué año se lleva la cuenta de lo que se les debe: los años anteriores se dan por tomados.
-var VAC_DESDE=2025;
+var VAC_DESDE=2024;
 function ResumenVacaciones({empleados, vacaciones, anio}){
   var filas=(empleados||[]).map(function(e){
     var c=vacacionesQueCorresponden(e.fecha_alta,anio);

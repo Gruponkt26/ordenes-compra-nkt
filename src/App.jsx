@@ -4839,6 +4839,9 @@ function PanelResumenOficina(p){
 // Vencimiento del F.931: el día 10 del mes siguiente al período, salvo que se haya cargado otra fecha.
 var F931_VENCE={};
 var GUARDAR_F931_VENCE=function(){};
+// Ajuste de días de vacaciones tomados por empleado y año (los que no están en el calendario). Pautas "vac_ajuste".
+var VAC_AJUSTES={};
+var GUARDAR_VAC_AJUSTE=function(){};
 function venceF931(c){
   if(c&&F931_VENCE[c.id])return F931_VENCE[c.id];
   var pr=String((c&&c.periodo)||"").split("-"), a=parseInt(pr[0],10), m=parseInt(pr[1],10);
@@ -5706,6 +5709,7 @@ function diasTomadosEnAnio(vacaciones, empId, anio){
   var ini=new Date(anio+"-01-01T00:00:00"), fin=new Date(anio+"-12-31T00:00:00"), total=0;
   (vacaciones||[]).forEach(function(v){
     if(v.empleado_id!==empId||!v.fecha_desde||!v.fecha_hasta)return;
+    if(/^\[Licencia\]/.test(String(v.notas||"")))return;   // otra licencia: no es de las vacaciones anuales
     var d=new Date(String(v.fecha_desde).substring(0,10)+"T00:00:00"), h=new Date(String(v.fecha_hasta).substring(0,10)+"T00:00:00");
     if(isNaN(d.getTime())||isNaN(h.getTime()))return;
     if(d<ini)d=ini; if(h>fin)h=fin;
@@ -5716,8 +5720,9 @@ function diasTomadosEnAnio(vacaciones, empId, anio){
 function ResumenVacaciones({empleados, vacaciones, anio}){
   var filas=(empleados||[]).map(function(e){
     var c=vacacionesQueCorresponden(e.fecha_alta,anio);
-    var tomo=diasTomadosEnAnio(vacaciones,e.id,anio);
-    return {emp:e,c:c,tomo:tomo,quedan:c?c.dias-tomo:null};
+    var aj=(VAC_AJUSTES[e.id+"_"+anio]||{}).dias||0;
+    var tomo=diasTomadosEnAnio(vacaciones,e.id,anio)+aj;
+    return {emp:e,c:c,tomo:tomo,aj:aj,quedan:c?c.dias-tomo:null};
   }).sort(function(a,b){return String(a.emp.nombre||"").localeCompare(String(b.emp.nombre||""));});
   return(
     <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginTop:16}}>
@@ -5735,7 +5740,8 @@ function ResumenVacaciones({empleados, vacaciones, anio}){
                 <div style={{fontSize:9,color:"#7E7E7E"}}>{f.c?("Alta "+fmtDate(String(f.emp.fecha_alta).substring(0,10))+" · "+f.c.regla):"Sin fecha de alta cargada"}</div>
               </div>
               <div style={{width:70,textAlign:"right",color:"#C8C8C8"}}>{f.c?f.c.dias:"—"}</div>
-              <div style={{width:60,textAlign:"right",color:"#C8C8C8"}}>{f.tomo}</div>
+              <div style={{width:60,textAlign:"right",color:"#C8C8C8"}}>{f.tomo}{f.aj!==0&&<div style={{fontSize:8,color:"#D4A017"}}>({f.aj>0?"+":""}{f.aj} ajuste)</div>}
+                <button onClick={function(){var r=window.prompt("Ajuste de días tomados de "+f.emp.nombre+" en "+anio+" que NO están en el calendario.\nPor ejemplo 10 si ya tomó 10 días antes de usar la app, o -3 para corregir.\n(0 para borrar el ajuste)",String(f.aj||0)); if(r===null)return; var n=parseFloat(String(r).replace(",","."));if(isNaN(n)){alert("Poné un número.");return;} var nota=n!==0?(window.prompt("Motivo (opcional)",((VAC_AJUSTES[f.emp.id+"_"+anio]||{}).nota)||"")||""):""; GUARDAR_VAC_AJUSTE(f.emp.id,anio,n,nota);}} title="Ajustar días tomados" style={{background:"none",border:"none",color:"#6E6E6E",fontSize:10,cursor:"pointer",padding:0}}>✏️</button></div>
               <div style={{width:60,textAlign:"right",fontWeight:800,color:q===null?"#6E6E6E":q<0?"#C1440E":q===0?"#4CAF50":"#E0A030"}}>{q===null?"—":q}</div>
             </div>
           );
@@ -5790,7 +5796,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
     if(!form.fecha_hasta)faltan.push("la fecha de fin");
     if(faltan.length>0){ alert("Falta "+faltan.join(", ")+"."); return; }
     if(form.fecha_hasta<form.fecha_desde){ alert("La fecha de fin es anterior a la de inicio."); return; }
-    var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:form.notas,created_at:editVac?editVac.created_at:new Date().toISOString()};
+    var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:(form.tipo==="licencia"?"[Licencia] ":"")+(form.notas||""),created_at:editVac?editVac.created_at:new Date().toISOString()};
     if(onSave)onSave(v);
     setShowForm(false);setEditVac(null);
     setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""});
@@ -5885,7 +5891,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4}}>
-                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:v.notas||""});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:String(v.notas||"").replace(/^\[Licencia\] ?/,""),tipo:/^\[Licencia\]/.test(String(v.notas||""))?"licencia":"vacaciones"});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete&&onDelete(v.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
@@ -5919,6 +5925,13 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Hasta</label>
                   <input type="date" value={form.fecha_hasta} onChange={function(e){setForm(function(f){return{...f,fecha_hasta:e.target.value};});}} style={INP}/>
                 </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo</label>
+                <select value={form.tipo||"vacaciones"} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,tipo:v};});}} style={INP}>
+                  <option value="vacaciones">🏖️ Vacaciones (descuenta de los días que le corresponden)</option>
+                  <option value="licencia">📄 Otra licencia (no descuenta)</option>
+                </select>
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Notas (opcional)</label>
@@ -25920,6 +25933,13 @@ export default function App() {
     try{ var dv=JSON.parse(x.texto||"{}"); if(dv.fecha)f931Vence[String(x.id).replace(/^f931v_/,"")]=dv.fecha; }catch(e){}
   });
   F931_VENCE=f931Vence;
+  var vacAjustes={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="vac_ajuste")return;
+    try{ var da=JSON.parse(x.texto||"{}"); vacAjustes[String(x.id).replace(/^vacaj_/,"")]={dias:parseFloat(da.dias)||0,nota:da.nota||""}; }catch(e){}
+  });
+  VAC_AJUSTES=vacAjustes;
+  GUARDAR_VAC_AJUSTE=function(empId,anio,dias,nota){ guardarOfPauta("vac_ajuste",{id:"vacaj_"+empId+"_"+anio,dias:dias,nota:nota||""}); };
   GUARDAR_F931_VENCE=function(cid,fecha){ guardarOfPauta("f931_vence",{id:"f931v_"+cid,fecha:fecha}); };
   var provLoc={};
   pautas.forEach(function(x){

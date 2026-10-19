@@ -5153,7 +5153,7 @@ function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras,
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -12947,6 +12947,18 @@ function PanelNovedades(p){
     var vt=cierresTarjeta.filter(function(c){return c.local===l.id;}).reduce(function(a,c){return a+(parseFloat(c.total_ventas||0)||0);},0);
     return {local:l,ventas:vt,egresos:eg};
   });
+  // La Concesión NKT: lo cobrado en Deportes del 1 hasta la fecha de corte, y lo que egresó (gastos a su nombre, que incluyen las
+  // salidas ya copiadas, más las salidas pagadas anteriores que todavía no se copiaron).
+  (function(){
+    var mesT=finVentas.substring(0,7);
+    var enT=function(x){var f=String(x.fecha||"").substring(0,10);return f&&f.substring(0,7)===mesT&&f<=finVentas;};
+    var dep=p.deportes||[];
+    var vt=dep.filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado"&&enT(x);}).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
+    var copiados={}; (p.gastos||[]).forEach(function(g){ if(String(g.id).indexOf("depg_")===0)copiados[g.id]=true; });
+    var egSueltas=dep.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&enT(x)&&!copiados["depg_"+x.id];}).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
+    var egG=gastosTarjeta.filter(function(g){return g.local==="dep";}).reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
+    if(vt>0||egSueltas+egG>0)resumenLocales.push({local:CONCESION,ventas:vt,egresos:egSueltas+egG});
+  })();
   var egresosOtros=gastosTarjeta.filter(function(g){return !resumenLocales.some(function(x){return x.local.id===g.local;});})
     .reduce(function(a,g){return a+(parseFloat(g.monto||0)||0)-montoDeudaDeGasto(g);},0);
   var ventasLocalTarjeta=function(lid){
@@ -13122,7 +13134,7 @@ function PanelNovedades(p){
       sumarEn(deudaLocal,m.local||"_s",(m.tipo==="pago"?-1:1)*(parseFloat(m.monto)||0));
     });
   });
-  var desgloseDeuda=LOCALES.map(function(l){
+  var desgloseDeuda=LOCALES.concat([CONCESION]).map(function(l){
     return {txt:l.emoji+" "+l.nombre,monto:deudaLocal[l.id]||0,color:l.color};
   });
   if((deudaLocal._s||0)>0.5)desgloseDeuda.push({txt:"Sin local asignado",monto:deudaLocal._s,color:"#8C8C8C"});
@@ -13659,7 +13671,7 @@ function PanelNovedades(p){
               <div key={x.local.id} style={{padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
                   <div style={{fontSize:12.5,fontWeight:700,color:x.local.color}}>{x.local.emoji} {x.local.nombre}</div>
-                  {p.irMetricas&&<button onClick={function(){p.irMetricas(x.local.id);}} style={{background:"none",border:"none",color:x.local.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.85}}>📈 Métricas →</button>}
+                  {p.irMetricas&&x.local.id!=="dep"&&<button onClick={function(){p.irMetricas(x.local.id);}} style={{background:"none",border:"none",color:x.local.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.85}}>📈 Métricas →</button>}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Ventas</span><span style={{color:"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{fmt(x.ventas)}</span></div>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Egresos</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(x.egresos)}</span></div>
@@ -13671,7 +13683,7 @@ function PanelNovedades(p){
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A",padding:"7px 0",borderTop:"1px solid #141414"}}><span>Egresos sin local</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(egresosOtros)}</span></div>
           )}
           <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #141414",marginTop:4,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
-            <span>Total · ventas {fmt(ventasTarjeta)} · egresos {fmt(resumenLocales.reduce(function(a,x){return a+x.egresos;},0)+egresosOtros)}</span>
+            <span>Total · ventas {fmt(ventasTarjeta+((resumenLocales.find(function(x){return x.local.id==="dep";})||{}).ventas||0))} · egresos {fmt(resumenLocales.reduce(function(a,x){return a+x.egresos;},0)+egresosOtros)}</span>
           </div>
         </Seccion>
 
@@ -26885,7 +26897,7 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

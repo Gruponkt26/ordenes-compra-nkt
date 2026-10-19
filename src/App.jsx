@@ -18429,6 +18429,123 @@ function PanelRetiros(p) {
 // Espejo del panel de Retiros. Un aporte es plata que el socio PONE en el local:
 // suma a la disponibilidad de caja, pero nunca entra al resultado operativo —
 // no es una venta, es capital. Ver PanelResultados.
+// Cuenta corriente de cada socio: lo que puso, lo que sacó y el saldo, con el detalle de cada movimiento al tocarlo.
+function PanelCuentaCorrienteSocios(p){
+  var aportes=p.aportes||[], retiros=p.retiros||[];
+  var ACC="#3A7D44";
+  var [filtroLocal,setFiltroLocal]=useState("all");
+  var [abierto,setAbierto]=useState(null);
+  // Histórico completo, no lo recorta ninguna fecha: un saldo acumulado que solo mirara un mes no diría nada. Sí respeta el local.
+  var ctaCorriente=(function(){
+    var mapa={};
+    function sumar(nombre,campo,monto){
+      var key=(nombre||"").trim().toLowerCase();
+      if(!key)return;
+      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0,aportadoBienes:0,retiradoBienes:0,aportadoUsd:0,retiradoUsd:0,sinCotiz:0};
+      mapa[key][campo]+=parseFloat(monto||0);
+    }
+    aportes.forEach(function(a){
+      if(filtroLocal!=="all"&&a.local!==filtroLocal)return;
+      sumar(a.socio,"aportado",a.monto);
+      if(!esMovDinero(a))sumar(a.socio,"aportadoBienes",a.monto);
+      if(tieneCotizacion(a))sumar(a.socio,"aportadoUsd",usdDeMov(a));else sumar(a.socio,"sinCotiz",1);
+    });
+    retiros.forEach(function(r){
+      if(filtroLocal!=="all"&&r.local!==filtroLocal)return;
+      sumar(r.socio,"retirado",r.monto);
+      if(!esMovDinero(r))sumar(r.socio,"retiradoBienes",r.monto);
+      if(tieneCotizacion(r))sumar(r.socio,"retiradoUsd",usdDeMov(r));else sumar(r.socio,"sinCotiz",1);
+    });
+    return Object.keys(mapa).map(function(k){
+      var m=mapa[k];
+      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,aportadoBienes:m.aportadoBienes,retiradoBienes:m.retiradoBienes,saldo:m.aportado-m.retirado,aportadoUsd:m.aportadoUsd,retiradoUsd:m.retiradoUsd,saldoUsd:m.aportadoUsd-m.retiradoUsd,sinCotiz:m.sinCotiz};
+    }).sort(function(a,b){return b.aportado-a.aportado;});
+  })();
+
+  function movsDe(nombre){
+    var k=(nombre||"").trim().toLowerCase();
+    var l=[];
+    aportes.forEach(function(a){ if((a.socio||"").trim().toLowerCase()===k&&(filtroLocal==="all"||a.local===filtroLocal))l.push({id:"a"+a.id,fecha:a.fecha,tipo:"aporte",x:a}); });
+    retiros.forEach(function(r){ if((r.socio||"").trim().toLowerCase()===k&&(filtroLocal==="all"||r.local===filtroLocal))l.push({id:"r"+r.id,fecha:r.fecha,tipo:"retiro",x:r}); });
+    return l.sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
+  }
+  return(
+    <div>
+      <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
+        {LOCALES.concat([CONCESION]).map(function(l){return(
+          <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
+        );})}
+      </div>
+      {ctaCorriente.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"#6E6E6E"}}>Todavía no hay aportes ni retiros de socios.</div>}
+      {ctaCorriente.length>0&&(
+        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginBottom:16}}>
+          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:9}}>
+            Cuenta corriente por socio · histórico{filtroLocal!=="all"?" · "+((getLocal(filtroLocal)||{}).nombre||""):" · todos los locales"}
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <div style={{display:"flex",fontSize:9,color:"#7E7E7E",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",marginBottom:5,minWidth:280}}>
+              <div style={{flex:1}}>Socio</div>
+              <div style={{width:96,textAlign:"right"}}>Aportó</div>
+              <div style={{width:96,textAlign:"right"}}>Retiró</div>
+              <div style={{width:96,textAlign:"right"}}>Saldo</div>
+            </div>
+            {ctaCorriente.map(function(c){
+              return(
+                <div key={c.nombre}>
+                <div onClick={function(){setAbierto(abierto===c.nombre?null:c.nombre);}} style={{display:"flex",fontSize:11,alignItems:"flex-start",padding:"5px 0",minWidth:300,borderTop:"1px solid #141414",cursor:"pointer"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#F0EDE8",fontWeight:600}}>{abierto===c.nombre?"▾":"▸"} {c.nombre}</div>
+                    {(c.aportadoBienes>0||c.retiradoBienes>0)&&(
+                      <div style={{fontSize:9,color:"#9A9A9A"}}>
+                        📦 {c.aportadoBienes>0?"puso $"+Math.round(c.aportadoBienes).toLocaleString("es-AR"):""}
+                        {c.aportadoBienes>0&&c.retiradoBienes>0?" · ":""}
+                        {c.retiradoBienes>0?"sacó $"+Math.round(c.retiradoBienes).toLocaleString("es-AR"):""} en bienes
+                      </div>
+                    )}
+                  </div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:ACC,fontWeight:700}}>US$ {Math.round(c.aportadoUsd).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#8C8C8C"}}>${Math.round(c.aportado).toLocaleString("es-AR")}</div>
+                  </div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:"#8B2FC9",fontWeight:700}}>US$ {Math.round(c.retiradoUsd).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#8C8C8C"}}>${Math.round(c.retirado).toLocaleString("es-AR")}</div>
+                  </div>
+                  <div style={{width:96,textAlign:"right"}}>
+                    <div style={{color:c.saldoUsd>=0?ACC:"#C1440E",fontWeight:800}}>{c.saldoUsd<0?"−":""}US$ {Math.abs(Math.round(c.saldoUsd)).toLocaleString("es-AR")}</div>
+                    <div style={{fontSize:9,color:"#8C8C8C"}}>{c.saldo<0?"−":""}${Math.abs(Math.round(c.saldo)).toLocaleString("es-AR")}</div>
+                  </div>
+                </div>
+                {abierto===c.nombre&&(
+                  <div style={{background:"#080808",borderRadius:8,padding:"6px 10px",margin:"2px 0 6px"}}>
+                    {movsDe(c.nombre).map(function(mv){
+                      var esAp=mv.tipo==="aporte", x=mv.x, loc=getLocal(x.local)||{};
+                      return <div key={mv.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:10.5,padding:"3px 0",borderTop:"1px solid #121212"}}>
+                        <span style={{color:"#9A9A9A",minWidth:0}}>{esAp?"🤝":"💼"} {fmtDate(mv.fecha)} · {x.clase==="bien"?"📦 "+(x.bien||"Bien mueble"):(esAp?x.tipo_aporte:x.tipo_retiro)} · {loc.emoji||""} {loc.nombre||""}</span>
+                        <b style={{color:esAp?ACC:"#8B2FC9",whiteSpace:"nowrap"}}>{esAp?"+":"−"}${Math.round(parseFloat(x.monto)||0).toLocaleString("es-AR")}</b>
+                      </div>;
+                    })}
+                  </div>
+                )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{fontSize:9,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>
+            Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.<br/>
+            El dólar es el <b style={{color:"#8C8C8C"}}>blue del día de cada movimiento</b>, congelado — así $800.000 puestos en 2024 no se comparan de igual a igual con $800.000 puestos hoy.<br/>
+            Incluye los bienes muebles por su valor estimado: cuentan como capital del socio, aunque no hayan pasado por ninguna caja.
+            {(function(){
+              var sin=ctaCorriente.reduce(function(a,c){return a+(c.sinCotiz||0);},0);
+              return sin>0?<span><br/><b style={{color:"#D4A017"}}>⚠️ {sin} movimiento{sin===1?"":"s"} sin cotización cargada</b> — suma{sin===1?"":"n"} en pesos pero no en dólares. Editalo{sin===1?"":"s"} y completá el blue de ese día.</span>:null;
+            })()}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
 function PanelAportes(p) {
   var aportes=p.aportes||[], retiros=p.retiros||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var hoy=new Date().toISOString().split("T")[0];
@@ -18475,34 +18592,6 @@ function PanelAportes(p) {
   });
 
   var totalFiltered=filtered.reduce(function(acc,a){return acc+parseFloat(a.monto||0);},0);
-
-  // Cuenta corriente por socio — histórico completo (no lo recorta el filtro de fecha:
-  // un saldo acumulado que solo mirara este mes no diría nada). Sí respeta el local.
-  var ctaCorriente=(function(){
-    var mapa={};
-    function sumar(nombre,campo,monto){
-      var key=(nombre||"").trim().toLowerCase();
-      if(!key)return;
-      if(!mapa[key])mapa[key]={nombre:(nombre||"").trim(),aportado:0,retirado:0,aportadoBienes:0,retiradoBienes:0,aportadoUsd:0,retiradoUsd:0,sinCotiz:0};
-      mapa[key][campo]+=parseFloat(monto||0);
-    }
-    aportes.forEach(function(a){
-      if(filtroLocal!=="all"&&a.local!==filtroLocal)return;
-      sumar(a.socio,"aportado",a.monto);
-      if(!esMovDinero(a))sumar(a.socio,"aportadoBienes",a.monto);
-      if(tieneCotizacion(a))sumar(a.socio,"aportadoUsd",usdDeMov(a));else sumar(a.socio,"sinCotiz",1);
-    });
-    retiros.forEach(function(r){
-      if(filtroLocal!=="all"&&r.local!==filtroLocal)return;
-      sumar(r.socio,"retirado",r.monto);
-      if(!esMovDinero(r))sumar(r.socio,"retiradoBienes",r.monto);
-      if(tieneCotizacion(r))sumar(r.socio,"retiradoUsd",usdDeMov(r));else sumar(r.socio,"sinCotiz",1);
-    });
-    return Object.keys(mapa).map(function(k){
-      var m=mapa[k];
-      return{nombre:m.nombre,aportado:m.aportado,retirado:m.retirado,aportadoBienes:m.aportadoBienes,retiradoBienes:m.retiradoBienes,saldo:m.aportado-m.retirado,aportadoUsd:m.aportadoUsd,retiradoUsd:m.retiradoUsd,saldoUsd:m.aportadoUsd-m.retiradoUsd,sinCotiz:m.sinCotiz};
-    }).sort(function(a,b){return b.aportado-a.aportado;});
-  })();
 
   function partirTipo(t){
     var v=t||"";
@@ -18742,60 +18831,6 @@ function PanelAportes(p) {
           })}
         </div>
       </div>
-
-      {/* Cuenta corriente por socio */}
-      {ctaCorriente.length>0&&(
-        <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 14px",marginBottom:16}}>
-          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:9}}>
-            Cuenta corriente por socio · histórico{filtroLocal!=="all"?" · "+((getLocal(filtroLocal)||{}).nombre||""):" · todos los locales"}
-          </div>
-          <div style={{overflowX:"auto"}}>
-            <div style={{display:"flex",fontSize:9,color:"#7E7E7E",textTransform:"uppercase",paddingBottom:5,borderBottom:"1px solid #1A1A1A",marginBottom:5,minWidth:280}}>
-              <div style={{flex:1}}>Socio</div>
-              <div style={{width:96,textAlign:"right"}}>Aportó</div>
-              <div style={{width:96,textAlign:"right"}}>Retiró</div>
-              <div style={{width:96,textAlign:"right"}}>Saldo</div>
-            </div>
-            {ctaCorriente.map(function(c){
-              return(
-                <div key={c.nombre} style={{display:"flex",fontSize:11,alignItems:"flex-start",padding:"5px 0",minWidth:300,borderTop:"1px solid #141414"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:"#F0EDE8",fontWeight:600}}>{c.nombre}</div>
-                    {(c.aportadoBienes>0||c.retiradoBienes>0)&&(
-                      <div style={{fontSize:9,color:"#9A9A9A"}}>
-                        📦 {c.aportadoBienes>0?"puso $"+Math.round(c.aportadoBienes).toLocaleString("es-AR"):""}
-                        {c.aportadoBienes>0&&c.retiradoBienes>0?" · ":""}
-                        {c.retiradoBienes>0?"sacó $"+Math.round(c.retiradoBienes).toLocaleString("es-AR"):""} en bienes
-                      </div>
-                    )}
-                  </div>
-                  <div style={{width:96,textAlign:"right"}}>
-                    <div style={{color:ACC,fontWeight:700}}>US$ {Math.round(c.aportadoUsd).toLocaleString("es-AR")}</div>
-                    <div style={{fontSize:9,color:"#8C8C8C"}}>${Math.round(c.aportado).toLocaleString("es-AR")}</div>
-                  </div>
-                  <div style={{width:96,textAlign:"right"}}>
-                    <div style={{color:"#8B2FC9",fontWeight:700}}>US$ {Math.round(c.retiradoUsd).toLocaleString("es-AR")}</div>
-                    <div style={{fontSize:9,color:"#8C8C8C"}}>${Math.round(c.retirado).toLocaleString("es-AR")}</div>
-                  </div>
-                  <div style={{width:96,textAlign:"right"}}>
-                    <div style={{color:c.saldoUsd>=0?ACC:"#C1440E",fontWeight:800}}>{c.saldoUsd<0?"−":""}US$ {Math.abs(Math.round(c.saldoUsd)).toLocaleString("es-AR")}</div>
-                    <div style={{fontSize:9,color:"#8C8C8C"}}>{c.saldo<0?"−":""}${Math.abs(Math.round(c.saldo)).toLocaleString("es-AR")}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{fontSize:9,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>
-            Saldo positivo: el socio puso más de lo que sacó. Negativo: sacó más de lo que puso.<br/>
-            El dólar es el <b style={{color:"#8C8C8C"}}>blue del día de cada movimiento</b>, congelado — así $800.000 puestos en 2024 no se comparan de igual a igual con $800.000 puestos hoy.<br/>
-            Incluye los bienes muebles por su valor estimado: cuentan como capital del socio, aunque no hayan pasado por ninguna caja.
-            {(function(){
-              var sin=ctaCorriente.reduce(function(a,c){return a+(c.sinCotiz||0);},0);
-              return sin>0?<span><br/><b style={{color:"#D4A017"}}>⚠️ {sin} movimiento{sin===1?"":"s"} sin cotización cargada</b> — suma{sin===1?"":"n"} en pesos pero no en dólares. Editalo{sin===1?"":"s"} y completá el blue de ese día.</span>:null;
-            })()}
-          </div>
-        </div>
-      )}
 
       {/* Filtros */}
       <div style={{display:"flex",gap:5,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
@@ -26881,12 +26916,14 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🤝 Socios</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["socios_aportes","🤝 Aportes","#3A7D44"],["socios_retiros","💼 Retiros","#8B2FC9"]].map(function(t){
+                {[["socios_aportes","🤝 Aportes","#3A7D44"],["socios_retiros","💼 Retiros","#8B2FC9"],["socios_cuenta","📒 Cuenta corriente","#D4A017"]].map(function(t){
                   var act=vista===t[0];
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
               </div>
-              {vista==="socios_retiros"?(
+              {vista==="socios_cuenta"?(
+                <PanelCuentaCorrienteSocios aportes={aportes} retiros={retiros}/>
+              ):vista==="socios_retiros"?(
                 <PanelRetiros retiros={retiros} aportes={aportes} usuario={cu.nombre}
                   onSave={function(r){var res=sbSaveRetiro(r);setRetiros(function(p){var f=p.filter(function(x){return x.id!==r.id;});return[r,...f];});return res;}}
                   onDelete={function(id){sbDeleteRetiro(id);setRetiros(function(p){return p.filter(function(r){return r.id!==id;});});}}

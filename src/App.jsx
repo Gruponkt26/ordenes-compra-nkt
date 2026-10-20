@@ -4948,6 +4948,45 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
     return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
   });
   var [mesMedios,setMesMedios]=useState("todos");
+  // Todo junto, del mes elegido: lo que entró, lo que salió como retiro y como egreso, y con qué plata se pagó.
+  var esMes=function(f){return mesMedios==="todos"||String(f||"").slice(0,7)===mesMedios;};
+  var entradasT=(deportes||[]).filter(function(x){return ["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado"&&esMes(x.fecha);}).reduce(function(a,x){return a+num(x.monto);},0);
+  var egrDep=(deportes||[]).filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&esMes(x.fecha);});
+  var propioDe=function(medio){var t=String(DEP_MEDIO_TEXTO[medio]||medio||""); if(!t)return true; var l=detectarLocalMedio(t); return !l||l==="dep";};
+  var egresoTotal=egrDep.reduce(function(a,x){return a+num(x.monto);},0)+(extras||[]).filter(function(e){return esMes(e.mes+"-01");}).reduce(function(a,e){return a+e.monto;},0);
+  var egresoCruzado=egrDep.reduce(function(a,x){return a+depMediosDe(x).filter(function(pg){return !propioDe(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);},0)
+    +(extras||[]).filter(function(e){return esMes(e.mes+"-01");}).reduce(function(a,e){return a+e.medios.filter(function(pg){return !propioDe(pg.medio);}).reduce(function(b,pg){return b+pg.monto;},0);},0);
+  var cuentaDep=function(x){return (x.local_cuenta||x.local)==="dep";};
+  var retT=(retiros||[]).filter(function(r){return esMovDinero(r)&&cuentaDep(r)&&esMes(r.fecha);});
+  var aporT=(aportes||[]).filter(function(a){return esMovDinero(a)&&cuentaDep(a)&&esMes(a.fecha);});
+  var sumaM=function(l){return l.reduce(function(a,x){return a+num(x.monto);},0);};
+  var retTotal=sumaM(retT), retEf=sumaM(retT.filter(function(r){return String(r.tipo_retiro||"").indexOf("Caja Mayor")===0;}));
+  var aporTotal=sumaM(aporT), aporEf=sumaM(aporT.filter(function(a){var t=String(a.tipo_aporte||"");return t.indexOf("Efectivo")===0||t.indexOf("Caja Mayor")===0;}));
+  var egresoPropio=egresoTotal-egresoCruzado;
+  var saldoCaja=entradasT+aporTotal-retTotal-egresoPropio;
+  var resultadoT=entradasT-egresoTotal;
+  var filaR=function(izq,der,color,sub,grande){return <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:grande?"9px 0":"6px 0",borderTop:"1px solid #161616"}}><div style={{minWidth:0}}><div style={{fontSize:grande?13:12,color:color||"#C8C8C8",fontWeight:grande?800:600}}>{izq}</div>{sub&&<div style={{fontSize:10,color:"#7E7E7E",marginTop:1}}>{sub}</div>}</div><b style={{fontSize:grande?17:13,color:color||"#F0EDE8",whiteSpace:"nowrap"}}>{der}</b></div>;};
+  var tarjetaTodo=(
+    <div style={{background:"#0F0F0F",border:"1px solid #1E1E1E",borderRadius:12,padding:"10px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:2}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Todo lo de la Concesión</div>
+        <select value={mesMedios} onChange={function(e){setMesMedios(e.target.value);}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontSize:11}}>
+          <option value="todos">Todos los meses</option>
+          {Object.keys(meses).sort().reverse().map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+      </div>
+      {filaR("📥 Entró",fmtP(entradasT),"#3A7D44",aporTotal>0?"más "+fmtP(aporTotal)+" de aportes de socios (💵 "+fmtP(aporEf)+" · 📲 "+fmtP(aporTotal-aporEf)+")":null,true)}
+      {filaR("💼 Salió como retiro de socios",fmtP(retTotal),"#8B2FC9",retTotal>0?"💵 efectivo "+fmtP(retEf)+" · 📲 electrónico "+fmtP(retTotal-retEf):null,true)}
+      {filaR("🧾 Salió como egreso",fmtP(egresoTotal),"#C1440E",null,true)}
+      {filaR("↳ pagado con plata de la Concesión",fmtP(egresoPropio),"#C8C8C8","sus propios medios: Caja Mayor, Belo, Lemon")}
+      {filaR("↳ pagado con medios de otras dependencias",fmtP(egresoCruzado),"#E07B00","queda como cruzado: la Concesión se lo debe")}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,padding:"10px 0 4px",borderTop:"2px solid #222",marginTop:2}}>
+        <div><div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Saldo de caja</div><div style={{fontSize:10,color:"#6E6E6E"}}>entró{aporTotal>0?" + aportes":""} − retiros − egresos pagados con sus medios</div></div>
+        <b style={{fontSize:22,color:saldoCaja<0?"#C1440E":"#F0EDE8"}}>{saldoCaja<0?"−":""}{fmtP(Math.abs(saldoCaja))}</b>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#9A9A9A"}}><span>📊 Resultado (entró − egresos)</span><b style={{color:resultadoT<0?"#C1440E":"#4CAF50"}}>{resultadoT<0?"−":""}{fmtP(Math.abs(resultadoT))}</b></div>
+    </div>
+  );
   var mesesMedios=Object.keys(meses).sort().reverse();
   var filasMedios=tablaMediosConcesion(deportes,extras,aportes,retiros,mesMedios);
   var tarjetaMedios=(
@@ -4996,9 +5035,10 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
       <div style={{fontSize:9,color:"#6E6E6E",marginTop:4,lineHeight:1.4}}>Cobros menos pagos con medios propios, más aportes y menos retiros de socios. Lo pagado con medios de otras dependencias queda como cruzado y no resta.</div>
     </div>
   );
-  if(lista.length===0)return <div style={{display:"flex",flexDirection:"column",gap:10}}>{tarjetaDisp}{tarjetaMedios}<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div></div>;
+  if(lista.length===0)return <div style={{display:"flex",flexDirection:"column",gap:10}}>{tarjetaTodo}{tarjetaDisp}{tarjetaMedios}<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay movimientos de la Concesión.</div></div>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {tarjetaTodo}
       {tarjetaDisp}
       {tarjetaMedios}
       {lista.map(function(t){return(
@@ -8106,7 +8146,7 @@ function PanelDeportes(p){
 
       {/* La caja: entradas y salidas */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-        {DEP_SECCIONES.filter(function(s){return s.principal;}).sort(function(a,b){return (a.id==="resumen"?1:0)-(b.id==="resumen"?1:0);}).map(function(s){
+        {DEP_SECCIONES.filter(function(s){return s.principal&&s.id!=="resumen";}).map(function(s){
           var act=seccion===s.id;
           var tps=depTiposDe(s.id);
           var cuenta=registros.filter(function(x){return tps.indexOf(x.tipo)!==-1;}).length;
@@ -8242,35 +8282,8 @@ function PanelDeportes(p){
 
         return(
           <div>
-            <Bloque titulo="📥 Entró" color="#3A7D44" verbo="cobrar" filas={entradas} total={totalEntradas}/>
-            <Bloque titulo="📤 Salió como egreso" color="#C1440E" verbo="pagar"  filas={salidas}  total={totalSalidas}/>
             {bloqueResumenCaja(aCobrarTotal,aPagarTotal)}
-
-            {tarjetasMes.length>0&&(
-              <div style={{marginTop:18}}>
-                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>📅 Mes por mes</div>
-                {tarjetasMes.map(function(t){return(
-                  <div key={t.m} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 13px",marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-                      <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8",textTransform:"capitalize"}}>{nombreMesDep(t.m)}</div>
-                      <div style={{fontSize:15,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{pesos(Math.abs(t.saldo))}</div>
-                    </div>
-                    <div style={{fontSize:10,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between"}}><span>📥 Entró</span><span>{pesos(t.totE)}</span></div>
-                    {t.ent.map(function(f){return(
-                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
-                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
-                      </div>
-                    );})}
-                    <div style={{fontSize:10,color:"#C1440E",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between",marginTop:8}}><span>📤 Salió</span><span>{pesos(t.totS)}</span></div>
-                    {t.sal.map(function(f){return(
-                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
-                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
-                      </div>
-                    );})}
-                  </div>
-                );})}
-              </div>
-            )}
+            <ResumenConcesion deportes={registros} gastos={p.gastosDep||[]} extras={p.extrasDep||[]} aportes={p.aportesDep||[]} retiros={p.retirosDep||[]}/>
           </div>
         );
       })()}
@@ -26391,7 +26404,7 @@ export default function App() {
   }
   function panelConcesion(){
     return (
-      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()} aportesDep={aportes} retirosDep={retiros}
+      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()} aportesDep={aportes} retirosDep={retiros} gastosDep={gastos}
         onSave={guardarDeporte} onDelete={borrarDeporte}
         sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
         onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}

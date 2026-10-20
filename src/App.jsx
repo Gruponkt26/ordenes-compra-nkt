@@ -8102,29 +8102,41 @@ function PanelDeportes(p){
         {mesesGlobal.map(function(m){return <option key={m} value={m}>{"📅 "+nombreMesDep(m)}</option>;})}
       </select>
 
-      {/* El saldo del predio */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
-        <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Entró</div>
-          <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>${Math.round(totalEntradas).toLocaleString("es-AR")}</div>
-        </div>
-        <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Salió</div>
-          <div style={{fontSize:17,fontWeight:800,color:"#C1440E"}}>${Math.round(totalSalidas).toLocaleString("es-AR")}</div>
-        </div>
-        <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Saldo{filtroMes!=="todos"?" del mes":""}</div>
-          <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>${Math.round(saldo).toLocaleString("es-AR")}</div>
-          {salidasCruzadas>0&&<div style={{fontSize:9,color:"#E07B00",marginTop:2}}>sin ${Math.round(salidasCruzadas).toLocaleString("es-AR")} pagados por otras dependencias</div>}
-        </div>
-      </div>
-      {(aporDepMes>0||retDepMes>0)&&(
-        <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:"#8C8C8C",marginTop:-4,marginBottom:12}}>
-          {retDepMes>0&&<span style={{color:"#8B2FC9"}}>💼 Retiros −${Math.round(retDepMes).toLocaleString("es-AR")} (💵 efectivo ${Math.round(retDepEf).toLocaleString("es-AR")} · 📲 electrónico ${Math.round(retDepMes-retDepEf).toLocaleString("es-AR")})</span>}
-          {aporDepMes>0&&<span style={{color:"#3A7D44"}}>🤝 Aportes +${Math.round(aporDepMes).toLocaleString("es-AR")} (💵 efectivo ${Math.round(aporDepEf).toLocaleString("es-AR")} · 📲 electrónico ${Math.round(aporDepMes-aporDepEf).toLocaleString("es-AR")})</span>}
-          <span>Saldo = entró − salió{retDepMes>0?" − retiros":""}{aporDepMes>0?" + aportes":""}</span>
-        </div>
-      )}
+      {/* El saldo del predio: lo que entró y lo que salió de la CAJA de la Concesión (pagos con sus medios y retiros de socios).
+          Los gastos pagados por otras dependencias no salen de su caja: quedan como cruzado y se ven aparte, abajo. */}
+      {(function(){
+        var pesosD=function(n){return "$"+Math.round(n).toLocaleString("es-AR");};
+        var pagosPropios=totalSalidas-salidasCruzadas;
+        var salioCaja=pagosPropios+retDepMes;
+        var resultadoMes=totalEntradas-totalSalidas;
+        return(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:8}}>
+              <div style={{background:"#0F0F0F",border:"1px solid #3A7D4433",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Entró</div>
+                <div style={{fontSize:17,fontWeight:800,color:"#3A7D44"}}>{pesosD(totalEntradas)}</div>
+                {aporDepMes>0&&<div style={{fontSize:9,color:"#3A7D44",marginTop:2}}>más {pesosD(aporDepMes)} de aportes de socios</div>}
+              </div>
+              <div style={{background:"#0F0F0F",border:"1px solid #C1440E33",borderRadius:10,padding:"10px 12px"}}>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Salió de la caja</div>
+                <div style={{fontSize:17,fontWeight:800,color:"#C1440E"}}>{pesosD(salioCaja)}</div>
+                <div style={{fontSize:9,color:"#9A9A9A",marginTop:2,lineHeight:1.5}}>Pagos con medios propios {pesosD(pagosPropios)}<br/><span style={{color:"#8B2FC9"}}>Retiros de socios {pesosD(retDepMes)}</span></div>
+              </div>
+              <div style={{background:"#0F0F0F",border:"1px solid "+(saldo<0?"#C1440E":"#1A1A1A"),borderRadius:10,padding:"10px 12px"}}>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1}}>Saldo de caja{filtroMes!=="todos"?" del mes":""}</div>
+                <div style={{fontSize:17,fontWeight:800,color:saldo<0?"#C1440E":"#F0EDE8"}}>{saldo<0?"−":""}{pesosD(Math.abs(saldo))}</div>
+                <div style={{fontSize:9,color:"#6E6E6E",marginTop:2}}>entró{aporDepMes>0?" + aportes":""} − salió</div>
+              </div>
+            </div>
+            <div style={{background:"#0C0C0C",border:"1px solid #1A1A1A",borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#9A9A9A",lineHeight:1.7}}>
+              <div>🧾 Gastos de la Concesión {pesosD(totalSalidas)}{salidasCruzadas>0?<span style={{color:"#E07B00"}}> · {pesosD(salidasCruzadas)} los pagaron otras dependencias (queda como cruzado)</span>:null}</div>
+              <div>📊 Resultado ({filtroMes!=="todos"?"del mes":"total"}, entró − gastos): <b style={{color:resultadoMes<0?"#C1440E":"#4CAF50"}}>{resultadoMes<0?"−":""}{pesosD(Math.abs(resultadoMes))}</b></div>
+              {retDepMes>0&&<div style={{color:"#8B2FC9"}}>💼 Retiros {pesosD(retDepMes)} (💵 efectivo {pesosD(retDepEf)} · 📲 electrónico {pesosD(retDepMes-retDepEf)})</div>}
+              {aporDepMes>0&&<div style={{color:"#3A7D44"}}>🤝 Aportes {pesosD(aporDepMes)} (💵 efectivo {pesosD(aporDepEf)} · 📲 electrónico {pesosD(aporDepMes-aporDepEf)})</div>}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Obras, profes y galpón no son el día a día: las obras ya se ven en Salidas y
           los otros dos son fichas que se miran de vez en cuando. Por eso no ocupan una

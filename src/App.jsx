@@ -5156,7 +5156,7 @@ function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras,
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -8242,35 +8242,8 @@ function PanelDeportes(p){
 
         return(
           <div>
-            <Bloque titulo="📥 Entró" color="#3A7D44" verbo="cobrar" filas={entradas} total={totalEntradas}/>
-            <Bloque titulo="📤 Salió como egreso" color="#C1440E" verbo="pagar"  filas={salidas}  total={totalSalidas}/>
             {bloqueResumenCaja(aCobrarTotal,aPagarTotal)}
-
-            {tarjetasMes.length>0&&(
-              <div style={{marginTop:18}}>
-                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>📅 Mes por mes</div>
-                {tarjetasMes.map(function(t){return(
-                  <div key={t.m} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"12px 13px",marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-                      <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8",textTransform:"capitalize"}}>{nombreMesDep(t.m)}</div>
-                      <div style={{fontSize:15,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{pesos(Math.abs(t.saldo))}</div>
-                    </div>
-                    <div style={{fontSize:10,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between"}}><span>📥 Entró</span><span>{pesos(t.totE)}</span></div>
-                    {t.ent.map(function(f){return(
-                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
-                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
-                      </div>
-                    );})}
-                    <div style={{fontSize:10,color:"#C1440E",fontWeight:700,textTransform:"uppercase",letterSpacing:1,display:"flex",justifyContent:"space-between",marginTop:8}}><span>📤 Salió</span><span>{pesos(t.totS)}</span></div>
-                    {t.sal.map(function(f){return(
-                      <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0 3px 8px"}}>
-                        <span>{f.label} <span style={{color:"#6E6E6E"}}>({f.n})</span></span><span style={{color:"#F0EDE8",fontWeight:600}}>{pesos(f.monto)}</span>
-                      </div>
-                    );})}
-                  </div>
-                );})}
-              </div>
-            )}
+            <ResumenConcesion deportes={registros} gastos={p.gastosDep||[]} extras={p.extrasDep||[]} aportes={p.aportesDep||[]} retiros={p.retirosDep||[]}/>
           </div>
         );
       })()}
@@ -26391,7 +26364,7 @@ export default function App() {
   }
   function panelConcesion(){
     return (
-      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()} aportesDep={aportes} retirosDep={retiros}
+      <PanelDeportes deportes={deportes} usuario={cu.nombre} extrasDep={extrasDeConcesion()} aportesDep={aportes} retirosDep={retiros} gastosDep={gastos}
         onSave={guardarDeporte} onDelete={borrarDeporte}
         sueldosDep={sueldosDep} onSaveSueldoDep={guardarSueldoDep} onDeleteSueldoDep={borrarPauta}
         onSaveRetiroDep={function(r){sbSaveRetiro(r);setRetiros(function(prev){var f=prev.filter(function(x){return x.id!==r.id;});return[r,...f];});}}

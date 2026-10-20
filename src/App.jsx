@@ -26375,7 +26375,7 @@ export default function App() {
     var sigMes=function(per){ var a=String(per||"").split("-"), y=parseInt(a[0],10), m=parseInt(a[1],10); if(!y||!m)return ""; m++; if(m>12){m=1;y++;} return y+"-"+(m<10?"0"+m:m); };
     (sueldos||[]).filter(function(s){return s.local==="dep"&&(s.estado==="pagado"||s.estado==="parcial");}).forEach(function(s){
       // Si el pago ya generó su egreso (egr_sueldo_<id>_...), se muestra ése y no la fila del sueldo: así no se cuenta dos veces.
-      if((gastos||[]).some(function(g){return g.local==="dep"&&String(g.id).indexOf("egr_sueldo_"+s.id+"_")===0;}))return;
+      if((gastos||[]).some(function(g){return g.local==="dep"&&(String(g.id)==="egr_sueldo_"+s.id||String(g.id).indexOf("egr_sueldo_"+s.id+"_")===0);}))return;
       var emp=(empleados||[]).find(function(e){return e.id===s.empleado_id;});
       var monto=s.estado==="parcial"?(parseFloat(s.monto_parcial)||0):(parseFloat(s.monto)||0);
       if(monto<=0)return;

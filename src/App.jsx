@@ -9143,6 +9143,42 @@ function EditorCategoriasGastos(p) {
 // ─── PANEL GASTOS ─────────────────────────────────────────────────────────────
 
 // ─── PANEL EGRESOS ────────────────────────────────────────────────────────────
+// Los egresos de la Oficina se guardan partidos en tres (una parte por local, 50/30/20), así que a nombre de la Oficina no queda
+// nada. Para verlos enteros, como un solo egreso por el total, se juntan las tres partes: el detalle dice cuánto puso cada local.
+function agruparEgresosOficina(gastos){
+  var mapa={}, orden=[];
+  (gastos||[]).filter(esParteOficinaGasto).forEach(function(g){
+    var base=String(g.id).replace(/_l[123]$/,"");
+    var m=mapa[base];
+    if(!m){
+      m={...g,id:base+"_of",local:"l4",monto:0,pagos:[],_porLocal:{},
+         subramo:String(g.subramo||"").replace(/\s*·?\s*Oficina (50|30|20)%/,"").replace(/^ · /,"")};
+      mapa[base]=m; orden.push(base);
+    }
+    var mt=parseFloat(g.monto)||0;
+    m.monto+=mt;
+    m._porLocal[g.local]=(m._porLocal[g.local]||0)+mt;
+    (g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago||"",monto:mt}]).forEach(function(pg){
+      var ya=m.pagos.find(function(x){return x.medio===pg.medio&&!!x.deuda===!!pg.deuda;});
+      if(ya)ya.monto=(parseFloat(ya.monto)||0)+(parseFloat(pg.monto)||0);
+      else m.pagos.push({...pg,monto:parseFloat(pg.monto)||0});
+    });
+  });
+  return orden.map(function(b){
+    var m=mapa[b];
+    var partes=[["l1","Bodegón"],["l3","Colantonio's"],["l2","Kusama"]].filter(function(t){return (m._porLocal[t[0]]||0)>0;})
+      .map(function(t){return t[1]+" $"+Math.round(m._porLocal[t[0]]).toLocaleString("es-AR");}).join(" · ");
+    m.detalle="Pagado entre los locales: "+partes;
+    m.forma_pago=m.pagos.length===1?m.pagos[0].medio:"Varios medios";
+    return m;
+  });
+}
+// Lo que muestra Egresos del mes para cada dependencia: la Oficina, además de lo que tenga a su nombre, junta todo lo que pagaron los locales por ella.
+function gastosEgresosDe(gastos,lid){
+  var propios=(gastos||[]).filter(function(g){return g.local===lid;});
+  return lid==="l4"?propios.concat(agruparEgresosOficina(gastos)):propios;
+}
+
 var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Adquisiciones","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
@@ -9740,7 +9776,7 @@ function PanelEgresos(p){
         {/* Pestañas por local — clickear un local lleva a su pantalla única */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8,marginBottom:12}}>
           {LOCALES.concat([CONCESION]).map(function(l){
-            var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
+            var gl=gastosEgresosDe(gastos,l.id).filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;});
             var mpArr=mesFiltroGrid.split("-");var mpY=parseInt(mpArr[0]);var mpM=parseInt(mpArr[1])-1;if(mpM===0){mpM=12;mpY--;}
             var perAnt=mpY+"-"+(mpM<10?"0"+mpM:String(mpM));
             var hasSG=gl.some(function(g){return(g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g)&&(!g.subramo||!g.subramo.startsWith("Aguinaldo"));});
@@ -9775,7 +9811,7 @@ function PanelEgresos(p){
         {/* Pantalla única del local seleccionado */}
         <div style={{maxWidth:640,margin:"0 auto"}}>
           {LOCALES.concat([CONCESION]).filter(function(l){return l.id===localGrid;}).map(function(l){
-            var gl=gastos.filter(function(g){return g.local===l.id&&g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+            var gl=gastosEgresosDe(gastos,l.id).filter(function(g){return g.fecha&&g.fecha.slice(0,7)===mesFiltroGrid;}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
             var rl=(p.retiros||[]).filter(function(r){return r.local===l.id&&r.fecha&&r.fecha.slice(0,7)===mesFiltroGrid;});
             // Sueldos del mes anterior (julio aparece en agosto)
             var mesParts=mesFiltroGrid.split("-");var mesY=parseInt(mesParts[0]);var mesM=parseInt(mesParts[1])-1;if(mesM===0){mesM=12;mesY--;}

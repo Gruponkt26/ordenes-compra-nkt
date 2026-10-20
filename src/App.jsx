@@ -18234,6 +18234,34 @@ function PanelCierre(p) {
 }
 
 // ─── PANEL RETIROS ────────────────────────────────────────────────────────────
+// Total por socio de la lista que se está viendo (respeta el mes y la dependencia elegidos arriba).
+function TotalesPorSocio({lista, color, titulo}){
+  var mapa={};
+  (lista||[]).forEach(function(x){
+    var k=String(x.socio||"").trim().toLowerCase()||"(sin nombre)";
+    var m=mapa[k]||(mapa[k]={nombre:String(x.socio||"").trim()||"(sin nombre)",total:0,bienes:0,n:0});
+    var v=parseFloat(x.monto)||0;
+    m.total+=v; m.n++;
+    if(x.clase==="bien")m.bienes+=v;
+  });
+  var filas=Object.keys(mapa).map(function(k){return mapa[k];}).sort(function(a,b){return b.total-a.total;});
+  if(filas.length===0)return null;
+  var gran=filas.reduce(function(a,f){return a+f.total;},0);
+  var pesos=function(n){return "$"+Math.round(n).toLocaleString("es-AR");};
+  return(
+    <div style={{background:"#0F0F0F",border:"1px solid "+color+"33",borderRadius:12,padding:"11px 14px",marginBottom:14}}>
+      <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,marginBottom:6}}>{titulo}</div>
+      {filas.map(function(f){return(
+        <div key={f.nombre} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12.5,padding:"4px 0",borderTop:"1px solid #141414"}}>
+          <span style={{color:"#F0EDE8",fontWeight:600}}>{f.nombre}<span style={{color:"#6E6E6E",fontWeight:400,fontSize:10}}> · {f.n} movimiento{f.n===1?"":"s"}{f.bienes>0?" · incluye "+pesos(f.bienes)+" en bienes":""}</span></span>
+          <b style={{color:color}}>{pesos(f.total)}</b>
+        </div>
+      );})}
+      <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6,fontSize:13,fontWeight:800,color:"#F0EDE8"}}><span>Total</span><span>{pesos(gran)}</span></div>
+    </div>
+  );
+}
+
 function PanelRetiros(p) {
   var retiros=p.retiros||[], aportes=p.aportes||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var hoy=new Date().toISOString().split("T")[0];
@@ -18522,6 +18550,7 @@ function PanelRetiros(p) {
         );})}
       </div>
 
+      <TotalesPorSocio lista={filtered} color="#8B2FC9" titulo="Total retirado por socio · lo que se ve abajo"/>
       {/* Lista */}
       {filtered.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}>
@@ -18984,6 +19013,7 @@ function PanelAportes(p) {
         );})}
       </div>
 
+      <TotalesPorSocio lista={filtered} color="#3A7D44" titulo="Total aportado por socio · lo que se ve abajo"/>
       {/* Lista */}
       {filtered.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}>

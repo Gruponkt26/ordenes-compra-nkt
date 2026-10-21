@@ -13496,7 +13496,14 @@ function PanelNovedades(p){
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
                   {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}{comp("mer",true)}</div>}
-                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}</div>
+                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}
+                    {(function(){
+                      var cl=cajaLibre&&cajaLibre.filas.find(function(r){return r.dep.id===f.lugar.id;});
+                      var falta=cl?cl.sueldos:0;
+                      var MES_N=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1];
+                      return <div style={{fontSize:9,color:"#6E6E6E",marginTop:2,lineHeight:1.35}}>lo pagado este mes de los sueldos de {MES_N}{falta>0?<span style={{color:"#D4A017"}}><br/>falta pagar {fmt(falta)}</span>:null}</div>;
+                    })()}
+                  </div>
                   <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}{comp("otros",true)}</div>
                   <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}{comp("res",false)}</div>
                 </div>

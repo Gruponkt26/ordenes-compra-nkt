@@ -12989,6 +12989,7 @@ function PanelNovedades(p){
         &&!gs.some(function(g){return g.id==="egcaja_"+c.id;});
     }).sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
   })();
+  var [conDeudaCostos,setConDeudaCostos]=useState(false); // Costos por lugar: false = sin los pagos de deuda de meses anteriores
   var [ivaAnterior,setIvaAnterior]=useState(false); // false: mes en curso | true: mes anterior (el que se declara)
   var [iniVal,setIniVal]=useState({});
   var mesCaja=hoyReal.substring(0,7);
@@ -13320,15 +13321,18 @@ function PanelNovedades(p){
     var pc=function(o,k){return (o&&o[k])||0;};
     var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
       var x=(dg.locales||{})[l.id]||{porCat:{}};
-      var lab=pc(x.porCat,"Sueldos")+pc(x.porCat,"Aguinaldos")+pc(x.porCat,"F.931");
-      var mer=pc(x.porCat,"Proveedores");
-      return {lugar:l,ventas:x.ventas||0,lab:lab,mer:mer,otros:Math.max(0,(x.gastos||0)-lab-mer),res:x.resultado||0};
+      var sd=sinDeudaCostos?(x.porCatDeuda||{}):{};
+      var deudaTot=Object.keys(sd).reduce(function(a,k){return a+sd[k];},0);
+      var lab=pc(x.porCat,"Sueldos")+pc(x.porCat,"Aguinaldos")+pc(x.porCat,"F.931")-pc(sd,"Sueldos")-pc(sd,"Aguinaldos")-pc(sd,"F.931");
+      var mer=pc(x.porCat,"Proveedores")-pc(sd,"Proveedores");
+      return {lugar:l,ventas:x.ventas||0,lab:lab,mer:mer,otros:Math.max(0,(x.gastos||0)-deudaTot-lab-mer),res:(x.resultado||0)+deudaTot,deuda:deudaTot};
     });
     var c=dg.conc||{porCat:{}};
     var labC=pc(c.porCat,"Sueldos")+pc(c.porCat,"Aguinaldos")+pc(c.porCat,"F.931");
     filas.push({lugar:CONCESION,ventas:c.ing||0,lab:labC,mer:0,otros:Math.max(0,(c.egr||0)-labC),res:c.res||0});
     return filas;
   }
+  var sinDeudaCostos=!conDeudaCostos;   // por defecto, sin los pagos de deuda de meses anteriores
   var costosLugar=filasCostos(dg);
   var costosPrev=p.comparaCostos?filasCostos(p.datosPrev):null, costosAnio=p.comparaCostos?filasCostos(p.datosAnio):null;
 
@@ -13469,6 +13473,9 @@ function PanelNovedades(p){
       {costosLugar&&(
         <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:2}}>📈 Costos por lugar · {mesEnCurso}, hasta hoy</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+            <button onClick={function(){setConDeudaCostos(!conDeudaCostos);}} style={{background:!conDeudaCostos?"#3A7D4422":"none",border:"1px solid "+(!conDeudaCostos?"#3A7D4488":"#2A2A2A"),borderRadius:7,color:!conDeudaCostos?"#4C9A5A":"#8C8C8C",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>{!conDeudaCostos?"✓ Sin pagos de deuda de meses anteriores":"Con los pagos de deuda"}</button>
+          </div>
           <button onClick={function(){p.onComparaCostos&&p.onComparaCostos(!p.comparaCostos);}} style={{background:p.comparaCostos?"#1A6B8A22":"none",border:"1px solid #1A6B8A55",borderRadius:7,color:"#1A6B8A",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer",marginBottom:6}}>{p.comparaCostos?"✕ Sin comparar":"↔️ Comparar con el mes anterior y el año pasado"}</button>
           {p.comparaCostos&&(!costosPrev||!costosAnio)&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Calculando la comparación…</div>}
           {p.comparaCostos&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Las flechas son puntos de porcentaje contra el mes anterior completo y el mismo mes del año pasado. Rojo = empeoró (más gasto o menos resultado). El laboral del mes en curso se ve más bajo porque todavía no se pagaron los sueldos.</div>}
@@ -13494,6 +13501,7 @@ function PanelNovedades(p){
                   <span style={{fontSize:12.5,fontWeight:700,color:f.lugar.color}}>{f.lugar.emoji} {f.lugar.nombre}</span>
                   <span style={{fontSize:11,color:"#9A9A9A"}}>{f.lugar.id==="dep"?"ingresos ":"ventas "}<b style={{color:"#F0EDE8"}}>{fmt(f.ventas)}</b></span>
                 </div>
+                {f.deuda>0.5&&<div style={{fontSize:9.5,color:"#D4A017"}}>No cuenta {fmt(f.deuda)} de pagos de deuda de meses anteriores</div>}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
                   {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}{comp("mer",true)}</div>}
                   <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}
@@ -19860,7 +19868,7 @@ function PanelResultados(p){
     var movSocios=aportesModMonto-retirosTotales;    // neto del mes: + puso, − sacó
     // Adelantos de sueldo del mes (ya sumados en totalGastos; se usan en Disponibilidad)
     var adelantosMesLocal=eg.adelantosMesLocal, adelantosMonto=eg.adelantosMonto;
-    var porCat={};
+    var porCat={}, porCatDeuda={};   // porCatDeuda: lo que de cada área fue pago de deuda de meses anteriores
     gl.forEach(function(g){
       var cat=(function(){
         var a=(g.area&&g.area.trim())||"";
@@ -19873,6 +19881,8 @@ function PanelResultados(p){
       // Separar aguinaldos de sueldos
       if(cat==="Sueldos"&&g.subramo&&g.subramo.startsWith("Aguinaldo"))cat="Aguinaldos";
       porCat[cat]=(porCat[cat]||0)+parseFloat(g.monto||0);
+      var dmD=montoDeudaDeGasto(g);
+      if(dmD>0)porCatDeuda[cat]=(porCatDeuda[cat]||0)+dmD;
     });
     // Los retiros ya no entran a porCat: no son una categoría de gasto, son movimiento de socios.
     // El IIBB calculado va a Administrativo —ahí vive "Ingresos Brutos" en el árbol de áreas—
@@ -20281,7 +20291,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,arrastrePendienteBruto:arrastreBruto,arrastrePendienteNeto:arrastreNeto,arrastrePendientePorFecha,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{porCatDeuda,debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,arrastrePendienteBruto:arrastreBruto,arrastrePendienteNeto:arrastreNeto,arrastrePendientePorFecha,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -20339,7 +20349,7 @@ function PanelResultados(p){
     localesFiltro.forEach(function(l){
       var d=datos[l.id]||{};
       out.locales[l.id]={ventas:d.ventasCorregidas||0,gastos:d.totalGastos||0,resultado:d.resultado||0,dispEf:d.dispEfectivo||0,dispEl:d.dispElectronicoHoy||0,
-        cajon:d.efectivoCajon||0,porCat:d.porCat||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0};
+        cajon:d.efectivoCajon||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0};
     });
     var js=JSON.stringify(out);
     if(js===ultimoEnvioRef.current)return;

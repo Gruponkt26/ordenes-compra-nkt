@@ -13291,8 +13291,8 @@ function PanelNovedades(p){
   var DEPS_CAJA=LOCALES.filter(function(l){return l.id!=="l4";}).concat([CONCESION]);
   var cajaLibre=(function(){
     if(!dg)return null;
-    var porDep={}, sinLocal={venc15:0,vencido:0};
-    DEPS_CAJA.forEach(function(l){ porDep[l.id]={dep:l,disp:0,venc15:0,vencido:0,sueldos:0}; });
+    var porDep={}, sinLocal={vencido:0,v15:0,v30:0};
+    DEPS_CAJA.forEach(function(l){ porDep[l.id]={dep:l,disp:0,vencido:0,sueldosPrev:0,v15:0,v30:0,nomina:0}; });
     DEPS_CAJA.forEach(function(l){
       if(l.id==="dep")porDep.dep.disp=((dg.conc||{}).disp||{}).total||0;
       else{ var x=(dg.locales||{})[l.id]; if(x)porDep[l.id].disp=x.dispEf+x.dispEl; }
@@ -13300,19 +13300,35 @@ function PanelNovedades(p){
     function repartir(lid,campo,m){
       if(lid==="l4"){ [["l1",0.5],["l3",0.3],["l2",0.2]].forEach(function(r){porDep[r[0]][campo]+=m*r[1];}); }
       else if(porDep[lid])porDep[lid][campo]+=m;
-      else if(campo!=="sueldos")sinLocal[campo]+=m;
+      else if(sinLocal[campo]!==undefined)sinLocal[campo]+=m;
     }
-    avisosVencimientos(vencimientos,15).forEach(function(a){ repartir(a.v&&a.v.local,a.dias<0?"vencido":"venc15",a.monto||0); });
-    faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,hoyN.substring(0,7)).filter(function(i){return i.per===perSueldos;})
-      .forEach(function(i){ repartir(i.emp.local,"sueldos",i.falta||0); });
+    // Vencimientos: vencidos ("Ya"), de hoy a 15 días y de 16 a 30 días.
+    avisosVencimientos(vencimientos,30).forEach(function(a){
+      repartir(a.v&&a.v.local,a.dias<0?"vencido":(a.dias<=15?"v15":"v30"),a.monto||0);
+    });
+    // Sueldos: lo que falta de los del mes vencido ("Ya") y la nómina del mes en curso, que se paga el mes que viene.
+    var faltSueldos=faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,hoyN.substring(0,7));
+    faltSueldos.filter(function(i){return i.per===perSueldos;}).forEach(function(i){ repartir(i.emp.local,"sueldosPrev",i.falta||0); });
+    var nominaItems=faltSueldos.filter(function(i){return i.per===mesEnCurso;});
+    nominaItems.forEach(function(i){ repartir(i.emp.local,"nomina",i.falta||0); });
+    var activos=empleados.filter(function(e){return e.activo!==false;});
+    var sinPlanilla=activos.filter(function(e){return !(p.planillaSueldos||[]).some(function(x){return x.empleado_id===e.id&&String(x.anio)+"-"+("0"+(parseInt(x.mes,10)+1)).slice(-2)===mesEnCurso&&String(x.tipo||"").indexOf("ag_")!==0&&(parseFloat(x.monto)||0)>0;});}).length;
     var filas=DEPS_CAJA.map(function(l){
-      var r=porDep[l.id]; r.comp=r.venc15+r.vencido+r.sueldos; r.libre=r.disp-r.comp;
-      r.estado=r.comp<=0?(r.disp<0?"rojo":"verde"):(r.disp<r.comp?"rojo":(r.disp<r.comp*1.5?"amarillo":"verde"));
+      var r=porDep[l.id];
+      r.ya=r.vencido+r.sueldosPrev; r.c15=r.ya+r.v15; r.c30=r.c15+r.v30+r.nomina;
+      r.libreYa=r.disp-r.ya; r.libre15=r.disp-r.c15; r.libre30=r.disp-r.c30;
+      r.estado=r.libre15<0?"rojo":(r.libre30<0?"amarillo":"verde");
       return r;
     });
     var disp=filas.reduce(function(a,r){return a+r.disp;},0);
-    var comp=filas.reduce(function(a,r){return a+r.comp;},0)+sinLocal.venc15+sinLocal.vencido+totalProv;
-    return {filas:filas,disp:disp,comp:comp,libre:disp-comp,sinLocal:sinLocal.venc15+sinLocal.vencido,prov:totalProv,cruzados:pendientesDeSaldar(p.gastos||[])};
+    var sum=function(k){return filas.reduce(function(a,r){return a+r[k];},0);};
+    var yaT=sum("ya")+sinLocal.vencido+totalProv;
+    var c15T=yaT+sum("v15")+sinLocal.v15;
+    var c30T=c15T+sum("v30")+sinLocal.v30+sum("nomina");
+    return {filas:filas,disp:disp,prov:totalProv,
+      ya:yaT,c15:c15T,c30:c30T,libreYa:disp-yaT,libre15:disp-c15T,libre30:disp-c30T,
+      sinLocal:sinLocal.vencido+sinLocal.v15+sinLocal.v30,sinPlanilla:sinPlanilla,
+      cruzados:pendientesDeSaldar(p.gastos||[])};
   })();
 
   // ── Costos por lugar, en porcentaje de las ventas del mes en curso.
@@ -13430,27 +13446,43 @@ function PanelNovedades(p){
         </div>
       )}
 
-      {/* Caja libre del grupo: lo disponible menos lo comprometido a corto plazo */}
+      {/* Caja libre del grupo: lo disponible menos lo comprometido, a tres plazos: ya, 15 días y 30 días */}
       {(function(){
         var col={rojo:"#E0714A",amarillo:"#D4A017",verde:"#4C9A5A"};
+        var M=function(n){return (n<0?"−":"")+fmt(Math.abs(n));};
+        var cc=function(n){return n<0?"#E0714A":"#F0EDE8";};
         return(
           <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
             <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>💰 Caja libre del grupo</div>
             {!cajaLibre?<div style={{fontSize:12,color:"#6E6E6E"}}>Calculando…</div>:(
               <div>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap",marginBottom:2}}>
-                  <span style={{fontSize:26,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cajaLibre.libre<0?"#E0714A":"#F0EDE8"}}>{cajaLibre.libre<0?"−":""}{fmt(Math.abs(cajaLibre.libre))}</span>
-                  <span style={{fontSize:11,color:"#8C8C8C"}}>libres = {fmt(cajaLibre.disp)} disponibles − {fmt(cajaLibre.comp)} comprometidos</span>
+                <div style={{fontSize:11,color:"#8C8C8C",marginBottom:6}}>Disponible hoy (efectivo en Caja Mayor y cuentas): <b style={{color:"#F0EDE8"}}>{fmt(cajaLibre.disp)}</b></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:6}}>
+                  {[["Ya",cajaLibre.libreYa,cajaLibre.ya,"lo vencido, sueldos de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1]+" y proveedores"],
+                    ["A 15 días",cajaLibre.libre15,cajaLibre.c15,"más lo que vence en 15 días"],
+                    ["A 30 días",cajaLibre.libre30,cajaLibre.c30,"más vencimientos hasta 30 días y la nómina de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(mesEnCurso.substring(5,7),10)-1]]].map(function(t){
+                    return(
+                      <div key={t[0]} style={{background:"#101010",border:"1px solid "+(t[1]<0?"#E0714A55":"#1A1A1A"),borderRadius:10,padding:"9px 10px"}}>
+                        <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>Libre {t[0].toLowerCase()}</div>
+                        <div style={{fontSize:19,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cc(t[1])}}>{M(t[1])}</div>
+                        <div style={{fontSize:9,color:"#6E6E6E",lineHeight:1.35}}>comprometido {fmt(t[2])}<br/>{t[3]}</div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Disponible: efectivo en Caja Mayor y plata en cuentas, hoy. Comprometido: vencimientos de los próximos 15 días, lo vencido sin pagar, sueldos que faltan{cajaLibre.prov>0?" y deuda con proveedores ("+fmt(cajaLibre.prov)+")":""}{cajaLibre.sinLocal>0?" · "+fmt(cajaLibre.sinLocal)+" de vencimientos sin local asignado":""}.</div>
+                <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>{cajaLibre.prov>0?"Incluye "+fmt(cajaLibre.prov)+" de deuda con proveedores en «Ya». ":""}{cajaLibre.sinLocal>0?fmt(cajaLibre.sinLocal)+" de vencimientos sin local asignado. ":""}{cajaLibre.sinPlanilla>0?"⚠️ A "+cajaLibre.sinPlanilla+" empleado"+(cajaLibre.sinPlanilla===1?"":"s")+" le falta cargar el sueldo de este mes en la planilla: la nómina a 30 días queda corta. ":""}El F.931 de este mes se suma cuando se cargue.</div>
                 {cajaLibre.filas.map(function(r){
                   return(
                     <div key={r.dep.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"6px 0",borderTop:"1px solid #151515"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:12.5,fontWeight:700,color:r.dep.color}}><span style={{color:col[r.estado]}}>●</span> {r.dep.emoji} {r.dep.nombre}</div>
-                        <div style={{fontSize:10,color:"#7E7E7E"}}>disponible {fmt(r.disp)} · compromete {fmt(r.comp)}{r.vencido>0?" (vencido "+fmt(r.vencido)+")":""}{r.sueldos>0?" · sueldos "+fmt(r.sueldos):""}</div>
+                        <div style={{fontSize:10,color:"#7E7E7E"}}>disponible {fmt(r.disp)} · ya {fmt(r.ya)} · 15 días {fmt(r.c15)} · 30 días {fmt(r.c30)}</div>
                       </div>
-                      <b style={{fontSize:14,color:r.libre<0?"#E0714A":"#F0EDE8",whiteSpace:"nowrap"}}>{r.libre<0?"−":""}{fmt(Math.abs(r.libre))}</b>
+                      <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11}}>
+                        <div style={{color:cc(r.libreYa)}}>ya <b>{M(r.libreYa)}</b></div>
+                        <div style={{color:cc(r.libre15)}}>15d <b>{M(r.libre15)}</b></div>
+                        <div style={{color:cc(r.libre30)}}>30d <b>{M(r.libre30)}</b></div>
+                      </div>
                     </div>
                   );
                 })}

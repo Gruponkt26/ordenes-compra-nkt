@@ -5218,6 +5218,63 @@ async function bvDescifrar(key,x){
   var pl=await crypto.subtle.decrypt({name:"AES-GCM",iv:bvDeB64(x.iv)},key,bvDeB64(x.ct));
   return JSON.parse(new TextDecoder().decode(pl));
 }
+// Lee un texto pegado con el formato de la planilla vieja ("* SECCIÓN", títulos en mayúsculas, "Usuario: …", "Contraseña: …")
+// y arma las entradas para la bóveda. No guarda nada: devuelve la lista para revisar.
+function bvCategoriaDe(sec){
+  var t=String(sec||"").toLowerCase();
+  if(/correo|mail/.test(t))return BV_CATS[0];
+  if(/banco|mercado pago|fondo|inversi|payway|galicia|patagonia|naaloo|naloo/.test(t))return BV_CATS[1];
+  if(/afip|arba|arca|agip|municip/.test(t))return BV_CATS[2];
+  if(/maxirest|sistema|plataforma/.test(t))return BV_CATS[3];
+  if(/instagram|pinterest|facebook|tiktok|red/.test(t))return BV_CATS[4];
+  if(/internet|coop|el[eé]ctric|luz|gas|agua|proveedor|tienda|servicio/.test(t))return BV_CATS[5];
+  return BV_CATS[6];
+}
+function bvParsear(texto){
+  var lineas=String(texto||"").replace(/\r/g,"").split("\n").map(function(l){
+    return l.replace(/\[([^\]]*)\]\(mailto:[^)]*\)/g,"$1").replace(/\\([_*\-])/g,"$1").trim();
+  });
+  var out=[], sec="", cur=null;
+  function cerrar(){
+    if(cur&&(cur.usuario||cur.clave||cur.notas.length||cur.titulo)){
+      var serv=cur.titulo||(sec?sec.replace(/^\*+\s*/,""):"Sin título")+(cur.usuario?" · "+cur.usuario:"");
+      out.push({servicio:serv.trim(),categoria:bvCategoriaDe(sec+" "+cur.titulo),usuario:cur.usuario||"",clave:cur.clave||"",url:"",notas:cur.notas.join("\n")});
+    }
+    cur=null;
+  }
+  function nuevo(t){ cerrar(); cur={titulo:t||"",usuario:"",clave:"",notas:[],pri:99}; }
+  var PRI={usuario:1,acceso:2,mail:3,email:3,cuit:4};
+  function esTitulo(l){
+    if(!l||/:/.test(l)||/@/.test(l)||l.charAt(0)==="*")return false;
+    var letras=l.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g,"");
+    if(letras.length<3)return false;
+    var may=l.replace(/[^A-ZÁÉÍÓÚÑ]/g,"").length;
+    return may/letras.length>0.6;
+  }
+  for(var i=0;i<lineas.length;i++){
+    var l=lineas[i], prev=i>0?lineas[i-1]:"";
+    if(!l){ if(cur&&(cur.usuario||cur.clave))cerrar(); continue; }
+    if(l.charAt(0)==="*"&&!/:/.test(l)&&(prev===""||i===0)){ cerrar(); sec=l.replace(/^\*+\s*/,""); continue; }
+    if(l.charAt(0)==="*"){ if(cur)cur.notas.push(l.replace(/^\*+\s*/,"")); else if(out.length)out[out.length-1].notas=(out[out.length-1].notas?out[out.length-1].notas+"\n":"")+l.replace(/^\*+\s*/,""); continue; }
+    if(esTitulo(l)){ nuevo(l); continue; }
+    if(!cur)nuevo("");
+    var m=l.match(/^([^:]{1,40}):\s*(.*)$/);
+    if(m){
+      var k=m[1].trim().toLowerCase(), v=m[2].trim();
+      var nota=""; var pm=v.match(/\s*\(([^)]*actualizad[^)]*)\)/i); if(pm){ nota=pm[1]; v=v.replace(pm[0],"").trim(); }
+      if(/^(contrase[ñn]a|clave|contra|password|pass)$/.test(k)){ cur.clave=v; if(nota)cur.notas.push(nota); }
+      else if(PRI[k]){
+        if(PRI[k]<cur.pri){ if(cur.usuario)cur.notas.push((cur.ku||"Dato")+": "+cur.usuario); cur.usuario=v; cur.pri=PRI[k]; cur.ku=m[1].trim(); } else cur.notas.push(m[1].trim()+": "+v);
+        if(nota)cur.notas.push(nota);
+      }
+      else if(!v){ if(!cur.titulo&&!cur.usuario&&!cur.clave)cur.titulo=m[1].trim(); else cur.notas.push(m[1].trim()); }
+      else cur.notas.push(m[1].trim()+": "+v+(nota?" ("+nota+")":""));
+    } else if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l)&&!cur.usuario){ cur.usuario=l; cur.pri=3; }
+    else cur.notas.push(l);
+  }
+  cerrar();
+  return out;
+}
 function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
   var [key,setKey]=useState(null);
   var [pass,setPass]=useState(""); var [pass2,setPass2]=useState("");
@@ -5227,6 +5284,7 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
   var [ver,setVer]=useState({});
   var [copiado,setCopiado]=useState("");
   var [buscar,setBuscar]=useState("");
+  var [imp,setImp]=useState(null);   // {texto, filas} al importar desde texto pegado
   var COL="#C1440E";
   var INPb={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
@@ -5306,9 +5364,38 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
     <div>
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar…" style={{...INPb,flex:1,minWidth:160}}/>
+        {!form&&!imp&&<button onClick={function(){setImp({texto:"",filas:null});}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>📥 Importar texto</button>}
         {!form&&<button onClick={function(){setForm({id:"",servicio:"",categoria:BV_CATS[0],usuario:"",clave:"",url:"",notas:""});}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
         <button onClick={function(){setKey(null);setVer({});}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>🔒 Bloquear</button>
       </div>
+      {imp&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
+          {!imp.filas?(<div>
+            <div style={{fontSize:12,color:"#B8B8B8",marginBottom:6}}>Pegá el texto con tus claves (secciones con *, títulos en mayúsculas, "Usuario:" y "Contraseña:"). Primero lo revisás y recién después se guarda, cifrado.</div>
+            <textarea rows={8} value={imp.texto} onChange={function(e){var v=e.target.value;setImp(function(x){return{...x,texto:v};});}} style={{...INPb,resize:"vertical",marginBottom:8}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){var f=bvParsear(imp.texto).map(function(x){return{...x,ok:true};});if(!f.length){alert("No encontré nada para importar.");return;}setImp(function(x){return{...x,filas:f};});}} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Revisar</button>
+              <button onClick={function(){setImp(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>):(<div>
+            <div style={{fontSize:12,color:"#B8B8B8",marginBottom:8}}>Encontré {imp.filas.length} entradas. Destildá las que no quieras. (No se muestran las claves.)</div>
+            {imp.filas.map(function(f,i){return(
+              <label key={i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"5px 0",borderBottom:"1px solid #161616",cursor:"pointer"}}>
+                <input type="checkbox" checked={f.ok} onChange={function(){setImp(function(x){return{...x,filas:x.filas.map(function(y,j){return j===i?{...y,ok:!y.ok}:y;})};});}}/>
+                <span style={{fontSize:12,color:"#F0EDE8"}}>{f.servicio} <span style={{color:"#7E7E7E"}}>· {f.categoria}{f.usuario?" · "+f.usuario:""}{f.clave?"":" · sin clave"}</span></span>
+              </label>);})}
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <button onClick={async function(){
+                var sel=imp.filas.filter(function(f){return f.ok;});
+                var base=Date.now();
+                for(var i=0;i<sel.length;i++){var f=sel[i];var c=await bvCifrar(key,{servicio:f.servicio,categoria:f.categoria,usuario:f.usuario,clave:f.clave,url:"",notas:f.notas});onSaveItem({id:"bv_"+base+"_"+i,iv:c.iv,ct:c.ct});}
+                setImp(null);
+              }} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar {imp.filas.filter(function(f){return f.ok;}).length} cifradas</button>
+              <button onClick={function(){setImp(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>)}
+        </div>
+      )}
       {form&&(
         <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>

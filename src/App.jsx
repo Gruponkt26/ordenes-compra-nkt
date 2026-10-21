@@ -13284,6 +13284,52 @@ function PanelNovedades(p){
   var totalVencido=deudaRubros.reduce(function(a,x){return a+x.vencido;},0);
   var totalDeuda=totalVencido+totalProv;
 
+  // ── Caja libre del grupo: lo disponible en cada dependencia menos lo que ya está comprometido (vencimientos de los próximos 15 días, lo vencido
+  // sin pagar y los sueldos que faltan). Los números del mes salen de Resultados, que corre oculto y los pasa por datosGrupo.
+  var dg=p.datosGrupo||null;
+  var DEPS_CAJA=LOCALES.filter(function(l){return l.id!=="l4";}).concat([CONCESION]);
+  var cajaLibre=(function(){
+    if(!dg)return null;
+    var porDep={}, sinLocal={venc15:0,vencido:0};
+    DEPS_CAJA.forEach(function(l){ porDep[l.id]={dep:l,disp:0,venc15:0,vencido:0,sueldos:0}; });
+    DEPS_CAJA.forEach(function(l){
+      if(l.id==="dep")porDep.dep.disp=((dg.conc||{}).disp||{}).total||0;
+      else{ var x=(dg.locales||{})[l.id]; if(x)porDep[l.id].disp=x.dispEf+x.dispEl; }
+    });
+    function repartir(lid,campo,m){
+      if(lid==="l4"){ [["l1",0.5],["l3",0.3],["l2",0.2]].forEach(function(r){porDep[r[0]][campo]+=m*r[1];}); }
+      else if(porDep[lid])porDep[lid][campo]+=m;
+      else if(campo!=="sueldos")sinLocal[campo]+=m;
+    }
+    avisosVencimientos(vencimientos,15).forEach(function(a){ repartir(a.v&&a.v.local,a.dias<0?"vencido":"venc15",a.monto||0); });
+    faltantesDeSueldos(empleados,p.planillaSueldos,p.sueldos,p.adelantos,hoyN.substring(0,7)).filter(function(i){return i.per===perSueldos;})
+      .forEach(function(i){ repartir(i.emp.local,"sueldos",i.falta||0); });
+    var filas=DEPS_CAJA.map(function(l){
+      var r=porDep[l.id]; r.comp=r.venc15+r.vencido+r.sueldos; r.libre=r.disp-r.comp;
+      r.estado=r.comp<=0?(r.disp<0?"rojo":"verde"):(r.disp<r.comp?"rojo":(r.disp<r.comp*1.5?"amarillo":"verde"));
+      return r;
+    });
+    var disp=filas.reduce(function(a,r){return a+r.disp;},0);
+    var comp=filas.reduce(function(a,r){return a+r.comp;},0)+sinLocal.venc15+sinLocal.vencido+totalProv;
+    return {filas:filas,disp:disp,comp:comp,libre:disp-comp,sinLocal:sinLocal.venc15+sinLocal.vencido,prov:totalProv,cruzados:pendientesDeSaldar(p.gastos||[])};
+  })();
+
+  // ── Costos por lugar, en porcentaje de las ventas del mes en curso.
+  var costosLugar=(function(){
+    if(!dg)return null;
+    var pc=function(o,k){return (o&&o[k])||0;};
+    var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+      var x=(dg.locales||{})[l.id]||{porCat:{}};
+      var lab=pc(x.porCat,"Sueldos")+pc(x.porCat,"Aguinaldos")+pc(x.porCat,"F.931");
+      var mer=pc(x.porCat,"Proveedores");
+      return {lugar:l,ventas:x.ventas||0,lab:lab,mer:mer,otros:Math.max(0,(x.gastos||0)-lab-mer),res:x.resultado||0};
+    });
+    var c=dg.conc||{porCat:{}};
+    var labC=pc(c.porCat,"Sueldos")+pc(c.porCat,"Aguinaldos")+pc(c.porCat,"F.931");
+    filas.push({lugar:CONCESION,ventas:c.ing||0,lab:labC,mer:0,otros:Math.max(0,(c.egr||0)-labC),res:c.res||0});
+    return filas;
+  })();
+
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
   var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
   var totalAportes=aportesR.reduce(function(a,x){return a+parseFloat(x.monto||0);},0);
@@ -13378,6 +13424,70 @@ function PanelNovedades(p){
         </div>
       )}
 
+      {/* Caja libre del grupo: lo disponible menos lo comprometido a corto plazo */}
+      {(function(){
+        var col={rojo:"#E0714A",amarillo:"#D4A017",verde:"#4C9A5A"};
+        return(
+          <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
+            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>💰 Caja libre del grupo</div>
+            {!cajaLibre?<div style={{fontSize:12,color:"#6E6E6E"}}>Calculando…</div>:(
+              <div>
+                <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap",marginBottom:2}}>
+                  <span style={{fontSize:26,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cajaLibre.libre<0?"#E0714A":"#F0EDE8"}}>{cajaLibre.libre<0?"−":""}{fmt(Math.abs(cajaLibre.libre))}</span>
+                  <span style={{fontSize:11,color:"#8C8C8C"}}>libres = {fmt(cajaLibre.disp)} disponibles − {fmt(cajaLibre.comp)} comprometidos</span>
+                </div>
+                <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Disponible: efectivo en Caja Mayor y plata en cuentas, hoy. Comprometido: vencimientos de los próximos 15 días, lo vencido sin pagar, sueldos que faltan{cajaLibre.prov>0?" y deuda con proveedores ("+fmt(cajaLibre.prov)+")":""}{cajaLibre.sinLocal>0?" · "+fmt(cajaLibre.sinLocal)+" de vencimientos sin local asignado":""}.</div>
+                {cajaLibre.filas.map(function(r){
+                  return(
+                    <div key={r.dep.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"6px 0",borderTop:"1px solid #151515"}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:12.5,fontWeight:700,color:r.dep.color}}><span style={{color:col[r.estado]}}>●</span> {r.dep.emoji} {r.dep.nombre}</div>
+                        <div style={{fontSize:10,color:"#7E7E7E"}}>disponible {fmt(r.disp)} · compromete {fmt(r.comp)}{r.vencido>0?" (vencido "+fmt(r.vencido)+")":""}{r.sueldos>0?" · sueldos "+fmt(r.sueldos):""}</div>
+                      </div>
+                      <b style={{fontSize:14,color:r.libre<0?"#E0714A":"#F0EDE8",whiteSpace:"nowrap"}}>{r.libre<0?"−":""}{fmt(Math.abs(r.libre))}</b>
+                    </div>
+                  );
+                })}
+                {cajaLibre.cruzados.length>0&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #151515"}}>
+                    <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>↔️ Entre dependencias (cruzados) · no cambia el total del grupo</div>
+                    {cajaLibre.cruzados.map(function(c,i){
+                      var d=getLocal(c.deudor)||{}, a=getLocal(c.acreedor)||{};
+                      return <div key={i} style={{fontSize:11,color:"#B8B8B8"}}>{d.emoji} {d.nombre} le debe {fmt(c.m)} a {a.emoji} {a.nombre}{c.tipo==="oficina"?" (Oficina)":""}</div>;
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Costos por lugar, en porcentaje de las ventas del mes */}
+      {costosLugar&&(
+        <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
+          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:2}}>📈 Costos por lugar · {mesEnCurso}, hasta hoy</div>
+          <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Sobre lo vendido en el mes. Laboral: sueldos, aguinaldos y F.931. Mercadería: compras a proveedores. Los sueldos se pagan mes vencido, así que el laboral se va completando a medida que se cargan.</div>
+          {costosLugar.map(function(f){
+            var pcj=function(n){return f.ventas>0?(n/f.ventas*100).toFixed(1).replace(".",",")+"%":"—";};
+            return(
+              <div key={f.lugar.id} style={{padding:"7px 0",borderTop:"1px solid #151515"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}>
+                  <span style={{fontSize:12.5,fontWeight:700,color:f.lugar.color}}>{f.lugar.emoji} {f.lugar.nombre}</span>
+                  <span style={{fontSize:11,color:"#9A9A9A"}}>{f.lugar.id==="dep"?"ingresos ":"ventas "}<b style={{color:"#F0EDE8"}}>{fmt(f.ventas)}</b></span>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
+                  {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}</div>}
+                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}</div>
+                  <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}</div>
+                  <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
         var avisos=[];
@@ -13437,6 +13547,42 @@ function PanelNovedades(p){
         retiros.filter(function(r){return enRango(r.fecha);}).forEach(function(r){
           var l=getLocal(r.local);
           avisos.push({socio:true,txt:"Retiro de "+(r.socio||"socio")+" — "+fmt(parseFloat(r.monto)||0)+(r.tipo_retiro?" · "+r.tipo_retiro:"")+(l?" · "+l.nombre:"")+" ("+fmtDate(r.fecha)+")"});
+        });
+        // ── Señales de control: lo que no cierra o se sale de lo normal, con los números del mes que calcula Resultados.
+        if(dg){
+          LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+            var x=(dg.locales||{})[l.id]; if(!x)return;
+            if(x.dispEf+x.dispEl<-0.5)avisos.push({rojo:true,txt:"Disponible en negativo en "+l.nombre+": "+fmt(x.dispEf+x.dispEl)+" (revisá medios de pago, cierres y retiros)"});
+            if(x.retiros>0&&x.retiros>Math.max(x.resultado,0)+0.5)avisos.push({rojo:false,txt:"Retiros de socios en "+l.nombre+" ("+fmt(x.retiros)+") superan la ganancia del mes ("+fmt(Math.max(x.resultado,0))+")"});
+          });
+          var cc=dg.conc||{};
+          if(((cc.disp||{}).total||0)<-0.5)avisos.push({rojo:true,txt:"Disponible en negativo en Concesión NKT: "+fmt((cc.disp||{}).total)});
+          if((cc.ret||0)>0&&cc.ret>Math.max(cc.res||0,0)+0.5)avisos.push({rojo:false,txt:"Retiros de socios en Concesión NKT ("+fmt(cc.ret)+") superan la ganancia del mes ("+fmt(Math.max(cc.res||0,0))+")"});
+        }
+        pendientesDeSaldar(p.gastos||[]).forEach(function(c){
+          var d=getLocal(c.deudor)||{nombre:c.deudor}, a=getLocal(c.acreedor)||{nombre:c.acreedor};
+          avisos.push({rojo:false,txt:"Cruzado sin saldar: "+d.nombre+" le debe "+fmt(c.m)+" a "+a.nombre});
+        });
+        var sinMedio=(p.gastos||[]).filter(function(g){
+          return String(g.fecha||"").substring(0,7)===mesEnCurso&&!esGastoDeuda(g)&&!(g.pagos&&g.pagos.length>0)&&!String(g.forma_pago||"").trim()&&(parseFloat(g.monto)||0)>0;
+        });
+        if(sinMedio.length>0)avisos.push({rojo:false,txt:sinMedio.length+" egreso"+(sinMedio.length===1?"":"s")+" del mes sin medio de pago ("+fmt(sinMedio.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0))+"): no bajan ninguna caja"});
+        // Ventas de ayer muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas).
+        LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+          var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===ayer;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+          if(vAyer<=0)return;
+          var previos=[1,2,3,4].map(function(k){
+            var f=fechaLocal(new Date(new Date(ayer+"T00:00:00").getTime()-k*7*86400000));
+            return cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+          }).filter(function(v){return v>0;});
+          if(previos.length<2)return;
+          var prom=previos.reduce(function(a,v){return a+v;},0)/previos.length;
+          if(vAyer<prom*0.6)avisos.push({rojo:false,txt:"Ventas bajas en "+l.nombre+" ayer: "+fmt(vAyer)+" vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(ayer+"T00:00:00").getDay()]+" normal"});
+        });
+        // Lo más grave primero: rojo, después lo amarillo, y al final las noticias (aportes, retiros, buenas noticias).
+        avisos.sort(function(a,b){
+          var r=function(x){return x.rojo?0:((x.socio||x.verde)?2:1);};
+          return r(a)-r(b);
         });
         if(avisos.length===0)return null;
         var hayRojo=avisos.some(function(a){return a.rojo;});
@@ -20160,6 +20306,21 @@ function PanelResultados(p){
   var totalGastos=localesFiltro.reduce(function(a,l){return a+datos[l.id].totalGastos;},0)+concEg;
   var totalResultado=totalVentas-totalGastos;
 
+  // Para Novedades: cuando este panel corre (oculto), le pasa los números del mes de cada dependencia. Solo avisa si algo cambió.
+  var ultimoEnvioRef=useRef("");
+  useEffect(function(){
+    if(!p.onDatos)return;
+    var out={mes:mesFiltro,locales:{},conc:{ing:concIng,egr:concEg,res:concRes,disp:concDisp,porCat:concPorCat,apo:concApo,ret:concRet}};
+    localesFiltro.forEach(function(l){
+      var d=datos[l.id]||{};
+      out.locales[l.id]={ventas:d.ventasCorregidas||0,gastos:d.totalGastos||0,resultado:d.resultado||0,dispEf:d.dispEfectivo||0,dispEl:d.dispElectronicoHoy||0,
+        cajon:d.efectivoCajon||0,porCat:d.porCat||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0};
+    });
+    var js=JSON.stringify(out);
+    if(js===ultimoEnvioRef.current)return;
+    ultimoEnvioRef.current=js;
+    p.onDatos(out);
+  });
   function fmt(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");}
 
   // Vista detalle por local
@@ -25801,6 +25962,7 @@ export default function App() {
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
+  var [datosGrupo,setDatosGrupo]=useState(null);   // números del mes de cada dependencia, que calcula Resultados y Novedades usa
   var [retiros,setRetiros]=useState([]);
   var [aportes,setAportes]=useState([]);
   var [adelantos,setAdelantos]=useState([]);
@@ -27081,7 +27243,15 @@ export default function App() {
 
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <div style={{display:"none"}}>
+              <PanelResultados onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+            </div>
+          )}
+          {esSofia&&modulo==="novedades"&&(
+            <PanelNovedades datosGrupo={datosGrupo} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

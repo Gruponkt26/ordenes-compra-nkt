@@ -14858,6 +14858,7 @@ function PanelVencimientos(p){
   var [verTodos,setVerTodos]=useState(false); // la lista general, sin filtro de mes
   var [buscar,setBuscar]=useState("");
   var [mesTodos,setMesTodos]=useState(""); // filtro de mes de la vista general; "" = todos
+  var [verPagados,setVerPagados]=useState(false); // en "Todo lo cargado": mostrar también lo que ya está pago
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent<VENC_DESDE?VENC_DESDE:mesCurrent);
@@ -16844,8 +16845,16 @@ function PanelVencimientos(p){
           ms.forEach(function(m){ if(m&&mesesTodos.indexOf(m)<0)mesesTodos.push(m); });
         });
         mesesTodos.sort();
+        // Lo que ya está pago: un plan sin cuotas pendientes, un vencimiento con todas sus cuotas pagadas, uno de una sola
+        // vez cuyo pago ya se registró, o uno mensual que ya se pagó este mes.
+        function estaPago(v){
+          if(esPlan(v))return !cuotasPlan(v).some(function(c){return !c.pago&&c.vence;});
+          var cd=cuotasDe(v); if(cd&&cd.completo)return true;
+          return !!pagoDelPeriodo(v,v.recurrente?mesCurrent:periodoDe(v.fecha));
+        }
         var todos=vencimientos.filter(function(v){
           if(v.activo===false)return false;
+          if(!verPagados&&estaPago(v))return false;
           if(!caeEn(v,mesTodos))return false;
           if(!texto)return true;
           return [v.concepto,v.referencia,v.nro_plan,v.notas,grupoDeL(v.grupo).corto,v.debito_cbu].join(" ").toLowerCase().indexOf(texto)>=0;
@@ -16884,6 +16893,7 @@ function PanelVencimientos(p){
                 {mesesTodos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
               </select>
             </div>
+            <label style={{display:"flex",gap:6,fontSize:11,color:"#B8B8B8",marginBottom:10,cursor:"pointer"}}><input type="checkbox" checked={verPagados} onChange={function(){setVerPagados(!verPagados);}}/> Mostrar también lo que ya está pago ({vencimientos.filter(function(v){return v.activo!==false&&estaPago(v);}).length})</label>
             {mesTodos&&(
               <div style={{fontSize:10,color:"#8C8C8C",marginBottom:10,marginTop:-4}}>
                 Lo que cae en {mesTodos}. Los de todos los meses aparecen siempre; el monto y la fecha que se muestran siguen siendo los del próximo impago.
@@ -16923,7 +16933,7 @@ function PanelVencimientos(p){
                           <div style={{textAlign:"right"}}>
                             <div style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmt(importe(v))}</div>
                             <div style={{fontSize:9,color:vencido?"#C1440E":"#8C8C8C",marginTop:2}}>
-                              {px==="9999-99-99"?"todo pagado":(vencido?"vencía "+fmtDate(px):"próximo "+fmtDate(px))}
+                              {estaPago(v)?"✓ pagado":(px==="9999-99-99"?"todo pagado":(vencido?"vencía "+fmtDate(px):"próximo "+fmtDate(px)))}
                             </div>
                             <div style={{display:"flex",gap:5,justifyContent:"flex-end",marginTop:6}}>
                               {px!=="9999-99-99"&&(

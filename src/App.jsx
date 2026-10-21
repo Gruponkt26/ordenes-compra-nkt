@@ -5098,12 +5098,12 @@ function diasHasta(fecha){
 function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
   var loc=getLocal(localId)||{};
   var todos=(docs||[]).filter(function(d){return d.local===localId;});
-  var lista=todos.filter(function(d){return (d.seccion||"importante")===secId;});
   var [form,setForm]=useState(null);   // documento que se está cargando o editando
   var [subiendo,setSubiendo]=useState(false);
   var [buscar,setBuscar]=useState("");
   var [secId,setSecId]=useState("importante");
   var sec=DOC_SECCIONES.find(function(x){return x.id===secId;})||DOC_SECCIONES[0];
+  var lista=todos.filter(function(d){return (d.seccion||"importante")===secId;});
   var INPd={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
   function nuevo(){ setForm({id:"",seccion:secId,nombre:"",categoria:"otros",descripcion:"",modo:"drive",url:"",vence:""}); }

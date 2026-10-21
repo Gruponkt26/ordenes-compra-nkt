@@ -5083,6 +5083,13 @@ var DOC_CATEGORIAS=[
   {id:"impuestos",label:"💰 Impuestos y contador"},{id:"personal",label:"👥 Personal"},{id:"proveedores",label:"🚚 Proveedores"},
   {id:"obra",label:"🏗️ Planos y obra"},{id:"facturas",label:"🧾 Facturas y comprobantes"},{id:"otros",label:"📄 Otros"},
 ];
+var DOC_SECCIONES=[
+  {id:"importante",label:"📌 Documentación importante",cats:DOC_CATEGORIAS},
+  {id:"grafica",label:"🎨 Gráfica y diseño",cats:[
+    {id:"logos",label:"🔖 Logos y marca"},{id:"carta",label:"🍽️ Cartas y menús"},{id:"fotos",label:"📷 Fotos y videos"},
+    {id:"redes",label:"📱 Redes sociales"},{id:"carteleria",label:"🪧 Cartelería y vía pública"},{id:"packaging",label:"📦 Packaging y papelería"},
+    {id:"otros",label:"📄 Otros"}]},
+];
 function diasHasta(fecha){
   if(!fecha)return null;
   var d=new Date(String(fecha).substring(0,10)+"T00:00:00"), h=new Date(new Date().toISOString().substring(0,10)+"T00:00:00");
@@ -5090,13 +5097,16 @@ function diasHasta(fecha){
 }
 function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
   var loc=getLocal(localId)||{};
-  var lista=(docs||[]).filter(function(d){return d.local===localId;});
+  var todos=(docs||[]).filter(function(d){return d.local===localId;});
+  var lista=todos.filter(function(d){return (d.seccion||"importante")===secId;});
   var [form,setForm]=useState(null);   // documento que se está cargando o editando
   var [subiendo,setSubiendo]=useState(false);
   var [buscar,setBuscar]=useState("");
+  var [secId,setSecId]=useState("importante");
+  var sec=DOC_SECCIONES.find(function(x){return x.id===secId;})||DOC_SECCIONES[0];
   var INPd={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
-  function nuevo(){ setForm({id:"",nombre:"",categoria:"otros",descripcion:"",modo:"drive",url:"",vence:""}); }
+  function nuevo(){ setForm({id:"",seccion:secId,nombre:"",categoria:"otros",descripcion:"",modo:"drive",url:"",vence:""}); }
   function elegirArchivo(e){
     var f=e.target.files&&e.target.files[0]; if(!f)return;
     setSubiendo(true);
@@ -5111,13 +5121,19 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
     if(!form.nombre.trim()){alert("Poné un nombre para el documento.");return;}
     if(!form.url.trim()){alert("Falta el archivo o el vínculo de Drive.");return;}
     var id=form.id||("doc_"+Date.now());
-    onSave({id:id,local:localId,nombre:form.nombre.trim(),categoria:form.categoria,descripcion:form.descripcion||"",url:form.url.trim(),modo:form.modo,archivo:form.archivo||"",vence:form.vence||"",usuario:usuario||"",fecha:form.fecha||new Date().toISOString().substring(0,10)});
+    onSave({id:id,local:localId,seccion:form.seccion||secId,nombre:form.nombre.trim(),categoria:form.categoria,descripcion:form.descripcion||"",url:form.url.trim(),modo:form.modo,archivo:form.archivo||"",vence:form.vence||"",usuario:usuario||"",fecha:form.fecha||new Date().toISOString().substring(0,10)});
     setForm(null);
   }
   var q=buscar.trim().toLowerCase();
   var visibles=lista.filter(function(d){return !q||(d.nombre+" "+(d.descripcion||"")).toLowerCase().indexOf(q)!==-1;});
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+        {DOC_SECCIONES.map(function(x){
+          var act=x.id===secId, n=todos.filter(function(d){return (d.seccion||"importante")===x.id;}).length;
+          return <button key={x.id} onClick={function(){setSecId(x.id);setForm(null);}} style={{padding:"7px 13px",borderRadius:8,border:"1px solid "+(act?(loc.color||"#1A6B8A"):"#2A2A2A"),background:act?(loc.color||"#1A6B8A")+"22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{x.label} <span style={{opacity:.6,fontWeight:400}}>({n})</span></button>;
+        })}
+      </div>
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder={"Buscar en los documentos de "+(loc.nombre||"este lugar")+"…"} style={{...INPd,flex:1,minWidth:180}}/>
         {!form&&<button onClick={nuevo} style={{padding:"8px 14px",borderRadius:8,border:"none",background:loc.color||"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar documento</button>}
@@ -5128,7 +5144,7 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
             <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Nombre</label><input value={form.nombre} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,nombre:v};});}} placeholder="Ej: Habilitación municipal 2026" style={INPd}/></div>
             <div><label style={lbl}>Categoría</label>
               <select value={form.categoria} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,categoria:v};});}} style={INPd}>
-                {DOC_CATEGORIAS.map(function(c){return <option key={c.id} value={c.id}>{c.label}</option>;})}
+                {sec.cats.map(function(c){return <option key={c.id} value={c.id}>{c.label}</option>;})}
               </select></div>
             <div><label style={lbl}>Vence (opcional)</label><input type="date" value={form.vence} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,vence:v};});}} style={INPd}/></div>
             <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Descripción (opcional)</label><input value={form.descripcion} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,descripcion:v};});}} placeholder="Qué es, a nombre de quién, número…" style={INPd}/></div>
@@ -5151,8 +5167,8 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
           </div>
         </div>
       )}
-      {lista.length===0&&!form&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay documentos de {loc.nombre||"este lugar"}.</div>}
-      {DOC_CATEGORIAS.map(function(c){
+      {lista.length===0&&!form&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay nada en {sec.label} de {loc.nombre||"este lugar"}.</div>}
+      {sec.cats.map(function(c){
         var items=visibles.filter(function(d){return (d.categoria||"otros")===c.id;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
         if(items.length===0)return null;
         return(

@@ -14838,6 +14838,65 @@ function PanelNovedades(p){
   );
 }
 
+// Pasa a la Concesión vencimientos (y sus planes de pago) que se cargaron en otro local, como los del gremio y la obra
+// social del empleado de la Concesión. Se llevan tal cual —cuotas, pagos, notas—, así que quedan en Vencimientos y en Deuda
+// de la Concesión; los egresos ya generados por sus pagos también cambian de local.
+function TraerAConcesion({vencimientos, gastos, onSave, onSaveEgreso}){
+  var [abierto,setAbierto]=useState(false);
+  var [todos,setTodos]=useState(false);
+  var [marcados,setMarcados]=useState({});
+  var [hecho,setHecho]=useState("");
+  var reDep=/utedy?c|ospedy?c|ospedic|utedic/i;
+  function esDep(v){ return reDep.test([v.concepto,v.referencia,v.notas,v.subramo].join(" ")); }
+  var cand=(vencimientos||[]).filter(function(v){
+    if(v.local==="dep")return false;
+    if(esDep(v))return true;
+    return todos&&(v.grupo==="gremio"||v.grupo==="obra_social");
+  });
+  var nSel=cand.filter(function(v){return marcados[v.id];}).length;
+  function egresosDe(v){
+    var ids=[];
+    (v.pagos||[]).forEach(function(pg){if(pg&&pg.egreso_id)ids.push(pg.egreso_id);});
+    (v.cuotas_plan||[]).forEach(function(c){if(c&&c.pago&&c.pago.egreso_id)ids.push(c.pago.egreso_id);});
+    return ids;
+  }
+  function pasar(){
+    var sel=cand.filter(function(v){return marcados[v.id];});
+    if(!sel.length)return;
+    if(!window.confirm("¿Pasar "+sel.length+" vencimiento"+(sel.length===1?"":"s")+" a la Concesión NKT?\n\nSe llevan con sus cuotas y pagos, y los egresos que ya generaron también pasan a la Concesión.")) return;
+    var movidos=0;
+    sel.forEach(function(v){
+      egresosDe(v).forEach(function(eid){
+        var g=(gastos||[]).find(function(x){return x.id===eid;});
+        if(g&&g.local!=="l4"&&g.local!=="dep")onSaveEgreso({...g,local:"dep",area:g.area});
+      });
+      onSave({...v,local:"dep"}); movidos++;
+    });
+    setMarcados({}); setHecho("Pasé "+movidos+" a la Concesión.");
+  }
+  return(
+    <div style={{background:"#0F0F0F",border:"1px solid #D4A01744",borderRadius:12,padding:"10px 12px",marginBottom:12}}>
+      <div onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",gap:8}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>📥 Traer de otro local (UTEDYC / OSPEDYC){cand.length>0&&<span style={{color:"#8C8C8C",fontWeight:400}}> · {cand.length} encontrado{cand.length===1?"":"s"}</span>}</div>
+        <span style={{color:"#8C8C8C",fontSize:12}}>{abierto?"▲":"▼"}</span>
+      </div>
+      {hecho&&<div style={{fontSize:12,color:"#4C9A5A",marginTop:6}}>✓ {hecho}</div>}
+      {abierto&&(
+        <div style={{marginTop:8}}>
+          <div style={{fontSize:11,color:"#8C8C8C",marginBottom:6}}>Busca en los otros locales lo que dice UTEDYC u OSPEDYC. Si no está, tildá abajo para ver todo el gremio y la obra social.</div>
+          <label style={{display:"flex",gap:6,fontSize:11,color:"#B8B8B8",marginBottom:6,cursor:"pointer"}}><input type="checkbox" checked={todos} onChange={function(){setTodos(!todos);}}/> Ver también todo lo de gremio y obra social de los otros locales</label>
+          {cand.length===0&&<div style={{fontSize:12,color:"#6E6E6E",padding:"6px 0"}}>No encontré nada para traer.</div>}
+          {cand.map(function(v){var l=getLocal(v.local);return(
+            <label key={v.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:"1px solid #161616",cursor:"pointer"}}>
+              <input type="checkbox" checked={!!marcados[v.id]} onChange={function(){setMarcados(function(m){var n={...m};n[v.id]=!n[v.id];return n;});}}/>
+              <span style={{fontSize:12,color:"#F0EDE8"}}>{v.concepto||"(sin concepto)"} <span style={{color:"#7E7E7E"}}>· {l?l.emoji+" "+l.nombre:v.local}{v.tipo==="plan"?" · plan de pago":""}{v.monto?" · $"+Math.round(v.monto).toLocaleString("es-AR"):""}</span></span>
+            </label>);})}
+          {cand.length>0&&<button onClick={pasar} disabled={!nSel} style={{marginTop:9,padding:"8px 14px",borderRadius:8,border:"none",background:nSel?"#D4A017":"#2A2A2A",color:"#0A0A0A",fontWeight:800,fontSize:12,cursor:nSel?"pointer":"default"}}>Pasar {nSel||""} a la Concesión</button>}
+        </div>
+      )}
+    </div>
+  );
+}
 function PanelVencimientos(p){
   // Con localFijo (cuando se abre desde el módulo Locales) sólo se ven y se cargan los vencimientos de ese local.
   var vencTodos=p.vencimientos||[];
@@ -15658,6 +15717,7 @@ function PanelVencimientos(p){
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {p.localFijo==="dep"&&<TraerAConcesion vencimientos={vencTodos} gastos={p.gastos} onSave={p.onSave} onSaveEgreso={onSaveEgreso}/>}
       {diag&&(
         <div style={{background:"#0A0A14",border:"1px solid #1A6B8A66",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>

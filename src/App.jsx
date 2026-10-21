@@ -5202,7 +5202,10 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
 
 // Bóveda "Importante": claves, mails y cuentas. Todo se cifra en el navegador (AES-GCM, clave derivada con PBKDF2 de una
 // contraseña maestra que no se guarda en ningún lado): en la base queda solo texto cifrado.
-var BV_CATS=["✉️ Mails","🏦 Bancos y billeteras","🏛️ AFIP / ARCA y organismos","🌐 Sistemas y plataformas","📱 Redes sociales","📶 Servicios y proveedores","📄 Otros"];
+var BV_CATS=["✉️ Correos","🏦 Bancos","💳 Billeteras","🏛️ AFIP / ARBA","🌐 Sistemas","📱 Redes","📶 Servicios","📄 Otros"];
+// Nombres de las categorías de la primera versión, para que lo ya guardado caiga en la pestaña que corresponde.
+var BV_CATS_VIEJAS={"✉️ Mails":0,"🏦 Bancos y billeteras":1,"🏛️ AFIP / ARCA y organismos":3,"🌐 Sistemas y plataformas":4,"📱 Redes sociales":5,"📶 Servicios y proveedores":6};
+function bvCatDe(d){ var c=d&&d.categoria; if(BV_CATS.indexOf(c)>=0)return c; return BV_CATS[BV_CATS_VIEJAS[c]!==undefined?BV_CATS_VIEJAS[c]:BV_CATS.length-1]; }
 function bvB64(buf){var a=new Uint8Array(buf),t="";for(var i=0;i<a.length;i++)t+=String.fromCharCode(a[i]);return btoa(t);}
 function bvDeB64(str){var t=atob(str),a=new Uint8Array(t.length);for(var i=0;i<t.length;i++)a[i]=t.charCodeAt(i);return a;}
 async function bvDerivar(pass,salt){
@@ -5223,12 +5226,13 @@ async function bvDescifrar(key,x){
 function bvCategoriaDe(sec){
   var t=String(sec||"").toLowerCase();
   if(/correo|mail/.test(t))return BV_CATS[0];
-  if(/banco|mercado pago|fondo|inversi|payway|galicia|patagonia|naaloo|naloo/.test(t))return BV_CATS[1];
-  if(/afip|arba|arca|agip|municip/.test(t))return BV_CATS[2];
-  if(/maxirest|sistema|plataforma/.test(t))return BV_CATS[3];
-  if(/instagram|pinterest|facebook|tiktok|red/.test(t))return BV_CATS[4];
-  if(/internet|coop|el[eé]ctric|luz|gas|agua|proveedor|tienda|servicio/.test(t))return BV_CATS[5];
-  return BV_CATS[6];
+  if(/mercado pago|payway|cocos|naaloo|naloo|billetera|fondo|inversi|lemon|belo/.test(t))return BV_CATS[2];
+  if(/banco|galicia|patagonia|provincia/.test(t))return BV_CATS[1];
+  if(/afip|arba|arca|agip|municip/.test(t))return BV_CATS[3];
+  if(/maxirest|sistema|plataforma/.test(t))return BV_CATS[4];
+  if(/instagram|pinterest|facebook|tiktok|red/.test(t))return BV_CATS[5];
+  if(/internet|coop|el[eé]ctric|luz|gas|agua|proveedor|tienda|servicio/.test(t))return BV_CATS[6];
+  return BV_CATS[7];
 }
 function bvParsear(texto){
   var lineas=String(texto||"").replace(/\r/g,"").split("\n").map(function(l){
@@ -5284,6 +5288,7 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
   var [ver,setVer]=useState({});
   var [copiado,setCopiado]=useState("");
   var [buscar,setBuscar]=useState("");
+  var [pest,setPest]=useState("todos");   // pestaña: todos o una categoría
   var [imp,setImp]=useState(null);   // {texto, filas} al importar desde texto pegado
   var COL="#C1440E";
   var INPb={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
@@ -5359,13 +5364,19 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
     );
   }
   var q=buscar.trim().toLowerCase();
-  var vis=datos.filter(function(d){return !q||(d.servicio+" "+d.usuario+" "+(d.notas||"")).toLowerCase().indexOf(q)!==-1;});
+  var vis=datos.filter(function(d){return (pest==="todos"||bvCatDe(d)===pest)&&(!q||(d.servicio+" "+d.usuario+" "+(d.notas||"")).toLowerCase().indexOf(q)!==-1);});
   return(
     <div>
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+        {[["todos","Todo"]].concat(BV_CATS.map(function(c){return [c,c];})).map(function(t){
+          var act=pest===t[0], n=t[0]==="todos"?datos.length:datos.filter(function(d){return bvCatDe(d)===t[0];}).length;
+          return <button key={t[0]} onClick={function(){setPest(t[0]);}} style={{padding:"6px 11px",borderRadius:8,border:"1px solid "+(act?COL:"#2A2A2A"),background:act?COL+"22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]} <span style={{opacity:.6,fontWeight:400}}>({n})</span></button>;
+        })}
+      </div>
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar…" style={{...INPb,flex:1,minWidth:160}}/>
         {!form&&!imp&&<button onClick={function(){setImp({texto:"",filas:null});}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>📥 Importar texto</button>}
-        {!form&&<button onClick={function(){setForm({id:"",servicio:"",categoria:BV_CATS[0],usuario:"",clave:"",url:"",notas:""});}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
+        {!form&&<button onClick={function(){setForm({id:"",servicio:"",categoria:pest==="todos"?BV_CATS[0]:pest,usuario:"",clave:"",url:"",notas:""});}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
         <button onClick={function(){setKey(null);setVer({});}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>🔒 Bloquear</button>
       </div>
       {imp&&(
@@ -5414,7 +5425,7 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
       )}
       {datos.length===0&&!form&&<div style={{textAlign:"center",padding:"26px 0",color:"#6E6E6E"}}>Todavía no hay nada guardado. Tocá <b>+ Agregar</b>.</div>}
       {BV_CATS.map(function(c){
-        var its=vis.filter(function(d){return (d.categoria||BV_CATS[0])===c;}).sort(function(a,b){return String(a.servicio).localeCompare(String(b.servicio));});
+        var its=vis.filter(function(d){return bvCatDe(d)===c;}).sort(function(a,b){return String(a.servicio).localeCompare(String(b.servicio));});
         if(its.length===0)return null;
         return(
           <div key={c} style={{marginBottom:12}}>
@@ -5425,7 +5436,7 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
                   <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{d.servicio}</div>
                   <div style={{display:"flex",gap:5}}>
                     {d.url&&<a href={/^https?:\/\//i.test(d.url)?d.url:"https://"+d.url} target="_blank" rel="noopener noreferrer" style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",color:"#B8B8B8",fontSize:11,textDecoration:"none"}}>Abrir</a>}
-                    <button onClick={function(){setForm({...d});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#8C8C8C",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){setForm({...d,categoria:bvCatDe(d)});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#8C8C8C",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>✏️</button>
                     <button onClick={function(){if(window.confirm("¿Borrar \""+d.servicio+"\"?"))onDelete(d.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>🗑️</button>
                   </div>
                 </div>

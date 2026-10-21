@@ -13315,7 +13315,7 @@ function PanelNovedades(p){
   })();
 
   // ── Costos por lugar, en porcentaje de las ventas del mes en curso.
-  var costosLugar=(function(){
+  function filasCostos(dg){
     if(!dg)return null;
     var pc=function(o,k){return (o&&o[k])||0;};
     var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
@@ -13328,7 +13328,9 @@ function PanelNovedades(p){
     var labC=pc(c.porCat,"Sueldos")+pc(c.porCat,"Aguinaldos")+pc(c.porCat,"F.931");
     filas.push({lugar:CONCESION,ventas:c.ing||0,lab:labC,mer:0,otros:Math.max(0,(c.egr||0)-labC),res:c.res||0});
     return filas;
-  })();
+  }
+  var costosLugar=filasCostos(dg);
+  var costosPrev=p.comparaCostos?filasCostos(p.datosPrev):null, costosAnio=p.comparaCostos?filasCostos(p.datosAnio):null;
 
   var aportesR=aportes.filter(function(a){return enRango(a.fecha);});
   var retirosR=retiros.filter(function(r){return enRango(r.fecha);});
@@ -13467,9 +13469,25 @@ function PanelNovedades(p){
       {costosLugar&&(
         <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:2}}>📈 Costos por lugar · {mesEnCurso}, hasta hoy</div>
+          <button onClick={function(){p.onComparaCostos&&p.onComparaCostos(!p.comparaCostos);}} style={{background:p.comparaCostos?"#1A6B8A22":"none",border:"1px solid #1A6B8A55",borderRadius:7,color:"#1A6B8A",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer",marginBottom:6}}>{p.comparaCostos?"✕ Sin comparar":"↔️ Comparar con el mes anterior y el año pasado"}</button>
+          {p.comparaCostos&&(!costosPrev||!costosAnio)&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Calculando la comparación…</div>}
+          {p.comparaCostos&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Las flechas son puntos de porcentaje contra el mes anterior completo y el mismo mes del año pasado. Rojo = empeoró (más gasto o menos resultado). El laboral del mes en curso se ve más bajo porque todavía no se pagaron los sueldos.</div>}
           <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Sobre lo vendido en el mes. Laboral: sueldos, aguinaldos y F.931. Mercadería: compras a proveedores. Los sueldos se pagan mes vencido, así que el laboral se va completando a medida que se cargan.</div>
           {costosLugar.map(function(f){
             var pcj=function(n){return f.ventas>0?(n/f.ventas*100).toFixed(1).replace(".",",")+"%":"—";};
+            var fp=costosPrev&&costosPrev.find(function(x){return x.lugar.id===f.lugar.id;}), fa=costosAnio&&costosAnio.find(function(x){return x.lugar.id===f.lugar.id;});
+            // Diferencia en puntos de porcentaje contra otro período; si el gasto es "malo" subir es rojo, y al revés con el resultado.
+            var dif=function(campo,otro,malo){
+              if(!otro||otro.ventas<=0||f.ventas<=0)return null;
+              var d=f[campo]/f.ventas*100-otro[campo]/otro.ventas*100;
+              if(Math.abs(d)<0.05)return <span style={{color:"#6E6E6E"}}>= igual</span>;
+              var sube=d>0, feo=malo?sube:!sube;
+              return <span style={{color:feo?"#E0714A":"#4C9A5A"}}>{sube?"▲":"▼"} {Math.abs(d).toFixed(1).replace(".",",")} pts</span>;
+            };
+            var comp=function(campo,malo){
+              if(!p.comparaCostos)return null;
+              return <div style={{fontSize:9.5,marginTop:1}}>{dif(campo,fp,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> mes ant.</span><br/>{dif(campo,fa,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> año pas.</span></div>;
+            };
             return(
               <div key={f.lugar.id} style={{padding:"7px 0",borderTop:"1px solid #151515"}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}>
@@ -13477,10 +13495,10 @@ function PanelNovedades(p){
                   <span style={{fontSize:11,color:"#9A9A9A"}}>{f.lugar.id==="dep"?"ingresos ":"ventas "}<b style={{color:"#F0EDE8"}}>{fmt(f.ventas)}</b></span>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
-                  {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}</div>}
-                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}</div>
-                  <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}</div>
-                  <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}</div>
+                  {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}{comp("mer",true)}</div>}
+                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}</div>
+                  <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}{comp("otros",true)}</div>
+                  <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}{comp("res",false)}</div>
                 </div>
               </div>
             );
@@ -19657,7 +19675,7 @@ function PanelResultados(p){
   var adelantosSueldo=p.adelantos||[]; // adelantos de sueldo (tabla separada) — cuentan como gasto en el mes que se dan, se hayan aplicado o no a una liquidación
   var areasCustomGastos=p.areasCustomGastos||[];
   var mesCurrent=new Date().toISOString().slice(0,7);
-  var [mesFiltro,setMesFiltro]=useState(mesCurrent);
+  var [mesFiltro,setMesFiltro]=useState(p.mesInicial||mesCurrent);
   var [corrLocal,setCorrLocal]=useState({});
   var [vistaComparativa,setVistaComparativa]=useState(false);
   var [traspLocal,setTraspLocal]=useState({});
@@ -25962,7 +25980,8 @@ export default function App() {
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
-  var [datosGrupo,setDatosGrupo]=useState(null);   // números del mes de cada dependencia, que calcula Resultados y Novedades usa
+  var [datosGrupo,setDatosGrupo]=useState(null);
+  var [datosPrev,setDatosPrev]=useState(null), [datosAnio,setDatosAnio]=useState(null), [comparaCostos,setComparaCostos]=useState(false);   // números del mes de cada dependencia, que calcula Resultados y Novedades usa
   var [retiros,setRetiros]=useState([]);
   var [aportes,setAportes]=useState([]);
   var [adelantos,setAdelantos]=useState([]);
@@ -27248,10 +27267,24 @@ export default function App() {
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+              {comparaCostos&&(function(){
+                var hoyM=new Date().toISOString().slice(0,7), yy=parseInt(hoyM.slice(0,4),10), mm=parseInt(hoyM.slice(5,7),10);
+                var prevM=mm===1?(yy-1)+"-12":yy+"-"+("0"+(mm-1)).slice(-2), anioM=(yy-1)+"-"+hoyM.slice(5,7);
+                return(<div>
+              <PanelResultados mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+              <PanelResultados mesInicial={anioM} onDatos={setDatosAnio} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+                </div>);
+              })()}
             </div>
           )}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades datosGrupo={datosGrupo} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

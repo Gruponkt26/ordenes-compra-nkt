@@ -461,6 +461,26 @@ async function sbSubirFotoChecklist(file, path) {
   } catch(e) { return{ok:false,error:e&&e.message?e.message:String(e)}; }
 }
 
+// Documentos de cada dependencia: el archivo va al Storage de Supabase (bucket "documentos"; si todavía no existe, al de "checklist"),
+// y en la base queda solo el nombre y el vínculo.
+async function sbSubirDocumento(file, path) {
+  async function en(bucket,ruta){
+    var r=await fetch(SURL+"/storage/v1/object/"+bucket+"/"+ruta,{
+      method:"POST",
+      headers:{"apikey":SKEY,"Authorization":"Bearer "+SKEY,"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},
+      body:file
+    });
+    if(!r.ok)return {ok:false,error:await r.text()};
+    return {ok:true,url:SURL+"/storage/v1/object/public/"+bucket+"/"+ruta};
+  }
+  try {
+    var a=await en("documentos",path);
+    if(a.ok)return a;
+    var b=await en("checklist","docs/"+path);
+    return b.ok?b:{ok:false,error:a.error+" | "+b.error};
+  } catch(e) { return {ok:false,error:e&&e.message?e.message:String(e)}; }
+}
+
 // ─── PAUTAS ───────────────────────────────────────────────────────────────────
 async function sbLoadPautas() {
   try {
@@ -5056,7 +5076,114 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
     </div>
   );
 }
-function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
+// Documentación de cada dependencia: habilitaciones, contratos, seguros… Se sube el archivo o se pega el vínculo de Drive,
+// con una fecha de vencimiento opcional que avisa en Novedades.
+var DOC_CATEGORIAS=[
+  {id:"habilitaciones",label:"🏛️ Habilitaciones y permisos"},{id:"contratos",label:"📝 Contratos y alquiler"},{id:"seguros",label:"🛡️ Seguros"},
+  {id:"impuestos",label:"💰 Impuestos y contador"},{id:"personal",label:"👥 Personal"},{id:"proveedores",label:"🚚 Proveedores"},
+  {id:"obra",label:"🏗️ Planos y obra"},{id:"facturas",label:"🧾 Facturas y comprobantes"},{id:"otros",label:"📄 Otros"},
+];
+function diasHasta(fecha){
+  if(!fecha)return null;
+  var d=new Date(String(fecha).substring(0,10)+"T00:00:00"), h=new Date(new Date().toISOString().substring(0,10)+"T00:00:00");
+  return isNaN(d.getTime())?null:Math.round((d-h)/86400000);
+}
+function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
+  var loc=getLocal(localId)||{};
+  var lista=(docs||[]).filter(function(d){return d.local===localId;});
+  var [form,setForm]=useState(null);   // documento que se está cargando o editando
+  var [subiendo,setSubiendo]=useState(false);
+  var [buscar,setBuscar]=useState("");
+  var INPd={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  function nuevo(){ setForm({id:"",nombre:"",categoria:"otros",descripcion:"",modo:"drive",url:"",vence:""}); }
+  function elegirArchivo(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return;
+    setSubiendo(true);
+    var limpio=f.name.replace(/[^A-Za-z0-9._-]+/g,"_");
+    sbSubirDocumento(f,localId+"/"+Date.now()+"_"+limpio).then(function(r){
+      setSubiendo(false);
+      if(!r.ok){alert("No se pudo subir el archivo:\n\n"+r.error+"\n\nSi dice que el bucket no existe, hay que crear el bucket público \"documentos\" en Supabase → Storage. Mientras tanto podés pegar el vínculo de Drive.");return;}
+      setForm(function(x){return {...x,url:r.url,modo:"archivo",archivo:f.name,nombre:x.nombre||f.name.replace(/\.[^.]+$/,"")};});
+    });
+  }
+  function guardar(){
+    if(!form.nombre.trim()){alert("Poné un nombre para el documento.");return;}
+    if(!form.url.trim()){alert("Falta el archivo o el vínculo de Drive.");return;}
+    var id=form.id||("doc_"+Date.now());
+    onSave({id:id,local:localId,nombre:form.nombre.trim(),categoria:form.categoria,descripcion:form.descripcion||"",url:form.url.trim(),modo:form.modo,archivo:form.archivo||"",vence:form.vence||"",usuario:usuario||"",fecha:form.fecha||new Date().toISOString().substring(0,10)});
+    setForm(null);
+  }
+  var q=buscar.trim().toLowerCase();
+  var visibles=lista.filter(function(d){return !q||(d.nombre+" "+(d.descripcion||"")).toLowerCase().indexOf(q)!==-1;});
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder={"Buscar en los documentos de "+(loc.nombre||"este lugar")+"…"} style={{...INPd,flex:1,minWidth:180}}/>
+        {!form&&<button onClick={nuevo} style={{padding:"8px 14px",borderRadius:8,border:"none",background:loc.color||"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar documento</button>}
+      </div>
+      {form&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:"12px",marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Nombre</label><input value={form.nombre} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,nombre:v};});}} placeholder="Ej: Habilitación municipal 2026" style={INPd}/></div>
+            <div><label style={lbl}>Categoría</label>
+              <select value={form.categoria} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,categoria:v};});}} style={INPd}>
+                {DOC_CATEGORIAS.map(function(c){return <option key={c.id} value={c.id}>{c.label}</option>;})}
+              </select></div>
+            <div><label style={lbl}>Vence (opcional)</label><input type="date" value={form.vence} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,vence:v};});}} style={INPd}/></div>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Descripción (opcional)</label><input value={form.descripcion} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,descripcion:v};});}} placeholder="Qué es, a nombre de quién, número…" style={INPd}/></div>
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            {[["archivo","📎 Subir archivo"],["drive","🔗 Vínculo de Drive"]].map(function(o){var act=form.modo===o[0];return <button key={o[0]} onClick={function(){setForm(function(x){return{...x,modo:o[0],url:x.modo===o[0]?x.url:""};});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?(loc.color||"#1A6B8A"):"#2A2A2A"),background:act?(loc.color||"#1A6B8A")+"22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{o[1]}</button>;})}
+          </div>
+          {form.modo==="archivo"?(
+            <div style={{marginBottom:9}}>
+              <input type="file" onChange={elegirArchivo} style={{fontSize:12,color:"#B8B8B8"}}/>
+              {subiendo&&<div style={{fontSize:11,color:"#D4A017",marginTop:4}}>⏳ Subiendo…</div>}
+              {form.url&&!subiendo&&<div style={{fontSize:11,color:"#4C9A5A",marginTop:4}}>✓ Archivo subido{form.archivo?": "+form.archivo:""}</div>}
+            </div>
+          ):(
+            <div style={{marginBottom:9}}><input value={form.url} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,url:v};});}} placeholder="Pegá el vínculo de Drive (compartir → copiar vínculo)" style={INPd}/></div>
+          )}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} disabled={subiendo} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:subiendo?"#2A2A2A":(loc.color||"#1A6B8A"),color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar</button>
+            <button onClick={function(){setForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {lista.length===0&&!form&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no hay documentos de {loc.nombre||"este lugar"}.</div>}
+      {DOC_CATEGORIAS.map(function(c){
+        var items=visibles.filter(function(d){return (d.categoria||"otros")===c.id;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
+        if(items.length===0)return null;
+        return(
+          <div key={c.id} style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#9A9A9A",marginBottom:5}}>{c.label} <span style={{color:"#5A5A5A",fontWeight:400}}>({items.length})</span></div>
+            {items.map(function(d){
+              var dias=diasHasta(d.vence);
+              var estado=dias===null?null:(dias<0?["Vencido hace "+Math.abs(dias)+" día"+(Math.abs(dias)===1?"":"s"),"#E0714A"]:(dias<=30?["Vence en "+dias+" día"+(dias===1?"":"s"),"#D4A017"]:["Vence "+fmtDate(String(d.vence).substring(0,10)),"#6E8F74"]));
+              return(
+                <div key={d.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 11px",marginBottom:6,display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{d.modo==="archivo"?"📎":"🔗"} {d.nombre}</div>
+                    {d.descripcion&&<div style={{fontSize:11,color:"#8C8C8C"}}>{d.descripcion}</div>}
+                    {estado&&<div style={{fontSize:10.5,color:estado[1],fontWeight:700,marginTop:2}}>{estado[0]}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:5,flexShrink:0}}>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer" style={{padding:"6px 11px",borderRadius:7,border:"1px solid "+(loc.color||"#1A6B8A")+"66",background:(loc.color||"#1A6B8A")+"18",color:"#F0EDE8",fontSize:11,fontWeight:700,textDecoration:"none"}}>Abrir</a>
+                    <button onClick={function(){setForm({...d});}} title="Editar" style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#8C8C8C",fontSize:11,padding:"5px 8px",cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Sacar \""+d.nombre+"\" de la lista?"+(d.modo==="archivo"?"\n\nEl archivo subido queda en el almacenamiento, pero deja de verse acá.":"\n\nEl archivo de Drive no se toca.")))onDelete(d.id);}} title="Quitar" style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",fontSize:11,padding:"5px 8px",cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
   var [vistaObras,setVistaObras]=useState("obras");
@@ -5196,7 +5323,7 @@ function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras,
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -5244,6 +5371,8 @@ function PanelLocales({deportes, extrasDep, locales, localesDatos, localesObras,
       {(tab==="vencimientos"||tab==="deuda")&&<F931DeLocal localId={localSel.id} cargas={cargasSocialesRL||[]} modo={tab==="deuda"?"deuda":"proximos"} renderPago={renderPagoF931}/>}
       {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id,"proximos")}
       {tab==="deuda"&&renderVencimientos&&renderVencimientos(localSel.id,"deuda")}
+
+      {tab==="documentos"&&<PanelDocumentosLocal localId={localSel.id} docs={docsLocal} usuario={usuario} onSave={onSaveDoc} onDelete={onDeleteDoc}/>}
 
       {tab==="obras"&&(
         <div>
@@ -13632,6 +13761,13 @@ function PanelNovedades(p){
           return String(g.fecha||"").substring(0,7)===mesEnCurso&&!esGastoDeuda(g)&&!(g.pagos&&g.pagos.length>0)&&!String(g.forma_pago||"").trim()&&(parseFloat(g.monto)||0)>0;
         });
         if(sinMedio.length>0)avisos.push({rojo:false,txt:sinMedio.length+" egreso"+(sinMedio.length===1?"":"s")+" del mes sin medio de pago ("+fmt(sinMedio.reduce(function(a,g){return a+(parseFloat(g.monto)||0);},0))+"): no bajan ninguna caja"});
+        // Documentación de los lugares vencida o por vencer (30 días).
+        (p.docsLocal||[]).forEach(function(d){
+          var dd=d.vence?diasHasta(d.vence):null;
+          if(dd===null||dd>30)return;
+          var lg=getLocal(d.local);
+          avisos.push({rojo:dd<=7,txt:"Documento "+(dd<0?"vencido":"por vencer")+": "+d.nombre+(lg?" · "+lg.nombre:"")+" — "+(dd<0?"hace "+(-dd)+" días":dd===0?"vence hoy":"vence en "+dd+" días")});
+        });
         // Ventas de ayer muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas).
         LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
           var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===ayer;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
@@ -26273,6 +26409,11 @@ export default function App() {
     try{ var da=JSON.parse(x.texto||"{}"); vacAjustes[String(x.id).replace(/^vacaj_/,"")]={dias:parseFloat(da.dias)||0,nota:da.nota||""}; }catch(e){}
   });
   VAC_AJUSTES=vacAjustes;
+  var docsLocal=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="doc_local")return;
+    try{ var dd=JSON.parse(x.texto||"{}"); if(dd.local&&dd.nombre)docsLocal.push({...dd,id:x.id}); }catch(e){}
+  });
   GUARDAR_VAC_AJUSTE=function(empId,anio,dias,nota){ guardarOfPauta("vac_ajuste",{id:"vacaj_"+empId+"_"+anio,dias:dias,nota:nota||""}); };
   GUARDAR_F931_VENCE=function(cid,fecha){ guardarOfPauta("f931_vence",{id:"f931v_"+cid,fecha:fecha}); };
   var provLoc={};
@@ -27333,7 +27474,7 @@ export default function App() {
             </div>
           )}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}
@@ -27388,6 +27529,7 @@ export default function App() {
           {esSofia&&modulo==="locales"&&(
             <PanelLocales
               deportes={deportes} extrasDep={extrasDeConcesion()}
+              docsLocal={docsLocal} onSaveDoc={function(d){guardarOfPauta("doc_local",d);}} onDeleteDoc={borrarPauta}
               onSaldarOficina={function(o){guardarOfPauta("saldo_cruzado",{id:"scz_"+String(Date.now()),...o});}}
               renderVencimientos={function(lid,modo){ return panelVencimientos({llave:"venc_"+modo+"_"+lid,localFijo:lid,modo:modo}); }}
               cargasSocialesRL={cargasSociales}

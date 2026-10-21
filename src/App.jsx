@@ -10830,6 +10830,12 @@ function grupoDe(id){
   if(id==="iibb")id="arba";
   return GRUPOS_VENC.find(function(g){return g.id===id;})||GRUPOS_VENC[GRUPOS_VENC.length-1];
 }
+// En la Concesión el gremio es UTEDYC y la obra social es OSPEDYC.
+var NOMBRES_GRUPO_DEP={
+  gremio:{label:"👥 UTEDYC",corto:"UTEDYC",detalle:"Cuota sindical y aportes a UTEDYC"},
+  obra_social:{label:"🏥 OSPEDYC",corto:"OSPEDYC",detalle:"Aportes y contribuciones de OSPEDYC"}
+};
+function grupoDeEn(id,localId){ var g=grupoDe(id); return (localId==="dep"&&NOMBRES_GRUPO_DEP[g.id])?{...g,...NOMBRES_GRUPO_DEP[g.id]}:g; }
 function grupoIdDe(v){ return grupoDe(v.grupo||"otros").id; }
 // AFIP, ARBA y el gremio no se le pagan a un local: se le pagan a un CUIT. El IVA, el
 // F.931 o la cuota sindical son de la persona jurídica, no del salón donde se vendió. Los
@@ -14143,7 +14149,12 @@ function PanelVencimientos(p){
   var LF=p.localFijo||"l1";
   // La Oficina sólo tiene Alquileres, Servicios y Otros: el resto de los rubros (AFIP, ARBA, gremio…) es de los locales.
   // Si ya hay algo cargado en otro rubro (un crédito, por ejemplo), sigue visible para poder pasarlo al local que corresponde.
-  var GRUPOS=p.localFijo==="l4"?GRUPOS_VENC.filter(function(g){return ["alquileres","servicios","otros"].indexOf(g.id)>=0||vencTodos.some(function(v){return v.local==="l4"&&grupoIdDe(v)===g.id;});}):GRUPOS_VENC;
+  var GRUPOS=p.localFijo==="l4"?GRUPOS_VENC.filter(function(g){return ["alquileres","servicios","otros"].indexOf(g.id)>=0||vencTodos.some(function(v){return v.local==="l4"&&grupoIdDe(v)===g.id;});})
+    // La Concesión no tiene AFIP, ARBA, Municipalidad, Alquileres ni Sistemas de gestión; si ya hay algo cargado en uno, sigue visible para poder pasarlo.
+    :p.localFijo==="dep"?GRUPOS_VENC.filter(function(g){return ["afip","arba","municipal","alquileres","sistemas"].indexOf(g.id)===-1||vencTodos.some(function(v){return v.local==="dep"&&grupoIdDe(v)===g.id;});})
+    :GRUPOS_VENC;
+  var grupoDeL=function(id){return grupoDeEn(id,p.localFijo);};
+  GRUPOS=GRUPOS.map(function(g){return grupoDeEn(g.id,p.localFijo);});
   var vencimientos=p.localFijo?vencTodos.filter(function(v){return v.local===p.localFijo;}):vencTodos;
   var onSave=p.localFijo?function(v){ return p.onSave({...v,local:p.localFijo}); }:p.onSave;
   var onDelete=p.onDelete, onSaveEgreso=p.onSaveEgreso, onDeleteEgreso=p.onDeleteEgreso, usuario=p.usuario;
@@ -14284,7 +14295,7 @@ function PanelVencimientos(p){
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"creditos";
     onSave({
       id:editCreditoId||("cred_"+String(Date.now())),
-      tipo:"credito", grupo:g, area:grupoDe(g).area,
+      tipo:"credito", grupo:g, area:grupoDeL(g).area,
       local:porCuit(g)?cuitVenc(f.cuit).local:f.local,
       cuit:porCuit(g)?f.cuit:"",
       concepto:f.descripcion.trim(),
@@ -14367,7 +14378,7 @@ function PanelVencimientos(p){
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"servicios";
     onSave({
       id:editFacturaId||("fact_"+String(Date.now())),
-      tipo:"factura", grupo:g, area:grupoDe(g).area,
+      tipo:"factura", grupo:g, area:grupoDeL(g).area,
       local:f.local, cuit:"",
       concepto:f.concepto.trim(), periodo:(f.periodo||"").trim(), nro_asociado:(f.nro_asociado||"").trim(),
       referencia:(f.nro_asociado||"").trim(),
@@ -14446,7 +14457,7 @@ function PanelVencimientos(p){
 
   function abrirNuevo(){
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"otros";
-    setForm({...FORM_VACIO,grupo:g,area:grupoDe(g).area});
+    setForm({...FORM_VACIO,grupo:g,area:grupoDeL(g).area});
     setEditId(null); setShowForm(true);
   }
   function abrirEditar(v){
@@ -14503,7 +14514,7 @@ function PanelVencimientos(p){
     var g=(grupoFiltro&&grupoFiltro!=="all")?grupoFiltro:"otros";
     onSave({
       id:"plan_"+String(Date.now()),
-      tipo:"plan", grupo:g, area:grupoDe(g).area,
+      tipo:"plan", grupo:g, area:grupoDeL(g).area,
       local:porCuit(g)?cuitVenc(formPlan.cuit).local:formPlan.local,
       cuit:porCuit(g)?formPlan.cuit:"",
       debito_cuenta:formPlan.debito_cuenta||"", debito_cbu:(formPlan.debito_cbu||"").trim(),
@@ -14632,7 +14643,7 @@ function PanelVencimientos(p){
   // lo ya pagado conservan su área: sólo cambia a dónde se mira de acá en adelante.
   function moverRubro(v,gid){
     if(!gid||gid===grupoIdDe(v))return;
-    var g=grupoDe(gid);
+    var g=grupoDeL(gid);
     if(!window.confirm("¿Pasar \""+v.concepto+"\" a "+g.label+"?\n\nLo que ya se pagó no cambia: sus egresos siguen como estaban."))return;
     var nuevo={...v,grupo:gid,area:g.area};
     // Los rubros que van por CUIT necesitan uno; el resto va por local, que el vencimiento ya tiene.
@@ -14732,7 +14743,7 @@ function PanelVencimientos(p){
       if(interes>0)partesDet.push("Incluye "+fmt(interes)+" de intereses por mora");
       if(x.fecha)partesDet.push("Vencimiento original: "+fmtDate(String(x.fecha).substring(0,10))+(atrasoDias>0?" (pagado "+atrasoDias+" día"+(atrasoDias===1?"":"s")+" después)":""));
       onSaveEgreso({
-        id:egresoId, local:localEg, concepto:x.v.concepto, subramo:esAporteEg?(grupoDe(gidEg).corto+" (a F.931)"):(x.v.subramo||"Vencimiento"),
+        id:egresoId, local:localEg, concepto:x.v.concepto, subramo:esAporteEg?(grupoDeL(gidEg).corto+" (a F.931)"):(x.v.subramo||"Vencimiento"),
         monto:monto, forma_pago:medios.length===1?medios[0].medio:"Varios medios", pagos:medios,
         detalle:partesDet.join(" · "),
         facturado:!!formPago.facturado, facturacion:formPago.facturado?formPago.facturacion:"",
@@ -14974,8 +14985,8 @@ function PanelVencimientos(p){
           ):grupoFiltro?(
             <div>
               <button onClick={function(){verGrupo(null);setShowForm(false);setPagando(null);}} style={{background:"none",border:"none",color:"#9A9A9A",fontSize:11,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif",marginBottom:2}}>← Vencimientos</button>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:grupoFiltro==="all"?"#F0EDE8":grupoDe(grupoFiltro).color}}>
-                {grupoFiltro==="all"?"📅 Todos los vencimientos":grupoDe(grupoFiltro).label}
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:grupoFiltro==="all"?"#F0EDE8":grupoDeL(grupoFiltro).color}}>
+                {grupoFiltro==="all"?"📅 Todos los vencimientos":grupoDeL(grupoFiltro).label}
               </div>
             </div>
           ):(
@@ -14998,7 +15009,7 @@ function PanelVencimientos(p){
             if(deOf.length===0)return null;
             return (
               <button onClick={function(){
-                var lista=deOf.slice(0,10).map(function(v){return "· "+grupoDe(v.grupo).corto+" — "+v.concepto;}).join("\n");
+                var lista=deOf.slice(0,10).map(function(v){return "· "+grupoDeL(v.grupo).corto+" — "+v.concepto;}).join("\n");
                 if(!window.confirm("Hay "+deOf.length+" vencimiento"+(deOf.length===1?"":"s")+" de AFIP / ARBA / Gremio / Obra Social en la Oficina.\n\n"+lista+(deOf.length>10?"\n· …y "+(deOf.length-10)+" más":"")+"\n\n¿Pasarlos a Kusama? Los pagos ya hechos no se tocan."))return;
                 deOf.forEach(function(v){ onSave({...v,local:"l2"}); });
               }} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #8B2FC966",background:"#0F0A14",color:"#B070E0",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
@@ -15121,7 +15132,7 @@ function PanelVencimientos(p){
           <div style={{background:hayCaidos?"#1A0808":"#14100A",border:"1px solid "+color+"66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:11,color:color,fontWeight:800,marginBottom:6}}>{hayCaidos?"🚨 Planes caídos":"⚠️ Planes por caerse"}</div>
             {enRiesgo.map(function(x,i){
-              var g=grupoDe(x.v.grupo);
+              var g=grupoDeL(x.v.grupo);
               return(
                 <div key={i} onClick={function(){verGrupo(g.id);}} style={{fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4,marginTop:i===0?0:4}}>
                   <span style={{color:g.color}}>{g.corto}</span> · {x.v.concepto}{x.v.nro_plan?" (plan "+x.v.nro_plan+")":""} — <span style={{color:x.rg.caido?"#C1440E":"#D4A017",fontWeight:700}}>
@@ -15148,7 +15159,7 @@ function PanelVencimientos(p){
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {av.slice(0,6).map(function(a,i){
-                var g=grupoDe(a.v.grupo);
+                var g=grupoDeL(a.v.grupo);
                 return(
                   <div key={i} onClick={function(){verGrupo(g.id);}} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:11,color:"#888",cursor:"pointer",borderTop:i===0?"none":"1px solid #ffffff08",paddingTop:i===0?0:4}}>
                     <span style={{minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
@@ -15329,9 +15340,9 @@ function PanelVencimientos(p){
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Rubro</label>
               {grupoFiltro&&grupoFiltro!=="all"&&!editId?(
-                <div style={{...INP,display:"flex",alignItems:"center",color:grupoDe(form.grupo).color,fontWeight:700,background:"#0A0A0A"}}>{grupoDe(form.grupo).label}</div>
+                <div style={{...INP,display:"flex",alignItems:"center",color:grupoDeL(form.grupo).color,fontWeight:700,background:"#0A0A0A"}}>{grupoDeL(form.grupo).label}</div>
               ):(
-                <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDe(g).area};});}} style={INP}>
+                <select value={form.grupo} onChange={function(e){var g=e.target.value;setForm(function(f){return{...f,grupo:g,area:grupoDeL(g).area};});}} style={INP}>
                   {GRUPOS.map(function(g){return <option key={g.id} value={g.id}>{g.label}</option>;})}
                 </select>
               )}
@@ -16141,7 +16152,7 @@ function PanelVencimientos(p){
           if(v.activo===false)return false;
           if(!caeEn(v,mesTodos))return false;
           if(!texto)return true;
-          return [v.concepto,v.referencia,v.nro_plan,v.notas,grupoDe(v.grupo).corto,v.debito_cbu].join(" ").toLowerCase().indexOf(texto)>=0;
+          return [v.concepto,v.referencia,v.nro_plan,v.notas,grupoDeL(v.grupo).corto,v.debito_cbu].join(" ").toLowerCase().indexOf(texto)>=0;
         });
         // Se ordena por lo que viene primero: el próximo vencimiento impago de cada uno.
         function proximo(v){
@@ -16270,7 +16281,7 @@ function PanelVencimientos(p){
               <div style={{fontSize:15,fontWeight:800,color:"#E0714A",fontFamily:"'Playfair Display',serif"}}>{fmt(total)}</div>
             </div>
             {items.map(function(x,i){
-              var g=grupoDe(x.v.grupo);
+              var g=grupoDeL(x.v.grupo);
               return(
                 <div key={x.v.id+"_"+(x.cuota?x.cuota.nro:"s")} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"5px 0",borderTop:i===0?"none":"1px solid #2A1410"}}>
                   <div style={{minWidth:0}}>
@@ -16342,7 +16353,7 @@ function PanelVencimientos(p){
       {grupoFiltro&&!verTodos&&(sueltosDelMes.length===0?(
         <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:12,padding:"28px 16px",textAlign:"center"}}>
           <div style={{fontSize:13,color:"#8C8C8C"}}>{delMes2.length>0?"Este mes sólo hay cuotas.":"No hay vencimientos cargados para este mes."}</div>
-          <div style={{fontSize:11,color:"#6E6E6E",marginTop:5}}>{delMes2.length>0?"Están arriba, adentro de su plan o de su factura, con su botón de pagar.":(grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDe(grupoFiltro).corto+" para este mes.")}</div>
+          <div style={{fontSize:11,color:"#6E6E6E",marginTop:5}}>{delMes2.length>0?"Están arriba, adentro de su plan o de su factura, con su botón de pagar.":(grupoFiltro==="all"?"Cargá el alquiler, los impuestos, los servicios — lo que se paga todos los meses.":"No hay nada cargado en "+grupoDeL(grupoFiltro).corto+" para este mes.")}</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
@@ -16381,7 +16392,7 @@ function PanelVencimientos(p){
                       );
                     })()}
                     <div style={{fontSize:10,color:"#8C8C8C",marginTop:3}}>
-                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:cq?cq.color:(l?l.color:"#8C8C8C")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:x.v.local)}</span> · <span style={{color:grupoDe(x.v.grupo).color}}>{grupoDe(x.v.grupo).corto}</span> · {x.v.area}
+                      {x.fecha?fmtDate(x.fecha):"sin fecha"} · <span style={{color:cq?cq.color:(l?l.color:"#8C8C8C")}}>{cq?cq.label:(l?l.emoji+" "+l.nombre:x.v.local)}</span> · <span style={{color:grupoDeL(x.v.grupo).color}}>{grupoDeL(x.v.grupo).corto}</span> · {x.v.area}
                       {x.v.recurrente?" · todos los meses":" · una vez"}
                     </div>
                     <div style={{fontSize:10,color:e.color,marginTop:3,fontWeight:700}}>{e.txt}</div>

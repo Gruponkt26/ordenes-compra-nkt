@@ -5200,6 +5200,92 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
   );
 }
 
+// Razón social: datos de la persona y de cada sociedad del grupo (CUIT, domicilio fiscal, contador, socios…) y su documentación.
+var RS_CAMPOS=[
+  ["cuit","CUIT"],["iva","Condición frente al IVA"],["iibb","Ingresos Brutos (Nº / régimen)"],["actividad","Actividad (código AFIP)"],
+  ["inicio","Inicio de actividades / constitución"],["domicilio","Domicilio fiscal"],["tel","Teléfono"],["mail","Mail"],
+  ["banco","Banco y CBU / alias (solo datos para cobrar)"],["contador","Contador (nombre)"],["contador_tel","Contador (contacto)"],
+  ["socios","Socios y porcentajes"],["registro","Inscripción en IGJ / Registro Público"],["notas","Notas"],
+];
+function PanelRazonSocial({entidades, docs, usuario, onSave, onDelete, onSaveDoc, onDeleteDoc}){
+  var [selId,setSelId]=useState(null);
+  var [tab,setTab]=useState("datos");
+  var [form,setForm]=useState(null);
+  var [copiado,setCopiado]=useState("");
+  var lista=(entidades||[]).slice().sort(function(a,b){return (a.tipo===b.tipo?0:(a.tipo==="persona"?-1:1))||String(a.nombre).localeCompare(String(b.nombre));});
+  var sel=lista.find(function(e){return e.id===selId;})||null;
+  var INPr={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  var COL="#8B2FC9";
+  function nueva(tipo){ setForm({id:"",tipo:tipo,nombre:""}); setSelId(null); }
+  function guardar(){
+    if(!(form.nombre||"").trim()){alert("Poné el nombre o la razón social.");return;}
+    var id=form.id||("rs_"+Date.now());
+    var o={...form,id:id,nombre:form.nombre.trim(),usuario:usuario||""};
+    onSave(o); setForm(null); setSelId(id); setTab("datos");
+  }
+  function copiar(txt,k){
+    try{ navigator.clipboard.writeText(txt); setCopiado(k); setTimeout(function(){setCopiado("");},1400); }catch(e){}
+  }
+  var icono=function(e){return e.tipo==="persona"?"👤":"🏢";};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{background:"#1A1208",border:"1px solid #D4A01744",borderRadius:10,padding:"8px 12px",fontSize:11,color:"#D4A017",marginBottom:12}}>
+        🔒 No cargues acá claves fiscales, contraseñas ni claves bancarias. Solo datos de identificación y de contacto.
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        {lista.map(function(e){var act=sel&&sel.id===e.id;return <button key={e.id} onClick={function(){setSelId(e.id);setTab("datos");setForm(null);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?COL:"#2A2A2A"),background:act?COL+"22":"#111",color:act?"#F0EDE8":"#B8B8B8",fontSize:12,fontWeight:700,cursor:"pointer"}}>{icono(e)} {e.nombre}</button>;})}
+        <button onClick={function(){nueva("persona");}} style={{padding:"8px 12px",borderRadius:9,border:"1px dashed #3A3A3A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>+ Persona</button>
+        <button onClick={function(){nueva("sociedad");}} style={{padding:"8px 12px",borderRadius:9,border:"1px dashed #3A3A3A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>+ Sociedad</button>
+      </div>
+      {lista.length===0&&!form&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no cargaste nada. Empezá con <b>+ Persona</b> (tus datos) o <b>+ Sociedad</b>.</div>}
+      {form&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",marginBottom:9}}>{form.id?"Editar":"Nueva"} {form.tipo==="persona"?"persona":"sociedad"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>{form.tipo==="persona"?"Nombre y apellido":"Razón social"}</label><input value={form.nombre||""} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,nombre:v};});}} style={INPr}/></div>
+            {RS_CAMPOS.map(function(c){var largo=c[0]==="notas"||c[0]==="socios"||c[0]==="domicilio"||c[0]==="banco";return(
+              <div key={c[0]} style={largo?{gridColumn:"1 / span 2"}:{}}><label style={lbl}>{c[1]}</label>
+                {c[0]==="notas"||c[0]==="socios"?<textarea rows={2} value={form[c[0]]||""} onChange={function(e){var v=e.target.value;setForm(function(x){var n={...x};n[c[0]]=v;return n;});}} style={{...INPr,resize:"vertical"}}/>
+                :<input value={form[c[0]]||""} onChange={function(e){var v=e.target.value;setForm(function(x){var n={...x};n[c[0]]=v;return n;});}} style={INPr}/>}
+              </div>);})}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar</button>
+            <button onClick={function(){setForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {sel&&!form&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800,color:"#F0EDE8"}}>{icono(sel)} {sel.nombre}</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={function(){setForm({...sel});}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>✏️ Editar</button>
+              <button onClick={function(){if(window.confirm("¿Borrar \""+sel.nombre+"\" y sus datos?\n\nLos documentos subidos quedan en el almacenamiento, pero dejan de verse acá."))onDelete(sel.id);setSelId(null);}} style={{padding:"6px 10px",borderRadius:8,border:"1px solid #C1440E33",background:"none",color:"#C1440E",fontSize:12,cursor:"pointer"}}>🗑️</button>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[["datos","📋 Datos"],["docs","📁 Documentos"]].map(function(t){var act=tab===t[0];return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(act?COL:"#2A2A2A"),background:act?COL+"22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;})}
+          </div>
+          {tab==="datos"?(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:8}}>
+              {RS_CAMPOS.filter(function(c){return sel[c[0]];}).map(function(c){return(
+                <div key={c[0]} onClick={function(){copiar(sel[c[0]],c[0]);}} title="Tocá para copiar" style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 11px",cursor:"pointer"}}>
+                  <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>{c[1]} {copiado===c[0]&&<span style={{color:"#4C9A5A"}}>· copiado ✓</span>}</div>
+                  <div style={{fontSize:13,color:"#F0EDE8",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{sel[c[0]]}</div>
+                </div>);})}
+              {RS_CAMPOS.every(function(c){return !sel[c[0]];})&&<div style={{color:"#6E6E6E",fontSize:12}}>Sin datos todavía. Tocá ✏️ Editar para completarlos.</div>}
+            </div>
+          ):(
+            <PanelDocumentosLocal localId={sel.id} docs={docs} usuario={usuario} onSave={onSaveDoc} onDelete={onDeleteDoc}/>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
@@ -26426,6 +26512,11 @@ export default function App() {
     try{ var da=JSON.parse(x.texto||"{}"); vacAjustes[String(x.id).replace(/^vacaj_/,"")]={dias:parseFloat(da.dias)||0,nota:da.nota||""}; }catch(e){}
   });
   VAC_AJUSTES=vacAjustes;
+  var razones=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="razon_social")return;
+    try{ var dr=JSON.parse(x.texto||"{}"); if(dr.nombre)razones.push({...dr,id:x.id}); }catch(e){}
+  });
   var docsLocal=[];
   pautas.forEach(function(x){
     if(x.ambito!=="doc_local")return;
@@ -27012,6 +27103,7 @@ export default function App() {
               {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
               {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
+              {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -27045,6 +27137,7 @@ export default function App() {
                   {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
                   {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
+                  {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
                   {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
@@ -27515,6 +27608,18 @@ export default function App() {
 
           {/* MÓDULO LOCALES */}
           {/* MÓDULO SOCIOS — todo lo que ponen y sacan los socios, en un solo lugar */}
+          {esSofia&&modulo==="razon"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🏛️ Razón social</div>
+              </div>
+              <PanelRazonSocial entidades={razones} docs={docsLocal} usuario={cu.nombre}
+                onSave={function(o){guardarOfPauta("razon_social",o);}} onDelete={borrarPauta}
+                onSaveDoc={function(d){guardarOfPauta("doc_local",d);}} onDeleteDoc={borrarPauta}/>
+            </div>
+          )}
+
           {esSofia&&modulo==="socios"&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{marginBottom:14}}>

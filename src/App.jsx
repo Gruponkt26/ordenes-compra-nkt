@@ -5200,6 +5200,162 @@ function PanelDocumentosLocal({localId, docs, usuario, onSave, onDelete}){
   );
 }
 
+// Bóveda "Importante": claves, mails y cuentas. Todo se cifra en el navegador (AES-GCM, clave derivada con PBKDF2 de una
+// contraseña maestra que no se guarda en ningún lado): en la base queda solo texto cifrado.
+var BV_CATS=["✉️ Mails","🏦 Bancos y billeteras","🏛️ AFIP / ARCA y organismos","🌐 Sistemas y plataformas","📱 Redes sociales","📶 Servicios y proveedores","📄 Otros"];
+function bvB64(buf){var a=new Uint8Array(buf),t="";for(var i=0;i<a.length;i++)t+=String.fromCharCode(a[i]);return btoa(t);}
+function bvDeB64(str){var t=atob(str),a=new Uint8Array(t.length);for(var i=0;i<t.length;i++)a[i]=t.charCodeAt(i);return a;}
+async function bvDerivar(pass,salt){
+  var base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pass),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:salt,iterations:250000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+async function bvCifrar(key,obj){
+  var iv=crypto.getRandomValues(new Uint8Array(12));
+  var ct=await crypto.subtle.encrypt({name:"AES-GCM",iv:iv},key,new TextEncoder().encode(JSON.stringify(obj)));
+  return {iv:bvB64(iv),ct:bvB64(ct)};
+}
+async function bvDescifrar(key,x){
+  var pl=await crypto.subtle.decrypt({name:"AES-GCM",iv:bvDeB64(x.iv)},key,bvDeB64(x.ct));
+  return JSON.parse(new TextDecoder().decode(pl));
+}
+function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
+  var [key,setKey]=useState(null);
+  var [pass,setPass]=useState(""); var [pass2,setPass2]=useState("");
+  var [err,setErr]=useState(""); var [trabajando,setTrabajando]=useState(false);
+  var [datos,setDatos]=useState([]);       // entradas ya descifradas
+  var [form,setForm]=useState(null);
+  var [ver,setVer]=useState({});
+  var [copiado,setCopiado]=useState("");
+  var [buscar,setBuscar]=useState("");
+  var COL="#C1440E";
+  var INPb={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  var itemsKey=(items||[]).map(function(x){return x.id+x.ct;}).join("|");
+  // Descifra de nuevo cada vez que cambian las entradas guardadas (o se desbloquea).
+  useEffect(function(){
+    if(!key){setDatos([]);return;}
+    var vivo=true;
+    Promise.all((items||[]).map(function(x){return bvDescifrar(key,x).then(function(d){return {...d,id:x.id};}).catch(function(){return null;});})).then(function(r){
+      if(vivo)setDatos(r.filter(Boolean));
+    });
+    return function(){vivo=false;};
+  },[key,itemsKey]);
+  // Se bloquea sola a los 5 minutos sin tocar nada.
+  useEffect(function(){
+    if(!key)return;
+    var t=setTimeout(function(){setKey(null);setVer({});},5*60*1000);
+    return function(){clearTimeout(t);};
+  },[key,datos,form,ver,buscar]);
+  async function crear(){
+    setErr("");
+    if(pass.length<8){setErr("La contraseña maestra tiene que tener al menos 8 caracteres.");return;}
+    if(pass!==pass2){setErr("Las dos contraseñas no coinciden.");return;}
+    setTrabajando(true);
+    try{
+      var salt=crypto.getRandomValues(new Uint8Array(16));
+      var k=await bvDerivar(pass,salt);
+      var c=await bvCifrar(k,{ok:"nkt"});
+      onSaveCheck({id:"boveda_check",salt:bvB64(salt),iv:c.iv,ct:c.ct});
+      setKey(k); setPass(""); setPass2("");
+    }catch(e){setErr("No se pudo crear: "+(e&&e.message?e.message:e));}
+    setTrabajando(false);
+  }
+  async function abrir(){
+    setErr(""); setTrabajando(true);
+    try{
+      var k=await bvDerivar(pass,bvDeB64(check.salt));
+      var d=await bvDescifrar(k,check);
+      if(!d||d.ok!=="nkt")throw new Error("x");
+      setKey(k); setPass("");
+    }catch(e){setErr("Contraseña incorrecta.");}
+    setTrabajando(false);
+  }
+  async function guardar(){
+    if(!(form.servicio||"").trim()){alert("Poné a qué corresponde (ej: Mail de la oficina, ARCA, Galicia).");return;}
+    var id=form.id||("bv_"+Date.now());
+    var c=await bvCifrar(key,{servicio:form.servicio.trim(),categoria:form.categoria||BV_CATS[0],usuario:form.usuario||"",clave:form.clave||"",url:form.url||"",notas:form.notas||""});
+    onSaveItem({id:id,iv:c.iv,ct:c.ct});
+    setForm(null);
+  }
+  function copiar(txt,k){ try{navigator.clipboard.writeText(txt);setCopiado(k);setTimeout(function(){setCopiado("");},1400);}catch(e){} }
+  if(!check){
+    return(
+      <div style={{maxWidth:420}}>
+        <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:6}}>🔐 Crear la bóveda</div>
+        <div style={{fontSize:12,color:"#9A9A9A",marginBottom:10,lineHeight:1.5}}>Elegí una contraseña maestra. Con ella se cifran todas las claves antes de guardarlas: en la base queda solo texto ilegible. <b style={{color:"#D4A017"}}>Esa contraseña no se guarda en ningún lado: si la perdés, las claves no se pueden recuperar.</b> Anotala en un lugar seguro.</div>
+        <input type="password" value={pass} onChange={function(e){setPass(e.target.value);}} placeholder="Contraseña maestra (mínimo 8 caracteres)" style={{...INPb,marginBottom:8}}/>
+        <input type="password" value={pass2} onChange={function(e){setPass2(e.target.value);}} placeholder="Repetí la contraseña maestra" style={{...INPb,marginBottom:8}}/>
+        {err&&<div style={{fontSize:12,color:"#E0714A",marginBottom:8}}>{err}</div>}
+        <button onClick={crear} disabled={trabajando} style={{padding:"9px 16px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>{trabajando?"Creando…":"Crear bóveda"}</button>
+      </div>
+    );
+  }
+  if(!key){
+    return(
+      <div style={{maxWidth:420}}>
+        <div style={{fontSize:13,color:"#F0EDE8",fontWeight:700,marginBottom:8}}>🔒 Bóveda bloqueada</div>
+        <input type="password" value={pass} onChange={function(e){setPass(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")abrir();}} placeholder="Contraseña maestra" style={{...INPb,marginBottom:8}}/>
+        {err&&<div style={{fontSize:12,color:"#E0714A",marginBottom:8}}>{err}</div>}
+        <button onClick={abrir} disabled={trabajando||!pass} style={{padding:"9px 16px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>{trabajando?"Abriendo…":"Desbloquear"}</button>
+      </div>
+    );
+  }
+  var q=buscar.trim().toLowerCase();
+  var vis=datos.filter(function(d){return !q||(d.servicio+" "+d.usuario+" "+(d.notas||"")).toLowerCase().indexOf(q)!==-1;});
+  return(
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar…" style={{...INPb,flex:1,minWidth:160}}/>
+        {!form&&<button onClick={function(){setForm({id:"",servicio:"",categoria:BV_CATS[0],usuario:"",clave:"",url:"",notas:""});}} style={{padding:"8px 14px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
+        <button onClick={function(){setKey(null);setVer({});}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#B8B8B8",fontSize:12,cursor:"pointer"}}>🔒 Bloquear</button>
+      </div>
+      {form&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
+            <div><label style={lbl}>A qué corresponde</label><input value={form.servicio} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,servicio:v};});}} placeholder="Ej: Mail administración" style={INPb}/></div>
+            <div><label style={lbl}>Categoría</label><select value={form.categoria} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,categoria:v};});}} style={INPb}>{BV_CATS.map(function(c){return <option key={c} value={c}>{c}</option>;})}</select></div>
+            <div><label style={lbl}>Usuario / mail / CUIT</label><input value={form.usuario} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,usuario:v};});}} style={INPb}/></div>
+            <div><label style={lbl}>Clave</label><input value={form.clave} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,clave:v};});}} style={INPb}/></div>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Sitio o link (opcional)</label><input value={form.url} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,url:v};});}} style={INPb}/></div>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Notas (opcional)</label><textarea rows={2} value={form.notas} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,notas:v};});}} placeholder="Preguntas de seguridad, número de cuenta, a nombre de quién…" style={{...INPb,resize:"vertical"}}/></div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar (se cifra)</button>
+            <button onClick={function(){setForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {datos.length===0&&!form&&<div style={{textAlign:"center",padding:"26px 0",color:"#6E6E6E"}}>Todavía no hay nada guardado. Tocá <b>+ Agregar</b>.</div>}
+      {BV_CATS.map(function(c){
+        var its=vis.filter(function(d){return (d.categoria||BV_CATS[0])===c;}).sort(function(a,b){return String(a.servicio).localeCompare(String(b.servicio));});
+        if(its.length===0)return null;
+        return(
+          <div key={c} style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#9A9A9A",marginBottom:5}}>{c} <span style={{color:"#5A5A5A",fontWeight:400}}>({its.length})</span></div>
+            {its.map(function(d){return(
+              <div key={d.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 11px",marginBottom:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",marginBottom:4}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{d.servicio}</div>
+                  <div style={{display:"flex",gap:5}}>
+                    {d.url&&<a href={/^https?:\/\//i.test(d.url)?d.url:"https://"+d.url} target="_blank" rel="noopener noreferrer" style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",color:"#B8B8B8",fontSize:11,textDecoration:"none"}}>Abrir</a>}
+                    <button onClick={function(){setForm({...d});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#8C8C8C",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>✏️</button>
+                    <button onClick={function(){if(window.confirm("¿Borrar \""+d.servicio+"\"?"))onDelete(d.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>🗑️</button>
+                  </div>
+                </div>
+                {d.usuario&&<div onClick={function(){copiar(d.usuario,d.id+"u");}} title="Tocá para copiar" style={{fontSize:12,color:"#B8B8B8",cursor:"pointer"}}>👤 {d.usuario} {copiado===d.id+"u"&&<span style={{color:"#4C9A5A"}}>· copiado ✓</span>}</div>}
+                {d.clave&&<div style={{fontSize:12,color:"#B8B8B8",display:"flex",gap:8,alignItems:"center",marginTop:2}}>
+                  <span onClick={function(){copiar(d.clave,d.id+"c");}} title="Tocá para copiar" style={{cursor:"pointer"}}>🔑 {ver[d.id]?d.clave:"••••••••"} {copiado===d.id+"c"&&<span style={{color:"#4C9A5A"}}>· copiado ✓</span>}</span>
+                  <button onClick={function(){setVer(function(v){var n={...v};n[d.id]=!n[d.id];return n;});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:11,cursor:"pointer"}}>{ver[d.id]?"ocultar":"ver"}</button>
+                </div>}
+                {d.notas&&<div style={{fontSize:11,color:"#7E7E7E",marginTop:3,whiteSpace:"pre-wrap"}}>{d.notas}</div>}
+              </div>);})}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Razón social: datos de la persona y de cada sociedad del grupo (CUIT, domicilio fiscal, contador, socios…) y su documentación.
 var RS_CAMPOS=[
   ["cuit","CUIT"],["iva","Condición frente al IVA"],["iibb","Ingresos Brutos (Nº / régimen)"],["actividad","Actividad (código AFIP)"],
@@ -5207,7 +5363,7 @@ var RS_CAMPOS=[
   ["banco","Banco y CBU / alias (solo datos para cobrar)"],["contador","Contador (nombre)"],["contador_tel","Contador (contacto)"],
   ["socios","Socios y porcentajes"],["registro","Inscripción en IGJ / Registro Público"],["notas","Notas"],
 ];
-function PanelRazonSocial({entidades, docs, usuario, onSave, onDelete, onSaveDoc, onDeleteDoc}){
+function PanelRazonSocial({entidades, docs, usuario, onSave, onDelete, onSaveDoc, onDeleteDoc, bvCheck, bvItems, onSaveBvCheck, onSaveBvItem}){
   var [selId,setSelId]=useState(null);
   var [tab,setTab]=useState("datos");
   var [form,setForm]=useState(null);
@@ -5231,14 +5387,16 @@ function PanelRazonSocial({entidades, docs, usuario, onSave, onDelete, onSaveDoc
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{background:"#1A1208",border:"1px solid #D4A01744",borderRadius:10,padding:"8px 12px",fontSize:11,color:"#D4A017",marginBottom:12}}>
-        🔒 No cargues acá claves fiscales, contraseñas ni claves bancarias. Solo datos de identificación y de contacto.
+        🔒 En las fichas cargá solo datos de identificación y de contacto. Las claves, mails y cuentas van en 🔐 Importante (cifradas con tu contraseña maestra).
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
         {lista.map(function(e){var act=sel&&sel.id===e.id;return <button key={e.id} onClick={function(){setSelId(e.id);setTab("datos");setForm(null);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?COL:"#2A2A2A"),background:act?COL+"22":"#111",color:act?"#F0EDE8":"#B8B8B8",fontSize:12,fontWeight:700,cursor:"pointer"}}>{icono(e)} {e.nombre}</button>;})}
+        <button onClick={function(){setSelId("__imp");setForm(null);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(selId==="__imp"?"#C1440E":"#2A2A2A"),background:selId==="__imp"?"#C1440E22":"#111",color:selId==="__imp"?"#F0EDE8":"#B8B8B8",fontSize:12,fontWeight:700,cursor:"pointer"}}>🔐 Importante</button>
         <button onClick={function(){nueva("persona");}} style={{padding:"8px 12px",borderRadius:9,border:"1px dashed #3A3A3A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>+ Persona</button>
         <button onClick={function(){nueva("sociedad");}} style={{padding:"8px 12px",borderRadius:9,border:"1px dashed #3A3A3A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>+ Sociedad</button>
       </div>
-      {lista.length===0&&!form&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no cargaste nada. Empezá con <b>+ Persona</b> (tus datos) o <b>+ Sociedad</b>.</div>}
+      {selId==="__imp"&&!form&&<PanelBoveda check={bvCheck} items={bvItems} onSaveCheck={onSaveBvCheck} onSaveItem={onSaveBvItem} onDelete={onDelete}/>}
+      {lista.length===0&&!form&&selId!=="__imp"&&<div style={{textAlign:"center",padding:"30px 0",color:"#6E6E6E"}}>Todavía no cargaste nada. Empezá con <b>+ Persona</b> (tus datos) o <b>+ Sociedad</b>.</div>}
       {form&&(
         <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",marginBottom:9}}>{form.id?"Editar":"Nueva"} {form.tipo==="persona"?"persona":"sociedad"}</div>
@@ -26512,6 +26670,11 @@ export default function App() {
     try{ var da=JSON.parse(x.texto||"{}"); vacAjustes[String(x.id).replace(/^vacaj_/,"")]={dias:parseFloat(da.dias)||0,nota:da.nota||""}; }catch(e){}
   });
   VAC_AJUSTES=vacAjustes;
+  var bvCheck=null, bvItems=[];
+  pautas.forEach(function(x){
+    if(x.ambito==="boveda_check"){ try{ var dc=JSON.parse(x.texto||"{}"); if(dc.salt&&dc.ct)bvCheck={...dc,id:x.id}; }catch(e){} }
+    if(x.ambito==="boveda"){ try{ var db=JSON.parse(x.texto||"{}"); if(db.ct)bvItems.push({...db,id:x.id}); }catch(e){} }
+  });
   var razones=[];
   pautas.forEach(function(x){
     if(x.ambito!=="razon_social")return;
@@ -27616,7 +27779,9 @@ export default function App() {
               </div>
               <PanelRazonSocial entidades={razones} docs={docsLocal} usuario={cu.nombre}
                 onSave={function(o){guardarOfPauta("razon_social",o);}} onDelete={borrarPauta}
-                onSaveDoc={function(d){guardarOfPauta("doc_local",d);}} onDeleteDoc={borrarPauta}/>
+                onSaveDoc={function(d){guardarOfPauta("doc_local",d);}} onDeleteDoc={borrarPauta}
+                bvCheck={bvCheck} bvItems={bvItems}
+                onSaveBvCheck={function(o){guardarOfPauta("boveda_check",o);}} onSaveBvItem={function(o){guardarOfPauta("boveda",o);}}/>
             </div>
           )}
 

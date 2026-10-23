@@ -4590,12 +4590,13 @@ function detalleCruzadoPar(gastos,a,b){
   });
   return out.sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
 }
-// Egresos de la Oficina donde el deudor puso de menos de lo que le tocaba y el acreedor puso de más: cuánto, y con qué medios puso el acreedor.
+// Egresos de la Oficina que mueven el saldo entre dos locales: por cada uno, cuánto puso de más o de menos cada uno de los dos
+// (lo que puso menos lo que le tocaba) y con qué medios. Un egreso puede sumar a la deuda y otro compensarla: el saldo es el neto.
 function detalleOficinaPar(gastos,deudor,acreedor){
   var porEg={};
   (gastos||[]).filter(function(g){return esParteOficinaGasto(g)&&String(g.fecha||"").substring(0,7)>=SALDOS_CRUZADOS_DESDE;}).forEach(function(g){
     var k=String(g.id).replace(/_l[123]$/,"");
-    var e=porEg[k]||(porEg[k]={fecha:g.fecha,concepto:g.concepto,total:0,costo:{l1:0,l3:0,l2:0},puso:{l1:0,l3:0,l2:0},mediosAc:{}});
+    var e=porEg[k]||(porEg[k]={fecha:g.fecha,concepto:g.concepto,total:0,costo:{l1:0,l3:0,l2:0},puso:{l1:0,l3:0,l2:0},medios:{l1:{},l3:{},l2:{}}});
     e.total+=parseFloat(g.monto)||0;
     if(e.costo[g.local]!==undefined)e.costo[g.local]+=parseFloat(g.monto)||0;
     var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:g.monto}];
@@ -4603,29 +4604,35 @@ function detalleOficinaPar(gastos,deudor,acreedor){
       var m=String(pg.medio||pg.tipo||"");
       var d=localDeCajaMayor(m)||getLocalFromMedio(m);
       if(d!=="l1"&&d!=="l2"&&d!=="l3")d=g.local;
-      e.puso[d]+=parseFloat(pg.monto)||0;
-      if(d===acreedor)e.mediosAc[m||"Sin medio"]=(e.mediosAc[m||"Sin medio"]||0)+(parseFloat(pg.monto)||0);
+      var mt=parseFloat(pg.monto)||0;
+      e.puso[d]+=mt;
+      e.medios[d][m||"Sin medio"]=(e.medios[d][m||"Sin medio"]||0)+mt;
     });
   });
+  var lista=function(o){return Object.keys(o).map(function(m){return {medio:m,monto:o[m]};});};
   return Object.keys(porEg).map(function(k){
-    var e=porEg[k], falta=e.costo[deudor]-e.puso[deudor], demas=e.puso[acreedor]-e.costo[acreedor];
-    return {fecha:e.fecha,concepto:e.concepto,total:e.total,falta:falta,demas:demas,medios:Object.keys(e.mediosAc).map(function(m){return {medio:m,monto:e.mediosAc[m]};})};
-  }).filter(function(e){return e.falta>=1&&e.demas>=1;}).sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
+    var e=porEg[k], difD=e.puso[deudor]-e.costo[deudor], difA=e.puso[acreedor]-e.costo[acreedor];
+    return {fecha:e.fecha,concepto:e.concepto,total:e.total,difD:difD,difA:difA,mediosD:lista(e.medios[deudor]),mediosA:lista(e.medios[acreedor])};
+  }).filter(function(e){return Math.abs(e.difD)>=1||Math.abs(e.difA)>=1;}).sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
 }
 function DetalleSaldo({items,tipo,deudor,acreedor}){
   var fmtD=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var d=getLocal(deudor), a=getLocal(acreedor);
-  if(!items||items.length===0)return <div style={{fontSize:10.5,color:"#6E6E6E",padding:"4px 0"}}>No encontré egresos que expliquen este saldo (puede venir de devoluciones o de otro mes).</div>;
+  if(!items||items.length===0)return <div style={{fontSize:10.5,color:"#6E6E6E",padding:"4px 0"}}>No encontré egresos que expliquen este saldo.</div>;
   return(
     <div style={{background:"#080808",borderRadius:8,padding:"6px 9px",marginTop:6}}>
       {items.map(function(x,i){return(
         <div key={i} style={{padding:"4px 0",borderTop:i===0?"none":"1px solid #141414",fontSize:10.5,color:"#9A9A9A"}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
             <span style={{color:"#D8D8D8"}}>{fmtDate(String(x.fecha).substring(0,10))} · {x.concepto}</span>
-            <b style={{color:x.signo===-1?"#4C9A5A":"#E07B00"}}>{tipo==="oficina"?fmtD(x.falta):(x.signo===-1?"− ":"")+fmtD(x.monto)}</b>
+            <b style={{color:tipo==="oficina"?(x.difD<0?"#E07B00":"#4C9A5A"):(x.signo===-1?"#4C9A5A":"#E07B00")}}>{tipo==="oficina"?(x.difD<0?"+ ":"− ")+fmtD(Math.abs(x.difD)):(x.signo===-1?"− ":"")+fmtD(x.monto)}</b>
           </div>
           {tipo==="oficina"
-            ?<div>Total {fmtD(x.total)} · {d?d.nombre:deudor} puso {fmtD(x.falta)} de menos · {a?a.nombre:acreedor} puso con {x.medios.map(function(m){return m.medio+" "+fmtD(m.monto);}).join(", ")}</div>
+            ?<div>
+              <div>Total {fmtD(x.total)} · {x.difD<0?"suma a lo que debe":"lo compensa"}</div>
+              <div>{d?d.nombre:deudor}: {Math.abs(x.difD)<1?"puso lo que le tocaba":"puso "+fmtD(Math.abs(x.difD))+(x.difD<0?" de menos":" de más")}{x.mediosD.length>0?" (con "+x.mediosD.map(function(m){return m.medio+" "+fmtD(m.monto);}).join(", ")+")":""}</div>
+              <div>{a?a.nombre:acreedor}: {Math.abs(x.difA)<1?"puso lo que le tocaba":"puso "+fmtD(Math.abs(x.difA))+(x.difA<0?" de menos":" de más")}{x.mediosA.length>0?" (con "+x.mediosA.map(function(m){return m.medio+" "+fmtD(m.monto);}).join(", ")+")":""}</div>
+            </div>
             :<div>{x.signo===-1?(a?a.nombre:acreedor)+" lo pagó con un medio de "+(d?d.nombre:deudor):(d?d.nombre:deudor)+" lo pagó con un medio de "+(a?a.nombre:acreedor)} · {x.medio}</div>}
         </div>);})}
     </div>

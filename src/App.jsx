@@ -5542,6 +5542,88 @@ function PanelRazonSocial({entidades, docs, usuario, onSave, onDelete, onSaveDoc
   );
 }
 
+// Honorarios del contador: se pagan desde la Oficina y se reparten 50% Bodegón, 30% Colantonio's, 20% Kusama como el resto de
+// sus gastos. Cada pago es un egreso común de la Oficina (rubro Administrativo → Profesionales → Contador).
+function PanelContadorOficina({gastos, usuario, onSave, onBorrar}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var COL="#1A6B8A";
+  var fmtC=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var [mostrar,setMostrar]=useState(false);
+  var [f,setF]=useState({fecha:hoy,periodo:hoy.substring(0,7),monto:"",notas:"",pagos:[{medio:"",monto:""}]});
+  var INPc={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  var esC=function(g){return /contador|honorarios contables/i.test([g.concepto,g.subramo].join(" "));};
+  var lista=agruparEgresosOficina(gastos).filter(esC).sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
+  var porMes={};
+  lista.forEach(function(g){var m=String(g.fecha||"").substring(0,7);porMes[m]=(porMes[m]||0)+(parseFloat(g.monto)||0);});
+  var total=parseFloat(f.monto)||0;
+  var sumaPagos=f.pagos.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
+  function setPago(i,ch){setF(function(x){return{...x,pagos:x.pagos.map(function(p,j){return j===i?{...p,...ch}:p;})};});}
+  function guardar(){
+    if(total<=0){alert("Poné el monto de los honorarios.");return;}
+    var con=f.pagos.filter(function(p){return p.medio;});
+    if(con.length===0){alert("Elegí con qué se paga.");return;}
+    // Con un solo medio y sin monto se paga todo con ese.
+    var pagos=(con.length===1&&!(parseFloat(con[0].monto)>0))?[{medio:con[0].medio,monto:total}]:con.filter(function(p){return parseFloat(p.monto)>0;}).map(function(p){return{medio:p.medio,monto:parseFloat(p.monto)};});
+    var pg=pagos.reduce(function(a,x){return a+x.monto;},0);
+    if(Math.abs(pg-total)>0.5&&!window.confirm("Los medios suman "+fmtC(pg)+" y los honorarios son "+fmtC(total)+". ¿Guardar igual?"))return;
+    onSave({id:"egr_cont_"+Date.now(),local:"l4",concepto:"Honorarios contador"+(f.periodo?" "+f.periodo:""),subramo:"Contador",area:"Administrativo",categoria:"Administrativo",
+      monto:total,fecha:f.fecha,forma_pago:pagos[0].medio,pagos:pagos,detalle:f.notas||"",notas:f.notas||"",facturado:false,usuario:usuario||"",created_at:new Date().toISOString()});
+    setF({fecha:hoy,periodo:hoy.substring(0,7),monto:"",notas:"",pagos:[{medio:"",monto:""}]}); setMostrar(false);
+  }
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{background:"#0A0F14",border:"1px solid "+COL+"55",borderRadius:12,padding:"11px 13px",marginBottom:12}}>
+        <div style={{fontSize:11,color:COL,fontWeight:700,marginBottom:3}}>🧮 Honorarios del contador · gasto de la Oficina</div>
+        <div style={{fontSize:11,color:"#9A9A9A"}}>Se reparten 🍷 Bodegón 50% · 🍝 Colantonio's 30% · 🌸 Kusama 20%.</div>
+        {Object.keys(porMes).length>0&&<div style={{fontSize:11,color:"#B8B8B8",marginTop:6}}>{Object.keys(porMes).sort().reverse().slice(0,6).map(function(m){return m+": "+fmtC(porMes[m]);}).join(" · ")}</div>}
+      </div>
+      {!mostrar&&<button onClick={function(){setMostrar(true);}} style={{padding:"9px 16px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",marginBottom:12}}>+ Pagar honorarios</button>}
+      {mostrar&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9,marginBottom:10}}>
+            <div><label style={lbl}>Fecha de pago</label><input type="date" value={f.fecha} onChange={function(e){var v=e.target.value;setF(function(x){return{...x,fecha:v};});}} style={INPc}/></div>
+            <div><label style={lbl}>Mes que cubre</label><input type="month" value={f.periodo} onChange={function(e){var v=e.target.value;setF(function(x){return{...x,periodo:v};});}} style={INPc}/></div>
+            <div><label style={lbl}>Monto total</label><input type="number" value={f.monto} onChange={function(e){var v=e.target.value;setF(function(x){return{...x,monto:v};});}} style={INPc}/></div>
+          </div>
+          <RepartoOficinaBar total={f.monto} onRepartir={function(ps){setF(function(x){return{...x,pagos:ps};});}}/>
+          <label style={lbl}>Se paga con</label>
+          {f.pagos.map(function(pg,i){return(
+            <div key={i} style={{display:"flex",gap:6,marginBottom:6}}>
+              <select value={pg.medio} onChange={function(e){setPago(i,{medio:e.target.value});}} style={{...INPc,flex:2}}>
+                <option value="">— Elegí el medio —</option>
+                {MEDIOS_EGRESO.map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}
+              </select>
+              <input type="number" value={pg.monto} onChange={function(e){setPago(i,{monto:e.target.value});}} placeholder="Monto" style={{...INPc,flex:1}}/>
+              {f.pagos.length>1&&<button onClick={function(){setF(function(x){return{...x,pagos:x.pagos.filter(function(_,j){return j!==i;})};});}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",padding:"0 10px",cursor:"pointer"}}>✕</button>}
+            </div>);})}
+          <button onClick={function(){setF(function(x){return{...x,pagos:x.pagos.concat([{medio:"",monto:""}])};});}} style={{background:"none",border:"none",color:COL,fontSize:11,cursor:"pointer",marginBottom:8}}>+ otro medio</button>
+          {f.pagos.length>1&&total>0&&<div style={{fontSize:11,color:Math.abs(sumaPagos-total)<=0.5?"#4C9A5A":"#D4A017",marginBottom:6}}>Suman {fmtC(sumaPagos)} de {fmtC(total)}</div>}
+          <label style={lbl}>Notas (opcional)</label>
+          <input value={f.notas} onChange={function(e){var v=e.target.value;setF(function(x){return{...x,notas:v};});}} placeholder="Nº de factura, detalle…" style={{...INPc,marginBottom:10}}/>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:COL,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar pago</button>
+            <button onClick={function(){setMostrar(false);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {lista.length===0&&!mostrar&&<div style={{textAlign:"center",padding:"26px 0",color:"#6E6E6E"}}>Todavía no hay pagos al contador.</div>}
+      {lista.map(function(g){return(
+        <div key={g.id} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"9px 11px",marginBottom:6,display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{g.concepto}</div>
+            <div style={{fontSize:10.5,color:"#8C8C8C"}}>{fmtDate(String(g.fecha).substring(0,10))} · {g.forma_pago}</div>
+            <div style={{fontSize:10.5,color:"#6E6E6E"}}>{g.detalle}</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+            <b style={{color:"#F0EDE8",fontSize:14}}>{fmtC(g.monto)}</b>
+            {onBorrar&&<button title="Borrar" onClick={function(){if(window.confirm("¿Borrar este pago ("+fmtC(g.monto)+")?\n\nSe borra de la Oficina y de los tres locales."))onBorrar(String(g.id).replace(/_of$/,""));}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",fontSize:11,padding:"4px 8px",cursor:"pointer"}}>🗑️</button>}
+          </div>
+        </div>);})}
+    </div>
+  );
+}
+
 function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
@@ -5682,7 +5764,7 @@ function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, l
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat(localSel.id!=="l4"?[["checklist","✅ Checklist"]]:[]).concat([["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat(localSel.id!=="l4"?[["checklist","✅ Checklist"]]:[["contador","🧮 Contador"]]).concat([["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -5696,6 +5778,7 @@ function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, l
       {tab==="resumen"&&localSel.id!=="l4"&&localSel.id!=="dep"&&<PanelResumenLocal localId={localSel.id} gastos={gastosTodos} cierres={cierresRL} sueldos={sueldosRL} adelantos={adelantosRL} retiros={retirosRL} aportes={aportesRL} corrResultados={corrRL}/>}
 
       {/* Tab Resumen de egresos (sólo la Oficina) */}
+      {tab==="contador"&&localSel.id==="l4"&&<PanelContadorOficina gastos={gastosTodos} usuario={usuario} onSave={onSaveEgreso} onBorrar={onBorrarEgresoOficina}/>}
       {tab==="resumen"&&localSel.id==="l4"&&<PanelResumenOficina gastos={gastosTodos} onRepartir={onSaveEgreso} onBorrar={onBorrarEgresoOficina} onSaldar={onSaldarOficina}/>}
 
       {/* Tab Recetas */}

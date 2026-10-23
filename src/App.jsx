@@ -14260,7 +14260,7 @@ function PanelNovedades(p){
         }
         pendientesDeSaldar(p.gastos||[]).forEach(function(c){
           var d=getLocal(c.deudor)||{nombre:c.deudor}, a=getLocal(c.acreedor)||{nombre:c.acreedor};
-          avisos.push({rojo:false,txt:"Cruzado sin saldar: "+d.nombre+" le debe "+fmt(c.m)+" a "+a.nombre});
+          avisos.push({rojo:false,txt:(c.tipo==="oficina"?"De la Oficina sin saldar: ":"Cruzado sin saldar: ")+d.nombre+" le debe "+fmt(c.m)+" a "+a.nombre});
         });
         var sinMedio=(p.gastos||[]).filter(function(g){
           return String(g.fecha||"").substring(0,7)===mesEnCurso&&!esGastoDeuda(g)&&!(g.pagos&&g.pagos.length>0)&&!String(g.forma_pago||"").trim()&&(parseFloat(g.monto)||0)>0;

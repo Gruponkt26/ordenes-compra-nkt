@@ -5682,7 +5682,7 @@ function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, l
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat([["checklist","✅ Checklist"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat(localSel.id!=="l4"?[["checklist","✅ Checklist"]]:[]).concat([["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -27267,7 +27267,11 @@ export default function App() {
   }
   // Guarda un egreso; si es de la Oficina lo parte en tres (uno por local) y borra el egreso entero
   // que hubiera quedado de antes con el mismo id.
+  // Los honorarios del contador son de todo el grupo: se cargue en el local que se cargue, es un gasto de la Oficina
+  // (que se reparte 50/30/20 como el resto). La Concesión lleva su propia contabilidad y no entra.
+  function esGastoContador(g){ return /contador|honorarios contables/i.test([g.concepto,g.subramo].join(" ")); }
   function guardarEgresoConOficina(g){
+    if(g.local!=="l4"&&g.local!=="dep"&&!esParteOficinaGasto(g)&&!/^egr_sueldo_/.test(String(g.id||""))&&esGastoContador(g))g={...g,local:"l4"};
     var lista=g.local==="l4"?partirEgresoOficina(g):[g];
     if(g.local==="l4"){ sbDeleteGasto(g.id); }
     lista.forEach(function(x){ sbSaveGasto(x); });

@@ -7241,8 +7241,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       setShowModal(true);
       return;
     }
-    var faltaPl=resumenSueldoOf(pl).falta;
-    setModalForm({estado:"parcial",monto_parcial:faltaPl>0.5?String(Math.round(faltaPl)):"",pagos:[{medio:CAJA_MAYOR_POR_LOCAL[pl.local]||"",monto:""}],notas:"",fecha_pago:hoy});
+    setModalForm({estado:"parcial",monto_parcial:"",pagos:[{medio:CAJA_MAYOR_POR_LOCAL[pl.local]||"",monto:""}],notas:"",fecha_pago:hoy});
     setShowModal(true);
   }
 
@@ -7261,7 +7260,10 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   function ahoraDe(lid){ var v=(modalForm.ahoraOf||{})[lid]; return (v===undefined||v==="")?0:(parseFloat(v)||0); }
   function mpModal(){
     if(ahoraOficinaActivo())return ahoraDe("l1")+ahoraDe("l3")+ahoraDe("l2");
-    return parseFloat(modalForm.monto_parcial)||0;
+    var v=parseFloat(modalForm.monto_parcial)||0;
+    if(v>0||!modalPl||modalPl.local==="l4")return v;
+    // Sin "Este pago $": si se escribieron los montos de los medios, el pago es lo que suman.
+    return (modalForm.pagos||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
   }
   function netoModal(){
     if(!modalPl)return 0;
@@ -7309,7 +7311,8 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   function pagosModal(){
     if(esOficinaModal())return partesOficinaModal().filter(function(x){return x.paga>0;}).map(function(x){return {medio:x.medio,monto:x.paga};});
     var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
-    if(filas.length===1&&!(parseFloat(filas[0].monto)>0))return [{medio:filas[0].medio,monto:netoModal()}];
+    // Con un solo medio, todo el pago sale de ese medio (el monto escrito en el medio no cuenta).
+    if(filas.length===1)return [{medio:filas[0].medio,monto:netoModal()}];
     return filas.filter(function(pg){return parseFloat(pg.monto)>0;}).map(function(pg){return{medio:pg.medio,monto:parseFloat(pg.monto)};});
   }
   function totalPagosModal(){return pagosModal().reduce(function(a,pg){return a+pg.monto;},0);}
@@ -7852,7 +7855,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     <option value="">-- Seleccioná --</option>
                     {opcionesMedios(modalPl.local)}
                   </select>
-                  <input type="number" placeholder={(modalForm.pagos||[]).length===1?"Todo":"Monto"} value={pago.monto} onChange={function(e){setPagoModal(idx,"monto",e.target.value);}} style={{...INP,width:90,flex:"none"}}/>
+                  {(modalForm.pagos||[]).length>1&&<input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){setPagoModal(idx,"monto",e.target.value);}} style={{...INP,width:90,flex:"none"}}/>}
                   {(modalForm.pagos||[]).length>1&&<button onClick={function(){setModalForm(function(f){return{...f,pagos:f.pagos.filter(function(_,i){return i!==idx;})};});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
                 </div>
               );})}
@@ -7863,7 +7866,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                 </div>
               )}
               {(modalForm.pagos||[]).length===1&&(
-                <div style={{fontSize:9,color:"#7E7E7E"}}>Dejá el monto vacío si todo se paga con ese medio. Usá “+ Agregar” para dividirlo.</div>
+                <div style={{fontSize:9,color:"#7E7E7E"}}>Todo el pago sale de este medio. Usá “+ Agregar” para dividirlo entre varios.</div>
               )}
               {(function(){
                 var cruzados=(modalForm.pagos||[]).map(function(pg){return duenoMedio(pg.medio);}).filter(function(d){return d&&d!==modalPl.local;});

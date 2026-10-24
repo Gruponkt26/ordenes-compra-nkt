@@ -5694,6 +5694,78 @@ function PanelContadorOficina({gastos, usuario, onSave, onBorrar}){
   );
 }
 
+// Lo que gastó un local en cada proveedor: los egresos del rubro Proveedores, agrupados por proveedor, por mes o de todos los meses.
+// Lo que se pagó a deuda se muestra aparte (todavía no salió plata).
+function PanelProveedoresLocal({localId, gastos}){
+  var hoy=new Date().toISOString().split("T")[0];
+  var loc=getLocal(localId)||{};
+  var fmtP=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
+  var [mes,setMes]=useState(hoy.slice(0,7));
+  var [abierto,setAbierto]=useState(null);
+  var [buscar,setBuscar]=useState("");
+  var todos=(gastos||[]).filter(function(g){return g.local===localId&&(g.area||g.categoria)==="Proveedores";});
+  var meses=[];
+  todos.forEach(function(g){var m=String(g.fecha||"").substring(0,7); if(m&&meses.indexOf(m)===-1)meses.push(m);});
+  if(meses.indexOf(hoy.slice(0,7))===-1)meses.push(hoy.slice(0,7));
+  meses.sort().reverse();
+  var q=buscar.trim().toLowerCase();
+  var delMes=todos.filter(function(g){return mes==="todos"||String(g.fecha||"").substring(0,7)===mes;});
+  var porProv={};
+  delMes.forEach(function(g){
+    var k=String(g.concepto||"Sin proveedor").trim()||"Sin proveedor";
+    var x=porProv[k]||(porProv[k]={nombre:k,total:0,deuda:0,items:[]});
+    var m=parseFloat(g.monto)||0, d=montoDeudaDeGasto(g);
+    x.total+=m; x.deuda+=d; x.items.push(g);
+  });
+  var lista=Object.keys(porProv).map(function(k){return porProv[k];}).filter(function(x){return !q||x.nombre.toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return b.total-a.total;});
+  var total=lista.reduce(function(a,x){return a+x.total;},0), totalDeuda=lista.reduce(function(a,x){return a+x.deuda;},0);
+  var COL=loc.color||"#1A6B8A";
+  var INPp={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={INPp}>
+          <option value="todos">📅 Todos los meses</option>
+          {meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+        </select>
+        <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar proveedor…" style={{...INPp,flex:1,minWidth:150}}/>
+      </div>
+      <div style={{background:"#0C0C0C",border:"1px solid "+COL+"44",borderRadius:12,padding:"11px 14px",marginBottom:12}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>{loc.emoji} {loc.nombre} · gastado en proveedores · {mes==="todos"?"todos los meses":mes}</div>
+        <div style={{fontSize:24,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmtP(total)}</div>
+        <div style={{fontSize:11,color:"#8C8C8C"}}>{lista.length} proveedor{lista.length===1?"":"es"}{totalDeuda>0.5?" · a deuda "+fmtP(totalDeuda):""}</div>
+      </div>
+      {lista.length===0&&<div style={{textAlign:"center",padding:"26px 0",color:"#6E6E6E"}}>No hay egresos de proveedores {mes==="todos"?"":"en "+mes}.</div>}
+      {lista.map(function(x){
+        var pct=total>0?Math.round(x.total/total*100):0, ab=abierto===x.nombre;
+        return(
+          <div key={x.nombre} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,marginBottom:6}}>
+            <div onClick={function(){setAbierto(ab?null:x.nombre);}} style={{padding:"10px 13px",cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}>
+                <span style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{ab?"▾":"▸"} {x.nombre} <span style={{color:"#6E6E6E",fontWeight:400,fontSize:10}}>{pct}% · {x.items.length} pago{x.items.length===1?"":"s"}</span></span>
+                <b style={{fontSize:14,color:"#F0EDE8"}}>{fmtP(x.total)}</b>
+              </div>
+              <div style={{height:3,background:"#1A1A1A",borderRadius:2,marginTop:6}}><div style={{width:pct+"%",height:3,background:COL,borderRadius:2}}/></div>
+              {x.deuda>0.5&&<div style={{fontSize:10,color:"#E07B00",marginTop:4}}>A deuda: {fmtP(x.deuda)}</div>}
+            </div>
+            {ab&&(
+              <div style={{padding:"0 13px 10px"}}>
+                {x.items.slice().sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));}).map(function(g){
+                  var medios=(g.pagos&&g.pagos.length>0?g.pagos.map(function(pg){return (pg.medio||pg.tipo||"")+(pg.deuda?" (deuda)":"");}):[g.forma_pago||""]).filter(Boolean).join(" + ");
+                  return(
+                    <div key={g.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#9A9A9A",padding:"4px 0",borderTop:"1px solid #161616"}}>
+                      <span style={{minWidth:0}}>{fmtDate(String(g.fecha).substring(0,10))}{g.subramo?" · "+g.subramo:""}{g.facturado?" · 🧾 facturado":""}{medios?" · "+medios:""}</span>
+                      <b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(g.monto)}</b>
+                    </div>);
+                })}
+              </div>
+            )}
+          </div>);
+      })}
+    </div>
+  );
+}
+
 function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, locales, localesDatos, localesObras, recetas, usuario, onSaveDatos, onSaveObra, onDeleteObra, onSaveEgreso, onSaveReceta, onDeleteReceta, gastosFijosOf, pagosFijosOf, onSaveGastoFijoOf, onDeleteGastoFijoOf, onSavePagoFijoOf, onDeletePagoFijoOf, onDeleteEgreso, gastosTodos, localInicial, tabInicial, onLocalInicialUsado, renderVencimientos, onSaldarOficina, renderConcesion, cargasSocialesRL, renderPagoF931, onBorrarEgresoOficina, cierresRL, sueldosRL, adelantosRL, retirosRL, aportesRL, corrRL}){
   var [localSel,setLocalSel]=useState(null);
   var [tab,setTab]=useState("datos");
@@ -5834,7 +5906,7 @@ function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, l
 
       {/* Tabs */}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat(localSel.id!=="l4"?[["checklist","✅ Checklist"]]:[["contador","🧮 Contador"]]).concat([["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
+        {(localSel.id==="dep"?[["datos","📋 Datos"],["resumen","📊 Resumen"],["gestion","🎾 Gestión"],["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"],["proveedores","🚚 Proveedores"],["obras","🏗️ Obras"],["documentos","📁 Documentos"]]:[["datos","📋 Datos"]].concat([["resumen","📊 Resumen"]]).concat(localSel.id!=="l4"?[["metricas","📈 Métricas"]]:[]).concat(localSel.id!=="l4"?[["checklist","✅ Checklist"]]:[["contador","🧮 Contador"]]).concat([["vencimientos","📅 Vencimientos"],["deuda","💳 Deuda"]]).concat(localSel.id!=="l4"?[["proveedores","🚚 Proveedores"]]:[]).concat([["obras","🏗️ Obras"],["documentos","📁 Documentos"],["recetas","🍳 Recetas"]])).map(function(t){return(
           <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid "+(tab===t[0]?localSel.color:"#1E1E1E"),background:tab===t[0]?localSel.color+"22":"#111",color:tab===t[0]?localSel.color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>
         );})}
       </div>
@@ -5880,6 +5952,7 @@ function PanelLocales({docsLocal, onSaveDoc, onDeleteDoc, deportes, extrasDep, l
       {tab==="checklist"&&<PanelChecklist local={localSel} usuario={usuario}/>}
 
       {/* Tab Vencimientos de un local: se cargan y se pagan desde acá; en Novedades aparecen igual que siempre */}
+      {tab==="proveedores"&&localSel.id!=="l4"&&<PanelProveedoresLocal localId={localSel.id} gastos={gastosTodos}/>}
       {(tab==="vencimientos"||tab==="deuda")&&<F931DeLocal localId={localSel.id} cargas={cargasSocialesRL||[]} modo={tab==="deuda"?"deuda":"proximos"} renderPago={renderPagoF931}/>}
       {tab==="vencimientos"&&renderVencimientos&&renderVencimientos(localSel.id,"proximos")}
       {tab==="deuda"&&renderVencimientos&&renderVencimientos(localSel.id,"deuda")}

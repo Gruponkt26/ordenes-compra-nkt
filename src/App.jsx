@@ -10070,7 +10070,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
-    var pi=parseFloat(String(percIvaF).replace(",",".")), pb=parseFloat(String(percIibbF).replace(",","."));
+    var pi=cobraPercIVA(g)?parseFloat(String(percIvaF).replace(",",".")):NaN, pb=parseFloat(String(percIibbF).replace(",","."));
     if(g.facturado&&(!isNaN(pi)||!isNaN(pb)))GUARDAR_PERC(g.id,{iva:isNaN(pi)?0:pi,iibb:isNaN(pb)?0:pb});
     setPercIvaF(""); setPercIibbF("");
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
@@ -10301,12 +10301,12 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                 <div style={{marginTop:8,background:"#0C140C",border:"1px solid #4C9A5A44",borderRadius:9,padding:"9px 11px"}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#4C9A5A",marginBottom:5}}>Percepciones de la factura (a favor)</div>
                   <div style={{display:"flex",gap:8}}>
-                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA ($)</label>
-                      <input value={percIvaF} onChange={function(e){setPercIvaF(e.target.value);}} placeholder="Ej: 1692,60" inputMode="decimal" style={INP}/></div>
+                    {cobraPercIVA({concepto:form.concepto})&&<div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA ($)</label>
+                      <input value={percIvaF} onChange={function(e){setPercIvaF(e.target.value);}} placeholder="Ej: 1692,60" inputMode="decimal" style={INP}/></div>}
                     <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IIBB ($)</label>
                       <input value={percIibbF} onChange={function(e){setPercIibbF(e.target.value);}} placeholder="Ej: 2399,74" inputMode="decimal" style={INP}/></div>
                   </div>
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Copiá los importes de las líneas «PERC. IVA» y «PERC. I.B.» de la factura. Si los dejás vacíos, la app estima con 3 % (IVA) y 4 % (IIBB).</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Copiá los importes de las líneas «PERC. IVA» y «PERC. I.B.» de la factura. Si los dejás vacíos, la app estima con 3 % (IVA, salvo Pepsi que no lo cobra) y 4 % (IIBB).</div>
                 </div>
               )}
             </div>
@@ -14543,7 +14543,7 @@ function PanelNovedades(p){
                     <div style={{fontSize:9.5,color:"#6E6E6E",marginBottom:4}}>CUIT {f.cuit}</div>
                     {linea("Débito fiscal (ventas electrónicas)",o.df,"#E0714A")}
                     {linea("Crédito · facturas cargadas ("+o.facturas+")",o.cfFacturas,"#4C9A5A",true)}
-                    {o.percIVA>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#6E8F74",padding:"0 0 1.5px 12px"}}><span>↳ incluye percepción de IVA Coca Cola / Pepsi / La Serenísima ({(PERCEPCION_IVA_COCA*100).toFixed(1).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.percIVA)}</span></div>}
+                    {o.percIVA>0.5&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#6E8F74",padding:"0 0 1.5px 12px"}}><span>↳ incluye percepción de IVA Coca Cola / La Serenísima ({(PERCEPCION_IVA_COCA*100).toFixed(1).replace(".",",")}%)</span><span style={{fontVariantNumeric:"tabular-nums"}}>{fmt(o.percIVA)}</span></div>}
                     {o.cfAtrasado>0.5&&linea("Crédito · facturas atrasadas",o.cfAtrasado,"#4C9A5A",true)}
                     {linea(calculaAutomatico(mesIva)?"Crédito · IVA de comisiones":"Crédito · IVA de comisiones (cargadas a mano)",o.cfComisiones,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
@@ -17886,6 +17886,8 @@ var GUARDAR_PERC=function(){};
 // Coca Cola y Pepsi facturan con impuestos internos (en la factura de Coca Cola de oct-2026: 6,33 % del neto) que no
 // llevan IVA; La Serenísima no. Las percepciones: IVA RG 2408 = 3 % del neto; IIBB Bs. As. = 4 % de (neto + internos).
 var INTERNOS_BEBIDAS=0.0633, PERC_IVA_PCT=0.03, PERC_IIBB_PCT=0.04;
+// Pepsi no cobra percepción de IVA (sí la de IIBB): sin los importes reales, no se le estima.
+function cobraPercIVA(g){ return !/pepsi/i.test((g&&g.concepto)||""); }
 function esBebidaConInternos(g){ return /coca[\s-]*cola|pepsi/i.test((g&&g.concepto)||""); }
 // Neto, IVA propio de la factura y percepciones de una compra facturada. Con los importes reales de la
 // factura cargados, el neto sale de restarlos al total; si no, se estima con los porcentajes de arriba.
@@ -17899,8 +17901,9 @@ function desgloseCompra(g){
     perc={iva:real.iva||0,iibb:real.iibb||0};
     neto=Math.max(0,(monto-perc.iva-perc.iibb)/(1+alic+int));
   } else {
-    neto=monto/(1+alic+int+PERC_IVA_PCT+PERC_IIBB_PCT*(1+int));
-    perc={iva:neto*PERC_IVA_PCT,iibb:neto*PERC_IIBB_PCT*(1+int)};
+    var pIva=cobraPercIVA(g)?PERC_IVA_PCT:0;
+    neto=monto/(1+alic+int+pIva+PERC_IIBB_PCT*(1+int));
+    perc={iva:neto*pIva,iibb:neto*PERC_IIBB_PCT*(1+int)};
   }
   return {neto:neto,ivaProp:neto*alic,perc:perc,alic:alic};
 }

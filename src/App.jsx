@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, INP, BS, GH } from "./comun.js";
+import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
@@ -807,7 +807,7 @@ function genUser() { return "u" + Date.now() + "_" + Math.random().toString(36).
 function getFact(id) { return FACTURACION.find(function(f) { return f.id === id; }) || null; }
 function fmtDateTime(s) {
   if (!s) return "—";
-  var d = new Date(s);
+  var d = fechaHora(s);
   var pad = function(n) { return n < 10 ? "0"+n : n; };
   return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
 }
@@ -18364,7 +18364,7 @@ function PanelCierresSofia(p) {
     // Varias veces "coincidió" del mismo cajero, local y día se ven en un solo renglón (×N, con la hora de la última). Las que NO
     // coinciden quedan siempre aparte: cada una es un aviso que hay que resolver.
     var lineasVerif=[], idxGrupoVerif={};
-    function horaDe(a){ try{ return a.created_at?new Date(a.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false}):""; }catch(e){ return ""; } }
+    function horaDe(a){ try{ return a.created_at?fechaHora(a.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false}):""; }catch(e){ return ""; } }
     avisosMes.forEach(function(a){
       var ok=Math.round(parseFloat(a.diferencia||0))===0;
       if(!ok){ lineasVerif.push({a:a,n:1,horas:[]}); return; }

@@ -22,9 +22,16 @@ export function getLocal(id) { return LOCALES.find(function(l) { return l.id ===
 
 // ─── FECHAS ───────────────────────────────────────────────────────────────────
 export function fmtDate(s) { if (!s) return "—"; var p = s.split("-"); return p[2]+"/"+p[1]+"/"+p[0]; }
+// Una marca de tiempo que viene de la base sin zona ("2026-10-25T14:10:00", columna timestamp) está en UTC: sin esto el navegador
+// la toma como hora local y la muestra 3 horas corrida.
+export function fechaHora(s) {
+  var t = String(s == null ? "" : s);
+  if (/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(t)) t += "Z";
+  return new Date(t);
+}
 export function fmtHora(s) {
   if (!s) return "";
-  var d = new Date(s);
+  var d = fechaHora(s);
   if (isNaN(d.getTime())) return "";
   var pad = function(n) { return n < 10 ? "0"+n : n; };
   return pad(d.getHours())+":"+pad(d.getMinutes());

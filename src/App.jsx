@@ -13445,8 +13445,10 @@ function PanelIIBB(p){
   function setCalcIIBB(k,v){
     setFormCred(function(f){
       var n={...f}; n[k]=v;
-      var t=parseFloat(n.total)||0, pct=parseFloat(n.pct)||0, d=parseFloat(n.base||"0.21");
-      if(t>0&&pct>0)n.monto=String(Math.round(t/(1+d)*pct)/100);
+      var t=parseFloat(n.total)||0, pct=parseFloat(n.pct)||0, b=String(n.base||"0.21");
+      // Si la factura trae percepciones (YPF: IVA 3 %), el total no es neto + IVA: hay que sacarlas para llegar al neto.
+      var div=b==="0.24"?1.24:(b==="0.24i"?1.24+pct/100:1+parseFloat(b));
+      if(t>0&&pct>0)n.monto=String(Math.round(t/div*pct)/100);
       return n;
     });
   }
@@ -13502,6 +13504,8 @@ function PanelIIBB(p){
                 <label style={lblc}>El valor es</label>
                 <select value={formCred.base||"0.21"} onChange={function(e){setCalcIIBB("base",e.target.value);}} style={INPc}>
                   <option value="0.21">Total con IVA 21%</option>
+                  <option value="0.24">Total con IVA 21% + percepción de IVA 3% (YPF)</option>
+                  <option value="0.24i">Total con IVA 21% + percepción de IVA 3% + esta percepción de IIBB</option>
                   <option value="0.105">Total con IVA 10,5%</option>
                   <option value="0">Neto (sin IVA)</option>
                 </select>

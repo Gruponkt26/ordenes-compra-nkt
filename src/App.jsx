@@ -13896,7 +13896,7 @@ function PanelNovedades(p){
   // La deuda total partida por local, para la tarjeta "Deuda".
   var deudaLocal={};
   var deudaRubros=GRUPOS_VENC.map(function(g){
-    var vencido=0, comprometido=0, cuantos=0, quien={}, items=[];
+    var vencido=0, comprometido=0, cuantos=0, quien={}, items=[], locs={};
     // De quién es cada deuda, con el mismo criterio que el total: CUIT en los rubros que
     // van por CUIT, local en los demás.
     function duenioTxt(v){
@@ -13913,7 +13913,7 @@ function PanelNovedades(p){
           // puede pagar: no es deuda.
           // La deuda se muestra entera, venga del mes que venga: lo que se debe se debe.
           if(estaVencida(c,hoy)){
-            vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);sumarEn(deudaLocal,v.local||"_s",m);
+            vencido+=m;cuantos++;sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,m);sumarEn(deudaLocal,v.local||"_s",m);locs[v.local||"_s"]=true;
             items.push({txt:v.concepto+(c.nro===0?" · anticipo":" · cuota "+c.nro),
               duenio:duenioTxt(v), fecha:venceFinal(c), monto:m});
           }
@@ -13933,13 +13933,20 @@ function PanelNovedades(p){
         vencido+=mv;
         cuantos++;
         sumarEn(quien,porCuit(g.id)?cuitIdDe(v):v.local,mv);
-        sumarEn(deudaLocal,v.local||"_s",mv);
+        sumarEn(deudaLocal,v.local||"_s",mv);locs[v.local||"_s"]=true;
         items.push({txt:v.concepto, duenio:duenioTxt(v), fecha:f, monto:mv});
       }
     });
     // Lo más viejo primero: es lo que más urge y lo que primero pregunta el organismo.
     items.sort(function(a,b){return String(a.fecha||"").localeCompare(String(b.fecha||""));});
-    return {g:g, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos, detalle:detalleRubro(g,quien), items:items};
+    // En la Concesión el gremio es UTEDYC y la obra social OSPEDYC: si la deuda del rubro es sólo de la Concesión se nombra así, y si
+    // se mezcla con otros locales se muestran los dos nombres.
+    var ks=Object.keys(locs), gx=g;
+    if(NOMBRES_GRUPO_DEP[g.id]&&ks.indexOf("dep")>=0){
+      var nd=NOMBRES_GRUPO_DEP[g.id];
+      gx=ks.length===1?{...g,...nd}:{...g,label:g.label.split(" ")[0]+" "+g.corto+" / "+nd.corto+(g.id==="gremio"?" (gremio)":" (obra social)"),corto:g.corto+" / "+nd.corto};
+    }
+    return {g:gx, vencido:vencido, comprometido:comprometido, total:vencido, cuantos:cuantos, detalle:detalleRubro(g,quien), items:items};
   }).filter(function(x){ return x.vencido>0; });
   // Lo que todavía no venció, por si interesa el compromiso por delante de los planes.
   var porDelante=GRUPOS_VENC.reduce(function(a,g){

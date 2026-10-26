@@ -23803,7 +23803,7 @@ function PanelIVA(p) {
   var hoy=new Date().toISOString().split("T")[0];
   var mesCurrent=hoy.slice(0,7);
   var [mesFiltro,setMesFiltro]=useState(mesCurrent);
-  var [tab,setTab]=useState("posicion"); // posicion | compras | optimizacion
+  var [tab,setTab]=useState("cuit"); // diario | cuit | compras | optimizacion
 
   var mesesDisp=[...new Set([
     ...gastos.map(function(g){return g.fecha?g.fecha.substring(0,7):null;}),
@@ -24046,7 +24046,7 @@ function PanelIVA(p) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {[["diario","📅 Reserva diaria"],["cuit","🏛️ Por CUIT"],["posicion","📊 Posición por local"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
+        {[["diario","📅 Reserva diaria"],["cuit","🏛️ Por CUIT"],["compras","🧾 Crédito fiscal"],["optimizacion","💡 Optimización"]].map(function(t){
           return <button key={t[0]} onClick={function(){setTab(t[0]);}} style={{padding:"7px 14px",borderRadius:9,border:"1px solid "+(tab===t[0]?"#D4A017":"#1A1A1A"),background:tab===t[0]?"#D4A01722":"none",color:tab===t[0]?"#D4A017":"#8C8C8C",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:tab===t[0]?700:400}}>{t[1]}</button>;
         })}
       </div>
@@ -24278,6 +24278,7 @@ function PanelIVA(p) {
               var col=favor?"#D4A017":"#C1440E";
               return(
                 <div key={f.id} style={{background:"#0F0F0F",border:"1px solid "+col+"33",borderRadius:12,padding:"14px",marginBottom:10}}>
+                  {pos>ALERTA_UMBRAL&&<div style={{background:"#1A0800",border:"1px solid #FF4400",borderRadius:8,padding:"7px 10px",marginBottom:10,fontSize:11,fontWeight:700,color:"#FF4400"}}>🚨 Posición a pagar supera $500.000</div>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:9,flexWrap:"wrap",marginBottom:11}}>
                     <div style={{minWidth:0}}>
                       <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{f.razonSocial}</div>
@@ -24305,6 +24306,21 @@ function PanelIVA(p) {
                     </div>
                   </div>
 
+                  {d.locales.length>0&&(
+                    <div style={{marginTop:10,background:"#0B0B0B",border:"1px solid #161616",borderRadius:9,padding:"8px 11px"}}>
+                      <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Qué aporta cada local</div>
+                      {d.locales.map(function(lid){
+                        var L=getLocal(lid)||{}, pl=posicionPorLocal[lid]||{df:0,cf:0};
+                        return(
+                          <div key={lid} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,padding:"3px 0"}}>
+                            <span style={{color:L.color||"#F0EDE8",fontWeight:700}}>{L.emoji} {L.nombre}</span>
+                            <span style={{color:"#8C8C8C"}}>débito <b style={{color:"#3A7D44"}}>{plata(pl.df)}</b> · crédito <b style={{color:"#1A6B8A"}}>{plata(pl.cf)}</b></span>
+                          </div>);
+                      })}
+                      {d.locales.length>1&&<div style={{fontSize:9.5,color:"#6E6E6E",marginTop:4,lineHeight:1.5}}>Se paga sumado: el saldo de arriba es el del CUIT, no el de cada local. El crédito de facturas atrasadas cargado a mano se cuenta en el primer local.</div>}
+                    </div>
+                  )}
+
                   {favor&&d.cf>0&&(
                     <div style={{marginTop:10,fontSize:11,color:"#8A7040",lineHeight:1.6}}>
                       Este CUIT compra facturado por <b>{d.netoV>0?(d.netoC/d.netoV).toFixed(1):"—"} veces</b> lo que vende.
@@ -24316,84 +24332,18 @@ function PanelIVA(p) {
             })}
 
             <div style={{marginTop:4,padding:"11px 13px",background:"#0D0D0D",border:"1px dashed #1E1E1E",borderRadius:10,fontSize:11,color:"#8C8C8C",lineHeight:1.7}}>
-              <b style={{color:"#9A9A9A"}}>Por qué esta pantalla y no la de por local.</b><br/>
+              <b style={{color:"#9A9A9A"}}>Por qué se mira por CUIT.</b><br/>
               El IVA se liquida por CUIT, y los CUIT <b>no se compensan entre sí</b>: un saldo a favor en uno no
               le sirve al otro. Por eso lo que se paga es la suma de las posiciones positivas y no el neto de
               todas: acá arriba, {plata(aPagar)} y no {plata(aPagar-aFavor)}.<br/>
-              La pestaña 📊 Posición por local sirve para ver qué genera cada local, pero mezcla criterios —el
-              crédito va por CUIT y el débito por local—, así que no es lo que se presenta.
+              Adentro de cada CUIT se ve lo que aporta cada local, para saber qué genera cada uno; pero eso es
+              informativo: lo que se presenta y se paga es el saldo del CUIT.
             </div>
           </div>
         );
       })()}
 
       {/* TAB: POSICIÓN */}
-      {tab==="posicion"&&(
-        <div>
-          {/* Alertas $500k */}
-          {LOCALES_CTRL.map(function(l){
-            var pos=posicionPorLocal[l.id];
-            if(!pos||pos.neta<=ALERTA_UMBRAL)return null;
-            return(
-              <div key={l.id} style={{background:"#1A0800",border:"2px solid #FF4400",borderRadius:10,padding:"12px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
-                <div style={{fontSize:22}}>🚨</div>
-                <div>
-                  <div style={{fontSize:12,fontWeight:700,color:"#FF4400"}}>{l.emoji} {l.nombre} — Posición a pagar supera $500.000</div>
-                  <div style={{fontSize:11,color:"#AA3300",marginTop:2}}>IVA neto a ingresar: {fmt(pos.neta)}</div>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Cards por local */}
-          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
-            {LOCALES_CTRL.map(function(l){
-              var pos=posicionPorLocal[l.id];
-              var aPagar=pos.neta>0;
-              return(
-                <div key={l.id} style={{background:"#111",border:"1px solid "+l.color+"44",borderRadius:12,padding:"14px 16px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:700,color:l.color}}>{l.emoji} {l.nombre}</div>
-                      <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>CUIT {l.cuit}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:10,color:aPagar?"#FF4400":"#3A7D44",textTransform:"uppercase",fontWeight:700,marginBottom:2}}>{aPagar?"A PAGAR":"A FAVOR"}</div>
-                      <div style={{fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:aPagar?"#FF6644":"#3A7D44"}}>{fmt(pos.neta)}</div>
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                    <div style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px"}}>
-                      <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>📤 Débito fiscal (ventas)</div>
-                      <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{fmt(pos.df)}</div>
-                      <div style={{fontSize:9,color:"#7E7E7E",marginTop:2}}>transferencias + tarjetas</div>
-                    </div>
-                    <div style={{background:"#0F0F0F",borderRadius:8,padding:"8px 10px"}}>
-                      <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>📥 Crédito fiscal (compras)</div>
-                      <div style={{fontSize:13,fontWeight:700,color:"#D4A017"}}>{fmt(pos.cf)}</div>
-                      <div style={{fontSize:9,color:"#7E7E7E",marginTop:2}}>facturas registradas</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Consolidado SRL */}
-          <div style={{background:"#0F0A1A",border:"1px solid #8B2FC944",borderRadius:12,padding:"14px 16px"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#8B2FC9",marginBottom:8}}>🏢 Consolidado SRL — Kusama + Colantonio's (CUIT 30-71844629-1)</div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:11,color:"#8C8C8C"}}>Débito fiscal: <span style={{color:"#F0EDE8"}}>{fmt(posSRL.df)}</span> · Crédito fiscal: <span style={{color:"#D4A017"}}>{fmt(posSRL.cf)}</span></div>
-              <div>
-                <div style={{fontSize:10,color:posSRL.neta>0?"#FF4400":"#3A7D44",fontWeight:700}}>{posSRL.neta>0?"A PAGAR":"A FAVOR"}</div>
-                <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:posSRL.neta>0?"#FF6644":"#3A7D44"}}>{fmt(posSRL.neta)}</div>
-              </div>
-            </div>
-            {posSRL.neta>ALERTA_UMBRAL&&<div style={{marginTop:8,fontSize:11,color:"#FF4400",fontWeight:700}}>🚨 Posición SRL supera $500.000</div>}
-          </div>
-        </div>
-      )}
-
       {/* TAB: CRÉDITO FISCAL (compras) */}
       {tab==="compras"&&(
         <div>

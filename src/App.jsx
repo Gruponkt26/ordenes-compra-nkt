@@ -13773,7 +13773,7 @@ function parsearMisComprobantes(texto){
   if(filas.length===0)return {error:"No encontré comprobantes en el archivo."};
   return {filas:filas};
 }
-function ControlARCA({gastos, hoy, hechos, usuario, onHecho}){
+function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHecho}){
   var fmtA=function(n){return (n<0?"-$":"$")+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
   var [cuit,setCuit]=useState(FACTURACION[0].id);
   var [mes,setMes]=useState(hoy.slice(0,7));
@@ -13807,6 +13807,21 @@ function ControlARCA({gastos, hoy, hechos, usuario, onHecho}){
     onHecho(cuit,mes,{ivaArca:Math.round(res.ivaArca),ivaApp:Math.round(res.ivaApp),faltan:res.sinCargar.length});
   }
   var semana=semanaDe(hoy), hechoEsta=(hechos||{})[semana+"_"+cuit];
+  // IIBB contra ARBA: se escribe lo real de la página y se compara con lo que estima la app para ese CUIT y mes.
+  var [iibbReal,setIibbReal]=useState({ret:"",perc:"",pagar:""});
+  var iibbApp=(function(){
+    var o=posicionIVAPorCuit(gastos||[],cierres||[],mes)[cuit]; if(!o)return null;
+    var alic=ALICUOTA_IIBB_CUIT[cuit]||0, devengado=(o.ventasTotal/1.21)*alic;
+    var extra=(creditosIIBB||[]).filter(function(c){return c.mes===mes&&c.cuit===cuit;}).reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0);
+    return {devengado:devengado,ret:o.iibbRetenido,perc:o.iibbAFavor+extra,pagar:devengado-o.iibbRetenido-o.iibbAFavor-extra};
+  })();
+  var nReal=function(v){return parseFloat(String(v).replace(/\./g,"").replace(",","."));};
+  var rRet=nReal(iibbReal.ret), rPerc=nReal(iibbReal.perc), rPagar=nReal(iibbReal.pagar);
+  var pagarConReal=iibbApp&&!isNaN(rRet)?iibbApp.devengado-rRet-(isNaN(rPerc)?iibbApp.perc:rPerc):null;
+  function filaIIBB(txt,app,real){
+    var hay=!isNaN(real), d=hay?real-app:0;
+    return [<span key="a">{txt}</span>,<span key="b" style={{color:"#9A9A9A"}}>{fmtA(app)}</span>,<span key="c">{hay?fmtA(real):"—"}</span>,<span key="d" style={{color:!hay?"#6E6E6E":(Math.abs(d)<=50?"#4C9A5A":"#D4A017"),fontWeight:700}}>{hay?(Math.abs(d)<=50?"✓":(d>0?"+":"")+fmtA(d)):""}</span>];
+  }
   return(
     <div>
       <div style={{fontSize:10.5,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>Entrá a ARCA → Mis Comprobantes → <b>Recibidos</b>, elegí el mes y bajá el <b>CSV</b>. Subilo acá (o pegá el contenido) y se compara con las facturas cargadas en Egresos. La clave fiscal se usa solo en la página de ARCA, nunca acá.</div>
@@ -13846,6 +13861,28 @@ function ControlARCA({gastos, hoy, hechos, usuario, onHecho}){
           )}
           {res.sinCargar.length===0&&res.soloApp.length===0&&<div style={{marginTop:6,fontSize:11,color:"#4C9A5A"}}>Todas las facturas coinciden de los dos lados.</div>}
           <button onClick={marcarHecho} style={{marginTop:9,padding:"7px 13px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontWeight:700,fontSize:12,cursor:"pointer"}}>Marcar control de esta semana como hecho</button>
+        </div>
+      )}
+      {iibbApp&&(
+        <div style={{marginTop:14,background:"#0A0A0A",border:"1px solid #1E1E1E",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginBottom:3}}>IIBB contra ARBA · {(FACTURACION.find(function(f){return f.id===cuit;})||{}).razonSocial} · {mes}</div>
+          <div style={{fontSize:10,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>En ARBA mirá lo que realmente te retuvieron y te percibieron ese mes, y escribilo acá (podés dejar vacío lo que no tengas).</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"5px 12px",fontSize:12,color:"#C8C8C8",alignItems:"center"}}>
+            <span></span><b style={{color:"#8C8C8C",fontSize:10}}>APP</b><b style={{color:"#8C8C8C",fontSize:10}}>ARBA</b><b style={{color:"#8C8C8C",fontSize:10}}>DIF.</b>
+            {filaIIBB("Retenciones bancarias",iibbApp.ret,rRet)}
+            {filaIIBB("Percepciones",iibbApp.perc,rPerc)}
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"8px 0"}}>
+            <input value={iibbReal.ret} onChange={function(e){var v=e.target.value;setIibbReal(function(x){return{...x,ret:v};});}} placeholder="Retenciones reales ($)" inputMode="decimal" style={{...INPa,flex:1,minWidth:130}}/>
+            <input value={iibbReal.perc} onChange={function(e){var v=e.target.value;setIibbReal(function(x){return{...x,perc:v};});}} placeholder="Percepciones reales ($)" inputMode="decimal" style={{...INPa,flex:1,minWidth:130}}/>
+            <input value={iibbReal.pagar} onChange={function(e){var v=e.target.value;setIibbReal(function(x){return{...x,pagar:v};});}} placeholder="IIBB a pagar según ARBA ($)" inputMode="decimal" style={{...INPa,flex:1,minWidth:150}}/>
+          </div>
+          <div style={{fontSize:12,color:"#C8C8C8",lineHeight:1.7}}>
+            IIBB a pagar según la app: <b style={{color:iibbApp.pagar>0?"#E0714A":"#4C9A5A"}}>{fmtA(iibbApp.pagar)}</b>{iibbApp.pagar<0?" (a favor)":""}
+            {pagarConReal!==null&&<span> · con tus retenciones reales: <b style={{color:pagarConReal>0?"#E0714A":"#4C9A5A"}}>{fmtA(pagarConReal)}</b></span>}
+            {!isNaN(rPagar)&&<div>Según ARBA: <b>{fmtA(rPagar)}</b> · diferencia con la app: <b style={{color:Math.abs(rPagar-iibbApp.pagar)<=50?"#4C9A5A":"#D4A017"}}>{fmtA(rPagar-iibbApp.pagar)}</b>{pagarConReal!==null&&<span> · con retenciones reales: <b>{fmtA(rPagar-pagarConReal)}</b></span>}</div>}
+          </div>
+          <div style={{fontSize:9.5,color:"#6A6A6A",marginTop:4,lineHeight:1.5}}>La app estima las retenciones bancarias como {pctIIBB()} % de lo cobrado electrónico. Si la diferencia es grande, el problema suele estar ahí.</div>
         </div>
       )}
     </div>
@@ -14950,7 +14987,7 @@ function PanelNovedades(p){
         })()}
 
         <Seccion tab="venc" id="arca" res={FACTURACION.every(function(f){return (p.controlesArca||{})[semanaDe(hoy)+"_"+f.id];})?"Controlado esta semana ✓":"Falta controlar contra ARCA esta semana"} titulo="🔍 Control contra ARCA" color="#D4A017">
-          <ControlARCA gastos={p.gastos||[]} hoy={hoy} hechos={p.controlesArca} usuario={p.usuario} onHecho={function(cuit,mes,datos){if(p.onControlArca)p.onControlArca(semanaDe(hoy),cuit,mes,datos);}}/>
+          <ControlARCA gastos={p.gastos||[]} cierres={cierres} creditosIIBB={p.creditosIIBB||[]} hoy={hoy} hechos={p.controlesArca} usuario={p.usuario} onHecho={function(cuit,mes,datos){if(p.onControlArca)p.onControlArca(semanaDe(hoy),cuit,mes,datos);}}/>
         </Seccion>
 
         <Seccion tab="venc" id="iibb" res={resumenIIBB()} titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">

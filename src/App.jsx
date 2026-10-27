@@ -12308,6 +12308,7 @@ function PanelFichar(p){
   var [codigoOk,setCodigoOk]=useState(function(){
     try{ var o=JSON.parse(window.sessionStorage.getItem("nkt_fich_ok")||"null"); return o&&o.hasta>Date.now()?o:null; }catch(e){ return null; }
   });
+  var [pantallaPrueba,setPantallaPrueba]=useState(false);   // mostrar el código sin bloquear el aparato (para probar)
   var [codigoTxt,setCodigoTxt]=useState("");
   var [codigoMsg,setCodigoMsg]=useState("");
   function aceptarCodigo(loc){
@@ -12799,6 +12800,13 @@ function PanelFichar(p){
           📺 Dejar este celular como pantalla de {(getLocal(local)||{}).nombre||"este local"} (se bloquea)
         </button>
       )}
+      {p.esAdmin&&(
+        <button onClick={function(){ if(!(p.secretos||{})[local]&&p.onCrearSecreto)p.onCrearSecreto(local); setPantallaPrueba(true); }}
+          style={{background:"none",border:"1px solid #1A6B8A55",borderRadius:9,color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:10,width:"100%"}}>
+          🧪 Mostrar el código sin bloquear (para probar)
+        </button>
+      )}
+      {pantallaPrueba&&(p.secretos||{})[local]&&<PantallaCodigoFichaje local={local} secreto={p.secretos[local]} onSalir={function(){setPantallaPrueba(false);}}/>}
       <div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>
         {fmtDate(fechaLocal())} · Tocá tu nombre para marcar
       </div>

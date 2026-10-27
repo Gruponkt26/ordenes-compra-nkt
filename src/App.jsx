@@ -12305,7 +12305,6 @@ function PanelFichar(p){
   });
   var [vinculando,setVinculando]=useState(false);
   // Código del local (pantalla fija con QR que cambia cada 30 s): verificado, vale unos minutos y reemplaza a la ubicación.
-  var [pantalla,setPantalla]=useState(false);
   var [codigoOk,setCodigoOk]=useState(function(){
     try{ var o=JSON.parse(window.sessionStorage.getItem("nkt_fich_ok")||"null"); return o&&o.hasta>Date.now()?o:null; }catch(e){ return null; }
   });
@@ -12779,12 +12778,15 @@ function PanelFichar(p){
       )}
       {codigoVerif&&<div style={{background:"#0A1A0A",border:"1px solid #3A7D44",borderRadius:12,padding:"9px 12px",marginBottom:10,fontSize:12,fontWeight:700,color:"#3A7D44"}}>✅ Código del local verificado: ya podés marcar sin GPS (vale unos minutos)</div>}
       {p.esAdmin&&(
-        <button onClick={function(){ if(!(p.secretos||{})[local]&&p.onCrearSecreto)p.onCrearSecreto(local); setPantalla(true); }}
+        <button onClick={function(){
+            if(!window.confirm("Este celular va a quedar fijo mostrando solo el código de "+((getLocal(local)||{}).nombre||"este local")+". Para volver a usar la app va a pedir tu contraseña de administrador.\n\n¿Dejarlo como pantalla del local?"))return;
+            if(!(p.secretos||{})[local]&&p.onCrearSecreto)p.onCrearSecreto(local);
+            if(p.onActivarPantalla)p.onActivarPantalla(local);
+          }}
           style={{background:"none",border:"1px solid #D4A01755",borderRadius:9,color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:10,width:"100%"}}>
-          📺 Mostrar el código de {(getLocal(local)||{}).nombre||"este local"} en esta pantalla
+          📺 Dejar este celular como pantalla de {(getLocal(local)||{}).nombre||"este local"} (se bloquea)
         </button>
       )}
-      {pantalla&&(p.secretos||{})[local]&&<PantallaCodigoFichaje local={local} secreto={p.secretos[local]} onSalir={function(){setPantalla(false);}}/>}
       <div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>
         {fmtDate(fechaLocal())} · Tocá tu nombre para marcar
       </div>
@@ -27147,6 +27149,8 @@ export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
   var [usersDeBase,setUsersDeBase]=useState(false);
   var [cu,setCu]=useState(null);
+  // Celular fijo del local: muestra solo el código para fichar (nada más de la app) hasta que un administrador pone su contraseña.
+  var [pantallaLocal,setPantallaLocal]=useState(function(){ try{ return window.localStorage.getItem("nkt_pantalla_local")||""; }catch(e){ return ""; } });
   // Si se abrió desde el QR de la pantalla del local (?fich=código&l=local) se guarda el código y se limpia la dirección.
   useEffect(function(){
     try{
@@ -27762,6 +27766,17 @@ export default function App() {
   }
 
   if(!cu)return <Login users={users} onLogin={entrar}/>;
+  if(pantallaLocal&&PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())!==-1){
+    var secPantalla=secretosFichaje[pantallaLocal];
+    if(!secPantalla)return <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",color:"#8C8C8C",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>Preparando la pantalla del local…</div>;
+    return <PantallaCodigoFichaje local={pantallaLocal} secreto={secPantalla} onSalir={function(){
+      var pw=window.prompt("Para salir de la pantalla del local, escribí tu contraseña de administrador:");
+      if(pw===null)return;
+      if(pw!==cu.password){ alert("Contraseña incorrecta."); return; }
+      try{ window.localStorage.removeItem("nkt_pantalla_local"); }catch(e){}
+      setPantallaLocal("");
+    }}/>;
+  }
 
   var esAdmin=cu.rol==="admin";
   var esSofia=PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())!==-1;   // el panel completo: Sofía y Belen
@@ -29111,7 +29126,7 @@ export default function App() {
 
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
-              secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+              onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
               justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}
 

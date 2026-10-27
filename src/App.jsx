@@ -5524,6 +5524,90 @@ function PanelBoveda({check, items, onSaveCheck, onSaveItem, onDelete}){
   );
 }
 
+// Teléfonos útiles: lo ven todos los empleados (los del grupo y los de su local) y lo cargan los administradores.
+// Cada contacto es una pauta (ámbito "tel_util"). Tocar el número llama; el botón de WhatsApp abre el chat.
+var TEL_CATEGORIAS=["🚑 Emergencias","🔧 Service y mantenimiento","🚚 Proveedores","🏛️ Organismos y servicios","👥 Encargados y grupo","📞 Otros"];
+var TEL_EMERGENCIAS=[{nombre:"Emergencias (policía, bomberos, ambulancia)",telefono:"911"},{nombre:"Emergencias médicas",telefono:"107"},{nombre:"Bomberos",telefono:"100"}];
+function telLimpio(t){ return String(t||"").replace(/[^\d+]/g,""); }
+function telWhatsapp(t){ var d=String(t||"").replace(/\D/g,""); if(!d)return ""; if(d.indexOf("54")===0)return d; return "54"+d.replace(/^0/,"").replace(/^(\d{2,4})15/,"$1"); }
+function PanelTelefonosUtiles({contactos, puedeEditar, usuario, localUsuario, onSave, onDelete}){
+  var [form,setForm]=useState(null);
+  var [buscar,setBuscar]=useState("");
+  var [verLocal,setVerLocal]=useState(puedeEditar?"todos":(localUsuario||"todos"));
+  var INPt={padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4};
+  var q=buscar.trim().toLowerCase();
+  var lista=(contactos||[]).filter(function(c){
+    var okLocal=puedeEditar?(verLocal==="todos"||c.local==="todos"||c.local===verLocal):(c.local==="todos"||!c.local||c.local===localUsuario);
+    return okLocal&&(!q||(c.nombre+" "+(c.notas||"")+" "+c.telefono).toLowerCase().indexOf(q)!==-1);
+  });
+  function guardar(){
+    if(!form.nombre.trim()){alert("Poné el nombre o a qué corresponde.");return;}
+    if(!telLimpio(form.telefono)){alert("Poné el teléfono.");return;}
+    onSave({id:form.id||("tel_"+Date.now()),nombre:form.nombre.trim(),telefono:form.telefono.trim(),categoria:form.categoria,local:form.local||"todos",notas:form.notas||"",usuario:usuario||""});
+    setForm(null);
+  }
+  function fila(c,editable){
+    var wa=telWhatsapp(c.telefono);
+    return(
+      <div key={c.id||c.nombre} style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px 12px",marginBottom:6,display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{c.nombre}</div>
+          <a href={"tel:"+telLimpio(c.telefono)} style={{fontSize:15,fontWeight:800,color:"#4CAF50",textDecoration:"none"}}>📞 {c.telefono}</a>
+          {c.notas&&<div style={{fontSize:11,color:"#8C8C8C",marginTop:2}}>{c.notas}</div>}
+          {c.local&&c.local!=="todos"&&<div style={{fontSize:10,color:"#6E6E6E"}}>Solo {(getLocal(c.local)||{}).nombre||c.local}</div>}
+        </div>
+        <div style={{display:"flex",gap:5,flexShrink:0}}>
+          {wa&&c.telefono.replace(/\D/g,"").length>=8&&<a href={"https://wa.me/"+wa} target="_blank" rel="noopener noreferrer" style={{padding:"7px 10px",borderRadius:8,border:"1px solid #25D36666",background:"#25D36618",color:"#25D366",fontSize:11,fontWeight:700,textDecoration:"none"}}>WhatsApp</a>}
+          {editable&&<button onClick={function(){setForm({...c});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:7,color:"#8C8C8C",fontSize:11,padding:"5px 8px",cursor:"pointer"}}>✏️</button>}
+          {editable&&<button onClick={function(){if(window.confirm("¿Borrar \""+c.nombre+"\"?"))onDelete(c.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:7,color:"#C1440E",fontSize:11,padding:"5px 8px",cursor:"pointer"}}>🗑️</button>}
+        </div>
+      </div>
+    );
+  }
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar un teléfono…" style={{...INPt,flex:1,minWidth:160}}/>
+        {puedeEditar&&<select value={verLocal} onChange={function(e){setVerLocal(e.target.value);}} style={{...INPt,width:"auto"}}>
+          <option value="todos">Todos los locales</option>
+          {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>}
+        {puedeEditar&&!form&&<button onClick={function(){setForm({id:"",nombre:"",telefono:"",categoria:TEL_CATEGORIAS[1],local:"todos",notas:""});}} style={{padding:"9px 14px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
+      </div>
+      {form&&(
+        <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:12,padding:12,marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
+            <div style={{gridColumn:"1 / span 2"}}><label style={lbl}>Nombre / a qué corresponde</label><input value={form.nombre} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,nombre:v};});}} placeholder="Ej: Service de cámaras de frío" style={INPt}/></div>
+            <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,telefono:v};});}} placeholder="Ej: 2916 123456" inputMode="tel" style={INPt}/></div>
+            <div><label style={lbl}>Categoría</label><select value={form.categoria} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,categoria:v};});}} style={INPt}>{TEL_CATEGORIAS.map(function(c){return <option key={c} value={c}>{c}</option>;})}</select></div>
+            <div><label style={lbl}>Quién lo ve</label><select value={form.local||"todos"} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,local:v};});}} style={INPt}>
+              <option value="todos">Todos los empleados</option>
+              {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>Solo {l.nombre}</option>;})}
+            </select></div>
+            <div><label style={lbl}>Notas (opcional)</label><input value={form.notas||""} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,notas:v};});}} placeholder="Horario, con quién hablar…" style={INPt}/></div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardar} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Guardar</button>
+            <button onClick={function(){setForm(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#E0714A",marginBottom:5}}>{TEL_CATEGORIAS[0]}</div>
+        {TEL_EMERGENCIAS.filter(function(e){return !q||(e.nombre+" "+e.telefono).toLowerCase().indexOf(q)!==-1;}).map(function(e){return fila(e,false);})}
+        {lista.filter(function(c){return c.categoria===TEL_CATEGORIAS[0];}).map(function(c){return fila(c,puedeEditar);})}
+      </div>
+      {TEL_CATEGORIAS.slice(1).map(function(cat){
+        var its=lista.filter(function(c){return (TEL_CATEGORIAS.indexOf(c.categoria)>=0?c.categoria:TEL_CATEGORIAS[5])===cat;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
+        if(its.length===0)return null;
+        return <div key={cat} style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#9A9A9A",marginBottom:5}}>{cat} <span style={{color:"#5A5A5A",fontWeight:400}}>({its.length})</span></div>{its.map(function(c){return fila(c,puedeEditar);})}</div>;
+      })}
+      {lista.length===0&&<div style={{textAlign:"center",padding:"18px 0",color:"#6E6E6E",fontSize:12}}>{puedeEditar?"Todavía no cargaste teléfonos propios. Tocá + Agregar.":"Todavía no hay más teléfonos cargados."}</div>}
+    </div>
+  );
+}
+
 // Razón social: datos de la persona y de cada sociedad del grupo (CUIT, domicilio fiscal, contador, socios…) y su documentación.
 var RS_CAMPOS=[
   ["cuit","CUIT"],["iva","Condición frente al IVA"],["iibb","Ingresos Brutos (Nº / régimen)"],["actividad","Actividad (código AFIP)"],
@@ -27024,6 +27108,11 @@ export default function App() {
     if(x.ambito!=="hoy_check")return;
     try{ var dh=JSON.parse(x.texto||"{}"); if(dh.fecha)hoyChecks[dh.fecha]=dh.marcas||{}; }catch(e){}
   });
+  var telUtiles=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="tel_util")return;
+    try{ var dt=JSON.parse(x.texto||"{}"); if(dt.nombre&&dt.telefono)telUtiles.push({...dt,id:x.id}); }catch(e){}
+  });
   var docsLocal=[];
   pautas.forEach(function(x){
     if(x.ambito!=="doc_local")return;
@@ -27617,6 +27706,7 @@ export default function App() {
               {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
               {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
+              {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",color:"#4CAF50",action:function(){abrirModulo("telefonos","telefonos_inicio");}},
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
               {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
@@ -27651,7 +27741,8 @@ export default function App() {
                   {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
                   {id:"pautas",emoji:"📌",label:"Pautas",color:"#1A8A7B",action:function(){abrirModulo("pautas","pautas_inicio");}},
-                  {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
+                  {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",color:"#4CAF50",action:function(){abrirModulo("telefonos","telefonos_inicio");}},
+              {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                   {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
@@ -27678,7 +27769,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -27744,6 +27835,7 @@ export default function App() {
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
+                            {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",desc:"Emergencias, service y contactos del local",color:"#4CAF50",badge:0},
                             {id:"info_general",emoji:"ℹ️",label:"Info general",desc:"Información para todos los colaboradores",color:"#1A6B8A",badge:0}].concat(
                               infoSeccionesDe(cu).length>0?[{id:"info",emoji:(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{}).emoji||"ℹ️",label:"Info para "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre.toLowerCase(),desc:"Sólo para tu sector",color:"#3A9BC1",badge:0}]:[])
               ).map(function(m){return(
@@ -27850,6 +27942,11 @@ export default function App() {
           {enRecetas&&(
             <PanelRecetas recetas={recetas} localId={lf} usuario={cu.nombre} puedeEditar={false}
               onSave={function(){}} onDelete={function(){}}/>
+          )}
+
+          {/* TELÉFONOS ÚTILES — los ven todos los empleados */}
+          {!esSofia&&enCompras&&subCompras==="telefonos"&&(
+            <PanelTelefonosUtiles contactos={telUtiles} puedeEditar={false} usuario={cu.nombre} localUsuario={cu.local} onSave={function(){}} onDelete={function(){}}/>
           )}
 
           {/* INFO — el cajero la lee, la carga Sofía desde su propio módulo */}
@@ -28046,6 +28143,18 @@ export default function App() {
           {esSofia&&modulo==="pautas"&&(
             <PanelPautas pautas={pautas} usuario={cu.nombre}
               onSave={guardarPauta} onDelete={borrarPauta}/>
+          )}
+
+          {esSofia&&modulo==="telefonos"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>☎️ Teléfonos útiles</div>
+                <div style={{fontSize:11,color:"#7E7E7E",marginTop:3}}>Lo cargás acá y lo ven todos los empleados desde su pantalla de inicio.</div>
+              </div>
+              <PanelTelefonosUtiles contactos={telUtiles} puedeEditar={true} usuario={cu.nombre} localUsuario={null}
+                onSave={function(c){guardarOfPauta("tel_util",c);}} onDelete={borrarPauta}/>
+            </div>
           )}
 
           {/* MÓDULO INFO — Sofía lo carga, los cajeros lo ven desde su propia pantalla */}

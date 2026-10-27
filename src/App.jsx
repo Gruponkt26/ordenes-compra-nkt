@@ -13665,6 +13665,7 @@ function PanelNovedades(p){
   });
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
+  var [tabNov,setTabNov]=useState("plata"); // plata | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
@@ -14062,6 +14063,7 @@ function PanelNovedades(p){
   // Una sola familia de piezas para todo el panel: título sobrio, filas aireadas y un solo
   // acento por sección. Lo que no es un número va en gris: si todo grita, no se lee nada.
   function Seccion(props){
+    if(props.tab&&props.tab!==tabNov)return null;
     return(
       <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:14,padding:"15px 17px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:9}}>
@@ -14119,141 +14121,6 @@ function PanelNovedades(p){
           })}
         </div>
       </div>
-
-      {/* Caja menor de cada local, de un vistazo */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
-        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>Caja Menor</div>
-        <button onClick={abrirIni} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>✎ Saldo inicial del mes</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
-        {efectivoPorLocal.map(function(x){
-          return(
-            <div key={x.local.id} style={{background:"#0C0C0C",padding:"13px 15px"}}>
-              <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.local.emoji} {x.local.nombre}</div>
-              <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.monto<0?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmt(x.monto)}</div>
-              <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>caja menor</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal, pero sólo los sueldos del mes vencido y los locales que deben. */}
-      {hayFaltanSueldos&&(
-        <div style={{marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
-            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>⚠️ Faltantes de sueldo</div>
-            {p.irFaltantes&&<button onClick={p.irFaltantes} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Personal →</button>}
-          </div>
-          <PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={p.sueldos||[]} adelantos={p.adelantos||[]} soloPeriodo={perSueldos}/>
-        </div>
-      )}
-
-      {/* Caja libre del grupo: lo disponible menos lo comprometido, a tres plazos: ya, 15 días y 30 días */}
-      {(function(){
-        var col={rojo:"#E0714A",amarillo:"#D4A017",verde:"#4C9A5A"};
-        var M=function(n){return (n<0?"−":"")+fmt(Math.abs(n));};
-        var cc=function(n){return n<0?"#E0714A":"#F0EDE8";};
-        return(
-          <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
-            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>💰 Caja libre del grupo</div>
-            {!cajaLibre?<div style={{fontSize:12,color:"#6E6E6E"}}>Calculando…</div>:(
-              <div>
-                <div style={{fontSize:11,color:"#8C8C8C",marginBottom:6}}>Disponible hoy (efectivo en Caja Mayor y cuentas): <b style={{color:"#F0EDE8"}}>{fmt(cajaLibre.disp)}</b></div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:6}}>
-                  {[["Ya",cajaLibre.libreYa,cajaLibre.ya,"lo vencido, sueldos de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1]+" y proveedores"],
-                    ["A 15 días",cajaLibre.libre15,cajaLibre.c15,"más lo que vence en 15 días"],
-                    ["A 30 días",cajaLibre.libre30,cajaLibre.c30,"más vencimientos hasta 30 días y la nómina de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(mesEnCurso.substring(5,7),10)-1]]].map(function(t){
-                    return(
-                      <div key={t[0]} style={{background:"#101010",border:"1px solid "+(t[1]<0?"#E0714A55":"#1A1A1A"),borderRadius:10,padding:"9px 10px"}}>
-                        <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>Libre {t[0].toLowerCase()}</div>
-                        <div style={{fontSize:19,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cc(t[1])}}>{M(t[1])}</div>
-                        <div style={{fontSize:9,color:"#6E6E6E",lineHeight:1.35}}>comprometido {fmt(t[2])}<br/>{t[3]}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>{cajaLibre.prov>0?"Incluye "+fmt(cajaLibre.prov)+" de deuda con proveedores en «Ya». ":""}{cajaLibre.sinLocal>0?fmt(cajaLibre.sinLocal)+" de vencimientos sin local asignado. ":""}{cajaLibre.sinPlanilla>0?"⚠️ A "+cajaLibre.sinPlanilla+" empleado"+(cajaLibre.sinPlanilla===1?"":"s")+" le falta cargar el sueldo de este mes en la planilla: la nómina a 30 días queda corta. ":""}El F.931 de este mes se suma cuando se cargue.</div>
-                {cajaLibre.filas.map(function(r){
-                  return(
-                    <div key={r.dep.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"6px 0",borderTop:"1px solid #151515"}}>
-                      <div style={{minWidth:0}}>
-                        <div style={{fontSize:12.5,fontWeight:700,color:r.dep.color}}><span style={{color:col[r.estado]}}>●</span> {r.dep.emoji} {r.dep.nombre}</div>
-                        <div style={{fontSize:10,color:"#7E7E7E"}}>disponible {fmt(r.disp)} · ya {fmt(r.ya)} · 15 días {fmt(r.c15)} · 30 días {fmt(r.c30)}</div>
-                      </div>
-                      <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11}}>
-                        <div style={{color:cc(r.libreYa)}}>ya <b>{M(r.libreYa)}</b></div>
-                        <div style={{color:cc(r.libre15)}}>15d <b>{M(r.libre15)}</b></div>
-                        <div style={{color:cc(r.libre30)}}>30d <b>{M(r.libre30)}</b></div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {cajaLibre.cruzados.length>0&&(
-                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #151515"}}>
-                    <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>↔️ Entre dependencias (cruzados) · no cambia el total del grupo</div>
-                    {cajaLibre.cruzados.map(function(c,i){
-                      var d=getLocal(c.deudor)||{}, a=getLocal(c.acreedor)||{};
-                      return <div key={i} style={{fontSize:11,color:"#B8B8B8"}}>{d.emoji} {d.nombre} le debe {fmt(c.m)} a {a.emoji} {a.nombre}{c.tipo==="oficina"?" (Oficina)":""}</div>;
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Costos por lugar, en porcentaje de las ventas del mes */}
-      {costosLugar&&(
-        <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
-          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:2}}>📈 Costos por lugar · {mesEnCurso}, hasta hoy</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-            <button onClick={function(){setConDeudaCostos(!conDeudaCostos);}} style={{background:!conDeudaCostos?"#3A7D4422":"none",border:"1px solid "+(!conDeudaCostos?"#3A7D4488":"#2A2A2A"),borderRadius:7,color:!conDeudaCostos?"#4C9A5A":"#8C8C8C",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>{!conDeudaCostos?"✓ Sin pagos de deuda de meses anteriores":"Con los pagos de deuda"}</button>
-          </div>
-          <button onClick={function(){p.onComparaCostos&&p.onComparaCostos(!p.comparaCostos);}} style={{background:p.comparaCostos?"#1A6B8A22":"none",border:"1px solid #1A6B8A55",borderRadius:7,color:"#1A6B8A",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer",marginBottom:6}}>{p.comparaCostos?"✕ Sin comparar":"↔️ Comparar con el mes anterior y el año pasado"}</button>
-          {p.comparaCostos&&(!costosPrev||!costosAnio)&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Calculando la comparación…</div>}
-          {p.comparaCostos&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Las flechas son puntos de porcentaje contra el mes anterior completo y el mismo mes del año pasado. Rojo = empeoró (más gasto o menos resultado). El laboral del mes en curso se ve más bajo porque todavía no se pagaron los sueldos.</div>}
-          <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Sobre lo vendido en el mes. Laboral: sueldos, aguinaldos y F.931. Mercadería: compras a proveedores. Los sueldos se pagan mes vencido, así que el laboral se va completando a medida que se cargan.</div>
-          {costosLugar.map(function(f){
-            var pcj=function(n){return f.ventas>0?(n/f.ventas*100).toFixed(1).replace(".",",")+"%":"—";};
-            var fp=costosPrev&&costosPrev.find(function(x){return x.lugar.id===f.lugar.id;}), fa=costosAnio&&costosAnio.find(function(x){return x.lugar.id===f.lugar.id;});
-            // Diferencia en puntos de porcentaje contra otro período; si el gasto es "malo" subir es rojo, y al revés con el resultado.
-            var dif=function(campo,otro,malo){
-              if(!otro||otro.ventas<=0||f.ventas<=0)return null;
-              var d=f[campo]/f.ventas*100-otro[campo]/otro.ventas*100;
-              if(Math.abs(d)<0.05)return <span style={{color:"#6E6E6E"}}>= igual</span>;
-              var sube=d>0, feo=malo?sube:!sube;
-              return <span style={{color:feo?"#E0714A":"#4C9A5A"}}>{sube?"▲":"▼"} {Math.abs(d).toFixed(1).replace(".",",")} pts</span>;
-            };
-            var comp=function(campo,malo){
-              if(!p.comparaCostos)return null;
-              return <div style={{fontSize:9.5,marginTop:1}}>{dif(campo,fp,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> mes ant.</span><br/>{dif(campo,fa,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> año pas.</span></div>;
-            };
-            return(
-              <div key={f.lugar.id} style={{padding:"7px 0",borderTop:"1px solid #151515"}}>
-                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}>
-                  <span style={{fontSize:12.5,fontWeight:700,color:f.lugar.color}}>{f.lugar.emoji} {f.lugar.nombre}</span>
-                  <span style={{fontSize:11,color:"#9A9A9A"}}>{f.lugar.id==="dep"?"ingresos ":"ventas "}<b style={{color:"#F0EDE8"}}>{fmt(f.ventas)}</b></span>
-                </div>
-                {f.deuda>0.5&&<div style={{fontSize:9.5,color:"#D4A017"}}>No cuenta {fmt(f.deuda)} de pagos de deuda de meses anteriores</div>}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
-                  {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}{comp("mer",true)}</div>}
-                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}
-                    {(function(){
-                      var cl=cajaLibre&&cajaLibre.filas.find(function(r){return r.dep.id===f.lugar.id;});
-                      var falta=cl?cl.sueldos:0;
-                      var MES_N=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1];
-                      return <div style={{fontSize:9,color:"#6E6E6E",marginTop:2,lineHeight:1.35}}>lo pagado este mes de los sueldos de {MES_N}{falta>0?<span style={{color:"#D4A017"}}><br/>falta pagar {fmt(falta)}</span>:null}</div>;
-                    })()}
-                  </div>
-                  <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}{comp("otros",true)}</div>
-                  <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}{comp("res",false)}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
@@ -14635,10 +14502,157 @@ function PanelNovedades(p){
         </div>
       )}
 
+      {/* Pestañas: lo de todos los días queda arriba, el resto se consulta por tema */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+        {[["plata","💰 Plata"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
+          var act=tabNov===t[0];
+          return <button key={t[0]} onClick={function(){setTabNov(t[0]);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?"#D4A017":"#222"),background:act?"#D4A01722":"#0C0C0C",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
+        })}
+      </div>
+
+      {tabNov==="operacion"&&(
+      <>
+      {/* Caja menor de cada local, de un vistazo */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>Caja Menor</div>
+        <button onClick={abrirIni} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>✎ Saldo inicial del mes</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:14}}>
+        {efectivoPorLocal.map(function(x){
+          return(
+            <div key={x.local.id} style={{background:"#0C0C0C",padding:"13px 15px"}}>
+              <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>{x.local.emoji} {x.local.nombre}</div>
+              <div style={{fontSize:21,fontWeight:800,fontFamily:"'Playfair Display',serif",color:x.monto<0?"#E0714A":"#F0EDE8",fontVariantNumeric:"tabular-nums",marginTop:2}}>{fmt(x.monto)}</div>
+              <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>caja menor</div>
+            </div>
+          );
+        })}
+      </div>
+      </>
+      )}
+
+      {/* Faltantes de sueldo: igual que la solapa Faltantes de Personal, pero sólo los sueldos del mes vencido y los locales que deben. */}
+      {tabNov==="personal"&&hayFaltanSueldos&&(
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>⚠️ Faltantes de sueldo</div>
+            {p.irFaltantes&&<button onClick={p.irFaltantes} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Personal →</button>}
+          </div>
+          <PanelFaltantesSueldos empleados={empleados} planilla={p.planillaSueldos||[]} sueldos={p.sueldos||[]} adelantos={p.adelantos||[]} soloPeriodo={perSueldos}/>
+        </div>
+      )}
+
+      {/* Caja libre del grupo: lo disponible menos lo comprometido, a tres plazos: ya, 15 días y 30 días */}
+      {tabNov==="plata"&&(function(){
+        var col={rojo:"#E0714A",amarillo:"#D4A017",verde:"#4C9A5A"};
+        var M=function(n){return (n<0?"−":"")+fmt(Math.abs(n));};
+        var cc=function(n){return n<0?"#E0714A":"#F0EDE8";};
+        return(
+          <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
+            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:6}}>💰 Caja libre del grupo</div>
+            {!cajaLibre?<div style={{fontSize:12,color:"#6E6E6E"}}>Calculando…</div>:(
+              <div>
+                <div style={{fontSize:11,color:"#8C8C8C",marginBottom:6}}>Disponible hoy (efectivo en Caja Mayor y cuentas): <b style={{color:"#F0EDE8"}}>{fmt(cajaLibre.disp)}</b></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:6}}>
+                  {[["Ya",cajaLibre.libreYa,cajaLibre.ya,"lo vencido, sueldos de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1]+" y proveedores"],
+                    ["A 15 días",cajaLibre.libre15,cajaLibre.c15,"más lo que vence en 15 días"],
+                    ["A 30 días",cajaLibre.libre30,cajaLibre.c30,"más vencimientos hasta 30 días y la nómina de "+["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(mesEnCurso.substring(5,7),10)-1]]].map(function(t){
+                    return(
+                      <div key={t[0]} style={{background:"#101010",border:"1px solid "+(t[1]<0?"#E0714A55":"#1A1A1A"),borderRadius:10,padding:"9px 10px"}}>
+                        <div style={{fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1}}>Libre {t[0].toLowerCase()}</div>
+                        <div style={{fontSize:19,fontWeight:800,fontFamily:"'Playfair Display',serif",color:cc(t[1])}}>{M(t[1])}</div>
+                        <div style={{fontSize:9,color:"#6E6E6E",lineHeight:1.35}}>comprometido {fmt(t[2])}<br/>{t[3]}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>{cajaLibre.prov>0?"Incluye "+fmt(cajaLibre.prov)+" de deuda con proveedores en «Ya». ":""}{cajaLibre.sinLocal>0?fmt(cajaLibre.sinLocal)+" de vencimientos sin local asignado. ":""}{cajaLibre.sinPlanilla>0?"⚠️ A "+cajaLibre.sinPlanilla+" empleado"+(cajaLibre.sinPlanilla===1?"":"s")+" le falta cargar el sueldo de este mes en la planilla: la nómina a 30 días queda corta. ":""}El F.931 de este mes se suma cuando se cargue.</div>
+                {cajaLibre.filas.map(function(r){
+                  return(
+                    <div key={r.dep.id} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",padding:"6px 0",borderTop:"1px solid #151515"}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:12.5,fontWeight:700,color:r.dep.color}}><span style={{color:col[r.estado]}}>●</span> {r.dep.emoji} {r.dep.nombre}</div>
+                        <div style={{fontSize:10,color:"#7E7E7E"}}>disponible {fmt(r.disp)} · ya {fmt(r.ya)} · 15 días {fmt(r.c15)} · 30 días {fmt(r.c30)}</div>
+                      </div>
+                      <div style={{textAlign:"right",whiteSpace:"nowrap",fontSize:11}}>
+                        <div style={{color:cc(r.libreYa)}}>ya <b>{M(r.libreYa)}</b></div>
+                        <div style={{color:cc(r.libre15)}}>15d <b>{M(r.libre15)}</b></div>
+                        <div style={{color:cc(r.libre30)}}>30d <b>{M(r.libre30)}</b></div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {cajaLibre.cruzados.length>0&&(
+                  <div style={{marginTop:6,paddingTop:6,borderTop:"1px solid #151515"}}>
+                    <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>↔️ Entre dependencias (cruzados) · no cambia el total del grupo</div>
+                    {cajaLibre.cruzados.map(function(c,i){
+                      var d=getLocal(c.deudor)||{}, a=getLocal(c.acreedor)||{};
+                      return <div key={i} style={{fontSize:11,color:"#B8B8B8"}}>{d.emoji} {d.nombre} le debe {fmt(c.m)} a {a.emoji} {a.nombre}{c.tipo==="oficina"?" (Oficina)":""}</div>;
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Costos por lugar, en porcentaje de las ventas del mes */}
+      {tabNov==="resultados"&&costosLugar&&(
+        <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"13px 15px",marginBottom:14}}>
+          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:2}}>📈 Costos por lugar · {mesEnCurso}, hasta hoy</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+            <button onClick={function(){setConDeudaCostos(!conDeudaCostos);}} style={{background:!conDeudaCostos?"#3A7D4422":"none",border:"1px solid "+(!conDeudaCostos?"#3A7D4488":"#2A2A2A"),borderRadius:7,color:!conDeudaCostos?"#4C9A5A":"#8C8C8C",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer"}}>{!conDeudaCostos?"✓ Sin pagos de deuda de meses anteriores":"Con los pagos de deuda"}</button>
+          </div>
+          <button onClick={function(){p.onComparaCostos&&p.onComparaCostos(!p.comparaCostos);}} style={{background:p.comparaCostos?"#1A6B8A22":"none",border:"1px solid #1A6B8A55",borderRadius:7,color:"#1A6B8A",fontSize:10.5,fontWeight:700,padding:"4px 10px",cursor:"pointer",marginBottom:6}}>{p.comparaCostos?"✕ Sin comparar":"↔️ Comparar con el mes anterior y el año pasado"}</button>
+          {p.comparaCostos&&(!costosPrev||!costosAnio)&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Calculando la comparación…</div>}
+          {p.comparaCostos&&<div style={{fontSize:10,color:"#6E6E6E",marginBottom:4}}>Las flechas son puntos de porcentaje contra el mes anterior completo y el mismo mes del año pasado. Rojo = empeoró (más gasto o menos resultado). El laboral del mes en curso se ve más bajo porque todavía no se pagaron los sueldos.</div>}
+          <div style={{fontSize:10,color:"#6E6E6E",marginBottom:8}}>Sobre lo vendido en el mes. Laboral: sueldos, aguinaldos y F.931. Mercadería: compras a proveedores. Los sueldos se pagan mes vencido, así que el laboral se va completando a medida que se cargan.</div>
+          {costosLugar.map(function(f){
+            var pcj=function(n){return f.ventas>0?(n/f.ventas*100).toFixed(1).replace(".",",")+"%":"—";};
+            var fp=costosPrev&&costosPrev.find(function(x){return x.lugar.id===f.lugar.id;}), fa=costosAnio&&costosAnio.find(function(x){return x.lugar.id===f.lugar.id;});
+            // Diferencia en puntos de porcentaje contra otro período; si el gasto es "malo" subir es rojo, y al revés con el resultado.
+            var dif=function(campo,otro,malo){
+              if(!otro||otro.ventas<=0||f.ventas<=0)return null;
+              var d=f[campo]/f.ventas*100-otro[campo]/otro.ventas*100;
+              if(Math.abs(d)<0.05)return <span style={{color:"#6E6E6E"}}>= igual</span>;
+              var sube=d>0, feo=malo?sube:!sube;
+              return <span style={{color:feo?"#E0714A":"#4C9A5A"}}>{sube?"▲":"▼"} {Math.abs(d).toFixed(1).replace(".",",")} pts</span>;
+            };
+            var comp=function(campo,malo){
+              if(!p.comparaCostos)return null;
+              return <div style={{fontSize:9.5,marginTop:1}}>{dif(campo,fp,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> mes ant.</span><br/>{dif(campo,fa,malo)||<span style={{color:"#555"}}>—</span>}<span style={{color:"#5A5A5A"}}> año pas.</span></div>;
+            };
+            return(
+              <div key={f.lugar.id} style={{padding:"7px 0",borderTop:"1px solid #151515"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline"}}>
+                  <span style={{fontSize:12.5,fontWeight:700,color:f.lugar.color}}>{f.lugar.emoji} {f.lugar.nombre}</span>
+                  <span style={{fontSize:11,color:"#9A9A9A"}}>{f.lugar.id==="dep"?"ingresos ":"ventas "}<b style={{color:"#F0EDE8"}}>{fmt(f.ventas)}</b></span>
+                </div>
+                {f.deuda>0.5&&<div style={{fontSize:9.5,color:"#D4A017"}}>No cuenta {fmt(f.deuda)} de pagos de deuda de meses anteriores</div>}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:3,fontSize:10.5,color:"#8C8C8C"}}>
+                  {f.lugar.id!=="dep"&&<div>Mercadería<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.mer)}</b><br/>{fmt(f.mer)}{comp("mer",true)}</div>}
+                  <div>Laboral<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.lab)}</b><br/>{fmt(f.lab)}{comp("lab",true)}
+                    {(function(){
+                      var cl=cajaLibre&&cajaLibre.filas.find(function(r){return r.dep.id===f.lugar.id;});
+                      var falta=cl?cl.sueldos:0;
+                      var MES_N=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(perSueldos.substring(5,7),10)-1];
+                      return <div style={{fontSize:9,color:"#6E6E6E",marginTop:2,lineHeight:1.35}}>lo pagado este mes de los sueldos de {MES_N}{falta>0?<span style={{color:"#D4A017"}}><br/>falta pagar {fmt(falta)}</span>:null}</div>;
+                    })()}
+                  </div>
+                  <div>Otros gastos<br/><b style={{color:"#D8D8D8",fontSize:12}}>{pcj(f.otros)}</b><br/>{fmt(f.otros)}{comp("otros",true)}</div>
+                  <div>Resultado<br/><b style={{color:f.res<0?"#E0714A":"#4C9A5A",fontSize:12}}>{pcj(f.res)}</b><br/>{f.res<0?"−":""}{fmt(Math.abs(f.res))}{comp("res",false)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Las secciones, en dos columnas cuando entra */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(330px,1fr))",gap:12,alignItems:"start"}}>
 
-        <Seccion titulo="📝 Notas de la empresa · solo Sofía" color="#D4A017">
+        <Seccion tab="operacion" titulo="📝 Notas de la empresa · solo Sofía" color="#D4A017">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
             <span style={{fontSize:12.5,color:"#C8C8C8"}}>{notas.filter(function(n){return n.ambito!=="nota_sofia_ok";}).length} pendiente{notas.filter(function(n){return n.ambito!=="nota_sofia_ok";}).length===1?"":"s"}</span>
             <button onClick={function(){setNotasAbierto(true);}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #D4A01755",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Abrir y anotar</button>
@@ -14651,7 +14665,7 @@ function PanelNovedades(p){
           var chip=function(act){return {padding:"3px 9px",borderRadius:20,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"none",color:act?"#B07AE0":"#7E7E7E",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"};};
           var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
           return(
-            <Seccion titulo="🧾 IVA por CUIT" color="#8B2FC9">
+            <Seccion tab="venc" titulo="🧾 IVA por CUIT" color="#8B2FC9">
               <div style={{display:"flex",gap:6,marginBottom:8}}>
                 <button onClick={function(){setIvaAnterior(false);}} style={chip(!ivaAnterior)}>{mesEnCurso} · en curso</button>
                 <button onClick={function(){setIvaAnterior(true);}} style={chip(ivaAnterior)}>{mesAnteriorDe(mesEnCurso)} · a declarar</button>
@@ -14683,7 +14697,7 @@ function PanelNovedades(p){
           );
         })()}
 
-        <Seccion titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
+        <Seccion tab="venc" titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
           <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} creditosIIBB={p.creditosIIBB||[]} nota="Mismo mes que la tarjeta de IVA. "/>
         </Seccion>
 
@@ -14697,7 +14711,7 @@ function PanelNovedades(p){
           var provsDe=function(o){return (o.provSections||[]).filter(function(sec){return (sec.items||[]).length>0;}).map(function(sec){var pv=(proveedores||[]).find(function(x){return x.id===sec.provId;});return pv?pv.nombre:"";}).filter(Boolean).join(", ");};
           var porLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return {l:l,n:emitidas.filter(function(o){return o.local===l.id&&o.status!=="cancelada";}).length};}).filter(function(x){return x.n>0;});
           return(
-            <Seccion titulo={"📋 Órdenes de compra · "+etiquetaRango} color="#C1440E">
+            <Seccion tab="operacion" titulo={"📋 Órdenes de compra · "+etiquetaRango} color="#C1440E">
               {emitidas.length===0?(
                 <div style={vacio}>No se emitió ninguna orden de compra {etiquetaRango}.</div>
               ):(
@@ -14756,7 +14770,7 @@ function PanelNovedades(p){
           );
         })()}
 
-        <Seccion titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
+        <Seccion tab="resultados" titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
           {resumenLocales.map(function(x,i){
             var res=x.ventas-x.egresos;
@@ -14781,7 +14795,7 @@ function PanelNovedades(p){
         </Seccion>
 
         <div ref={refDeuda}>
-        <Seccion titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion tab="plata" titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
             <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
           ):(
@@ -14840,7 +14854,7 @@ function PanelNovedades(p){
         </Seccion>
         </div>
 
-        <Seccion titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
+        <Seccion tab="operacion" titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
           {faltaColRetiro&&(
             <div style={{fontSize:11,color:"#D4A017",lineHeight:1.6,padding:"0 0 9px",borderBottom:"1px solid #141414",marginBottom:8}}>
               ⚠️ El <strong>retiro de caja</strong> no se está guardando: falta la columna en la tabla.
@@ -14912,7 +14926,7 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion tab="venc" titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
           <div style={{fontSize:11.5,fontWeight:700,color:"#D4A017",marginBottom:6}}>⏱ Vencimientos desde hoy hasta fin de mes</div>
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>
             Acá: {porVencer.length} de {mesEnCurso}. El número rojo de la pestaña Vencimientos ({avisos.length}) suma {vencidos.length} vencido{vencidos.length===1?"":"s"} sin pagar + {avisos.length-vencidos.length} de los próximos 7 días.
@@ -14960,7 +14974,7 @@ function PanelNovedades(p){
           if(otros.length===0)return null;
           otros.sort(function(a,b){return String(b.f.fecha).localeCompare(String(a.f.fecha));});
           return(
-            <Seccion titulo={"📍 Marcaron en otro local"} color="#1A8A7B">
+            <Seccion tab="personal" titulo={"📍 Marcaron en otro local"} color="#1A8A7B">
               {otros.map(function(o,i){
                 var dst=getLocal(o.f.local), org=getLocal(o.emp.local);
                 return(
@@ -14979,7 +14993,7 @@ function PanelNovedades(p){
           var pend=pendientesDeSaldar(p.gastos||[]);
           if(pend.length===0)return null;
           return(
-            <Seccion titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
+            <Seccion tab="plata" titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
               {(function(){
                 // Desde el primer día del mes siguiente al que se empezó a llevar, si queda algo sin saldar se pregunta qué se va a hacer.
                 var hoyP=diaDeNegocio(), mesP=hoyP.substring(0,7), plan=p.planSaldar;
@@ -15023,7 +15037,7 @@ function PanelNovedades(p){
         })()}
 
         {(altas.length+bajas.length)>0&&(
-        <Seccion titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Colaboradores">
+        <Seccion tab="personal" titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Colaboradores">
           <div>
             {altas.length>0&&<Sub primera={true}>Entraron · {altas.length}</Sub>}
             {altas.map(function(e,i){
@@ -15042,7 +15056,7 @@ function PanelNovedades(p){
         </Seccion>
         )}
 
-        <Seccion titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
+        <Seccion tab="personal" titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(
             <div style={vacio}>Nadie de licencia, ni en los próximos dos meses.</div>
           ):(
@@ -15065,7 +15079,7 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
+        <Seccion tab="plata" titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
           {(aportesR.length+retirosR.length)===0?(
             <div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>
           ):(

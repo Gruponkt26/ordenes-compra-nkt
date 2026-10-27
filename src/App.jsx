@@ -14381,6 +14381,37 @@ function PanelNovedades(p){
         );
       })()}
 
+      {/* Ventas de ayer contra lo habitual (mismo día de la semana, últimas 4 semanas): se ve siempre, haya aviso o no */}
+      {(function(){
+        var diaN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(ayer+"T00:00:00").getDay()];
+        var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+          var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===ayer;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+          var previos=[1,2,3,4].map(function(k){
+            var f=fechaLocal(new Date(new Date(ayer+"T00:00:00").getTime()-k*7*86400000));
+            return cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+          }).filter(function(v){return v>0;});
+          var prom=previos.length?previos.reduce(function(a,v){return a+v;},0)/previos.length:0;
+          var nota=vAyer<=0?"sin cierre cargado":(previos.length<2?"pocos "+diaN+"s para comparar ("+previos.length+")":null);
+          var pct=(!nota&&prom>0)?Math.round(vAyer/prom*100):null;
+          return {l:l,vAyer:vAyer,prom:prom,n:previos.length,pct:pct,nota:nota};
+        });
+        return(
+          <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:12,padding:"9px 13px",marginBottom:14}}>
+            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Ventas de ayer ({diaN}) vs lo habitual</div>
+            {filas.map(function(x){
+              var baja=x.pct!==null&&x.pct<60;
+              return(
+                <div key={x.l.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,padding:"3px 0"}}>
+                  <span style={{color:x.l.color,fontWeight:700}}>{x.l.emoji} {x.l.nombre}</span>
+                  {x.nota?<span style={{color:"#6E6E6E"}}>{x.nota}</span>
+                  :<span style={{color:"#9A9A9A"}}>{fmt(x.vAyer)} · habitual {fmt(x.prom)} ({x.n} {diaN}s) · <b style={{color:baja?"#E0714A":(x.pct>=100?"#4C9A5A":"#D4A017")}}>{x.pct}%</b></span>}
+                </div>);
+            })}
+            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>Avisa en Prioridad cuando ayer fue menos del 60% de lo habitual.</div>
+          </div>
+        );
+      })()}
+
       {/* Los cuatro números que importan */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:1,background:"#171717",border:"1px solid #171717",borderRadius:14,overflow:"hidden",marginBottom:(expandido.porVencerCard||expandido.deudaCard||expandido.ventasCard)?0:14}}>
         {[

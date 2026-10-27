@@ -12278,6 +12278,10 @@ function CajaPantallaLocal({secretos, onCrearSecreto, onActivar}){
   var [loc,setLoc]=useState("l1");
   var [prueba,setPrueba]=useState(false);
   var nombre=(getLocal(loc)||{}).nombre||loc;
+  // Los tres locales quedan con su código listo apenas se abre esta pantalla: así a ningún empleado le sale "este local no tiene pantalla".
+  useEffect(function(){
+    ["l1","l2","l3"].forEach(function(l){ if(!(secretos||{})[l]&&onCrearSecreto)onCrearSecreto(l); });
+  },[]);
   function preparar(){ if(!(secretos||{})[loc]&&onCrearSecreto)onCrearSecreto(loc); }
   return(
     <div style={{background:"#0A1014",border:"1px solid #D4A01744",borderRadius:12,padding:"11px 14px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>

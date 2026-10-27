@@ -14139,6 +14139,7 @@ function PanelNovedades(p){
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
+        if(hayFaltanSueldos&&p.irFaltantes)avisos.push({rojo:false,txt:"Hay sueldos del mes pasado sin pagar",ir:p.irFaltantes});
         function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
         // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
         // cuota vence dentro de la ventana de "vence pronto", se avisan juntas en un renglón,
@@ -14231,12 +14232,15 @@ function PanelNovedades(p){
         return(
           <div style={{border:"1px solid "+(hayRojo?"#C1440E44":(soloVerde?"#3A7D4455":"#D4A01733")),background:hayRojo?"#140807":(soloVerde?"#08120A":"#12100A"),borderRadius:12,padding:"11px 14px",marginBottom:14}}>
             <div style={{fontSize:10,color:hayRojo?"#E0714A":(soloVerde?"#4C9A5A":"#D4A017"),textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Prioridad</div>
-            {avisos.map(function(a,i){
+            {(expandido.prioridad?avisos:avisos.slice(0,5)).map(function(a,i){
               return (
                 <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.socio?"#B07AE0":(a.verde?"#4C9A5A":"#D4A017")),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
                   <span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span>
                   {a.cargarEg&&(
                     <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
+                  )}
+                  {a.ir&&(
+                    <button onClick={a.ir} style={{background:"none",border:"1px solid #D4A01744",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"2px 8px",flexShrink:0}}>Ver</button>
                   )}
                   {a.resolverId&&(
                     <button onClick={function(){p.onResolverAvisoCaja(a.resolverId);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Resuelto</button>
@@ -14244,6 +14248,7 @@ function PanelNovedades(p){
                 </div>
               );
             })}
+            <Mas id="prioridad" n={avisos.length-5}/>
           </div>
         );
       })()}

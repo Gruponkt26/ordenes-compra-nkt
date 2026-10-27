@@ -14062,15 +14062,21 @@ function PanelNovedades(p){
 
   // Una sola familia de piezas para todo el panel: título sobrio, filas aireadas y un solo
   // acento por sección. Lo que no es un número va en gris: si todo grita, no se lee nada.
+  // Con "res" (una línea de resumen) la sección viene plegada y se abre con un toque; sin "res" se muestra entera.
   function Seccion(props){
     if(props.tab&&props.tab!==tabNov)return null;
+    var plegable=props.res!==undefined&&!!props.id;
+    var cerrada=plegable&&!expandido["sec_"+props.id];
     return(
       <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:14,padding:"15px 17px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:9}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#8A8A8A",letterSpacing:0.3}}>{props.titulo}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:cerrada?0:9}}>
+          <div onClick={plegable?function(){setExpandido(function(e){var n={...e};n["sec_"+props.id]=!e["sec_"+props.id];return n;});}:undefined} style={{fontSize:11,fontWeight:700,color:"#8A8A8A",letterSpacing:0.3,cursor:plegable?"pointer":"default",flex:1,minWidth:0}}>
+            {plegable&&<span style={{color:"#6E6E6E",marginRight:4}}>{cerrada?"▸":"▾"}</span>}{props.titulo}
+            {cerrada&&props.res&&<div style={{fontSize:12,fontWeight:600,color:"#C8C8C8",marginTop:3,letterSpacing:0}}>{props.res}</div>}
+          </div>
           {props.ir&&<button onClick={props.ir} style={{background:"none",border:"none",color:props.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.8}}>{props.irTxt||"Ver"} →</button>}
         </div>
-        {props.children}
+        {!cerrada&&props.children}
       </div>
     );
   }
@@ -14105,6 +14111,18 @@ function PanelNovedades(p){
     return <button onClick={function(){setExpandido(function(e){var n={...e};n[props.id]=true;return n;});}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:10,cursor:"pointer",padding:"5px 0 0",fontFamily:"'Inter',sans-serif",textDecoration:"underline",textUnderlineOffset:3}}>+{props.n} más</button>;
   }
   var vacio={fontSize:11.5,color:"#6E6E6E"};
+  // Resumen de una línea del IIBB por CUIT (el mismo cálculo que el detalle): lo que queda a pagar o a favor de cada uno.
+  function resumenIIBB(){
+    var mesI=ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso;
+    var ps=posicionIVAPorCuit(p.gastos||[],cierres,mesI);
+    var partes=FACTURACION.map(function(f){
+      var o=ps[f.id], alic=ALICUOTA_IIBB_CUIT[f.id]||0;
+      var extra=(p.creditosIIBB||[]).filter(function(c){return c.mes===mesI&&c.cuit===f.id;}).reduce(function(a,c){return a+(parseFloat(c.monto||0)||0);},0);
+      var sd=(o.ventasTotal/1.21)*alic-o.iibbRetenido-o.iibbAFavor-extra;
+      return f.razonSocial.split(" ")[0]+" "+(sd>0?fmt(sd):"a favor "+fmt(-sd));
+    });
+    return "A pagar · "+partes.join(" · ");
+  }
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
@@ -14670,7 +14688,7 @@ function PanelNovedades(p){
           var chip=function(act){return {padding:"3px 9px",borderRadius:20,border:"1px solid "+(act?"#8B2FC9":"#2A2A2A"),background:act?"#8B2FC922":"none",color:act?"#B07AE0":"#7E7E7E",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif"};};
           var linea=function(txt,monto,color,neg){return <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:"#9A9A9A",padding:"1.5px 0"}}><span>{txt}</span><span style={{color:color||"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{neg?"−":""}{fmt(monto)}</span></div>;};
           return(
-            <Seccion tab="venc" titulo="🧾 IVA por CUIT" color="#8B2FC9">
+            <Seccion tab="venc" id="iva" res={"A pagar "+fmt(FACTURACION.reduce(function(a,f){var o=pos[f.id];var sd=o.df-(o.cfFacturas+o.cfAtrasado+o.cfComisiones);return a+(sd>0?sd:0);},0))+" · "+FACTURACION.map(function(f){var o=pos[f.id];var sd=o.df-(o.cfFacturas+o.cfAtrasado+o.cfComisiones);return f.razonSocial.split(" ")[0]+" "+(sd>0?fmt(sd):"a favor "+fmt(-sd));}).join(" · ")} titulo="🧾 IVA por CUIT" color="#8B2FC9">
               <div style={{display:"flex",gap:6,marginBottom:8}}>
                 <button onClick={function(){setIvaAnterior(false);}} style={chip(!ivaAnterior)}>{mesEnCurso} · en curso</button>
                 <button onClick={function(){setIvaAnterior(true);}} style={chip(ivaAnterior)}>{mesAnteriorDe(mesEnCurso)} · a declarar</button>
@@ -14702,7 +14720,7 @@ function PanelNovedades(p){
           );
         })()}
 
-        <Seccion tab="venc" titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
+        <Seccion tab="venc" id="iibb" res={resumenIIBB()} titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
           <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} creditosIIBB={p.creditosIIBB||[]} nota="Mismo mes que la tarjeta de IVA. "/>
         </Seccion>
 
@@ -14716,7 +14734,7 @@ function PanelNovedades(p){
           var provsDe=function(o){return (o.provSections||[]).filter(function(sec){return (sec.items||[]).length>0;}).map(function(sec){var pv=(proveedores||[]).find(function(x){return x.id===sec.provId;});return pv?pv.nombre:"";}).filter(Boolean).join(", ");};
           var porLocal=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return {l:l,n:emitidas.filter(function(o){return o.local===l.id&&o.status!=="cancelada";}).length};}).filter(function(x){return x.n>0;});
           return(
-            <Seccion tab="operacion" titulo={"📋 Órdenes de compra · "+etiquetaRango} color="#C1440E">
+            <Seccion tab="operacion" id="ordenes" res={emitidas.length===0?"Ninguna emitida "+etiquetaRango:emitidas.length+" emitida"+(emitidas.length===1?"":"s")+" "+etiquetaRango} titulo={"📋 Órdenes de compra · "+etiquetaRango} color="#C1440E">
               {emitidas.length===0?(
                 <div style={vacio}>No se emitió ninguna orden de compra {etiquetaRango}.</div>
               ):(
@@ -14775,32 +14793,10 @@ function PanelNovedades(p){
           );
         })()}
 
-        <Seccion tab="resultados" titulo="📊 Resumen por local" color="#3A7D44" ir={p.irCierres} irTxt="Cierres">
-          <div style={{fontSize:10,color:"#7E7E7E",marginBottom:6}}>Ventas y egresos {subVentas}</div>
-          {resumenLocales.map(function(x,i){
-            var res=x.ventas-x.egresos;
-            return(
-              <div key={x.local.id} style={{padding:"7px 0",borderTop:i===0?"none":"1px solid #141414"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
-                  <div style={{fontSize:12.5,fontWeight:700,color:x.local.color}}>{x.local.emoji} {x.local.nombre}</div>
-                  {p.irMetricas&&x.local.id!=="dep"&&<button onClick={function(){p.irMetricas(x.local.id);}} style={{background:"none",border:"none",color:x.local.color,fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,opacity:0.85}}>📈 Métricas →</button>}
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Ventas</span><span style={{color:"#C8C8C8",fontVariantNumeric:"tabular-nums"}}>{fmt(x.ventas)}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A"}}><span>Egresos</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(x.egresos)}</span></div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#9A9A9A"}}><span>Diferencia</span><span style={{color:res<0?"#E0714A":"#4C9A5A",fontVariantNumeric:"tabular-nums"}}>{fmt(res)}</span></div>
-              </div>
-            );
-          })}
-          {egresosOtros>0.5&&(
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#9A9A9A",padding:"7px 0",borderTop:"1px solid #141414"}}><span>Egresos sin local</span><span style={{color:"#D88A6A",fontVariantNumeric:"tabular-nums"}}>{fmt(egresosOtros)}</span></div>
-          )}
-          <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #141414",marginTop:4,paddingTop:7,fontSize:12.5,fontWeight:800,color:"#F0EDE8"}}>
-            <span>Total · ventas {fmt(ventasTarjeta+((resumenLocales.find(function(x){return x.local.id==="dep";})||{}).ventas||0))} · egresos {fmt(resumenLocales.reduce(function(a,x){return a+x.egresos;},0)+egresosOtros)}</span>
-          </div>
-        </Seccion>
+
 
         <div ref={refDeuda}>
-        <Seccion tab="plata" titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion tab="plata" id="deudas" res={(totalVencido>0?fmt(totalVencido)+" vencido":"Sin deuda vencida")+" · "+fmt(totalProv)+" de proveedores"} titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
             <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
           ):(
@@ -14859,7 +14855,7 @@ function PanelNovedades(p){
         </Seccion>
         </div>
 
-        <Seccion tab="operacion" titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
+        <Seccion tab="operacion" id="cierres" res={cierresR.length+" cierre"+(cierresR.length===1?"":"s")+" "+etiquetaRango} titulo="🏪 Cierres de caja" color="#C1440E" ir={p.irCierres} irTxt="Cierres">
           {faltaColRetiro&&(
             <div style={{fontSize:11,color:"#D4A017",lineHeight:1.6,padding:"0 0 9px",borderBottom:"1px solid #141414",marginBottom:8}}>
               ⚠️ El <strong>retiro de caja</strong> no se está guardando: falta la columna en la tabla.
@@ -14931,7 +14927,7 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion tab="venc" titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion tab="venc" id="venc" res={porVencer.length+" por vencer en "+mesEnCurso+" · "+vencidos.length+" vencido"+(vencidos.length===1?"":"s")+" sin pagar"} titulo={"📅 Vencimientos de "+mesEnCurso} color="#D4A017" ir={p.irVencimientos} irTxt="Vencimientos">
           <div style={{fontSize:11.5,fontWeight:700,color:"#D4A017",marginBottom:6}}>⏱ Vencimientos desde hoy hasta fin de mes</div>
           <div style={{fontSize:10,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>
             Acá: {porVencer.length} de {mesEnCurso}. El número rojo de la pestaña Vencimientos ({avisos.length}) suma {vencidos.length} vencido{vencidos.length===1?"":"s"} sin pagar + {avisos.length-vencidos.length} de los próximos 7 días.
@@ -14998,7 +14994,7 @@ function PanelNovedades(p){
           var pend=pendientesDeSaldar(p.gastos||[]);
           if(pend.length===0)return null;
           return(
-            <Seccion tab="plata" titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
+            <Seccion tab="plata" id="saldar" res={pend.length+" por saldar · "+fmt(pend.reduce(function(a,x){return a+x.m;},0))} titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
               {(function(){
                 // Desde el primer día del mes siguiente al que se empezó a llevar, si queda algo sin saldar se pregunta qué se va a hacer.
                 var hoyP=diaDeNegocio(), mesP=hoyP.substring(0,7), plan=p.planSaldar;
@@ -15042,7 +15038,7 @@ function PanelNovedades(p){
         })()}
 
         {(altas.length+bajas.length)>0&&(
-        <Seccion tab="personal" titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Colaboradores">
+        <Seccion tab="personal" id="altas" res={altas.length+" entraron · "+bajas.length+" se fueron"} titulo={"👥 Altas y bajas de "+mesEnCurso} color="#4CAF50" ir={p.irPersonal} irTxt="Colaboradores">
           <div>
             {altas.length>0&&<Sub primera={true}>Entraron · {altas.length}</Sub>}
             {altas.map(function(e,i){
@@ -15061,7 +15057,7 @@ function PanelNovedades(p){
         </Seccion>
         )}
 
-        <Seccion tab="personal" titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
+        <Seccion tab="personal" id="vacas" res={deVacaciones.length+" de licencia · "+vacProximas.length+" se van en dos meses"} titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(
             <div style={vacio}>Nadie de licencia, ni en los próximos dos meses.</div>
           ):(
@@ -15084,7 +15080,7 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion tab="plata" titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
+        <Seccion tab="plata" id="socios" res={"Aportes "+fmt(totalAportes)+" · retiros "+fmt(totalRetiros)} titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
           {(aportesR.length+retirosR.length)===0?(
             <div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>
           ):(

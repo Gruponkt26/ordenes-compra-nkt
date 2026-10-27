@@ -13725,6 +13725,138 @@ function PanelOrdenesPorMes(p){
 // de este monto o más es algo para mirar. Por local, porque cada uno vende y gasta en otra escala.
 var UMBRAL_VENTA_CIERRE={l1:1400000,l3:800000,l2:400000};
 var UMBRAL_EGRESO_IMPORTANTE={l1:1000000,l3:600000,l2:700000,l4:300000};
+// Control contra ARCA: se baja de Mis Comprobantes (comprobantes recibidos) el archivo CSV del mes y se compara con las facturas de compra
+// cargadas en Egresos de ese CUIT: cuánto IVA de crédito figura en ARCA, cuánto tiene la app, y qué facturas faltan de un lado o del otro.
+function arcaNum(v){
+  var t=String(v==null?"":v).trim().replace(/\s/g,"").replace(/\$/g,"");
+  if(!t)return 0;
+  if(t.indexOf(",")>=0)t=t.replace(/\./g,"").replace(",",".");
+  var n=parseFloat(t); return isNaN(n)?0:n;
+}
+function arcaFecha(v){
+  var t=String(v||"").trim(), m;
+  if((m=t.match(/^(\d{4})-(\d{2})-(\d{2})/)))return m[1]+"-"+m[2]+"-"+m[3];
+  if((m=t.match(/^(\d{2})\/(\d{2})\/(\d{4})/)))return m[3]+"-"+m[2]+"-"+m[1];
+  return "";
+}
+function parsearMisComprobantes(texto){
+  var lineas=String(texto||"").replace(/\r/g,"").split("\n").filter(function(l){return l.trim();});
+  if(lineas.length<2)return {error:"El archivo está vacío."};
+  var sep=(lineas[0].split(";").length>=lineas[0].split(",").length)?";":",";
+  function celdas(l){
+    var out=[],cur="",q=false;
+    for(var i=0;i<l.length;i++){
+      var ch=l.charAt(i);
+      if(ch==='"'){q=!q;continue;}
+      if(ch===sep&&!q){out.push(cur);cur="";continue;}
+      cur+=ch;
+    }
+    out.push(cur); return out;
+  }
+  var norm=function(s){return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[.\s]+/g," ").trim();};
+  var cab=celdas(lineas[0]).map(norm);
+  function col(re,ex){ for(var i=0;i<cab.length;i++){ if(re.test(cab[i])&&!(ex&&ex.test(cab[i])))return i; } return -1; }
+  var c={fecha:col(/^fecha/),tipo:col(/^tipo$/)>=0?col(/^tipo$/):col(/^tipo/,/doc|cambio/),emisor:col(/denominacion/),doc:col(/nro doc/),
+    neto:col(/neto gravado total/),ng:col(/no gravado/),ex:col(/exent/),otros:col(/otros tributos/),iva:col(/^total iva/),total:col(/^(imp )?total$|^importe total/),pv:col(/punto de venta/),num:col(/numero desde|numero$/)};
+  if(c.fecha<0||c.total<0||c.iva<0)return {error:"No reconozco las columnas. Tiene que ser el CSV de Mis Comprobantes (comprobantes recibidos), con fecha, total IVA e importe total."};
+  var filas=[];
+  for(var i=1;i<lineas.length;i++){
+    var x=celdas(lineas[i]);
+    var f=arcaFecha(x[c.fecha]); if(!f)continue;
+    var tipoTxt=c.tipo>=0?String(x[c.tipo]||""):"";
+    var nc=/credito/i.test(tipoTxt.normalize("NFD").replace(/[̀-ͯ]/g,""))||[3,8,13,53,203,208,213].indexOf(parseInt(tipoTxt,10))>=0;
+    var sg=nc?-1:1;
+    filas.push({fecha:f,tipo:tipoTxt,nc:nc,emisor:c.emisor>=0?String(x[c.emisor]||"").trim():"",cuitEmisor:c.doc>=0?String(x[c.doc]||"").trim():"",
+      pv:c.pv>=0?String(x[c.pv]||"").trim():"",num:c.num>=0?String(x[c.num]||"").trim():"",
+      iva:sg*arcaNum(x[c.iva]),otros:sg*(c.otros>=0?arcaNum(x[c.otros]):0),total:sg*arcaNum(x[c.total])});
+  }
+  if(filas.length===0)return {error:"No encontré comprobantes en el archivo."};
+  return {filas:filas};
+}
+function ControlARCA({gastos, hoy, hechos, usuario, onHecho}){
+  var fmtA=function(n){return (n<0?"-$":"$")+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
+  var [cuit,setCuit]=useState(FACTURACION[0].id);
+  var [mes,setMes]=useState(hoy.slice(0,7));
+  var [texto,setTexto]=useState("");
+  var [res,setRes]=useState(null);
+  var INPa={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
+  function leerArchivo(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return;
+    var r=new FileReader(); r.onload=function(){setTexto(String(r.result||""));}; r.readAsText(f,"utf-8"); e.target.value="";
+  }
+  function comparar(){
+    var pr=parsearMisComprobantes(texto);
+    if(pr.error){setRes({error:pr.error});return;}
+    var arca=pr.filas.filter(function(x){return x.fecha.slice(0,7)===mes;});
+    var app=(gastos||[]).filter(function(g){
+      return g.facturado&&g.fecha&&g.fecha.slice(0,7)===mes&&g.local!=="l4"&&(g.facturacion||CUIT_DE_LOCAL_IVA[g.local])===cuit;
+    });
+    var usados={}, sinCargar=[];
+    arca.forEach(function(x){
+      var m=app.find(function(g){return !usados[g.id]&&Math.abs((parseFloat(g.monto)||0)-x.total)<=1.5;});
+      if(m)usados[m.id]=true; else sinCargar.push(x);
+    });
+    var soloApp=app.filter(function(g){return !usados[g.id];});
+    var ivaArca=arca.reduce(function(a,x){return a+x.iva;},0), otrosArca=arca.reduce(function(a,x){return a+x.otros;},0);
+    var ivaApp=0, percApp=0;
+    app.forEach(function(g){var d=desgloseCompra(g); ivaApp+=d.ivaProp; percApp+=d.perc.iva+d.perc.iibb;});
+    setRes({n:arca.length,ivaArca:ivaArca,otrosArca:otrosArca,ivaApp:ivaApp,percApp:percApp,nApp:app.length,sinCargar:sinCargar,soloApp:soloApp,fueraDeMes:pr.filas.length-arca.length});
+  }
+  function marcarHecho(){
+    if(!res||res.error)return;
+    onHecho(cuit,mes,{ivaArca:Math.round(res.ivaArca),ivaApp:Math.round(res.ivaApp),faltan:res.sinCargar.length});
+  }
+  var semana=semanaDe(hoy), hechoEsta=(hechos||{})[semana+"_"+cuit];
+  return(
+    <div>
+      <div style={{fontSize:10.5,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>Entrá a ARCA → Mis Comprobantes → <b>Recibidos</b>, elegí el mes y bajá el <b>CSV</b>. Subilo acá (o pegá el contenido) y se compara con las facturas cargadas en Egresos. La clave fiscal se usa solo en la página de ARCA, nunca acá.</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <select value={cuit} onChange={function(e){setCuit(e.target.value);setRes(null);}} style={INPa}>{FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}</select>
+        <input type="month" value={mes} onChange={function(e){setMes(e.target.value);setRes(null);}} style={INPa}/>
+        <label style={{...INPa,cursor:"pointer",color:"#D4A017",borderColor:"#D4A01755"}}>📎 Subir CSV<input type="file" accept=".csv,.txt" onChange={leerArchivo} style={{display:"none"}}/></label>
+      </div>
+      <textarea rows={3} value={texto} onChange={function(e){setTexto(e.target.value);}} placeholder="…o pegá acá el contenido del CSV" style={{...INPa,width:"100%",resize:"vertical",marginBottom:8,fontSize:11}}/>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <button onClick={comparar} disabled={!texto.trim()} style={{padding:"8px 14px",borderRadius:8,border:"none",background:texto.trim()?"#D4A017":"#2A2A2A",color:"#0A0A0A",fontWeight:800,fontSize:12,cursor:texto.trim()?"pointer":"default"}}>Comparar</button>
+        {hechoEsta&&<span style={{fontSize:11,color:"#4C9A5A"}}>✓ Controlado esta semana ({hechoEsta.mes}) por {hechoEsta.usuario}</span>}
+      </div>
+      {res&&res.error&&<div style={{marginTop:8,fontSize:12,color:"#E0714A"}}>{res.error}</div>}
+      {res&&!res.error&&(
+        <div style={{marginTop:10,background:"#0A0A0A",border:"1px solid #1E1E1E",borderRadius:10,padding:"10px 12px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:"3px 12px",fontSize:12,color:"#C8C8C8"}}>
+            <span></span><b style={{color:"#8C8C8C",fontSize:10}}>ARCA</b><b style={{color:"#8C8C8C",fontSize:10}}>APP</b>
+            <span>Comprobantes</span><span>{res.n}</span><span>{res.nApp}</span>
+            <span>IVA de crédito</span><span>{fmtA(res.ivaArca)}</span><span>{fmtA(res.ivaApp)}</span>
+            <span>Percepciones / otros tributos</span><span>{fmtA(res.otrosArca)}</span><span>{fmtA(res.percApp)}</span>
+          </div>
+          {(function(){var d=res.ivaArca-res.ivaApp; return <div style={{marginTop:6,fontSize:12,fontWeight:700,color:Math.abs(d)<=50?"#4C9A5A":"#D4A017"}}>{Math.abs(d)<=50?"✓ El IVA de crédito coincide":"Diferencia de IVA: ARCA tiene "+fmtA(d)+(d>0?" más que la app":" menos que la app")}</div>;})()}
+          {res.fueraDeMes>0&&<div style={{fontSize:10,color:"#6E6E6E",marginTop:3}}>El archivo trae {res.fueraDeMes} comprobante{res.fueraDeMes===1?"":"s"} de otros meses: no se comparan.</div>}
+          {res.sinCargar.length>0&&(
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#E0714A",marginBottom:3}}>En ARCA y sin cargar en Egresos ({res.sinCargar.length})</div>
+              {res.sinCargar.map(function(x,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#9A9A9A",padding:"2px 0"}}><span>{fmtDate(x.fecha)} · {x.emisor||x.cuitEmisor}{x.nc?" · nota de crédito":""}</span><span>{fmtA(x.total)} (IVA {fmtA(x.iva)})</span></div>;})}
+            </div>
+          )}
+          {res.soloApp.length>0&&(
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginBottom:3}}>Cargadas en Egresos y que no figuran en ARCA ({res.soloApp.length})</div>
+              {res.soloApp.map(function(g){return <div key={g.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#9A9A9A",padding:"2px 0"}}><span>{fmtDate(String(g.fecha).substring(0,10))} · {g.concepto}</span><span>{fmtA(parseFloat(g.monto)||0)}</span></div>;})}
+              <div style={{fontSize:10,color:"#6E6E6E",marginTop:2}}>Pueden ser facturas que el proveedor todavía no subió, o cargadas con otro CUIT o con otro importe.</div>
+            </div>
+          )}
+          {res.sinCargar.length===0&&res.soloApp.length===0&&<div style={{marginTop:6,fontSize:11,color:"#4C9A5A"}}>Todas las facturas coinciden de los dos lados.</div>}
+          <button onClick={marcarHecho} style={{marginTop:9,padding:"7px 13px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontWeight:700,fontSize:12,cursor:"pointer"}}>Marcar control de esta semana como hecho</button>
+        </div>
+      )}
+    </div>
+  );
+}
+// Lunes de la semana de una fecha (aaaa-mm-dd): identifica "esta semana" para los controles semanales.
+function semanaDe(fecha){
+  var d=new Date(fecha+"T00:00:00"); d.setDate(d.getDate()-((d.getDay()+6)%7));
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
@@ -14241,6 +14373,9 @@ function PanelNovedades(p){
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
+        // Control semanal contra ARCA: aparece desde el lunes y sigue hasta que se controla cada CUIT.
+        var faltaArca=FACTURACION.filter(function(f){return !(p.controlesArca||{})[semanaDe(hoy)+"_"+f.id];});
+        if(faltaArca.length>0)avisos.push({rojo:false,txt:"Controlar IVA contra ARCA esta semana ("+faltaArca.map(function(f){return f.razonSocial.split(" ")[0];}).join(", ")+")",ir:function(){setTabNov("venc");setExpandido(function(e){return {...e,sec_arca:true};});}});
         if(hayFaltanSueldos&&p.irFaltantes)avisos.push({rojo:false,txt:"Hay sueldos del mes pasado sin pagar",ir:p.irFaltantes});
         function cuando(dias){ return dias===0?"hoy":(dias===1?"mañana":"en "+dias+" días"); }
         // Un plan por caerse y la cuota que lo pone en ese riesgo son la misma novedad: si esa
@@ -14813,6 +14948,10 @@ function PanelNovedades(p){
             </Seccion>
           );
         })()}
+
+        <Seccion tab="venc" id="arca" res={FACTURACION.every(function(f){return (p.controlesArca||{})[semanaDe(hoy)+"_"+f.id];})?"Controlado esta semana ✓":"Falta controlar contra ARCA esta semana"} titulo="🔍 Control contra ARCA" color="#D4A017">
+          <ControlARCA gastos={p.gastos||[]} hoy={hoy} hechos={p.controlesArca} usuario={p.usuario} onHecho={function(cuit,mes,datos){if(p.onControlArca)p.onControlArca(semanaDe(hoy),cuit,mes,datos);}}/>
+        </Seccion>
 
         <Seccion tab="venc" id="iibb" res={resumenIIBB()} titulo={"🧾 IIBB por CUIT · "+(ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso)} color="#D4A017">
           <BloquesIIBBPorCuit gastos={p.gastos||[]} cierres={cierres} mes={ivaAnterior?mesAnteriorDe(mesEnCurso):mesEnCurso} fmt={fmt} creditosIIBB={p.creditosIIBB||[]} nota="Mismo mes que la tarjeta de IVA. "/>
@@ -27113,6 +27252,11 @@ export default function App() {
     if(x.ambito!=="tel_util")return;
     try{ var dt=JSON.parse(x.texto||"{}"); if(dt.nombre&&dt.telefono)telUtiles.push({...dt,id:x.id}); }catch(e){}
   });
+  var controlesArca={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="control_arca")return;
+    try{ var dc2=JSON.parse(x.texto||"{}"); if(dc2.semana&&dc2.cuit)controlesArca[dc2.semana+"_"+dc2.cuit]=dc2; }catch(e){}
+  });
   var docsLocal=[];
   pautas.forEach(function(x){
     if(x.ambito!=="doc_local")return;
@@ -28204,7 +28348,7 @@ export default function App() {
             </div>
           )}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

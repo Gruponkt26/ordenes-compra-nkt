@@ -13850,7 +13850,12 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
   var INPa={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
   function leerArchivo(e){
     var f=e.target.files&&e.target.files[0]; if(!f)return;
-    var r=new FileReader(); r.onload=function(){setTexto(String(r.result||""));}; r.readAsText(f,"utf-8"); e.target.value="";
+    e.target.value="";
+    leerTabla(f).then(function(t){
+      if(t.error){setRes({error:t.error});return;}
+      setTexto([t.cabecera.join(";")].concat(t.filas.map(function(fila){return fila.join(";");})).join("\n"));
+      setRes(null);
+    });
   }
   function comparar(){
     var pr=parsearMisComprobantes(texto);
@@ -13889,6 +13894,7 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
   var [colArba,setColArba]=useState({f:-1,i:-1,t:-1});
   function subirArba(e){
     var f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value="";
+    setTablaArba({leyendo:f.name});
     leerTabla(f).then(function(t){
       if(t.error){setTablaArba({error:t.error});return;}
       var nm=function(x){return String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");};
@@ -13896,7 +13902,7 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
       var iImp=ix(/importe|monto|retenid|percibid/); if(iImp<0)iImp=ix(/total/);
       setColArba({f:ix(/fecha/),i:iImp,t:ix(/tipo|regimen|concepto|retencion|percepcion|agente|origen/)});
       setTablaArba({nombre:f.name,cabecera:t.cabecera,filas:t.filas});
-    });
+    }).catch(function(err){ setTablaArba({error:"No pude procesar el archivo: "+((err&&err.message)||err)}); });
   }
   var gruposArba=(function(){
     if(!tablaArba||tablaArba.error||colArba.i<0)return null;
@@ -13920,7 +13926,7 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
         <select value={cuit} onChange={function(e){setCuit(e.target.value);setRes(null);}} style={INPa}>{FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}</select>
         <input type="month" value={mes} onChange={function(e){setMes(e.target.value);setRes(null);}} style={INPa}/>
-        <label style={{...INPa,cursor:"pointer",color:"#D4A017",borderColor:"#D4A01755"}}>📎 Subir CSV<input type="file" accept=".csv,.txt" onChange={leerArchivo} style={{display:"none"}}/></label>
+        <label style={{...INPa,cursor:"pointer",color:"#D4A017",borderColor:"#D4A01755"}}>📎 Subir archivo (CSV, Excel o ZIP)<input type="file" onChange={leerArchivo} style={{display:"none"}}/></label>
       </div>
       <textarea rows={3} value={texto} onChange={function(e){setTexto(e.target.value);}} placeholder="…o pegá acá el contenido del CSV" style={{...INPa,width:"100%",resize:"vertical",marginBottom:8,fontSize:11}}/>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -13960,10 +13966,11 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
           <div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginBottom:3}}>IIBB contra ARBA · {(FACTURACION.find(function(f){return f.id===cuit;})||{}).razonSocial} · {mes}</div>
           <div style={{fontSize:10,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>En ARBA mirá lo que realmente te retuvieron y te percibieron ese mes, y escribilo acá (podés dejar vacío lo que no tengas).</div>
           <label style={{...INPa,display:"inline-block",cursor:"pointer",color:"#D4A017",borderColor:"#D4A01755",marginBottom:8}}>📎 Subir el archivo de ARBA (ZIP, Excel o CSV)<input type="file" onChange={subirArba} style={{display:"none"}}/></label>
+          {tablaArba&&tablaArba.leyendo&&<div style={{fontSize:12,color:"#D4A017",marginBottom:8}}>Leyendo {tablaArba.leyendo}…</div>}
           {tablaArba&&tablaArba.error&&<div style={{fontSize:12,color:"#E0714A",marginBottom:8}}>{tablaArba.error}</div>}
-          {tablaArba&&!tablaArba.error&&(
+          {tablaArba&&!tablaArba.error&&!tablaArba.leyendo&&(
             <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
-              <div style={{fontSize:10.5,color:"#8C8C8C",marginBottom:5}}>{tablaArba.nombre} · {tablaArba.filas.length} filas. Confirmá qué columna es cada cosa:</div>
+              <div style={{fontSize:10.5,color:"#8C8C8C",marginBottom:5}}>Leí <b>{tablaArba.nombre}</b>: {tablaArba.filas.length} filas y {tablaArba.cabecera.length} columnas ({tablaArba.cabecera.filter(Boolean).slice(0,8).join(" · ")}{tablaArba.cabecera.length>8?"…":""}). Confirmá qué columna es cada cosa:</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
                 {[["f","Fecha"],["i","Importe"],["t","Tipo (retención / percepción)"]].map(function(c){return(
                   <label key={c[0]} style={{fontSize:10,color:"#8C8C8C"}}>{c[1]}<br/>

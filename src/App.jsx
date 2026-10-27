@@ -12383,6 +12383,9 @@ function PanelFichar(p){
   // Usuarios se ve quién está configurado y quién no.
   var porUsuario=p.empleadoId?empleados.find(function(e){return e.id===p.empleadoId;}):null;
   var soyYo=porUsuario||(miEmp?empleados.find(function(e){return e.id===miEmp;}):null);
+  // Fichar desde el celular obliga a vincularlo a la propia ficha (salvo administración): con el celular atado, saber el PIN de otro no sirve para fichar por él.
+  var vincularObligatorio=!soyYo&&!p.esAdmin&&!kiosco&&!p.empleadoId;
+  var vinculandoEf=vinculando||vincularObligatorio;
   // Con el celular propio se ficha en el local de la ficha; los que cubren los tres locales pueden elegir otro.
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
@@ -12397,6 +12400,14 @@ function PanelFichar(p){
   // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
   // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
   var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});
+  // Identifica este celular en las marcas ("Disp:xxxxxx" en las notas): si ficha por dos personas distintas, Novedades lo avisa.
+  function idDispositivo(){
+    try{
+      var d=window.localStorage.getItem("nkt_dispositivo");
+      if(!d){ d=Math.random().toString(36).slice(2,8); window.localStorage.setItem("nkt_dispositivo",d); }
+      return d;
+    }catch(e){ return "sinid"; }
+  }
   function guardarMiEmp(id){
     setMiEmp(id);
     try{ if(id)window.localStorage.setItem("nkt_fichaje_empleado",id); else window.localStorage.removeItem("nkt_fichaje_empleado"); }catch(e){}
@@ -12438,7 +12449,7 @@ function PanelFichar(p){
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
     // Con el celular propio (ya vinculado) no se pide PIN: ahí manda la ubicación. El PIN queda para la tablet del local y para los aparatos compartidos.
-    if(!pinDe(emp)||(soyYo&&!kiosco)){ if(vinculando){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
+    if(!pinDe(emp)||(soyYo&&!kiosco)){ if(vinculandoEf){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
     setFase("pin");
   }
   function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); setOlvido(null); }
@@ -12475,7 +12486,7 @@ function PanelFichar(p){
     if(v.length===4){
       if(v===pinDe(elegido)){
         setPin("");
-        if(vinculando){ guardarMiEmp(elegido.id); setVinculando(false); setElegido(null); setFase("lista"); return; }
+        if(vinculandoEf){ guardarMiEmp(elegido.id); setVinculando(false); setElegido(null); setFase("lista"); return; }
         seguirDespuesDelPin(elegido);
       }
       else { setPinMal(true); setTimeout(function(){ setPin(""); },450); }
@@ -12521,7 +12532,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:"Disp:"+idDispositivo()+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -12737,15 +12748,16 @@ function PanelFichar(p){
         </div>
       )}
 
-      {vinculando&&(
+      {vinculandoEf&&(
         <div style={{background:"#08120F",border:"1px solid #1A8A7B55",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:800,color:"#1A8A7B",marginBottom:3}}>📱 ¿De quién es este celular?</div>
           <div style={{fontSize:11,color:"#2A5A52",lineHeight:1.5}}>
             Tocá tu nombre y poné tu PIN. Desde entonces esta pantalla te muestra sólo a vos, y nadie
             puede fichar por otro desde acá.
             <div style={{marginTop:6,color:"#D4A017"}}>Se configura una sola vez: después sólo administración puede cambiarlo.</div>
+            {vincularObligatorio&&<div style={{marginTop:6,color:"#E0714A",fontWeight:700}}>Es obligatorio para poder fichar.</div>}
           </div>
-          <button onClick={function(){setVinculando(false);}} style={{...GH,padding:"5px 10px",fontSize:11,marginTop:9}}>Cancelar</button>
+          {!vincularObligatorio&&<button onClick={function(){setVinculando(false);}} style={{...GH,padding:"5px 10px",fontSize:11,marginTop:9}}>Cancelar</button>}
         </div>
       )}
       {(!soyYo||multiLocal)&&(
@@ -12759,7 +12771,7 @@ function PanelFichar(p){
         {soyYo&&multiLocal&&<div style={{width:"100%",fontSize:10.5,color:"#8C8C8C"}}>Marcás en el local donde estás. Si no es el tuyo ({(getLocal(soyYo.local)||{}).nombre}), queda avisado en Novedades.</div>}
       </div>
       )}
-      {!soyYo&&!vinculando&&!kiosco&&!p.empleadoId&&(
+      {!soyYo&&!vinculandoEf&&!kiosco&&!p.empleadoId&&(
         <button onClick={function(){setVinculando(true);}}
           style={{background:"none",border:"1px solid #1A8A7B55",borderRadius:9,color:"#1A8A7B",fontFamily:"'Inter',sans-serif",
             fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:12,width:"100%"}}>
@@ -14640,6 +14652,19 @@ function PanelNovedades(p){
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
+        // Un mismo celular que ficha por dos personas distintas: alguien está fichando por otro.
+        (function(){
+          var hace=new Date(Date.now()-14*86400000).toISOString(), porDisp={};
+          (p.fichajes||[]).forEach(function(f){
+            if(f.manual||String(f.momento||"")<hace)return;
+            var m=/Disp:([a-z0-9]+)/.exec(f.notas||""); if(!m||m[1]==="sinid")return;
+            (porDisp[m[1]]=porDisp[m[1]]||{})[f.empleado_id]=f.empleado_nombre;
+          });
+          Object.keys(porDisp).forEach(function(d){
+            var nombres=Object.keys(porDisp[d]).map(function(k){return porDisp[d][k];});
+            if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá las fotos"});
+          });
+        })();
         // Control semanal contra ARCA: aparece desde el lunes y sigue hasta que se controla cada CUIT.
         var faltaArca=FACTURACION.filter(function(f){return !(p.controlesArca||{})[semanaDe(hoy)+"_"+f.id];});
         if(faltaArca.length>0)avisos.push({rojo:false,txt:"Controlar IVA contra ARCA esta semana ("+faltaArca.map(function(f){return f.razonSocial.split(" ")[0];}).join(", ")+")",ir:function(){setTabNov("venc");setExpandido(function(e){return {...e,sec_arca:true};});}});

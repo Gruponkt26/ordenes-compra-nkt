@@ -5571,7 +5571,7 @@ function PanelTelefonosUtiles({contactos, puedeEditar, usuario, localUsuario, on
         <input value={buscar} onChange={function(e){setBuscar(e.target.value);}} placeholder="Buscar un teléfono…" style={{...INPt,flex:1,minWidth:160}}/>
         {puedeEditar&&<select value={verLocal} onChange={function(e){setVerLocal(e.target.value);}} style={{...INPt,width:"auto"}}>
           <option value="todos">Todos los locales</option>
-          {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
         </select>}
         {puedeEditar&&!form&&<button onClick={function(){setForm({id:"",nombre:"",telefono:"",categoria:TEL_CATEGORIAS[1],local:"todos",notas:""});}} style={{padding:"9px 14px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>+ Agregar</button>}
       </div>
@@ -5583,7 +5583,7 @@ function PanelTelefonosUtiles({contactos, puedeEditar, usuario, localUsuario, on
             <div><label style={lbl}>Categoría</label><select value={form.categoria} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,categoria:v};});}} style={INPt}>{TEL_CATEGORIAS.map(function(c){return <option key={c} value={c}>{c}</option>;})}</select></div>
             <div><label style={lbl}>Quién lo ve</label><select value={form.local||"todos"} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,local:v};});}} style={INPt}>
               <option value="todos">Todos los empleados</option>
-              {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>Solo {l.nombre}</option>;})}
+              {LOCALES.map(function(l){return <option key={l.id} value={l.id}>Solo {l.nombre}</option>;})}
             </select></div>
             <div><label style={lbl}>Notas (opcional)</label><input value={form.notas||""} onChange={function(e){var v=e.target.value;setForm(function(x){return{...x,notas:v};});}} placeholder="Horario, con quién hablar…" style={INPt}/></div>
           </div>

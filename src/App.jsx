@@ -14440,7 +14440,13 @@ function PanelNovedades(p){
   // Una sola familia de piezas para todo el panel: título sobrio, filas aireadas y un solo
   // acento por sección. Lo que no es un número va en gris: si todo grita, no se lee nada.
   // Con "res" (una línea de resumen) la sección viene plegada y se abre con un toque; sin "res" se muestra entera.
-  function Seccion(props){
+  // Tiene que ser el MISMO componente en cada render: si se redefine cada vez, React lo desmonta y se pierde lo que hay adentro
+  // (el archivo recién subido en el control de ARCA/ARBA, por ejemplo) cada vez que Novedades se vuelve a dibujar. Por eso se
+  // crea una sola vez y lee tab, desplegados y setter desde una referencia que se actualiza en cada render.
+  var ctxSeccion=useRef({}); ctxSeccion.current={tabNov:tabNov,expandido:expandido,setExpandido:setExpandido};
+  var seccionRef=useRef(null);
+  if(!seccionRef.current)seccionRef.current=function Seccion(props){
+    var c=ctxSeccion.current, tabNov=c.tabNov, expandido=c.expandido, setExpandido=c.setExpandido;
     if(props.tab&&props.tab!==tabNov)return null;
     var plegable=props.res!==undefined&&!!props.id;
     var cerrada=plegable&&!expandido["sec_"+props.id];
@@ -14456,7 +14462,8 @@ function PanelNovedades(p){
         {!cerrada&&props.children}
       </div>
     );
-  }
+  };
+  var Seccion=seccionRef.current;
   // Un renglón con onClick lleva a donde está ese dato. Se marca con un › al final: un
   // renglón que se puede tocar y no lo parece no lo toca nadie.
   function Fila(props){

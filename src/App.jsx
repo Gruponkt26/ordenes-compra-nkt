@@ -12222,6 +12222,57 @@ async function reducirImagen(file){
   }catch(e){ return file; }
 }
 
+// Código del local para fichar: cambia cada 30 segundos y se muestra en una pantalla fija del local (un celular viejo, por ejemplo). Quien lo
+// escanea (o lo escribe) prueba que está en el local y se saltea la verificación por GPS. El código sale de un secreto del local + la ventana
+// de 30 s, y lo calcula igual la pantalla del local y el celular del empleado: no hace falta que se hablen entre sí.
+var FICH_VENTANA=30000;
+async function fichHash(txt){ var b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(txt)); return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,"0");}).join(""); }
+async function codigoLocalFichaje(secreto,local,ventana){ var h=await fichHash(secreto+"|"+local+"|"+ventana); return String(parseInt(h.slice(0,8),16)%1000000).padStart(6,"0"); }
+// Vale el de ahora y los de los últimos 90 s: da margen para escanear, ponerse el PIN y sacar la foto.
+async function codigoFichajeValido(secreto,local,codigo){
+  if(!secreto||!local||!codigo)return false;
+  var v=Math.floor(Date.now()/FICH_VENTANA);
+  for(var k=0;k<=3;k++){ if(await codigoLocalFichaje(secreto,local,v-k)===String(codigo).trim())return true; }
+  return false;
+}
+function PantallaCodigoFichaje({local, secreto, onSalir}){
+  var loc=getLocal(local)||{nombre:local};
+  var [ahora,setAhora]=useState(Date.now());
+  var [codigo,setCodigo]=useState("");
+  var [qr,setQr]=useState("");
+  var ventana=Math.floor(ahora/FICH_VENTANA);
+  useEffect(function(){ var t=setInterval(function(){setAhora(Date.now());},500); return function(){clearInterval(t);}; },[]);
+  useEffect(function(){
+    var vivo=true, lock=null;
+    try{ if(navigator.wakeLock)navigator.wakeLock.request("screen").then(function(l){lock=l;}).catch(function(){}); }catch(e){}
+    return function(){ vivo=false; try{ if(lock)lock.release(); }catch(e){} };
+  },[]);
+  useEffect(function(){
+    var vivo=true;
+    codigoLocalFichaje(secreto,local,ventana).then(function(c){
+      if(!vivo)return; setCodigo(c);
+      var url=window.location.origin+"/?fich="+c+"&l="+local;
+      import("qrcode").then(function(m){ return (m.default||m).toDataURL(url,{width:380,margin:1}); }).then(function(d){ if(vivo)setQr(d); }).catch(function(){});
+    });
+    return function(){vivo=false;};
+  },[ventana,secreto,local]);
+  var resta=Math.max(0,Math.ceil((FICH_VENTANA-(ahora%FICH_VENTANA))/1000));
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',sans-serif",textAlign:"center"}}>
+      <div style={{fontSize:13,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:2}}>Fichar en</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:loc.color||"#F0EDE8",marginBottom:10}}>{loc.emoji} {loc.nombre}</div>
+      <div style={{background:"#fff",padding:10,borderRadius:14,minHeight:200,minWidth:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {qr?<img src={qr} alt="Código QR para fichar" style={{width:"min(70vw,320px)",height:"min(70vw,320px)"}}/>:<span style={{color:"#555"}}>…</span>}
+      </div>
+      <div style={{fontSize:12,color:"#8C8C8C",marginTop:10}}>Escaneá con la cámara del celular, o escribí este código en Fichar:</div>
+      <div style={{fontSize:44,fontWeight:800,letterSpacing:8,color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{codigo||"······"}</div>
+      <div style={{width:"min(70vw,320px)",height:5,background:"#1A1A1A",borderRadius:3,margin:"6px 0"}}><div style={{width:(resta/30*100)+"%",height:5,background:resta<=5?"#C1440E":"#3A7D44",borderRadius:3,transition:"width .5s linear"}}/></div>
+      <div style={{fontSize:11,color:"#6E6E6E"}}>Cambia en {resta} s · {new Date(ahora).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"})}</div>
+      <button onClick={onSalir} style={{marginTop:18,background:"none",border:"1px solid #333",borderRadius:9,color:"#8C8C8C",padding:"7px 16px",fontSize:12,cursor:"pointer"}}>Salir</button>
+    </div>
+  );
+}
+
 function PanelFichar(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var fichajes=p.fichajes||[];
@@ -12253,6 +12304,27 @@ function PanelFichar(p){
     try{ return window.localStorage.getItem("nkt_fichaje_empleado")||""; }catch(e){ return ""; }
   });
   var [vinculando,setVinculando]=useState(false);
+  // Código del local (pantalla fija con QR que cambia cada 30 s): verificado, vale unos minutos y reemplaza a la ubicación.
+  var [pantalla,setPantalla]=useState(false);
+  var [codigoOk,setCodigoOk]=useState(function(){
+    try{ var o=JSON.parse(window.sessionStorage.getItem("nkt_fich_ok")||"null"); return o&&o.hasta>Date.now()?o:null; }catch(e){ return null; }
+  });
+  var [codigoTxt,setCodigoTxt]=useState("");
+  var [codigoMsg,setCodigoMsg]=useState("");
+  function aceptarCodigo(loc){
+    var o={local:loc,hasta:Date.now()+4*60000};
+    try{ window.sessionStorage.setItem("nkt_fich_ok",JSON.stringify(o)); }catch(e){}
+    setCodigoOk(o); setCodigoMsg(""); setCodigoTxt("");
+  }
+  // Se escaneó el QR con la cámara: la app se abrió con ?fich=código&l=local (App lo deja en sessionStorage).
+  useEffect(function(){
+    var pend=null; try{ pend=JSON.parse(window.sessionStorage.getItem("nkt_fich_pend")||"null"); }catch(e){}
+    if(!pend||!(p.secretos||{})[pend.l])return;
+    codigoFichajeValido(p.secretos[pend.l],pend.l,pend.c).then(function(ok){
+      try{ window.sessionStorage.removeItem("nkt_fich_pend"); }catch(e){}
+      if(ok)aceptarCodigo(pend.l); else setCodigoMsg("Ese código ya venció (cambia cada 30 s). Escaneá de nuevo, o escribilo.");
+    });
+  },[p.secretos]);
   var [permCam,setPermCam]=useState("");     // granted | denied | prompt | desconocido | sin_soporte
   var [pidiendoCam,setPidiendoCam]=useState(false);
   var embebido=navegadorEmbebido();
@@ -12316,7 +12388,13 @@ function PanelFichar(p){
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
   var coordsLocal=(p.localesDatos||{})[local];
-  var cercaReq=!kiosco&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
+  var codigoVerif=!!codigoOk&&codigoOk.local===local&&codigoOk.hasta>Date.now();
+  var cercaReq=!kiosco&&!codigoVerif&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
+  function verificarCodigoEscrito(){
+    var sec=(p.secretos||{})[local];
+    if(!sec){ setCodigoMsg("Este local todavía no tiene pantalla de código. Avisá a administración."); return; }
+    codigoFichajeValido(sec,local,codigoTxt).then(function(ok){ if(ok)aceptarCodigo(local); else setCodigoMsg("Código incorrecto o vencido. Mirá el que muestra la pantalla del local."); });
+  }
   // Atado a alguien: sólo él. Si ese empleado ya no está —se fue, lo dieron de baja— el
   // aparato vuelve a la lista en vez de quedarse con una pantalla vacía.
   var delLocal=soyYo?[soyYo]:empleados.filter(function(e){return e.local===local;});
@@ -12444,7 +12522,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -12572,6 +12650,7 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
+          {codigoVerif&&<div style={{padding:"8px 10px",borderRadius:10,border:"1px solid #3A7D44",background:"#0A1A0A",color:"#3A7D44",fontSize:12,fontWeight:700,marginBottom:10}}>✅ Código del local verificado: estás en el local</div>}
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
             {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(imprecisa?"⚠️ Tu ubicación es imprecisa (GPS ±"+posAct.acc+" m): podés marcar y queda avisado":distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
@@ -12688,6 +12767,24 @@ function PanelFichar(p){
           📱 Este celular es mío — mostrame sólo a mí
         </button>
       )}
+      {!kiosco&&!codigoVerif&&(
+        <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:12,padding:"10px 12px",marginBottom:10}}>
+          <div style={{fontSize:11.5,color:"#9A9A9A",marginBottom:6}}>🔢 ¿Estás en el local? Escaneá el QR de la pantalla del local con la cámara, o escribí acá el código de 6 números y fichás sin usar el GPS.</div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={codigoTxt} onChange={function(e){setCodigoTxt(e.target.value.replace(/\D/g,"").slice(0,6));}} inputMode="numeric" placeholder="Código" style={{flex:1,padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:15,letterSpacing:3}}/>
+            <button onClick={verificarCodigoEscrito} disabled={codigoTxt.length!==6} style={{padding:"9px 14px",borderRadius:8,border:"none",background:codigoTxt.length===6?"#1A6B8A":"#2A2A2A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Verificar</button>
+          </div>
+          {codigoMsg&&<div style={{fontSize:11,color:"#E0714A",marginTop:6}}>{codigoMsg}</div>}
+        </div>
+      )}
+      {codigoVerif&&<div style={{background:"#0A1A0A",border:"1px solid #3A7D44",borderRadius:12,padding:"9px 12px",marginBottom:10,fontSize:12,fontWeight:700,color:"#3A7D44"}}>✅ Código del local verificado: ya podés marcar sin GPS (vale unos minutos)</div>}
+      {p.esAdmin&&(
+        <button onClick={function(){ if(!(p.secretos||{})[local]&&p.onCrearSecreto)p.onCrearSecreto(local); setPantalla(true); }}
+          style={{background:"none",border:"1px solid #D4A01755",borderRadius:9,color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer",padding:"8px 13px",marginBottom:10,width:"100%"}}>
+          📺 Mostrar el código de {(getLocal(local)||{}).nombre||"este local"} en esta pantalla
+        </button>
+      )}
+      {pantalla&&(p.secretos||{})[local]&&<PantallaCodigoFichaje local={local} secreto={p.secretos[local]} onSalir={function(){setPantalla(false);}}/>}
       <div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>
         {fmtDate(fechaLocal())} · Tocá tu nombre para marcar
       </div>
@@ -27050,6 +27147,16 @@ export default function App() {
   var [users,setUsers]=useState(INIT_USERS);
   var [usersDeBase,setUsersDeBase]=useState(false);
   var [cu,setCu]=useState(null);
+  // Si se abrió desde el QR de la pantalla del local (?fich=código&l=local) se guarda el código y se limpia la dirección.
+  useEffect(function(){
+    try{
+      var q=new URLSearchParams(window.location.search);
+      if(q.get("fich")&&q.get("l")){
+        window.sessionStorage.setItem("nkt_fich_pend",JSON.stringify({c:q.get("fich"),l:q.get("l")}));
+        window.history.replaceState({},"",window.location.pathname);
+      }
+    }catch(e){}
+  },[]);
   // Al abrir, si había alguien logueado se lo recupera de la lista de usuarios. Si ese
   // usuario ya no existe —lo borraron, le cambiaron el id— simplemente pide login de nuevo.
   useEffect(function(){
@@ -27150,6 +27257,11 @@ export default function App() {
   var [subComprasEstado,setSubCompras]=useState(function(){
     try{ return window.localStorage.getItem("nkt_fichaje_kiosco")==="1"?"fichar":null; }catch(e){ return null; }
   });
+  // Si entró por el QR del local, un empleado va directo a Fichar apenas inicia sesión.
+  useEffect(function(){
+    if(!cu)return;
+    try{ if(window.sessionStorage.getItem("nkt_fich_pend")&&PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())===-1)setSubCompras("fichar"); }catch(e){}
+  },[cu&&cu.id]);
   // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
@@ -27424,6 +27536,11 @@ export default function App() {
   pautas.forEach(function(x){
     if(x.ambito!=="control_arca")return;
     try{ var dc2=JSON.parse(x.texto||"{}"); if(dc2.semana&&dc2.cuit)controlesArca[dc2.semana+"_"+dc2.cuit]=dc2; }catch(e){}
+  });
+  var secretosFichaje={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="fich_secreto")return;
+    try{ var ds=JSON.parse(x.texto||"{}"); if(ds.secreto)secretosFichaje[String(x.id).replace(/^fichsec_/,"")]=ds.secreto; }catch(e){}
   });
   var docsLocal=[];
   pautas.forEach(function(x){
@@ -28994,7 +29111,7 @@ export default function App() {
 
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
-              localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+              secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
               justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}
 

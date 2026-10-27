@@ -13773,6 +13773,74 @@ function parsearMisComprobantes(texto){
   if(filas.length===0)return {error:"No encontré comprobantes en el archivo."};
   return {filas:filas};
 }
+// Lectura de archivos de tablas que se suben a la app: CSV/TXT, Excel (.xlsx) y ZIP con alguno de esos adentro. Devuelve {cabecera, filas} (todo como texto)
+// o {error}. El ZIP y el Excel se leen con jszip, que se carga recién cuando se sube uno (import dinámico). No se usa ninguna librería de Excel: un .xlsx es un
+// ZIP de XML y alcanza con leer las celdas.
+function tablaDeTexto(texto){
+  var lineas=String(texto||"").replace(/\r/g,"").split("\n").filter(function(l){return l.trim();});
+  if(lineas.length<2)return {error:"El archivo está vacío."};
+  var cuenta=function(ch){return lineas[0].split(ch).length;};
+  var sep=cuenta(";")>=cuenta(",")&&cuenta(";")>=cuenta("\t")?";":(cuenta("\t")>cuenta(",")?"\t":",");
+  var filas=lineas.map(function(l){
+    var out=[],cur="",q=false;
+    for(var i=0;i<l.length;i++){var ch=l.charAt(i); if(ch==='"'){q=!q;continue;} if(ch===sep&&!q){out.push(cur.trim());cur="";continue;} cur+=ch;}
+    out.push(cur.trim()); return out;
+  });
+  return {cabecera:filas[0],filas:filas.slice(1)};
+}
+function colDeRef(r){ var m=String(r||"").match(/^([A-Z]+)/); if(!m)return 0; var n=0; for(var i=0;i<m[1].length;i++)n=n*26+(m[1].charCodeAt(i)-64); return n-1; }
+async function tablaDeXlsx(zip){
+  var txt=async function(nombre){ var f=zip.file(nombre); return f?await f.async("string"):null; };
+  var dom=function(x){return new DOMParser().parseFromString(x,"application/xml");};
+  var compartidas=[];
+  var ss=await txt("xl/sharedStrings.xml");
+  if(ss){ Array.prototype.forEach.call(dom(ss).getElementsByTagName("si"),function(si){ compartidas.push(Array.prototype.map.call(si.getElementsByTagName("t"),function(t){return t.textContent;}).join("")); }); }
+  var hojas=Object.keys(zip.files).filter(function(n){return /^xl\/worksheets\/sheet\d+\.xml$/.test(n);}).sort(function(a,b){return parseInt(a.replace(/\D/g,""),10)-parseInt(b.replace(/\D/g,""),10);});
+  if(hojas.length===0)return {error:"No encontré hojas en el Excel."};
+  var d=dom(await txt(hojas[0])), filas=[];
+  Array.prototype.forEach.call(d.getElementsByTagName("row"),function(row){
+    var fila=[];
+    Array.prototype.forEach.call(row.getElementsByTagName("c"),function(c){
+      var i=colDeRef(c.getAttribute("r")), t=c.getAttribute("t"), v=c.getElementsByTagName("v")[0], val="";
+      if(t==="s")val=v?(compartidas[parseInt(v.textContent,10)]||""):"";
+      else if(t==="inlineStr")val=Array.prototype.map.call(c.getElementsByTagName("t"),function(x){return x.textContent;}).join("");
+      else val=v?v.textContent:"";
+      fila[i]=String(val).trim();
+    });
+    for(var k=0;k<fila.length;k++)if(fila[k]===undefined)fila[k]="";
+    if(fila.some(function(x){return x!=="";}))filas.push(fila);
+  });
+  var h=filas.findIndex(function(f){return f.filter(function(x){return x!=="";}).length>=3;});
+  if(h<0)return {error:"No encontré una fila de títulos en el Excel."};
+  return {cabecera:filas[h],filas:filas.slice(h+1)};
+}
+async function leerTabla(file){
+  try{
+    var nombre=String(file.name||"").toLowerCase();
+    var buf=await file.arrayBuffer(), u8=new Uint8Array(buf);
+    var esZip=u8.length>3&&u8[0]===0x50&&u8[1]===0x4B;
+    if(!esZip){
+      if(/\.xls$/.test(nombre)||(u8[0]===0xD0&&u8[1]===0xCF))return {error:"Es un Excel viejo (.xls). Abrilo y guardalo como .xlsx o como CSV, y subilo de nuevo."};
+      return tablaDeTexto(new TextDecoder("utf-8").decode(buf));
+    }
+    var JSZip=(await import("jszip")).default;
+    var zip=await JSZip.loadAsync(buf);
+    if(zip.file("xl/workbook.xml"))return await tablaDeXlsx(zip);           // es un .xlsx
+    var interno=Object.keys(zip.files).filter(function(n){return !zip.files[n].dir&&/\.(xlsx|csv|txt)$/i.test(n);})[0];   // un ZIP con un archivo adentro
+    if(!interno)return {error:"El ZIP no tiene ningún Excel, CSV o TXT adentro."};
+    var contenido=await zip.file(interno).async("arraybuffer");
+    if(/\.xlsx$/i.test(interno)){ var z2=await JSZip.loadAsync(contenido); return await tablaDeXlsx(z2); }
+    return tablaDeTexto(new TextDecoder("utf-8").decode(contenido));
+  }catch(e){ return {error:"No pude leer el archivo: "+((e&&e.message)||e)}; }
+}
+// Fecha de una celda: texto (aaaa-mm-dd o dd/mm/aaaa) o número de serie de Excel.
+function fechaDeCelda(v){
+  var f=arcaFecha(v); if(f)return f;
+  var n=parseFloat(String(v).replace(",","."));
+  if(!isNaN(n)&&n>20000&&n<80000){ var d=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000); return d.toISOString().slice(0,10); }
+  return "";
+}
+
 function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHecho}){
   var fmtA=function(n){return (n<0?"-$":"$")+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
   var [cuit,setCuit]=useState(FACTURACION[0].id);
@@ -13816,6 +13884,30 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
     return {devengado:devengado,ret:o.iibbRetenido,perc:o.iibbAFavor+extra,pagar:devengado-o.iibbRetenido-o.iibbAFavor-extra};
   })();
   var nReal=function(v){return parseFloat(String(v).replace(/\./g,"").replace(",","."));};
+  // Archivo que baja ARBA (ZIP con un Excel, .xlsx o CSV): se lee, se elige qué columna es qué y se suma el mes elegido.
+  var [tablaArba,setTablaArba]=useState(null);
+  var [colArba,setColArba]=useState({f:-1,i:-1,t:-1});
+  function subirArba(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return; e.target.value="";
+    leerTabla(f).then(function(t){
+      if(t.error){setTablaArba({error:t.error});return;}
+      var nm=function(x){return String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");};
+      var cab=t.cabecera.map(nm), ix=function(re){return cab.findIndex(function(h){return re.test(h);});};
+      var iImp=ix(/importe|monto|retenid|percibid/); if(iImp<0)iImp=ix(/total/);
+      setColArba({f:ix(/fecha/),i:iImp,t:ix(/tipo|regimen|concepto|retencion|percepcion|agente|origen/)});
+      setTablaArba({nombre:f.name,cabecera:t.cabecera,filas:t.filas});
+    });
+  }
+  var gruposArba=(function(){
+    if(!tablaArba||tablaArba.error||colArba.i<0)return null;
+    var g={};
+    tablaArba.filas.forEach(function(fila){
+      if(colArba.f>=0){var fe=fechaDeCelda(fila[colArba.f]); if(!fe||fe.slice(0,7)!==mes)return;}
+      var k=colArba.t>=0?(String(fila[colArba.t]||"").trim()||"(sin tipo)"):"Todo el archivo";
+      var x=g[k]||(g[k]={k:k,n:0,suma:0}); x.n++; x.suma+=arcaNum(fila[colArba.i]);
+    });
+    return Object.keys(g).map(function(k){return g[k];}).sort(function(a,b){return b.suma-a.suma;});
+  })();
   var rRet=nReal(iibbReal.ret), rPerc=nReal(iibbReal.perc), rPagar=nReal(iibbReal.pagar);
   var pagarConReal=iibbApp&&!isNaN(rRet)?iibbApp.devengado-rRet-(isNaN(rPerc)?iibbApp.perc:rPerc):null;
   function filaIIBB(txt,app,real){
@@ -13867,6 +13959,31 @@ function ControlARCA({gastos, cierres, creditosIIBB, hoy, hechos, usuario, onHec
         <div style={{marginTop:14,background:"#0A0A0A",border:"1px solid #1E1E1E",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#D4A017",marginBottom:3}}>IIBB contra ARBA · {(FACTURACION.find(function(f){return f.id===cuit;})||{}).razonSocial} · {mes}</div>
           <div style={{fontSize:10,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>En ARBA mirá lo que realmente te retuvieron y te percibieron ese mes, y escribilo acá (podés dejar vacío lo que no tengas).</div>
+          <label style={{...INPa,display:"inline-block",cursor:"pointer",color:"#D4A017",borderColor:"#D4A01755",marginBottom:8}}>📎 Subir el archivo de ARBA (ZIP, Excel o CSV)<input type="file" onChange={subirArba} style={{display:"none"}}/></label>
+          {tablaArba&&tablaArba.error&&<div style={{fontSize:12,color:"#E0714A",marginBottom:8}}>{tablaArba.error}</div>}
+          {tablaArba&&!tablaArba.error&&(
+            <div style={{background:"#0F0F0F",border:"1px solid #1A1A1A",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+              <div style={{fontSize:10.5,color:"#8C8C8C",marginBottom:5}}>{tablaArba.nombre} · {tablaArba.filas.length} filas. Confirmá qué columna es cada cosa:</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                {[["f","Fecha"],["i","Importe"],["t","Tipo (retención / percepción)"]].map(function(c){return(
+                  <label key={c[0]} style={{fontSize:10,color:"#8C8C8C"}}>{c[1]}<br/>
+                    <select value={colArba[c[0]]} onChange={function(e){var v=parseInt(e.target.value,10);setColArba(function(x){var n={...x};n[c[0]]=v;return n;});}} style={{...INPa,fontSize:11,padding:"5px 7px"}}>
+                      <option value={-1}>— ninguna —</option>
+                      {tablaArba.cabecera.map(function(h,i){return <option key={i} value={i}>{h||"(col "+(i+1)+")"}</option>;})}
+                    </select></label>);})}
+              </div>
+              {gruposArba===null&&<div style={{fontSize:11,color:"#D4A017"}}>Elegí la columna del importe.</div>}
+              {gruposArba&&gruposArba.length===0&&<div style={{fontSize:11,color:"#D4A017"}}>No hay filas de {mes} en el archivo (revisá la columna de fecha o el mes).</div>}
+              {gruposArba&&gruposArba.map(function(g){return(
+                <div key={g.k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11.5,color:"#C8C8C8",padding:"3px 0",borderTop:"1px solid #161616",flexWrap:"wrap"}}>
+                  <span>{g.k} <span style={{color:"#6E6E6E"}}>· {g.n} fila{g.n===1?"":"s"}</span> · <b>{fmtA(g.suma)}</b></span>
+                  <span style={{display:"flex",gap:5}}>
+                    <button onClick={function(){setIibbReal(function(x){return{...x,ret:String(Math.round(g.suma*100)/100).replace(".",",")};});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#9A9A9A",fontSize:10,padding:"3px 8px",cursor:"pointer"}}>→ Retenciones</button>
+                    <button onClick={function(){setIibbReal(function(x){return{...x,perc:String(Math.round(g.suma*100)/100).replace(".",",")};});}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,color:"#9A9A9A",fontSize:10,padding:"3px 8px",cursor:"pointer"}}>→ Percepciones</button>
+                  </span>
+                </div>);})}
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"5px 12px",fontSize:12,color:"#C8C8C8",alignItems:"center"}}>
             <span></span><b style={{color:"#8C8C8C",fontSize:10}}>APP</b><b style={{color:"#8C8C8C",fontSize:10}}>ARBA</b><b style={{color:"#8C8C8C",fontSize:10}}>DIF.</b>
             {filaIIBB("Retenciones bancarias",iibbApp.ret,rRet)}

@@ -14245,15 +14245,25 @@ function PanelNovedades(p){
           return r(a)-r(b);
         });
         if(avisos.length===0)return null;
-        var hayRojo=avisos.some(function(a){return a.rojo;});
-        var soloVerde=avisos.every(function(a){return a.verde||a.socio;});
+        // Casillas del día: lo tildado queda tachado y baja al final; mañana vuelve a aparecer lo que siga sin resolverse. Se guarda para todos.
+        var marcas=(p.hoyChecks||{})[hoy]||{};
+        var sinHacer=avisos.filter(function(a){return !marcas[a.txt];}), hechos=avisos.filter(function(a){return !!marcas[a.txt];});
+        avisos=sinHacer.concat(hechos);
+        function tildar(a){
+          var n={...marcas};
+          if(n[a.txt])delete n[a.txt]; else n[a.txt]=p.usuario||"x";
+          if(p.onHoyCheck)p.onHoyCheck(hoy,n);
+        }
+        var hayRojo=sinHacer.some(function(a){return a.rojo;});
+        var soloVerde=sinHacer.length===0||sinHacer.every(function(a){return a.verde||a.socio;});
         return(
           <div style={{border:"1px solid "+(hayRojo?"#C1440E44":(soloVerde?"#3A7D4455":"#D4A01733")),background:hayRojo?"#140807":(soloVerde?"#08120A":"#12100A"),borderRadius:12,padding:"11px 14px",marginBottom:14}}>
-            <div style={{fontSize:10,color:hayRojo?"#E0714A":(soloVerde?"#4C9A5A":"#D4A017"),textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Prioridad</div>
+            <div style={{fontSize:10,color:hayRojo?"#E0714A":(soloVerde?"#4C9A5A":"#D4A017"),textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Prioridad · {sinHacer.length===0?"todo hecho ✓":sinHacer.length+" por hacer"+(hechos.length>0?" · "+hechos.length+" hecho"+(hechos.length===1?"":"s"):"")}</div>
             {(expandido.prioridad?avisos:avisos.slice(0,5)).map(function(a,i){
+              var hecho=!!marcas[a.txt];
               return (
-                <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.socio?"#B07AE0":(a.verde?"#4C9A5A":"#D4A017")),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center"}}>
-                  <span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span>
+                <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.socio?"#B07AE0":(a.verde?"#4C9A5A":"#D4A017")),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",opacity:hecho?0.45:1,textDecoration:hecho?"line-through":"none"}}>
+                  <span style={{display:"flex",gap:7,alignItems:"flex-start"}}><input type="checkbox" checked={hecho} onChange={function(){tildar(a);}} style={{marginTop:2,cursor:"pointer",flexShrink:0}}/><span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span></span>
                   {a.cargarEg&&(
                     <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
                   )}
@@ -27008,6 +27018,12 @@ export default function App() {
     if(x.ambito!=="razon_social")return;
     try{ var dr=JSON.parse(x.texto||"{}"); if(dr.nombre)razones.push({...dr,id:x.id}); }catch(e){}
   });
+  // Lo que se fue tildando en la caja Prioridad de Novedades, por día: {fecha:{aviso:usuario}}.
+  var hoyChecks={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="hoy_check")return;
+    try{ var dh=JSON.parse(x.texto||"{}"); if(dh.fecha)hoyChecks[dh.fecha]=dh.marcas||{}; }catch(e){}
+  });
   var docsLocal=[];
   pautas.forEach(function(x){
     if(x.ambito!=="doc_local")return;
@@ -28079,7 +28095,7 @@ export default function App() {
             </div>
           )}
           {esSofia&&modulo==="novedades"&&(
-            <PanelNovedades docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

@@ -12273,6 +12273,31 @@ function PantallaCodigoFichaje({local, secreto, onSalir}){
   );
 }
 
+// Pantalla del local para fichar (QR y código que cambian cada 30 s): se muestra desde el módulo Fichaje de administración.
+function CajaPantallaLocal({secretos, onCrearSecreto, onActivar}){
+  var [loc,setLoc]=useState("l1");
+  var [prueba,setPrueba]=useState(false);
+  var nombre=(getLocal(loc)||{}).nombre||loc;
+  function preparar(){ if(!(secretos||{})[loc]&&onCrearSecreto)onCrearSecreto(loc); }
+  return(
+    <div style={{background:"#0A1014",border:"1px solid #D4A01744",borderRadius:12,padding:"11px 14px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:3}}>📺 Pantalla del local para fichar</div>
+      <div style={{fontSize:11,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>Muestra un QR y un código que cambian cada 30 segundos. Los empleados lo escanean (o lo escriben) en Fichar y marcan sin depender del GPS.</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={loc} onChange={function(e){setLoc(e.target.value);}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+          {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+        <button onClick={function(){preparar();setPrueba(true);}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"none",color:"#1A6B8A",fontWeight:700,fontSize:12,cursor:"pointer"}}>🧪 Mostrar sin bloquear (para probar)</button>
+        <button onClick={function(){
+          if(!window.confirm("Este aparato va a quedar fijo mostrando solo el código de "+nombre+". Para volver a usar la app va a pedir tu contraseña de administrador.\n\n¿Dejarlo como pantalla del local?"))return;
+          preparar(); onActivar(loc);
+        }} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #D4A01766",background:"none",color:"#D4A017",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔒 Dejar como pantalla fija</button>
+      </div>
+      {prueba&&(secretos||{})[loc]&&<PantallaCodigoFichaje local={loc} secreto={secretos[loc]} onSalir={function(){setPrueba(false);}}/>}
+    </div>
+  );
+}
+
 function PanelFichar(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var fichajes=p.fichajes||[];
@@ -28570,6 +28595,9 @@ export default function App() {
                   alert("🔧 Diagnóstico del fichaje\n\n"+r);
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
+              <CajaPantallaLocal secretos={secretosFichaje}
+                onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }}
+                onActivar={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }}/>
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}

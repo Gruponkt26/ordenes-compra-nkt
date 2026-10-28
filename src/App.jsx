@@ -12424,10 +12424,13 @@ function PanelFichar(p){
   var [pantallaPrueba,setPantallaPrueba]=useState(false);   // mostrar el código sin bloquear el aparato (para probar)
   var [codigoTxt,setCodigoTxt]=useState("");
   var [codigoMsg,setCodigoMsg]=useState("");
+  // Cómo se prueba que se está en el local: con la ubicación del celular o con el código de la pantalla del local. Recuerda el último usado.
+  var [metodo,setMetodoEstado]=useState(function(){ try{ return window.localStorage.getItem("nkt_fichaje_metodo")==="codigo"?"codigo":"ubicacion"; }catch(e){ return "ubicacion"; } });
+  function setMetodo(m){ setMetodoEstado(m); setCodigoMsg(""); try{ window.localStorage.setItem("nkt_fichaje_metodo",m); }catch(e){} }
   function aceptarCodigo(loc){
     var o={local:loc,hasta:Date.now()+4*60000};
     try{ window.sessionStorage.setItem("nkt_fich_ok",JSON.stringify(o)); }catch(e){}
-    setCodigoOk(o); setCodigoMsg(""); setCodigoTxt("");
+    setCodigoOk(o); setCodigoMsg(""); setCodigoTxt(""); setMetodo("codigo");
   }
   // Se escaneó el QR con la cámara: la app se abrió con ?fich=código&l=local (App lo deja en sessionStorage).
   useEffect(function(){
@@ -12559,11 +12562,12 @@ function PanelFichar(p){
   // avisa cuántos faltan.
   function pinDe(emp){ return String((emp&&emp.pin)||"").trim(); }
   function elegir(emp){
+    if(!kiosco&&!vinculandoEf&&metodo==="codigo"&&!codigoVerif){ alert("Primero escribí el código del local (el que muestra la pantalla) y tocá Verificar."); return; }
     cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
-    // Con el celular propio (ya vinculado) no se pide PIN: ahí manda la ubicación. El PIN queda para la tablet del local y para los aparatos compartidos.
-    if(!pinDe(emp)||(soyYo&&!kiosco)){ if(vinculandoEf){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
+    // El PIN se pide en cada marca, también con el celular propio ya vinculado; sin PIN cargado no hay nada que comprobar.
+    if(!pinDe(emp)){ if(vinculandoEf){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
     setFase("pin");
   }
   function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); setOlvido(null); }
@@ -12646,7 +12650,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:"Disp:"+idDispositivo()+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -12903,9 +12907,16 @@ function PanelFichar(p){
           📱 Este celular es mío — mostrame sólo a mí
         </button>
       )}
-      {!kiosco&&!codigoVerif&&(
+      {!kiosco&&!vinculandoEf&&(
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          {[["ubicacion","📍 Marcar por ubicación"],["codigo","🔢 Marcar con el código del local"]].map(function(o){var act=metodo===o[0]; return(
+            <button key={o[0]} onClick={function(){setMetodo(o[0]);}} style={{flex:1,padding:"10px 8px",borderRadius:10,border:"2px solid "+(act?"#1A6B8A":"#1E1E1E"),background:act?"#1A6B8A22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:800,cursor:"pointer"}}>{o[1]}</button>);})}
+        </div>
+      )}
+      {!kiosco&&!vinculandoEf&&metodo==="ubicacion"&&!codigoVerif&&<div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>Se usa la ubicación de este celular. Si el GPS no te toma bien (adentro de la cocina, por ejemplo), cambiá a «código del local».</div>}
+      {!kiosco&&!vinculandoEf&&metodo==="codigo"&&!codigoVerif&&(
         <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:12,padding:"10px 12px",marginBottom:10}}>
-          <div style={{fontSize:11.5,color:"#9A9A9A",marginBottom:6}}>🔢 ¿Estás en el local? Escaneá el QR de la pantalla del local con la cámara, o escribí acá el código de 6 números y fichás sin usar el GPS.</div>
+          <div style={{fontSize:11.5,color:"#9A9A9A",marginBottom:6}}>Escaneá el QR de la pantalla del local con la cámara, o escribí acá el código de 6 números que muestra, y tocá Verificar. No usa el GPS.</div>
           <div style={{display:"flex",gap:8}}>
             <input value={codigoTxt} onChange={function(e){setCodigoTxt(e.target.value.replace(/\D/g,"").slice(0,6));}} inputMode="numeric" placeholder="Código" style={{flex:1,padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:15,letterSpacing:3}}/>
             <button onClick={verificarCodigoEscrito} disabled={codigoTxt.length!==6} style={{padding:"9px 14px",borderRadius:8,border:"none",background:codigoTxt.length===6?"#1A6B8A":"#2A2A2A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>Verificar</button>
@@ -14794,7 +14805,7 @@ function PanelNovedades(p){
           });
           Object.keys(porDisp).forEach(function(d){
             var nombres=Object.keys(porDisp[d]).map(function(k){return porDisp[d][k];});
-            if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá las fotos"});
+            if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá esas marcas en el Registro"});
           });
         })();
         // Control semanal contra ARCA: aparece desde el lunes y sigue hasta que se controla cada CUIT.

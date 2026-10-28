@@ -12499,6 +12499,13 @@ function PanelFichar(p){
   // primero es más firme: no se pierde si alguien borra los datos del navegador, y desde
   // Usuarios se ve quién está configurado y quién no.
   var porUsuario=p.empleadoId?empleados.find(function(e){return e.id===p.empleadoId;}):null;
+  // Sin vínculo cargado en Usuarios (caso de quien entra como administrador), se la busca por el nombre: si hay una sola ficha que coincide, es la suya.
+  if(!porUsuario&&!p.empleadoId&&p.usuario){
+    var norm=function(t){ return String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase(); };
+    var nu=norm(p.usuario).split(/\s+/)[0];
+    var cand=nu?empleados.filter(function(e){ return norm(e.nombre).split(/\s+/)[0]===nu; }):[];
+    if(cand.length===1)porUsuario=cand[0];
+  }
   var soyYo=porUsuario||(miEmp?empleados.find(function(e){return e.id===miEmp;}):null);
   // Fichar desde el celular obliga a vincularlo a la propia ficha (salvo administración): con el celular atado, saber el PIN de otro no sirve para fichar por él.
   var vincularObligatorio=!soyYo&&!p.esAdmin&&!kiosco&&!p.empleadoId;

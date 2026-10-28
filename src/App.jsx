@@ -14296,6 +14296,7 @@ function PanelNovedades(p){
   });
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
+  var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
   var [tabNov,setTabNov]=useState("plata"); // plata | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
@@ -14937,11 +14938,15 @@ function PanelNovedades(p){
 
       {/* Ventas de ayer contra lo habitual (mismo día de la semana, últimas 4 semanas): se ve siempre, haya aviso o no */}
       {(function(){
-        var diaN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(ayer+"T00:00:00").getDay()];
+        // Por defecto se compara el día más reciente que ya tenga cierres cargados (hoy, si ya se cargó alguno; si no, ayer); con los botones se elige.
+        var hayHoy=cierres.some(function(c){return c.local!=="l4"&&String(c.fecha).substring(0,10)===hoy&&ventasDeCierre(c)>0;});
+        var dia=diaVentas==="hoy"?hoy:(diaVentas==="ayer"?ayer:(hayHoy?hoy:ayer));
+        var esHoy=dia===hoy;
+        var diaN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()];
         var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
-          var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===ayer;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+          var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===dia;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
           var previos=[1,2,3,4].map(function(k){
-            var f=fechaLocal(new Date(new Date(ayer+"T00:00:00").getTime()-k*7*86400000));
+            var f=fechaLocal(new Date(new Date(dia+"T00:00:00").getTime()-k*7*86400000));
             return cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
           }).filter(function(v){return v>0;});
           var prom=previos.length?previos.reduce(function(a,v){return a+v;},0)/previos.length:0;
@@ -14951,7 +14956,10 @@ function PanelNovedades(p){
         });
         return(
           <div style={{background:"#0C0C0C",border:"1px solid #171717",borderRadius:12,padding:"9px 13px",marginBottom:14}}>
-            <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700,marginBottom:4}}>Ventas de ayer ({diaN}) vs lo habitual</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+              <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>Ventas de {esHoy?"hoy":"ayer"} ({diaN}) vs lo habitual</div>
+              <div style={{display:"flex",gap:4}}>{[["hoy","Hoy"],["ayer","Ayer"]].map(function(o){var act=(esHoy?"hoy":"ayer")===o[0]; return <button key={o[0]} onClick={function(){setDiaVentas(o[0]);}} style={{padding:"2px 9px",borderRadius:20,border:"1px solid "+(act?"#D4A017":"#2A2A2A"),background:act?"#D4A01722":"none",color:act?"#F0EDE8":"#8C8C8C",fontSize:10,cursor:"pointer"}}>{o[1]}</button>;})}</div>
+            </div>
             {filas.map(function(x){
               var baja=x.pct!==null&&x.pct<60;
               return(
@@ -14961,7 +14969,7 @@ function PanelNovedades(p){
                   :<span style={{color:"#9A9A9A"}}>{fmt(x.vAyer)} · habitual {fmt(x.prom)} ({x.n} {diaN}s) · <b style={{color:baja?"#E0714A":(x.pct>=100?"#4C9A5A":"#D4A017")}}>{x.pct}%</b></span>}
                 </div>);
             })}
-            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>Avisa en Prioridad cuando ayer fue menos del 60% de lo habitual.</div>
+            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>{esHoy?"Es el día en curso: si falta algún turno por cargar, el porcentaje sale bajo. ":""}Avisa en Prioridad cuando ayer fue menos del 60% de lo habitual.</div>
           </div>
         );
       })()}

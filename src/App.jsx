@@ -12288,7 +12288,7 @@ function ProbarUbicacion({localesDatos}){
       else setPos(r);
     });
   }
-  var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+  var filas=LOCALES.map(function(l){
     var c=(localesDatos||{})[l.id];
     if(!c||c.lat==null||c.lng==null)return {l:l,sinDatos:true};
     var d=pos?distanciaMetros(c,pos):null;
@@ -12364,7 +12364,7 @@ function CajaPantallaLocal({secretos, onCrearSecreto, onActivar}){
   var nombre=(getLocal(loc)||{}).nombre||loc;
   // Los tres locales quedan con su código listo apenas se abre esta pantalla: así a ningún empleado le sale "este local no tiene pantalla".
   useEffect(function(){
-    ["l1","l2","l3"].forEach(function(l){ if(!(secretos||{})[l]&&onCrearSecreto)onCrearSecreto(l); });
+    ["l1","l2","l3","l4"].forEach(function(l){ if(!(secretos||{})[l]&&onCrearSecreto)onCrearSecreto(l); });
   },[]);
   function preparar(){ if(!(secretos||{})[loc]&&onCrearSecreto)onCrearSecreto(loc); }
   return(
@@ -12373,7 +12373,7 @@ function CajaPantallaLocal({secretos, onCrearSecreto, onActivar}){
       <div style={{fontSize:11,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>Muestra un QR y un código que cambian cada 30 segundos. Los empleados lo escanean (o lo escriben) en Fichar y marcan sin depender del GPS.</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <select value={loc} onChange={function(e){setLoc(e.target.value);}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
-          {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
         </select>
         <button onClick={function(){preparar();setPrueba(true);}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"none",color:"#1A6B8A",fontWeight:700,fontSize:12,cursor:"pointer"}}>🧪 Mostrar sin bloquear (para probar)</button>
         <button onClick={function(){
@@ -12891,7 +12891,7 @@ function PanelFichar(p){
       )}
       {(!soyYo||multiLocal)&&(
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
-        {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+        {LOCALES.map(function(l){
           var act=local===l.id;
           return <button key={l.id} onClick={function(){guardarLocal(l.id);}}
             style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?l.color:"#1E1E1E"),background:act?l.color+"22":"#111",

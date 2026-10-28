@@ -12274,6 +12274,90 @@ function PantallaCodigoFichaje({local, secreto, onSalir}){
 }
 
 // Pantalla del local para fichar (QR y código que cambian cada 30 s): se muestra desde el módulo Fichaje de administración.
+// Herramientas para revisar la geolocalización del fichaje: medir la ubicación de este aparato contra la de cada local, y listar las marcas
+// que se hicieron sin ubicación, con GPS impreciso o lejos del local.
+function ProbarUbicacion({localesDatos}){
+  var [pos,setPos]=useState(null);
+  var [midiendo,setMidiendo]=useState(false);
+  var [error,setError]=useState("");
+  function medir(){
+    setMidiendo(true); setError(""); setPos(null);
+    ubicacionAhora(true).then(function(r){
+      setMidiendo(false);
+      if(!r)setError("No se pudo leer la ubicación. Revisá que el navegador tenga el permiso de ubicación y que el GPS esté activado.");
+      else setPos(r);
+    });
+  }
+  var filas=LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
+    var c=(localesDatos||{})[l.id];
+    if(!c||c.lat==null||c.lng==null)return {l:l,sinDatos:true};
+    var d=pos?distanciaMetros(c,pos):null;
+    return {l:l,d:d,imprecisa:pos?lecturaImprecisa(pos):false,lejos:pos?muyLejos(c,pos):false};
+  });
+  return(
+    <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:12,padding:"11px 14px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:3}}>📍 Probar la ubicación</div>
+      <div style={{fontSize:11,color:"#8A8A8A",lineHeight:1.5,marginBottom:8}}>Pará en el local y medí: te muestra qué lee este aparato, con qué precisión, a qué distancia queda de la ubicación cargada de cada local y si dejaría marcar (límite {RADIO_LOCAL} m).</div>
+      <button onClick={medir} disabled={midiendo} style={{padding:"8px 14px",borderRadius:8,border:"none",background:midiendo?"#2A2A2A":"#1A6B8A",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>{midiendo?"Midiendo… (hasta 15 s)":"📍 Medir mi ubicación"}</button>
+      {error&&<div style={{fontSize:11.5,color:"#E0714A",marginTop:8}}>{error}</div>}
+      {pos&&(
+        <div style={{marginTop:10,fontSize:12,color:"#C8C8C8",lineHeight:1.7}}>
+          <div>Lectura: <b>{pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}</b> · error estimado del GPS: <b style={{color:pos.acc<=40?"#4C9A5A":(pos.acc<=RADIO_LOCAL?"#D4A017":"#E0714A")}}>±{pos.acc} m</b>{pos.acc>RADIO_LOCAL?" (imprecisa: deja marcar y queda avisado)":""}</div>
+          {filas.map(function(x){return(
+            <div key={x.l.id} style={{display:"flex",justifyContent:"space-between",gap:8,borderTop:"1px solid #161616",padding:"3px 0"}}>
+              <span style={{color:x.l.color}}>{x.l.emoji} {x.l.nombre}</span>
+              {x.sinDatos?<span style={{color:"#6E6E6E"}}>sin ubicación cargada</span>
+              :<span style={{color:x.lejos?"#E0714A":"#4C9A5A"}}>a {fmtDistancia(x.d)} · {x.lejos?"🚫 no dejaría marcar":(x.imprecisa?"⚠️ lectura imprecisa, deja marcar":"✅ dejaría marcar")}</span>}
+            </div>);})}
+          <div style={{fontSize:10,color:"#6E6E6E",marginTop:4}}>Si estás en un local y la distancia a SU ubicación da grande, la ubicación cargada está mal: corregila desde el botón «Locales» del Registro, parado en el local.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+function InformeUbicacionFichajes({fichajes, localesDatos}){
+  var [abierto,setAbierto]=useState(false);
+  var [dias,setDias]=useState(30);
+  var desde=fechaLocal(new Date(Date.now()-dias*86400000));
+  var filas=[];
+  (fichajes||[]).forEach(function(f){
+    if(f.manual||f.aparato==="manual"||String(f.fecha||"").substring(0,10)<desde)return;
+    if(/Verificado con el código del local/.test(f.notas||""))return;
+    var c=(localesDatos||{})[f.local], motivo="", grave=false;
+    if(f.lat==null||f.lng==null){ motivo="sin ubicación"; grave=true; }
+    else if(/Ubicación imprecisa/.test(f.notas||"")){ var m=/±(\d+)/.exec(f.notas||""); motivo="GPS impreciso"+(m?" (±"+m[1]+" m)":""); }
+    else if(c&&c.lat!=null&&c.lng!=null){ var d=distanciaMetros(c,{lat:f.lat,lng:f.lng}); if(d!=null&&d>RADIO_LOCAL){ motivo="a "+fmtDistancia(d)+" del local"; grave=true; } }
+    if(motivo)filas.push({f:f,motivo:motivo,grave:grave});
+  });
+  filas.sort(function(a,b){return String(b.f.momento||"").localeCompare(String(a.f.momento||""));});
+  var graves=filas.filter(function(x){return x.grave;}).length;
+  return(
+    <div style={{background:"#0F0F0F",border:"1px solid #1E1E1E",borderRadius:12,padding:"11px 14px",marginBottom:12,fontFamily:"'Inter',sans-serif"}}>
+      <div onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,cursor:"pointer"}}>
+        <div style={{fontSize:12,fontWeight:800,color:"#D4A017"}}>{abierto?"▾":"▸"} 📋 Marcas con ubicación dudosa · últimos {dias} días</div>
+        <div style={{fontSize:11,color:filas.length?"#D4A017":"#4C9A5A"}}>{filas.length===0?"ninguna ✓":filas.length+" ("+graves+" sin ubicación o lejos)"}</div>
+      </div>
+      {abierto&&(
+        <div style={{marginTop:8}}>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            {[7,30,90].map(function(n){return <button key={n} onClick={function(){setDias(n);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(dias===n?"#D4A017":"#2A2A2A"),background:dias===n?"#D4A01722":"none",color:dias===n?"#F0EDE8":"#8C8C8C",fontSize:11,cursor:"pointer"}}>{n} días</button>;})}
+          </div>
+          {filas.length===0&&<div style={{fontSize:12,color:"#6E6E6E"}}>No hay marcas dudosas. Las verificadas con el código del local no se cuentan.</div>}
+          {filas.slice(0,60).map(function(x,i){
+            var l=getLocal(x.f.local)||{};
+            return(
+              <div key={x.f.id||i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:"#B8B8B8",padding:"4px 0",borderTop:i===0?"none":"1px solid #161616"}}>
+                <span style={{minWidth:0}}>{fmtDate(String(x.f.fecha).substring(0,10))} {x.f.hora} · <b style={{color:"#F0EDE8"}}>{x.f.empleado_nombre}</b> · {x.f.tipo} · {l.emoji} {l.nombre}</span>
+                <span style={{flexShrink:0,textAlign:"right",color:x.grave?"#E0714A":"#D4A017"}}>{x.motivo}{x.f.foto_url?<a href={x.f.foto_url} target="_blank" rel="noopener noreferrer" style={{color:"#1A6B8A",marginLeft:6,textDecoration:"none"}}>📷</a>:null}</span>
+              </div>);
+          })}
+          {filas.length>60&&<div style={{fontSize:10,color:"#6E6E6E",marginTop:4}}>Se muestran las 60 más recientes.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CajaPantallaLocal({secretos, onCrearSecreto, onActivar}){
   var [loc,setLoc]=useState("l1");
   var [prueba,setPrueba]=useState(false);
@@ -28602,6 +28686,8 @@ export default function App() {
               <CajaPantallaLocal secretos={secretosFichaje}
                 onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }}
                 onActivar={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }}/>
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines")&&<ProbarUbicacion localesDatos={localesDatos}/>}
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}

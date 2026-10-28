@@ -14882,17 +14882,20 @@ function PanelNovedades(p){
           var lg=getLocal(d.local);
           avisos.push({rojo:dd<=7,txt:"Documento "+(dd<0?"vencido":"por vencer")+": "+d.nombre+(lg?" · "+lg.nombre:"")+" — "+(dd<0?"hace "+(-dd)+" días":dd===0?"vence hoy":"vence en "+dd+" días")});
         });
-        // Ventas de ayer muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas).
-        LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
-          var vAyer=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===ayer;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
-          if(vAyer<=0)return;
-          var previos=[1,2,3,4].map(function(k){
-            var f=fechaLocal(new Date(new Date(ayer+"T00:00:00").getTime()-k*7*86400000));
-            return cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
-          }).filter(function(v){return v>0;});
-          if(previos.length<2)return;
-          var prom=previos.reduce(function(a,v){return a+v;},0)/previos.length;
-          if(vAyer<prom*0.6)avisos.push({rojo:false,txt:"Ventas bajas en "+l.nombre+" ayer: "+fmt(vAyer)+" vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(ayer+"T00:00:00").getDay()]+" normal"});
+        // Ventas muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas): ayer y también hoy, si ya hay
+        // cierres cargados (hoy puede estar incompleto si falta un turno, y el aviso lo dice).
+        [ayer,hoy].forEach(function(dia){
+          LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+            var vDia=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===dia;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+            if(vDia<=0)return;
+            var previos=[1,2,3,4].map(function(k){
+              var f=fechaLocal(new Date(new Date(dia+"T00:00:00").getTime()-k*7*86400000));
+              return cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
+            }).filter(function(v){return v>0;});
+            if(previos.length<2)return;
+            var prom=previos.reduce(function(a,v){return a+v;},0)/previos.length;
+            if(vDia<prom*0.6)avisos.push({rojo:dia===ayer,txt:"Ventas bajas en "+l.nombre+" "+(dia===ayer?"ayer":"hoy")+": "+fmt(vDia)+" ("+Math.round(vDia/prom*100)+"%) vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+" normal"+(dia===hoy?" · el día no terminó, puede faltar un turno":"")});
+          });
         });
         // Lo más grave primero: rojo, después lo amarillo, y al final las noticias (aportes, retiros, buenas noticias).
         avisos.sort(function(a,b){
@@ -14969,7 +14972,7 @@ function PanelNovedades(p){
                   :<span style={{color:"#9A9A9A"}}>{fmt(x.vAyer)} · habitual {fmt(x.prom)} ({x.n} {diaN}s) · <b style={{color:baja?"#E0714A":(x.pct>=100?"#4C9A5A":"#D4A017")}}>{x.pct}%</b></span>}
                 </div>);
             })}
-            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>{esHoy?"Es el día en curso: si falta algún turno por cargar, el porcentaje sale bajo. ":""}Avisa en Prioridad cuando ayer fue menos del 60% de lo habitual.</div>
+            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>{esHoy?"Es el día en curso: si falta algún turno por cargar, el porcentaje sale bajo. ":""}Avisa en Prioridad cuando ayer u hoy fue menos del 60% de lo habitual.</div>
           </div>
         );
       })()}

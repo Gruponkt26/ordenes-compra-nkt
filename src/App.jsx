@@ -14882,10 +14882,15 @@ function PanelNovedades(p){
           var lg=getLocal(d.local);
           avisos.push({rojo:dd<=7,txt:"Documento "+(dd<0?"vencido":"por vencer")+": "+d.nombre+(lg?" · "+lg.nombre:"")+" — "+(dd<0?"hace "+(-dd)+" días":dd===0?"vence hoy":"vence en "+dd+" días")});
         });
-        // Ventas muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas): ayer y también hoy, si ya hay
-        // cierres cargados (hoy puede estar incompleto si falta un turno, y el aviso lo dice).
-        [ayer,hoy].forEach(function(dia){
-          LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+        // Ventas muy por debajo de lo habitual para ese día de la semana (promedio de las últimas 4 semanas): el día más reciente con cierre
+        // cargado (hoy o ayer).
+        LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
+          // Solo el día más reciente con cierre cargado de ese local: lo anterior ya es viejo y no se avisa de nuevo.
+          var conCierre=function(f){return cierres.some(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===f&&ventasDeCierre(c)>0;});};
+          var dia=conCierre(hoy)?hoy:(conCierre(ayer)?ayer:null);
+          // Con el calendario real: nunca se avisa de un día anterior a ayer, aunque el "día de negocio" todavía no haya cambiado.
+          if(!dia||dia<fechaLocal(new Date(Date.now()-86400000)))return;
+          (function(){
             var vDia=cierres.filter(function(c){return c.local===l.id&&String(c.fecha).substring(0,10)===dia;}).reduce(function(a,c){return a+ventasDeCierre(c);},0);
             if(vDia<=0)return;
             var previos=[1,2,3,4].map(function(k){
@@ -14895,7 +14900,7 @@ function PanelNovedades(p){
             if(previos.length<2)return;
             var prom=previos.reduce(function(a,v){return a+v;},0)/previos.length;
             if(vDia<prom*0.6)avisos.push({rojo:true,txt:"Ventas bajas en "+l.nombre+" el "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+": "+fmt(vDia)+" ("+Math.round(vDia/prom*100)+"%) vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+" normal"});
-          });
+          })();
         });
         // Lo más grave primero: rojo, después lo amarillo, y al final las noticias (aportes, retiros, buenas noticias).
         avisos.sort(function(a,b){

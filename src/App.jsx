@@ -14894,7 +14894,7 @@ function PanelNovedades(p){
             }).filter(function(v){return v>0;});
             if(previos.length<2)return;
             var prom=previos.reduce(function(a,v){return a+v;},0)/previos.length;
-            if(vDia<prom*0.6)avisos.push({rojo:dia===ayer,txt:"Ventas bajas en "+l.nombre+" "+(dia===ayer?"ayer":"hoy")+": "+fmt(vDia)+" ("+Math.round(vDia/prom*100)+"%) vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+" normal"+(dia===hoy?" · el día no terminó, puede faltar un turno":"")});
+            if(vDia<prom*0.6)avisos.push({rojo:true,txt:"Ventas bajas en "+l.nombre+" el "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+": "+fmt(vDia)+" ("+Math.round(vDia/prom*100)+"%) vs "+fmt(prom)+" de un "+["domingo","lunes","martes","miércoles","jueves","viernes","sábado"][new Date(dia+"T00:00:00").getDay()]+" normal"});
           });
         });
         // Lo más grave primero: rojo, después lo amarillo, y al final las noticias (aportes, retiros, buenas noticias).
@@ -14972,7 +14972,7 @@ function PanelNovedades(p){
                   :<span style={{color:"#9A9A9A"}}>{fmt(x.vAyer)} · habitual {fmt(x.prom)} ({x.n} {diaN}s) · <b style={{color:baja?"#E0714A":(x.pct>=100?"#4C9A5A":"#D4A017")}}>{x.pct}%</b></span>}
                 </div>);
             })}
-            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>{esHoy?"Es el día en curso: si falta algún turno por cargar, el porcentaje sale bajo. ":""}Avisa en Prioridad cuando ayer u hoy fue menos del 60% de lo habitual.</div>
+            <div style={{fontSize:9.5,color:"#5A5A5A",marginTop:3}}>Avisa en Prioridad cuando un día con cierre cargado (ayer u hoy) fue menos del 60% de lo habitual.</div>
           </div>
         );
       })()}

@@ -13467,7 +13467,14 @@ function PanelFichajes(p){
         var marcas=fichajes.filter(function(f){return String(f.fecha||"").substring(0,7)===mes&&(localF==="all"||f.local===localF);});
         if(marcas.length===0)return <div style={{...CAJA,color:"#8C8C8C",fontSize:13,textAlign:"center"}}>No hay marcas en {fmtMes(mes)}.</div>;
         var dias={};
-        marcas.forEach(function(f){ var d=String(f.fecha).substring(0,10); (dias[d]=dias[d]||{entrada:[],salida:[]})[f.tipo==="salida"?"salida":"entrada"].push(f); });
+        // Una salida de madrugada (antes de la hora de corte) es del turno del día anterior: se agrupa con ese día para que no parezca la salida de otro turno.
+        marcas.forEach(function(f){
+          var d=String(f.fecha).substring(0,10), mad=false;
+          if(f.tipo==="salida"&&String(f.hora||"99")<String(HORA_CORTE_DIA_NEGOCIO).padStart(2,"0")+":00"){
+            var q=d.split("-"); d=fechaLocal(new Date(parseInt(q[0],10),parseInt(q[1],10)-1,parseInt(q[2],10)-1)); mad=true;
+          }
+          (dias[d]=dias[d]||{entrada:[],salida:[]})[f.tipo==="salida"?"salida":"entrada"].push(mad?{...f,_mad:true}:f);
+        });
         var fechas=Object.keys(dias).sort().reverse();
         var DS=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
         function fila(f){
@@ -13479,6 +13486,7 @@ function PanelFichajes(p){
             <div key={f.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderTop:"1px solid #141414",flexWrap:"wrap"}}>
               <b style={{fontSize:12.5,color:"#F0EDE8"}}>{f.empleado_nombre}</b>
               <span style={{fontSize:12.5,fontWeight:700,color:f.tipo==="salida"?"#C1440E":"#3A7D44",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
+              {f._mad&&<span title="Salida de madrugada: es del turno de este día" style={{fontSize:10,color:"#8C8C8C"}}>🌙 madrugada del {DS[new Date(String(f.fecha).substring(0,10)+"T12:00:00").getDay()].toLowerCase()}</span>}
               <span style={{fontSize:11,color:otro?"#D4A017":(loc?loc.color:"#8C8C8C")}}>{loc?loc.emoji+" "+loc.nombre:f.local}{otro?" ⚠️":""}</span>
               {f.manual&&<span title="Carga manual" style={{fontSize:10,color:"#7E7E7E"}}>✎</span>}
               {String(f.notas||"").indexOf("Ubicación imprecisa")===0&&<span title={f.notas} style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⚠️ GPS impreciso</span>}

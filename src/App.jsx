@@ -5132,7 +5132,10 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
         <div style={{background:"#0A0A0A",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:10,color:"#1A6B8A"}}>📲 Electrónico</div>
           <div style={{fontSize:17,fontWeight:800,color:disp.electronico<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.electronico)}</div>
-          <div style={{fontSize:9,color:"#6E6E6E",marginTop:2}}>Belo Nicolás + Lemon Sofía</div>
+          <div style={{fontSize:10.5,color:"#8C8C8C",marginTop:4,lineHeight:1.6}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:6}}><span>🔷 Belo Nicolás</span><b style={{color:disp.belo<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.belo)}</b></div>
+            <div style={{display:"flex",justifyContent:"space-between",gap:6}}><span>🍋 Lemon Sofía</span><b style={{color:disp.lemon<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.lemon)}</b></div>
+          </div>
         </div>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:12}}><span style={{color:"#8C8C8C"}}>Total</span><b style={{color:disp.total<0?"#C1440E":"#F0EDE8"}}>{fmtP(disp.total)}</b></div>

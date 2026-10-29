@@ -5053,6 +5053,17 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
   var retTotal=sumaM(retT), retEf=sumaM(retT.filter(function(r){return String(r.tipo_retiro||"").indexOf("Caja Mayor")===0;}));
   var aporTotal=sumaM(aporT), aporEf=sumaM(aporT.filter(function(a){var t=String(a.tipo_aporte||"");return t.indexOf("Efectivo")===0||t.indexOf("Caja Mayor")===0;}));
   var egresoPropio=egresoTotal-egresoCruzado;
+  // Qué se fue en cada egreso: lo cargado por rubro en la Concesión más los gastos y sueldos que vienen de Egresos, de mayor a menor.
+  var [verEgr,setVerEgr]=useState(false);
+  var detalleEgr=(function(){
+    var out=[];
+    DEP_RUBROS.concat([{id:"",label:"❓ Sin rubro"}]).forEach(function(r){
+      var l=egrDep.filter(function(x){return r.id===""?(!x.rubro||!DEP_RUBROS.some(function(q){return q.id===x.rubro;})):x.rubro===r.id;});
+      if(l.length)out.push({label:r.label,monto:sumaM(l),n:l.length});
+    });
+    (extras||[]).filter(function(e){return esMes(e.mes+"-01");}).forEach(function(e){ out.push({label:e.label,monto:e.monto,n:1,mes:e.mes}); });
+    return out.sort(function(x,y){return y.monto-x.monto;});
+  })();
   var saldoCaja=entradasT+aporTotal-retTotal-egresoPropio;
   var resultadoT=entradasT-egresoTotal;
   var filaR=function(izq,der,color,sub,grande){return <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:grande?"9px 0":"6px 0",borderTop:"1px solid #161616"}}><div style={{minWidth:0}}><div style={{fontSize:grande?13:12,color:color||"#C8C8C8",fontWeight:grande?800:600}}>{izq}</div>{sub&&<div style={{fontSize:10,color:"#7E7E7E",marginTop:1}}>{sub}</div>}</div><b style={{fontSize:grande?17:13,color:color||"#F0EDE8",whiteSpace:"nowrap"}}>{der}</b></div>;};
@@ -5068,6 +5079,10 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
       {filaR("📥 Entró",fmtP(entradasT),"#3A7D44",aporTotal>0?"más "+fmtP(aporTotal)+" de aportes de socios (💵 "+fmtP(aporEf)+" · 📲 "+fmtP(aporTotal-aporEf)+")":null,true)}
       {filaR("💼 Salió como retiro de socios",fmtP(retTotal),"#8B2FC9",retTotal>0?"💵 efectivo "+fmtP(retEf)+" · 📲 electrónico "+fmtP(retTotal-retEf):null,true)}
       {filaR("🧾 Salió como egreso",fmtP(egresoTotal),"#C1440E",null,true)}
+      {detalleEgr.length>0&&<div style={{padding:"2px 0 6px"}}>
+        <button onClick={function(){setVerEgr(!verEgr);}} style={{background:"none",border:"none",color:"#C1440E",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>{verEgr?"▾ Ocultar el detalle de egresos":"▸ Ver en qué se fue ("+detalleEgr.length+")"}</button>
+        {verEgr&&detalleEgr.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:"#B8B8B8",padding:"3px 0 3px 10px",borderLeft:"2px solid #C1440E44",marginTop:3}}><span style={{minWidth:0}}>{f.label}{f.mes?<span style={{color:"#6E6E6E"}}> · {f.mes}</span>:null}{f.n>1?<span style={{color:"#6E6E6E"}}> · {f.n} mov.</span>:null}</span><b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(f.monto)}</b></div>;})}
+      </div>}
       {filaR("↳ pagado con plata de la Concesión",fmtP(egresoPropio),"#C8C8C8","sus propios medios: Caja Mayor, Belo, Lemon")}
       {filaR("↳ pagado con medios de otras dependencias",fmtP(egresoCruzado),"#E07B00","queda como cruzado: la Concesión se lo debe")}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,padding:"10px 0 4px",borderTop:"2px solid #222",marginTop:2}}>

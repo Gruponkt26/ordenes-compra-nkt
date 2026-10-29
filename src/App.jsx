@@ -5025,14 +5025,17 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
       return {label:c.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
     }).filter(function(f){return f.n>0;});
     var salReg=regs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&delMes(x);});
+    // Con qué medio salió cada línea: se juntan los pagos de la línea por medio.
+    var juntarMedios=function(pagos){ var o={}; pagos.forEach(function(pg){ var k=DEP_MEDIO_TEXTO[pg.medio]||pg.medio||"Sin medio"; o[k]=(o[k]||0)+(pg.monto||0); }); return Object.keys(o).map(function(k){return {medio:k,monto:o[k]};}); };
+    var mediosDe=function(l){ return juntarMedios(l.reduce(function(a,x){return a.concat(depMediosDe(x));},[])); };
     var sal=DEP_RUBROS.map(function(r){
       var l=salReg.filter(function(x){return x.rubro===r.id;});
-      return {label:r.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+      return {label:r.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length,medios:mediosDe(l)};
     });
     var sr=salReg.filter(function(x){return !x.rubro||!DEP_RUBROS.some(function(r){return r.id===x.rubro;});});
-    if(sr.length)sal.push({label:"❓ Sin rubro",monto:sr.reduce(function(a,x){return a+num(x.monto);},0),n:sr.length});
+    if(sr.length)sal.push({label:"❓ Sin rubro",monto:sr.reduce(function(a,x){return a+num(x.monto);},0),n:sr.length,medios:mediosDe(sr)});
     // Además de lo cargado por rubro, cada gasto y sueldo que viene de Egresos, con su nombre: así el mes dice en qué se fue cada peso.
-    (extras||[]).filter(function(e){return e.mes===m;}).forEach(function(e){ sal.push({label:e.label,monto:e.monto,n:1}); });
+    (extras||[]).filter(function(e){return e.mes===m;}).forEach(function(e){ sal.push({label:e.label,monto:e.monto,n:1,medios:juntarMedios(e.medios||[])}); });
     sal=sal.filter(function(f){return f.n>0;}).sort(function(x,y){return y.monto-x.monto;});
     var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
     return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
@@ -5143,7 +5146,7 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
           <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:4}}>Ingresó · {fmtP(t.totE)}</div>
           {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
           <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:8}}>Egresó · {fmtP(t.totS)}</div>
-          {t.sal.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+          {t.sal.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:"#999",padding:"3px 0"}}><span style={{minWidth:0}}>{f.label}{(f.medios||[]).length>0&&<span style={{display:"block",fontSize:10.5,color:"#6E6E6E",marginTop:1}}>{f.medios.map(function(m){return m.medio+(f.medios.length>1?" "+fmtP(m.monto):"");}).join(" · ")}</span>}</span><b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(f.monto)}</b></div>;})}
         </div>
       );})}
     </div>

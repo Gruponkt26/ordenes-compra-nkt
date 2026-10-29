@@ -20077,6 +20077,21 @@ function PanelRetiros(p) {
     setForm(FORM_VACIO);
   }
 
+  // Lo disponible en la cuenta y el origen elegidos en el formulario, antes de este retiro. null si todavía no se calculó.
+  function dispOrigen(){
+    var dc=(p.dispCuentas||{})[form.local_cuenta];
+    if(!dc||form.clase==="bien")return null;
+    var o=form.tipo_retiro+(form.subtipo?" - "+form.subtipo:""), esEf=o.indexOf("Caja Mayor")===0, v, que;
+    if(esEf){ v=dc.ef; que="Caja Mayor"; }
+    else if(form.local_cuenta==="dep"&&o.indexOf("Belo")!==-1){ v=dc.belo; que="Belo Nicolás"; }
+    else if(form.local_cuenta==="dep"&&o.indexOf("Lemon")!==-1){ v=dc.lemon; que="Lemon Sofía"; }
+    else { v=dc.el; que="electrónico del local (todos sus medios juntos)"; }
+    if(v==null)return null;
+    // Si se está editando un retiro de esta misma cuenta, su monto ya está descontado en lo disponible: se vuelve a sumar para ver lo que había antes.
+    var ya=(editando&&editando.clase!=="bien"&&((editando.local_cuenta||editando.local)===form.local_cuenta)&&(editando.tipo_retiro||"")===o)?(parseFloat(editando.monto)||0):0;
+    return {antes:v+ya,que:que};
+  }
+
   function doSave(){
     // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
     // botón estaba roto.
@@ -20092,6 +20107,10 @@ function PanelRetiros(p) {
       return;
     }
     setFaltanDatos(false);
+    var dsp=dispOrigen();
+    if(dsp&&dsp.antes-(parseFloat(form.monto)||0)<0){
+      if(!window.confirm("Este retiro deja "+dsp.que+" en negativo.\n\nDisponible ahora: $"+Math.round(dsp.antes).toLocaleString("es-AR")+"\nRetiro: $"+Math.round(parseFloat(form.monto)||0).toLocaleString("es-AR")+"\nQuedaría: −$"+Math.abs(Math.round(dsp.antes-(parseFloat(form.monto)||0))).toLocaleString("es-AR")+"\n\nSi falta cargar algún ingreso o traspaso, conviene cargarlo antes.\n\n¿Guardar igual?"))return;
+    }
     var retiro={
       id:editando?editando.id:String(Date.now()),
       socio:form.socio.trim(),
@@ -20223,22 +20242,15 @@ function PanelRetiros(p) {
             </select>
             <div style={{fontSize:9,color:"#6E6E6E",marginTop:6}}>Solo la Caja Mayor del local o sus medios electrónicos.</div>
             {(function(){
-              var dc=(p.dispCuentas||{})[form.local_cuenta];
-              if(!dc)return <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>Todavía no se cargó la disponibilidad de esta cuenta (se calcula en Resultados).</div>;
-              var o=origenActual, esEf=o.indexOf("Caja Mayor")===0, v, que;
-              if(esEf){ v=dc.ef; que="Caja Mayor"; }
-              else if(form.local_cuenta==="dep"&&o.indexOf("Belo")!==-1){ v=dc.belo; que="Belo Nicolás"; }
-              else if(form.local_cuenta==="dep"&&o.indexOf("Lemon")!==-1){ v=dc.lemon; que="Lemon Sofía"; }
-              else { v=dc.el; que="electrónico del local (todos sus medios juntos)"; }
-              if(v==null)return null;
-              // Si se está editando un retiro de esta misma cuenta, su monto ya está descontado en lo disponible: se vuelve a sumar para ver lo que había antes.
-              var yaDescontado=(editando&&editando.clase!=="bien"&&((editando.local_cuenta||editando.local)===form.local_cuenta)&&(editando.tipo_retiro||"")===origenActual)?(parseFloat(editando.monto)||0):0;
-              var antes=v+yaDescontado, m=parseFloat(form.monto)||0, quedaria=antes-m;
+              if(form.clase==="bien")return null;
+              var dsp=dispOrigen();
+              if(!dsp)return <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>Todavía no se cargó la disponibilidad de esta cuenta (se calcula en Resultados).</div>;
+              var antes=dsp.antes, que=dsp.que, m=parseFloat(form.monto)||0, quedaria=antes-m;
               return(
                 <div style={{marginTop:8,background:"#0A0A0A",border:"1px solid "+(quedaria<0&&m>0?"#C1440E66":"#2A2A2A"),borderRadius:9,padding:"8px 11px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}><span style={{color:"#9A9A9A"}}>💰 Disponible ahora en {que}</span><b style={{color:antes<0?"#C1440E":"#F0EDE8"}}>${Math.round(antes).toLocaleString("es-AR")}</b></div>
                   {m>0&&<div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,marginTop:3}}><span style={{color:"#7E7E7E"}}>Quedaría después de este retiro</span><b style={{color:quedaria<0?"#C1440E":"#3A7D44"}}>{quedaria<0?"−":""}${Math.abs(Math.round(quedaria)).toLocaleString("es-AR")}</b></div>}
-                  {quedaria<0&&m>0&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:4}}>⚠️ El retiro es mayor que lo disponible en esa cuenta.</div>}
+                  {quedaria<0&&m>0&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:4}}>⚠️ El retiro es mayor que lo disponible en esa cuenta: al guardar te va a pedir confirmación.</div>}
                 </div>
               );
             })()}

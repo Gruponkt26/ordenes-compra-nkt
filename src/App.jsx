@@ -23444,6 +23444,10 @@ function FichaLaboral(p){
   var [mes,setMes]=useState(mesHoy);
   var [obs,setObs]=useState(null);
   var [obsTexto,setObsTexto]=useState("");
+  // Cursos y capacitaciones tomadas: una pauta por curso (ámbito "curso_empleado"), con el certificado opcional en el Storage.
+  var [cursos,setCursos]=useState(null);
+  var [cForm,setCForm]=useState(null);   // curso que se está cargando
+  var [cGuardando,setCGuardando]=useState(false);
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var meses=[mesHoy];
   fichajes.forEach(function(f){var m=String(f.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m);});
@@ -23455,6 +23459,14 @@ function FichaLaboral(p){
     fetch(SURL+"/rest/v1/pautas?ambito=eq.obs_empleado&id=like.obs_"+emp.id+"_*&order=created_at.desc&limit=200",{headers:SH})
       .then(function(r){return r.json();}).then(function(d){setObs(Array.isArray(d)?d:[]);}).catch(function(){setObs([]);});
   },[emp&&emp.id,admin]);
+  useEffect(function(){
+    if(!emp)return;
+    setCursos(null);
+    fetch(SURL+"/rest/v1/pautas?ambito=eq.curso_empleado&id=like.curso_"+emp.id+"_*&order=created_at.desc&limit=200",{headers:SH})
+      .then(function(r){return r.json();}).then(function(d){
+        setCursos(Array.isArray(d)?d.map(function(f){ var x=null; try{ x=JSON.parse(f.texto); }catch(e){} return x?{...x,id:f.id}:null; }).filter(Boolean):[]);
+      }).catch(function(){ setCursos([]); });
+  },[emp&&emp.id]);
   if(!emp)return <div style={{fontSize:12,color:"#8C8C8C",padding:"10px 0"}}>Tu usuario de colaborador todavía no está vinculado a una ficha de empleado. Pedile a administración que lo vincule.</div>;
   var res=resumenAsistencia(emp,fichajes,mes,vacaciones,justificativos);
   // Las faltas de antes de que existiera el control (15/10/2026) no se cuentan ni se piden: solo se informan.
@@ -23485,6 +23497,29 @@ function FichaLaboral(p){
     if(!window.confirm("¿Borrar esta observación?"))return;
     fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:SH});
     setObs(function(prev){return (prev||[]).filter(function(o){return o.id!==id;});});
+  }
+  async function guardarCurso(){
+    if(!cForm||!String(cForm.nombre||"").trim()||cGuardando)return;
+    setCGuardando(true);
+    var id="curso_"+emp.id+"_"+Date.now(), url="", archivo="";
+    if(cForm.archivo){
+      var f=cForm.archivo, ext=(f.name.split(".").pop()||"jpg").replace(/[^a-z0-9]/gi,"").toLowerCase();
+      var r=await sbSubirDocumento(f,"capacitaciones/"+emp.id+"/"+Date.now()+"."+ext);
+      if(!r.ok){ setCGuardando(false); alert("No se pudo subir el certificado. Podés guardar el curso sin archivo y subirlo después."); return; }
+      url=r.url; archivo=f.name;
+    }
+    var dato={nombre:String(cForm.nombre).trim(),institucion:String(cForm.institucion||"").trim(),fecha:cForm.fecha||"",horas:cForm.horas||"",url:url,archivo:archivo,empleado_id:emp.id,cargado_por:p.usuario||""};
+    var ahora=new Date().toISOString();
+    var fila={id:id,ambito:"curso_empleado",texto:JSON.stringify(dato),usuario:p.usuario||"",created_at:ahora,updated_at:ahora};
+    fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"return=minimal"},body:JSON.stringify(fila)})
+      .then(function(r){ if(!r.ok)throw new Error("no se pudo guardar"); setCursos(function(prev){return [{...dato,id:id}].concat(prev||[]);}); setCForm(null); })
+      .catch(function(){ alert("No se pudo guardar el curso."); })
+      .then(function(){ setCGuardando(false); });
+  }
+  function borrarCurso(id){
+    if(!window.confirm("¿Borrar este curso de la ficha?"))return;
+    fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent(id),{method:"DELETE",headers:SH});
+    setCursos(function(prev){return (prev||[]).filter(function(c){return c.id!==id;});});
   }
   function resolver(j,estado){ if(p.onSaveJustif)p.onSaveJustif({...j,estado:estado,resuelto_por:p.usuario||"",resuelto_at:new Date().toISOString()}); }
   return(
@@ -23577,6 +23612,47 @@ function FichaLaboral(p){
         <div style={TIT}>Vacaciones y licencias</div>
         {propios.length===0?<div style={{fontSize:12,color:"#6E6E6E"}}>Sin vacaciones cargadas.</div>:propios.map(function(v){
           return <div key={v.id||v.fecha_desde} style={{fontSize:12,color:"#B8B8B8",padding:"3px 0"}}>🏖️ {fmtDate(String(v.fecha_desde).substring(0,10))} → {fmtDate(String(v.fecha_hasta).substring(0,10))}{v.notas?" · "+v.notas:""}</div>;
+        })}
+      </div>
+
+      <div style={CAJA}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:7}}>
+          <div style={{...TIT,marginBottom:0}}>🎓 Cursos y capacitaciones tomadas{cursos&&cursos.length>0?" · "+cursos.length:""}</div>
+          {!cForm&&<button onClick={function(){setCForm({nombre:"",institucion:"",fecha:"",horas:"",archivo:null});}} style={{padding:"5px 11px",borderRadius:7,border:"1px solid #4CAF5066",background:"none",color:"#4CAF50",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>+ Agregar</button>}
+        </div>
+        {cForm&&(
+          <div style={{background:"#0F0F0F",border:"1px solid #1E1E1E",borderRadius:10,padding:"10px 11px",marginBottom:8}}>
+            {[["nombre","Curso o capacitación *","Ej: Manipulación de alimentos"],["institucion","Dado por (institución, empresa…)","Ej: Municipalidad, UTHGRA…"]].map(function(c){return(
+              <input key={c[0]} value={cForm[c[0]]} onChange={function(e){var v=e.target.value;setCForm(function(f){return{...f,[c[0]]:v};});}} placeholder={c[2]} aria-label={c[1]}
+                style={{width:"100%",boxSizing:"border-box",marginBottom:6,padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5,outline:"none"}}/>
+            );})}
+            <div style={{display:"flex",gap:6,marginBottom:6}}>
+              <input type="date" value={cForm.fecha} onChange={function(e){var v=e.target.value;setCForm(function(f){return{...f,fecha:v};});}} style={{flex:1,minWidth:0,boxSizing:"border-box",padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5}}/>
+              <input value={cForm.horas} onChange={function(e){var v=e.target.value.replace(/[^\d]/g,"").slice(0,4);setCForm(function(f){return{...f,horas:v};});}} placeholder="Horas" inputMode="numeric" style={{width:80,boxSizing:"border-box",padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5,outline:"none"}}/>
+            </div>
+            <label style={{display:"block",padding:"9px",borderRadius:8,border:"1px dashed "+(cForm.archivo?"#3A7D44":"#3A3A3A"),textAlign:"center",fontSize:12,color:cForm.archivo?"#3A7D44":"#9A9A9A",cursor:"pointer",marginBottom:8}}>
+              {cForm.archivo?"📎 "+cForm.archivo.name:"📎 Adjuntar certificado (opcional)"}
+              <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={function(e){var fl=e.target.files&&e.target.files[0];setCForm(function(f){return{...f,archivo:fl||null};});}}/>
+            </label>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={guardarCurso} disabled={!String(cForm.nombre||"").trim()||cGuardando} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:String(cForm.nombre||"").trim()?"#4CAF50":"#222",color:String(cForm.nombre||"").trim()?"#000":"#6E6E6E",fontWeight:700,fontSize:12.5,cursor:"pointer"}}>{cGuardando?"Guardando…":"Guardar curso"}</button>
+              <button onClick={function(){setCForm(null);}} disabled={cGuardando} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        )}
+        {cursos===null?<div style={{fontSize:11,color:"#6E6E6E"}}>Cargando…</div>:cursos.length===0?<div style={{fontSize:12,color:"#6E6E6E"}}>Sin cursos cargados.</div>:cursos.map(function(c){
+          return(
+            <div key={c.id} style={{padding:"7px 0",borderTop:"1px solid #141414"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:12.5,fontWeight:700,color:"#F0EDE8"}}>{c.nombre}</div>
+                  <div style={{fontSize:11,color:"#8C8C8C",marginTop:1}}>{[c.institucion,c.fecha?fmtDate(c.fecha):"",c.horas?c.horas+" hs":""].filter(Boolean).join(" · ")||"—"}</div>
+                  {c.url&&<a href={c.url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"#1A8A7B",textDecoration:"none"}}>📎 {c.archivo||"Ver certificado"}</a>}
+                </div>
+                {(admin||c.cargado_por===p.usuario)&&<button onClick={function(){borrarCurso(c.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:11,padding:0,flexShrink:0}}>🗑️</button>}
+              </div>
+            </div>
+          );
         })}
       </div>
 

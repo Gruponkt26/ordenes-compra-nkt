@@ -12624,6 +12624,26 @@ function PanelFichar(p){
     }
   }
 
+  // Llegada tarde: más de TOLERANCIA_ATRASO_MIN minutos después del horario de entrada de hoy. Cuenta la primera entrada del día.
+  // Devuelve {min, nro} (nro = cuántas lleva en el mes, con esta) o null si llega a horario o no hay jornada cargada.
+  function llegadaTardeInfo(emp,ahora){
+    if(!emp)return null;
+    var f=fechaLocal(ahora), t=turnoDe(emp,f);
+    if(!t||t.franco||!t.desde)return null;
+    var mias=(fichajes||[]).filter(function(x){return x.empleado_id===emp.id;});
+    if(mias.some(function(x){return x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===f;}))return null;   // reingreso: no es llegar tarde
+    var ini=new Date(f+"T"+t.desde+":00");
+    var min=Math.round((ahora-ini)/60000);
+    if(min<=TOLERANCIA_ATRASO_MIN)return null;
+    var previas=resumenAsistencia(emp,fichajes,f.substring(0,7),p.vacaciones,p.justificativos).tarde.filter(function(x){return x.fecha!==f;}).length;
+    return {min:min,nro:previas+1};
+  }
+  function textoTarde(inf){
+    if(!inf)return "";
+    var cuando=inf.nro>=3?"Es tu llegada tarde nº "+inf.nro+" del mes: perdés el presentismo.":inf.nro===2?"Es tu 2ª llegada tarde del mes: a la próxima perdés el presentismo.":"Es tu 1ª llegada tarde del mes: a la tercera se pierde el presentismo.";
+    return cuando;
+  }
+
   async function marcar(tipo,extra){
     if(!elegido)return;
     setFase("guardando");
@@ -12656,6 +12676,7 @@ function PanelFichar(p){
       if(!rE||!rE.ok){ alert((rE&&rE.error)||"No se pudo guardar la entrada."); setFase("camara"); return; }
       setOlvido(null);
     }
+    var infoTarde=tipo==="entrada"?llegadaTardeInfo(elegido,ahora):null;
     var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
     var foto=null, avisoFoto="";
     var pos=posChk;
@@ -12663,10 +12684,10 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
-    setRecibo({...fila, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
+    setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
     setFase("listo");
     // En la tablet del local la pantalla vuelve sola a la lista: el próximo ya está esperando.
     // Se cancela si alguien tocó antes al siguiente: si no, a los 6 segundos le borraba el
@@ -12726,6 +12747,10 @@ function PanelFichar(p){
         </div>
         <div style={{fontSize:11,color:"#7E7E7E",marginTop:4}}>{fmtDate(recibo.fecha)} · {(getLocal(recibo.local)||{}).nombre||recibo.local}</div>
         {recibo.lat!=null&&<div style={{fontSize:11.5,color:"#3A7D44",marginTop:12}}>📍 Ubicación registrada</div>}
+        {recibo.tarde&&<div style={{marginTop:14,textAlign:"left",background:"#1A0F0A",border:"2px solid "+(recibo.tarde.nro>=3?"#C1440E":"#E07B00"),borderRadius:12,padding:"11px 13px"}}>
+          <div style={{fontSize:13,fontWeight:800,color:recibo.tarde.nro>=3?"#C1440E":"#E07B00"}}>🕒 Llegada tarde: +{recibo.tarde.min} min</div>
+          <div style={{fontSize:12,color:"#D8D8D8",lineHeight:1.5,marginTop:4}}>La tolerancia es de {TOLERANCIA_ATRASO_MIN} minutos. {textoTarde(recibo.tarde)}</div>
+        </div>}
         {recibo.aviso&&<div style={{fontSize:11,color:"#D4A017",marginTop:12,lineHeight:1.5}}>⚠️ {recibo.aviso}</div>}
         <button onClick={volver} style={{...BS("#1A6B8A"),padding:"12px 24px",fontSize:14,marginTop:18}}>Listo</button>
       </div>
@@ -12791,6 +12816,10 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
+          {!est.adentro&&(function(){ var inf=llegadaTardeInfo(elegido,new Date()); return inf?(
+            <div style={{textAlign:"left",background:"#1A0F0A",border:"1px solid #E07B0088",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#E8B58A",lineHeight:1.5}}>
+              🕒 Si marcás ahora se te anota <b>llegada tarde</b> (+{inf.min} min; la tolerancia es de {TOLERANCIA_ATRASO_MIN}). {textoTarde(inf)}
+            </div>):null; })()}
           {codigoVerif&&<div style={{padding:"8px 10px",borderRadius:10,border:"1px solid #3A7D44",background:"#0A1A0A",color:"#3A7D44",fontSize:12,fontWeight:700,marginBottom:10}}>✅ Código del local verificado: estás en el local</div>}
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>

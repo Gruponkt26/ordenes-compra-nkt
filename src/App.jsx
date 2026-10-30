@@ -3120,7 +3120,7 @@ function infoSeccionesDe(u){
   return [];
 }
 // El texto de un instructivo con el mismo orden y claridad que las pautas de fichaje: los subtítulos se destacan, los pasos
-// numerados ("1.", "1)", "Paso 1:") van con su número y las listas ("-", "•", "*") con su marca. No cambia lo cargado: se arma al mostrarlo.
+// numerados ("1.", "1)", "Paso 1:") van sin el número y las listas ("-", "•", "*") con su marca. No cambia lo cargado: se arma al mostrarlo.
 function TextoInfo(p){
   var lineas=String(p.texto||"").replace(/\r/g,"").split("\n");
   var out=[], k=0;
@@ -3131,10 +3131,8 @@ function TextoInfo(p){
     var mLis=/^[-•*–·]\s+(.*)$/.exec(t);
     var esSub=!mNum&&!mLis&&(/^#+\s*/.test(t)||(/:$/.test(t)&&t.length<=80)||(t.length<=60&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]{3}/.test(t)));
     if(mNum){
-      out.push(<div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",padding:"4px 0"}}>
-        <span style={{flexShrink:0,minWidth:22,height:22,borderRadius:11,background:"#1A6B8A33",border:"1px solid #1A6B8A88",color:"#7CC4E0",fontSize:11.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>{mNum[1]}</span>
-        <span style={{fontSize:13,color:"#E2E2E2",lineHeight:1.6,minWidth:0,wordBreak:"break-word"}}>{mNum[2]}</span>
-      </div>);
+      // Sin número: se muestra como el resto de las listas, igual que las pautas de fichaje.
+      out.push(<div key={i} style={{fontSize:13,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3,wordBreak:"break-word"}}>{mNum[2]}</div>);
     } else if(mLis){
       out.push(<div key={i} style={{fontSize:13,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3,wordBreak:"break-word"}}>{mLis[1]}</div>);
     } else if(esSub){

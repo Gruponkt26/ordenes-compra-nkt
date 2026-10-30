@@ -12638,6 +12638,19 @@ function PanelFichar(p){
     var previas=resumenAsistencia(emp,fichajes,f.substring(0,7),p.vacaciones,p.justificativos).tarde.filter(function(x){return x.fecha!==f;}).length;
     return {min:min,nro:previas+1};
   }
+  // No se puede marcar la entrada antes de ANTICIPO_ENTRADA_MIN minutos del horario de hoy. Devuelve {desde:"HH:MM", faltan:min} si es muy temprano, o null.
+  // No aplica sin jornada cargada, en un franco ni en un reingreso del mismo día.
+  function entradaMuyTemprano(emp,ahora){
+    if(!emp)return null;
+    var f=fechaLocal(ahora), t=turnoDe(emp,f);
+    if(!t||t.franco||!t.desde)return null;
+    if((fichajes||[]).some(function(x){return x.empleado_id===emp.id&&x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===f;}))return null;
+    var ini=new Date(f+"T"+t.desde+":00");
+    var falta=Math.ceil((ini-ahora)/60000)-ANTICIPO_ENTRADA_MIN;
+    if(falta<=0)return null;
+    var ok=new Date(ini.getTime()-ANTICIPO_ENTRADA_MIN*60000);
+    return {desde:horaLocal(ok),faltan:falta,turno:t.desde};
+  }
   function textoTarde(inf){
     if(!inf)return "";
     var cuando=inf.nro>=3?"Es tu llegada tarde nº "+inf.nro+" del mes: perdés el presentismo.":inf.nro===2?"Es tu 2ª llegada tarde del mes: a la próxima perdés el presentismo.":"Es tu 1ª llegada tarde del mes: a la tercera se pierde el presentismo.";
@@ -12646,6 +12659,10 @@ function PanelFichar(p){
 
   async function marcar(tipo,extra){
     if(!elegido)return;
+    if(tipo==="entrada"&&!(extra&&extra.entradaHora)){
+      var muyTemp=entradaMuyTemprano(elegido,new Date());
+      if(muyTemp){ alert("Todavía es temprano: tu turno empieza a las "+muyTemp.turno+" y podés marcar la entrada desde las "+muyTemp.desde+"."); return; }
+    }
     setFase("guardando");
     var ahora=new Date();
     // Desde un celular (no la tablet del local) hay que estar en el local: se compara la ubicación con la cargada del local.
@@ -12808,6 +12825,7 @@ function PanelFichar(p){
     var fueraLocal=cercaReq&&(ubic==="no"||(distEf!=null&&muyLejos(coordsLocal,posAct)));
     var imprecisa=cercaReq&&lecturaImprecisa(posAct)&&distEf!=null&&distEf>RADIO_LOCAL;
     var puede=!fueraLocal;
+    var tempranoAhora=!est.adentro?entradaMuyTemprano(elegido,new Date()):null;
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
         <button onClick={volver} disabled={fase==="guardando"} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
@@ -12816,6 +12834,9 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
+          {tempranoAhora&&<div style={{textAlign:"left",background:"#0A1014",border:"1px solid #1A6B8A88",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#9FC8D8",lineHeight:1.5}}>
+            ⏳ Todavía es temprano: tu turno empieza a las <b>{tempranoAhora.turno}</b>. Podés marcar la entrada desde las <b>{tempranoAhora.desde}</b> (faltan {tempranoAhora.faltan} min).
+          </div>}
           {!est.adentro&&(function(){ var inf=llegadaTardeInfo(elegido,new Date()); return inf?(
             <div style={{textAlign:"left",background:"#1A0F0A",border:"1px solid #E07B0088",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#E8B58A",lineHeight:1.5}}>
               🕒 Si marcás ahora se te anota <b>llegada tarde</b> (+{inf.min} min; la tolerancia es de {TOLERANCIA_ATRASO_MIN}). {textoTarde(inf)}
@@ -12862,10 +12883,10 @@ function PanelFichar(p){
               return <button key={t} onClick={function(){
                   if(t==="salida"&&!est.adentro){ var tj=turnoDe(elegido,fechaLocal()); setOlvido({hora:(tj&&!tj.franco&&tj.desde)?tj.desde:""}); }
                   else marcar(t);
-                }} disabled={!puede||fase==="guardando"}
+                }} disabled={!puede||fase==="guardando"||(t==="entrada"&&!!tempranoAhora)}
                 style={{flex:es?2:1,padding:"16px 10px",borderRadius:12,border:"1px solid "+col+(es?"":"44"),
                   background:es?col:"#111",color:es?"#fff":col,fontFamily:"'Inter',sans-serif",
-                  fontSize:es?15:13,fontWeight:800,cursor:puede?"pointer":"not-allowed",opacity:puede?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
+                  fontSize:es?15:13,fontWeight:800,cursor:(puede&&!(t==="entrada"&&tempranoAhora))?"pointer":"not-allowed",opacity:(puede&&!(t==="entrada"&&tempranoAhora))?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
                 {t==="entrada"?"🟢 Entrada":"🔴 Salida"}
               </button>;
             })}
@@ -23224,6 +23245,7 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
 // administración— los sueldos y las observaciones. No carga datos nuevos: junta los de Jornadas, Fichaje,
 // Vacaciones y Sueldos. El empleado ve la suya sin sueldos ni observaciones.
 var TOLERANCIA_ATRASO_MIN=10;
+var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
 function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   var hoy=fechaLocal();
   var mias=(fichajes||[]).filter(function(f){return f.empleado_id===emp.id;});

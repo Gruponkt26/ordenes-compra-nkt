@@ -3119,6 +3119,46 @@ function infoSeccionesDe(u){
   if(sx==="caja")return ["cajeros"];
   return [];
 }
+// Las reglas de fichaje, siempre al día: salen de los mismos valores que usa la app (tolerancia, anticipo, radio, presentismo), así que si cambian acá cambian en este cartel.
+function PautasFichaje(){
+  var [abierto,setAbierto]=useState(true);
+  var bloques=[
+    {t:"🕐 Cómo se marca",l:[
+      "Se marca desde el celular, en Fichar. Hay dos maneras: por ubicación (tenés que estar a "+RADIO_LOCAL+" m o menos del local) o con el código del local (el QR o los 6 números que muestra la pantalla fija del local; cambia cada 30 segundos y no usa el GPS).",
+      "Cada marca pide tu PIN personal de 4 números. El celular queda vinculado a tu ficha: no se puede marcar por otra persona.",
+      "Si marcás en un local que no es el tuyo, queda avisado a administración."]},
+    {t:"⏱️ Entrada, tolerancia y llegadas tarde",l:[
+      "La entrada se puede marcar desde "+ANTICIPO_ENTRADA_MIN+" minutos antes de tu horario. Antes de eso la app no deja marcar.",
+      "La tolerancia es de "+TOLERANCIA_ATRASO_MIN+" minutos. Si tu turno es a las 18:30, hasta las 18:40 llegás a horario; a las 18:41 se te anota llegada tarde.",
+      "A la tercera llegada tarde del mes se pierde el presentismo. Al marcar, la app te avisa cuántas llevás.",
+      "Salir antes de tu horario con más de "+TOLERANCIA_ATRASO_MIN+" minutos de diferencia también queda registrado en tu ficha."]},
+    {t:"🚪 Salida",l:[
+      "Marcá la salida al terminar tu turno. Los turnos que terminan de madrugada (hasta las "+String(HORA_CORTE_DIA_NEGOCIO).padStart(2,"0")+":00) cuentan para el día en que empezaron.",
+      "Si te olvidaste de marcar la entrada, al marcar la salida te pregunta a qué hora entraste y queda cargada como manual para que administración la revise.",
+      "Si te olvidaste de marcar la salida, avisá a administración: la carga a mano con la hora real."]},
+    {t:"🙋 Ausencias y justificativos",l:[
+      "Si un día que te tocaba trabajar no hay ninguna marca, es una falta. La próxima vez que fiches la app te pide el justificativo: escribís el motivo y, si tenés, subís la foto del certificado.",
+      "Administración lo revisa y lo aprueba o lo rechaza. Las faltas sin justificar quedan a la vista en tu ficha.",
+      "Los días de vacaciones o licencia cargados no cuentan como falta."]},
+    {t:"🔄 Francos",l:[
+      "Si marcás la entrada en un día que es tu franco, la app te pregunta por qué venís: si cambiaste tu franco (y a qué día pasa) o cuál es el otro motivo. No podés marcar sin contestar.",
+      "Eso le llega a administración en Novedades, con el día al que cambiaste tu franco."]}
+  ];
+  return(
+    <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+      <button onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+        <span style={{fontSize:14,fontWeight:800,color:"#3A9BC1"}}>📋 Pautas generales de fichaje</span>
+        <span style={{fontSize:11,color:"#7E7E7E"}}>{abierto?"▾ ocultar":"▸ ver"}</span>
+      </button>
+      {abierto&&bloques.map(function(b){return(
+        <div key={b.t} style={{marginTop:11}}>
+          <div style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>{b.t}</div>
+          {b.l.map(function(x,i){return <div key={i} style={{fontSize:12.5,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3}}>{x}</div>;})}
+        </div>
+      );})}
+    </div>
+  );
+}
 function PanelInfoCajero(p){
   // Quien edita ve las cuatro secciones; un colaborador ve la suya (p.misSecciones) más General.
   // Si viene "solo", se muestra únicamente esa sección (el colaborador tiene un módulo para la general y otro para la suya).
@@ -3183,6 +3223,8 @@ function PanelInfoCajero(p){
             {t.emoji} {t.id==="general"?"General (todos)":t.nombre}{n>0?" · "+n:""}</button>;
         })}
       </div>
+
+      {sec==="general"&&<PautasFichaje/>}
 
       {puedeEditar&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"13px",marginBottom:14}}>

@@ -13798,29 +13798,58 @@ function PanelFichajes(p){
                     }} style={{...GH,padding:"5px 10px",fontSize:11,color:"#C1440E",borderColor:"#C1440E55"}}>🗑 Poner en cero a {x.e.nombre}</button>
                   </div>
                 )}
-                {x.faltas.length>0&&(
-                  <div style={{padding:"9px 15px",fontSize:11.5,color:"#C1440E",lineHeight:1.6}}>
-                    No marcó en días que le tocaban: {x.faltas.map(function(f){return fmtDate(f);}).join(" · ")}
-                  </div>
-                )}
-                {x.jor.map(function(j,i){
-                  var ref=j.entrada||j.salida;
-                  var t=turnoDe(x.e,ref.fecha);
-                  return (
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 15px",borderTop:(i===0&&x.faltas.length===0)?"none":"1px solid #121212",flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,color:"#8C8C8C",width:86,flexShrink:0}}>
-                        {fmtDate(ref.fecha)}
-                        {t&&t.franco?<span style={{color:"#8B2FC9",fontSize:10}}> franco</span>:null}
-                      </span>
-                      <Marca f={j.entrada} et="Entrada"/>
-                      <span style={{color:"#6E6E6E"}}>→</span>
-                      <Marca f={j.salida} et="Salida"/>
-                      <span style={{marginLeft:"auto",fontSize:13,fontWeight:700,color:minutosDe(j)>0?"#3A7D44":"#D4A017",fontVariantNumeric:"tabular-nums"}}>
-                        {minutosDe(j)>0?fmtHs(minutosDe(j)):"sin cerrar"}
-                      </span>
+                {(function(){
+                  // Día por día del mes, en orden: lo que le tocaba según su jornada, lo que marcó, lo trabajado y los acumulados.
+                  var porDia={};
+                  x.jor.forEach(function(j){ var f=String((j.entrada||j.salida).fecha).substring(0,10); (porDia[f]=porDia[f]||[]).push(j); });
+                  var fechasDia={}; diasDelMesHasta(mes,hoy).forEach(function(f){fechasDia[f]=1;}); Object.keys(porDia).forEach(function(f){fechasDia[f]=1;});
+                  var lista=Object.keys(fechasDia).sort();
+                  var DSC=["dom","lun","mar","mié","jue","vie","sáb"];
+                  var accT=0, accP=0;
+                  var filas=lista.map(function(f){
+                    var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
+                    var t=x.tieneJornada?turnoDe(x.e,f):null;
+                    var trab=js.reduce(function(a,j){return a+minutosDe(j);},0);
+                    var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0))?t.minutos:0;
+                    accT+=trab; accP+=prev;
+                    var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
+                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem};
+                  }).filter(function(r){return r.js.length>0||r.prev>0||(r.t&&r.t.franco&&false);});
+                  if(filas.length===0)return null;
+                  return(
+                    <div>
+                      <div style={{display:"flex",gap:8,padding:"7px 15px",fontSize:9.5,color:"#6E6E6E",textTransform:"uppercase",letterSpacing:1,borderTop:"1px solid #121212"}}>
+                        <span style={{width:74,flexShrink:0}}>Día</span><span style={{flex:1,minWidth:150}}>Marcas</span><span style={{width:76,textAlign:"right"}}>Trabajó</span><span style={{width:92,textAlign:"right"}}>Acumulado</span>
+                      </div>
+                      {filas.map(function(r){
+                        var falta=r.prev>0&&r.js.length===0;
+                        return(
+                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":"transparent"}}>
+                            <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
+                            <span style={{flex:1,minWidth:150,fontSize:11.5}}>
+                              {r.js.length===0?<span style={{color:falta?"#C1440E":"#6E6E6E"}}>{falta?"no marcó":"—"}</span>:r.js.map(function(j,k){return(
+                                <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/></span>
+                              );})}
+                              <span style={{display:"block",fontSize:10,color:r.t&&r.t.franco?"#8B2FC9":"#6E6E6E"}}>
+                                {r.t?(r.t.franco?"franco":"le tocaba "+fmtHs(r.t.minutos)+(r.t.desde?" ("+r.t.desde+"–"+r.t.hasta+")":"")):(x.tieneJornada?"":"sin jornada cargada")}
+                              </span>
+                            </span>
+                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E")}}>
+                              {r.trab>0?fmtHs(r.trab):(r.js.length>0?"sin cerrar":"0h")}
+                            </span>
+                            <span style={{width:92,textAlign:"right",fontSize:11,fontVariantNumeric:"tabular-nums",color:"#9A9A9A"}}>
+                              {fmtHs(r.accT)}{r.accP>0?<span style={{display:"block",fontSize:10,color:r.accT>=r.accP?"#3A7D44":"#C1440E"}}>de {fmtHs(r.accP)}</span>:null}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}</span>
+                        <b style={{color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}{x.previstas>0?<span style={{color:x.min>=x.previstas?"#3A7D44":"#C1440E",fontWeight:600}}> · según jornada {fmtHs(x.previstas)} ({(x.min>=x.previstas?"+":"−")+fmtHs(Math.abs(x.min-x.previstas))})</span>:null}</b>
+                      </div>
                     </div>
                   );
-                })}
+                })()}
               </div>
             )}
           </div>

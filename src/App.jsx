@@ -12047,9 +12047,20 @@ function jornadasDe(marcas){
   if(abierta)pares.push({entrada:abierta,salida:null});
   return pares;
 }
-function minutosDe(j){
+// Desde cuándo se cuentan las horas de una jornada. Si el empleado tiene horario ese día y marcó la entrada antes de que empiece
+// (se puede desde ANTICIPO_ENTRADA_MIN minutos antes), las horas cuentan desde el horario de su jornada, no desde la marca.
+// Si llegó tarde cuenta desde que marcó. Las entradas cargadas a mano por administración se respetan tal cual.
+function inicioContable(j,emp){
+  var ini=new Date(j.entrada.momento);
+  if(!emp||j.entrada.manual)return ini;
+  var f=String(j.entrada.fecha||"").substring(0,10), t=turnoDe(emp,f);
+  if(!t||t.franco||!t.desde)return ini;
+  var horario=new Date(f+"T"+t.desde+":00");
+  return (!isNaN(horario.getTime())&&ini<horario)?horario:ini;
+}
+function minutosDe(j,emp){
   if(!j.entrada||!j.salida)return 0;
-  var d=(new Date(j.salida.momento)-new Date(j.entrada.momento))/60000;
+  var d=(new Date(j.salida.momento)-inicioContable(j,emp))/60000;
   return d>0?d:0;
 }
 // El navegador sabe encontrar una cara sin ayuda de nadie en Chrome de Android; en iPhone
@@ -13483,7 +13494,7 @@ function PanelFichajes(p){
         var ref=(j.entrada||j.salida);
         return ref&&String(ref.fecha||"").substring(0,7)===mes;
       });
-    var min=jor.reduce(function(a,j){return a+minutosDe(j);},0);
+    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0);
     var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
     var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
@@ -13809,7 +13820,7 @@ function PanelFichajes(p){
                   var filas=lista.map(function(f){
                     var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
                     var t=x.tieneJornada?turnoDe(x.e,f):null;
-                    var trab=js.reduce(function(a,j){return a+minutosDe(j);},0);
+                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0);
                     var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0))?t.minutos:0;
                     accT+=trab; accP+=prev;
                     var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
@@ -13828,7 +13839,7 @@ function PanelFichajes(p){
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
                               {r.js.length===0?<span style={{color:falta?"#C1440E":"#6E6E6E"}}>{falta?"no marcó":"—"}</span>:r.js.map(function(j,k){return(
-                                <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/></span>
+                                <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/>{j.entrada&&inicioContable(j,x.e)>new Date(j.entrada.momento)&&<span title="Marcó antes de su horario: las horas cuentan desde el horario de la jornada" style={{fontSize:10,color:"#7E7E7E"}}>(cuenta desde {horaLocal(inicioContable(j,x.e))})</span>}</span>
                               );})}
                               <span style={{display:"block",fontSize:10,color:r.t&&r.t.franco?"#8B2FC9":"#6E6E6E"}}>
                                 {r.t?(r.t.franco?"franco":"le tocaba "+fmtHs(r.t.minutos)+(r.t.desde?" ("+r.t.desde+"–"+r.t.hasta+")":"")):(x.tieneJornada?"":"sin jornada cargada")}
@@ -23420,7 +23431,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
     return ref&&String(ref.fecha||"").substring(0,7)===mes;
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j);},0);
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0);
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){

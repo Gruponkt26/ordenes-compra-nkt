@@ -12427,6 +12427,7 @@ function PanelFichar(p){
   var [codigoOk,setCodigoOk]=useState(function(){
     try{ var o=JSON.parse(window.sessionStorage.getItem("nkt_fich_ok")||"null"); return o&&o.hasta>Date.now()?o:null; }catch(e){ return null; }
   });
+  var [francoForm,setFrancoForm]=useState({id:"",modo:"cambio",dia:"",motivo:""});   // por qué viene en su franco
   var [pantallaPrueba,setPantallaPrueba]=useState(false);   // mostrar el código sin bloquear el aparato (para probar)
   var [codigoTxt,setCodigoTxt]=useState("");
   var [codigoMsg,setCodigoMsg]=useState("");
@@ -12651,6 +12652,19 @@ function PanelFichar(p){
     var ok=new Date(ini.getTime()-ANTICIPO_ENTRADA_MIN*60000);
     return {desde:horaLocal(ok),faltan:falta,turno:t.desde};
   }
+  // Marca la entrada un día que le toca franco (con jornada cargada y sin entrada previa hoy): hay que decir por qué.
+  function francoHoy(emp,ahora){
+    if(!emp||!jornadaDe(emp))return false;
+    var f=fechaLocal(ahora), t=turnoDe(emp,f);
+    if(!t||!t.franco)return false;
+    return !(fichajes||[]).some(function(x){return x.empleado_id===emp.id&&x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===f;});
+  }
+  function francoDe(emp){ return (francoForm.id===(emp&&emp.id))?francoForm:{id:emp?emp.id:"",modo:"cambio",dia:"",motivo:""}; }
+  function francoValido(emp){ var ff=francoDe(emp); return ff.modo==="cambio"?!!ff.dia:ff.motivo.trim().length>=3; }
+  function francoNota(emp){
+    var ff=francoDe(emp);
+    return "Franco trabajado|dia="+(ff.modo==="cambio"?ff.dia:"")+"|motivo="+String(ff.motivo||"").replace(/[|\n]/g," ").trim()+"|";
+  }
   function textoTarde(inf){
     if(!inf)return "";
     var cuando=inf.nro>=3?"Es tu llegada tarde nº "+inf.nro+" del mes: perdés el presentismo.":inf.nro===2?"Es tu 2ª llegada tarde del mes: a la próxima perdés el presentismo.":"Es tu 1ª llegada tarde del mes: a la tercera se pierde el presentismo.";
@@ -12693,6 +12707,8 @@ function PanelFichar(p){
       if(!rE||!rE.ok){ alert((rE&&rE.error)||"No se pudo guardar la entrada."); setFase("camara"); return; }
       setOlvido(null);
     }
+    var esFrancoEnt=tipo==="entrada"&&!(extra&&extra.entradaHora)&&francoHoy(elegido,ahora);
+    if(esFrancoEnt&&!francoValido(elegido)){ alert("Hoy es tu franco. Contanos por qué venís: a qué día cambiaste tu franco, o el motivo."); setFase("camara"); return; }
     var infoTarde=tipo==="entrada"?llegadaTardeInfo(elegido,ahora):null;
     var id="f"+ahora.getTime()+"_"+Math.random().toString(36).slice(2,7);
     var foto=null, avisoFoto="";
@@ -12701,7 +12717,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -12826,6 +12842,8 @@ function PanelFichar(p){
     var imprecisa=cercaReq&&lecturaImprecisa(posAct)&&distEf!=null&&distEf>RADIO_LOCAL;
     var puede=!fueraLocal;
     var tempranoAhora=!est.adentro?entradaMuyTemprano(elegido,new Date()):null;
+    var francoAhora=!est.adentro&&francoHoy(elegido,new Date());
+    var francoFalta=francoAhora&&!francoValido(elegido);
     return (
       <div style={{fontFamily:"'Inter',sans-serif",maxWidth:420,margin:"0 auto"}}>
         <button onClick={volver} disabled={fase==="guardando"} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:12}}>← Volver</button>
@@ -12834,6 +12852,27 @@ function PanelFichar(p){
           <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>
             {est.ultimo?("Última marca: "+est.ultimo.tipo+" "+est.ultimo.hora):"Sin marcas todavía"}
           </div>
+          {francoAhora&&!tempranoAhora&&(function(){
+            var ff=francoDe(elegido);
+            var upd=function(c){ setFrancoForm({...ff,id:elegido.id,...c}); };
+            var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+            var nomDia=ff.dia?DSN[new Date(ff.dia+"T12:00:00").getDay()]:"";
+            var INPf={padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,boxSizing:"border-box"};
+            return(
+            <div style={{textAlign:"left",background:"#14100A",border:"1px solid #D4A01788",borderRadius:12,padding:"11px 13px",marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#D4A017"}}>📅 Hoy es tu franco</div>
+              <div style={{fontSize:11.5,color:"#C8C8C8",lineHeight:1.5,margin:"3px 0 8px"}}>Para marcar la entrada decinos por qué venís. Le llega a administración.</div>
+              <div style={{display:"flex",gap:6,marginBottom:8}}>
+                {[["cambio","🔄 Cambié mi franco"],["otro","📝 Otro motivo"]].map(function(o){var act=ff.modo===o[0]; return <button key={o[0]} onClick={function(){upd({modo:o[0]});}} style={{flex:1,padding:"8px 6px",borderRadius:9,border:"1px solid "+(act?"#D4A017":"#2A2A2A"),background:act?"#D4A01722":"#111",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{o[1]}</button>;})}
+              </div>
+              {ff.modo==="cambio"&&<div>
+                <div style={{fontSize:11,color:"#9A9A9A",marginBottom:4}}>¿A qué día pasa tu franco?</div>
+                <input type="date" value={ff.dia} onChange={function(e){upd({dia:e.target.value});}} style={{...INPf,width:"100%"}}/>
+                {nomDia&&<div style={{fontSize:11,color:"#D4A017",marginTop:4}}>Tu franco pasa al {nomDia} {fmtDate(ff.dia)}</div>}
+              </div>}
+              <textarea value={ff.motivo} onChange={function(e){upd({motivo:e.target.value});}} rows={2} maxLength={200} placeholder={ff.modo==="cambio"?"Detalle (opcional): con quién, por qué…":"Motivo (ej: cubro a una compañera, me pidieron que venga…)"} style={{...INPf,width:"100%",marginTop:8,resize:"vertical"}}/>
+            </div>);
+          })()}
           {tempranoAhora&&<div style={{textAlign:"left",background:"#0A1014",border:"1px solid #1A6B8A88",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#9FC8D8",lineHeight:1.5}}>
             ⏳ Todavía es temprano: tu turno empieza a las <b>{tempranoAhora.turno}</b>. Podés marcar la entrada desde las <b>{tempranoAhora.desde}</b> (faltan {tempranoAhora.faltan} min).
           </div>}
@@ -12883,10 +12922,10 @@ function PanelFichar(p){
               return <button key={t} onClick={function(){
                   if(t==="salida"&&!est.adentro){ var tj=turnoDe(elegido,fechaLocal()); setOlvido({hora:(tj&&!tj.franco&&tj.desde)?tj.desde:""}); }
                   else marcar(t);
-                }} disabled={!puede||fase==="guardando"||(t==="entrada"&&!!tempranoAhora)}
+                }} disabled={!puede||fase==="guardando"||(t==="entrada"&&(!!tempranoAhora||francoFalta))}
                 style={{flex:es?2:1,padding:"16px 10px",borderRadius:12,border:"1px solid "+col+(es?"":"44"),
                   background:es?col:"#111",color:es?"#fff":col,fontFamily:"'Inter',sans-serif",
-                  fontSize:es?15:13,fontWeight:800,cursor:(puede&&!(t==="entrada"&&tempranoAhora))?"pointer":"not-allowed",opacity:(puede&&!(t==="entrada"&&tempranoAhora))?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
+                  fontSize:es?15:13,fontWeight:800,cursor:(puede&&!(t==="entrada"&&(tempranoAhora||francoFalta)))?"pointer":"not-allowed",opacity:(puede&&!(t==="entrada"&&(tempranoAhora||francoFalta)))?1:0.45,textTransform:"uppercase",letterSpacing:1}}>
                 {t==="entrada"?"🟢 Entrada":"🔴 Salida"}
               </button>;
             })}
@@ -15714,6 +15753,34 @@ function PanelNovedades(p){
             </div>
           )}
         </Seccion>
+
+        {(function(){
+          // Quienes vinieron en su franco, con el día al que lo cambiaron o el motivo que dieron al marcar. Últimos 14 días.
+          var desdeF=fechaLocal(new Date(Date.now()-13*86400000));
+          var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+          var lista=(p.fichajes||[]).filter(function(f){
+            return f.tipo==="entrada"&&String(f.notas||"").indexOf("Franco trabajado|")!==-1&&String(f.fecha||"").substring(0,10)>=desdeF;
+          }).map(function(f){
+            var m=/Franco trabajado\|dia=([^|]*)\|motivo=([^|]*)\|/.exec(f.notas||"")||[];
+            return {f:f,dia:m[1]||"",motivo:(m[2]||"").trim()};
+          }).sort(function(x,y){return String(y.f.momento||"").localeCompare(String(x.f.momento||""));});
+          if(lista.length===0)return null;
+          return(
+            <Seccion tab="personal" titulo={"📅 Vinieron en su franco · "+lista.length} color="#D4A017">
+              {lista.map(function(o,i){
+                var loc=getLocal(o.f.local);
+                return(
+                  <div key={o.f.id||i} style={{padding:"6px 0",borderTop:i===0?"none":"1px solid #141414",fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
+                    <b style={{color:"#F0EDE8"}}>{o.f.empleado_nombre}</b> marcó entrada en su franco
+                    {loc&&<span style={{color:"#8C8C8C"}}> · {loc.emoji} {loc.nombre}</span>}
+                    <div style={{fontSize:11.5,color:"#D4A017"}}>{o.dia?"🔄 Su franco pasa al "+DSN[new Date(o.dia+"T12:00:00").getDay()]+" "+fmtDate(o.dia):"📝 Sin cambio de franco"}{o.motivo?" · “"+o.motivo+"”":""}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(String(o.f.fecha).substring(0,10))} · entrada {o.f.hora}</div>
+                  </div>
+                );
+              })}
+            </Seccion>
+          );
+        })()}
 
         {(function(){
           // Quienes marcaron en un local que no es el suyo (los que cubren los tres locales), de los últimos 7 días.

@@ -15699,6 +15699,19 @@ function PanelNovedades(p){
 
 
 
+        {enRiesgo.length>0&&(
+          <Seccion tab="deudas" id="planes" res={enRiesgo.some(function(x){return x.rg.caido;})?enRiesgo.filter(function(x){return x.rg.caido;}).length+" caído"+(enRiesgo.filter(function(x){return x.rg.caido;}).length===1?"":"s")+" · "+enRiesgo.filter(function(x){return !x.rg.caido;}).length+" por caerse":enRiesgo.length+" plan"+(enRiesgo.length===1?"":"es")+" por caerse"} titulo="⚠️ Planes de pago por caerse" color="#C1440E" ir={p.irVencimientos} irTxt="Vencimientos">
+            {enRiesgo.map(function(x,i){
+              var g=grupoDe(x.v.grupo);
+              return <Fila key={x.v.id||i} primera={i===0}
+                izq={<span><span style={{color:"#8C8C8C"}}>{g.corto}</span> · {x.v.nro_plan||x.v.concepto}</span>}
+                detalle={x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+(x.rg.caido?"":" · con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")}
+                onClick={function(){p.irVencimientos(g.id);}}
+                der={x.rg.caido?"Se cayó":"Por caerse"} color={x.rg.caido?"#E0714A":"#D4A017"}/>;
+            })}
+          </Seccion>
+        )}
+
         <div ref={refDeuda}>
         <Seccion tab="deudas" id="deudas" res={(totalVencido>0?fmt(totalVencido)+" vencido":"Sin deuda vencida")+" · "+fmt(totalProv)+" de proveedores"} titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(

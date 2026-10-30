@@ -3123,11 +3123,11 @@ function infoSeccionesDe(u){
 // numerados ("1.", "1)", "Paso 1:") van sin el número y las listas ("-", "•", "*") con su marca. No cambia lo cargado: se arma al mostrarlo.
 function TextoInfo(p){
   var lineas=String(p.texto||"").replace(/\r/g,"").split("\n");
-  var out=[], k=0;
+  var out=[], k=0, enLista=false;
   lineas.forEach(function(raw,i){
     var t=raw.trim();
-    if(!t){ out.push(<div key={"s"+i} style={{height:7}}/>); return; }
-    var mNum=/^(?:paso\s*)?(\d{1,2})\s*[\.\)\-:]\s+(.*)$/i.exec(t);
+    if(!t){ enLista=false; out.push(<div key={"s"+i} style={{height:7}}/>); return; }
+    var mNum=/^(?:paso\s*)?(\d{1,2})\s*[\.\)\-:](?!\d)\s*(\S.*)$/i.exec(t);
     var mLis=/^[-•*–·]\s+(.*)$/.exec(t);
     var esSub=!mNum&&!mLis&&(/^#+\s*/.test(t)||(/:$/.test(t)&&t.length<=80)||(t.length<=60&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]{3}/.test(t)));
     if(mNum){
@@ -3137,9 +3137,13 @@ function TextoInfo(p){
       out.push(<div key={i} style={{fontSize:13,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3,wordBreak:"break-word"}}>{mLis[1]}</div>);
     } else if(esSub){
       out.push(<div key={i} style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",margin:(k++?"10px":"4px")+" 0 4px",wordBreak:"break-word"}}>{t.replace(/^#+\s*/,"")}</div>);
+    } else if(enLista){
+      // Una línea pegada a un paso lo continúa: va con la misma marca.
+      out.push(<div key={i} style={{fontSize:13,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3,wordBreak:"break-word"}}>{t}</div>);
     } else {
       out.push(<div key={i} style={{fontSize:13,color:"#D8D8D8",lineHeight:1.6,padding:"2px 0",wordBreak:"break-word"}}>{t}</div>);
     }
+    enLista=!!(mNum||mLis||(enLista&&!esSub));
   });
   return <div>{out}</div>;
 }

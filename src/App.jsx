@@ -3119,6 +3119,32 @@ function infoSeccionesDe(u){
   if(sx==="caja")return ["cajeros"];
   return [];
 }
+// El texto de un instructivo con el mismo orden y claridad que las pautas de fichaje: los subtítulos se destacan, los pasos
+// numerados ("1.", "1)", "Paso 1:") van con su número y las listas ("-", "•", "*") con su marca. No cambia lo cargado: se arma al mostrarlo.
+function TextoInfo(p){
+  var lineas=String(p.texto||"").replace(/\r/g,"").split("\n");
+  var out=[], k=0;
+  lineas.forEach(function(raw,i){
+    var t=raw.trim();
+    if(!t){ out.push(<div key={"s"+i} style={{height:7}}/>); return; }
+    var mNum=/^(?:paso\s*)?(\d{1,2})\s*[\.\)\-:]\s+(.*)$/i.exec(t);
+    var mLis=/^[-•*–·]\s+(.*)$/.exec(t);
+    var esSub=!mNum&&!mLis&&(/^#+\s*/.test(t)||(/:$/.test(t)&&t.length<=80)||(t.length<=60&&t===t.toUpperCase()&&/[A-ZÁÉÍÓÚÑ]{3}/.test(t)));
+    if(mNum){
+      out.push(<div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",padding:"4px 0"}}>
+        <span style={{flexShrink:0,minWidth:22,height:22,borderRadius:11,background:"#1A6B8A33",border:"1px solid #1A6B8A88",color:"#7CC4E0",fontSize:11.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>{mNum[1]}</span>
+        <span style={{fontSize:13,color:"#E2E2E2",lineHeight:1.6,minWidth:0,wordBreak:"break-word"}}>{mNum[2]}</span>
+      </div>);
+    } else if(mLis){
+      out.push(<div key={i} style={{fontSize:13,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #1A6B8A55",marginBottom:3,wordBreak:"break-word"}}>{mLis[1]}</div>);
+    } else if(esSub){
+      out.push(<div key={i} style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",margin:(k++?"10px":"4px")+" 0 4px",wordBreak:"break-word"}}>{t.replace(/^#+\s*/,"")}</div>);
+    } else {
+      out.push(<div key={i} style={{fontSize:13,color:"#D8D8D8",lineHeight:1.6,padding:"2px 0",wordBreak:"break-word"}}>{t}</div>);
+    }
+  });
+  return <div>{out}</div>;
+}
 // Las reglas de fichaje, siempre al día: salen de los mismos valores que usa la app (tolerancia, anticipo, radio, presentismo), así que si cambian acá cambian en este cartel.
 function PautasFichaje(){
   var [abierto,setAbierto]=useState(true);
@@ -3257,9 +3283,9 @@ function PanelInfoCajero(p){
               </div>
             );
             return(
-              <div key={x.id} style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"13px 15px"}}>
-                {x.titulo&&<div style={{fontSize:14,fontWeight:700,color:"#3A9BC1",marginBottom:5}}>{x.titulo}</div>}
-                <div style={{fontSize:13,color:"#D8D8D8",whiteSpace:"pre-wrap",lineHeight:1.6}}>{x.texto}</div>
+              <div key={x.id} style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"12px 14px"}}>
+                {x.titulo&&<div style={{fontSize:14,fontWeight:800,color:"#3A9BC1",marginBottom:6}}>{x.titulo}</div>}
+                <TextoInfo texto={x.texto}/>
                 {puedeEditar&&(
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
                     <div style={{display:"flex",gap:4}}>

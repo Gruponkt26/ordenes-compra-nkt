@@ -14517,7 +14517,7 @@ function PanelNovedades(p){
   var mesEnCurso=hoy.substring(0,7);
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
-  var [tabNov,setTabNov]=useState("plata"); // plata | venc | resultados | personal | operacion
+  var [tabNov,setTabNov]=useState("plata"); // plata | deudas | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
@@ -15427,7 +15427,7 @@ function PanelNovedades(p){
 
       {/* Pestañas: lo de todos los días queda arriba, el resto se consulta por tema */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-        {[["plata","💰 Plata"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
+        {[["plata","💰 Plata"],["deudas","💳 Deudas"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
           var act=tabNov===t[0];
           return <button key={t[0]} onClick={function(){setTabNov(t[0]);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?"#D4A017":"#222"),background:act?"#D4A01722":"#0C0C0C",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
         })}
@@ -15700,7 +15700,7 @@ function PanelNovedades(p){
 
 
         <div ref={refDeuda}>
-        <Seccion tab="plata" id="deudas" res={(totalVencido>0?fmt(totalVencido)+" vencido":"Sin deuda vencida")+" · "+fmt(totalProv)+" de proveedores"} titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
+        <Seccion tab="deudas" id="deudas" res={(totalVencido>0?fmt(totalVencido)+" vencido":"Sin deuda vencida")+" · "+fmt(totalProv)+" de proveedores"} titulo="💳 Deudas por título" color="#8B2FC9" ir={p.irVencimientos} irTxt="Vencimientos">
           {(deudaRubros.length+deudaProv.length)===0?(
             <div style={vacio}>No se debe nada: ni vencimientos sin pagar ni saldo con proveedores.</div>
           ):(
@@ -15926,7 +15926,7 @@ function PanelNovedades(p){
           var pend=pendientesDeSaldar(p.gastos||[]);
           if(pend.length===0)return null;
           return(
-            <Seccion tab="plata" id="saldar" res={pend.length+" por saldar · "+fmt(pend.reduce(function(a,x){return a+x.m;},0))} titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
+            <Seccion tab="deudas" id="saldar" res={pend.length+" por saldar · "+fmt(pend.reduce(function(a,x){return a+x.m;},0))} titulo={"💸 Para saldar entre dependencias"} color="#E07B00">
               {(function(){
                 // Desde el primer día del mes siguiente al que se empezó a llevar, si queda algo sin saldar se pregunta qué se va a hacer.
                 var hoyP=diaDeNegocio(), mesP=hoyP.substring(0,7), plan=p.planSaldar;

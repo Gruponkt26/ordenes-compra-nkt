@@ -14515,6 +14515,25 @@ function PanelNovedades(p){
     return {local:l, monto:efectivoTeoricoCaja(l.id,hoyReal,datosEfectivo)};
   });
   var mesEnCurso=hoy.substring(0,7);
+  // Lo del Fichaje que pide una decisión: justificativos por revisar, jornadas que quedaron sin salida y quienes ya llevan 2 o más llegadas tarde en el mes.
+  var asist=(function(){
+    var emps=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+    var fich=p.fichajes||[], just=p.justificativos||[];
+    var desde14=fechaLocal(new Date(Date.now()-14*86400000));
+    var pend=just.filter(function(j){return j.estado==="pendiente";});
+    var abiertas=[], tardes=[];
+    emps.forEach(function(e){
+      jornadasDe(fich.filter(function(f){return f.empleado_id===e.id;})).forEach(function(j){
+        if(j.entrada&&!j.salida&&Date.now()-new Date(j.entrada.momento).getTime()>16*3600000&&String(j.entrada.fecha||"").substring(0,10)>=desde14)abiertas.push({e:e,f:j.entrada});
+      });
+      if(jornadaDe(e)){
+        var r=resumenAsistencia(e,fich,mesEnCurso,p.vacaciones,just);
+        if(r.tarde.length>=2)tardes.push({e:e,n:r.tarde.length,fechas:r.tarde});
+      }
+    });
+    tardes.sort(function(x,y){return y.n-x.n;});
+    return {pend:pend,abiertas:abiertas,tardes:tardes,total:pend.length+abiertas.length+tardes.length};
+  })();
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
   var [tabNov,setTabNov]=useState("plata"); // plata | deudas | venc | resultados | personal | operacion
@@ -15029,6 +15048,9 @@ function PanelNovedades(p){
             if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá esas marcas en el Registro"});
           });
         })();
+        if(asist.pend.length>0)avisos.push({rojo:false,txt:asist.pend.length+" justificativo"+(asist.pend.length===1?"":"s")+" de faltas para revisar ("+asist.pend.map(function(j){return j.empleado_nombre;}).filter(function(v,i,a2){return a2.indexOf(v)===i;}).join(", ")+")",ir:function(){setTabNov("personal");}});
+        if(asist.abiertas.length>0)avisos.push({rojo:false,txt:"Sin salida marcada: "+asist.abiertas.map(function(x){return x.e.nombre+" ("+fmtDate(String(x.f.fecha).substring(0,10))+")";}).join(", "),ir:function(){setTabNov("personal");}});
+        asist.tardes.filter(function(x){return x.n>=3;}).forEach(function(x){ avisos.push({rojo:true,txt:x.e.nombre+" llegó tarde "+x.n+" veces en el mes: pierde el presentismo",ir:function(){setTabNov("personal");}}); });
         // Control semanal contra ARCA: aparece desde el lunes y sigue hasta que se controla cada CUIT.
         var faltaArca=FACTURACION.filter(function(f){return !(p.controlesArca||{})[semanaDe(hoy)+"_"+f.id];});
         if(faltaArca.length>0)avisos.push({rojo:false,txt:"Controlar IVA contra ARCA esta semana ("+faltaArca.map(function(f){return f.razonSocial.split(" ")[0];}).join(", ")+")",ir:function(){setTabNov("venc");setExpandido(function(e){return {...e,sec_arca:true};});}});
@@ -15876,6 +15898,23 @@ function PanelNovedades(p){
             </div>
           )}
         </Seccion>
+
+        {asist.total>0&&(
+          <Seccion tab="personal" id="asistencia" res={[asist.pend.length>0?asist.pend.length+" justificativo"+(asist.pend.length===1?"":"s")+" por revisar":null,asist.abiertas.length>0?asist.abiertas.length+" sin salida":null,asist.tardes.length>0?asist.tardes.length+" con llegadas tarde":null].filter(Boolean).join(" · ")} titulo="🕒 Asistencia para revisar" color="#E07B00" ir={p.irFichaje} irTxt="Fichaje">
+            {asist.pend.length>0&&<Sub primera={true}>Justificativos de faltas por revisar</Sub>}
+            {asist.pend.map(function(j,i){
+              return <Fila key={j.id||i} primera={i===0} izq={<span>{j.empleado_nombre}</span>} detalle={(j.motivo?"“"+j.motivo+"” · ":"")+(j.foto_url?"con certificado":"sin certificado")} der={"faltó el "+fmtDate(j.fecha)} color="#D4A017" onClick={p.irFichaje}/>;
+            })}
+            {asist.abiertas.length>0&&<Sub primera={asist.pend.length===0}>Entraron y no marcaron la salida</Sub>}
+            {asist.abiertas.map(function(x,i){
+              return <Fila key={x.f.id||i} primera={i===0} izq={<span>{x.e.nombre}</span>} detalle="Cargá la salida a mano en Registro" der={"entró "+fmtDate(String(x.f.fecha).substring(0,10))+" "+x.f.hora} color="#E0714A" onClick={p.irFichaje}/>;
+            })}
+            {asist.tardes.length>0&&<Sub primera={asist.pend.length===0&&asist.abiertas.length===0}>Llegadas tarde en {mesEnCurso}</Sub>}
+            {asist.tardes.map(function(x,i){
+              return <Fila key={x.e.id} primera={i===0} izq={<span>{x.e.nombre}</span>} detalle={x.fechas.map(function(t){return fmtDate(t.fecha)+" (+"+t.min+" min)";}).join(" · ")} der={x.n>=3?x.n+" · pierde el presentismo":x.n+" · a la tercera lo pierde"} color={x.n>=3?"#E0714A":"#D4A017"} onClick={p.irFichaje}/>;
+            })}
+          </Seccion>
+        )}
 
         {(function(){
           // Quienes vinieron en su franco, con el día al que lo cambiaron o el motivo que dieron al marcar. Últimos 14 días.
@@ -29238,6 +29277,7 @@ export default function App() {
               irSaldarCruzados={function(){abrirModulo("admin","cruzados");}}
               irSaldarOficina={function(){setLocInicial("l4");setLocTab("resumen");abrirModulo("locales","loc_inicio");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
+              justificativos={justificativos} irFichaje={function(){abrirModulo("fichaje","fichajes_registro");}}
               irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />
           )}

@@ -1,5 +1,5 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
@@ -3148,6 +3148,24 @@ function TextoInfo(p){
   return <div>{out}</div>;
 }
 // Las reglas de fichaje, siempre al día: salen de los mismos valores que usa la app (tolerancia, anticipo, radio, presentismo), así que si cambian acá cambian en este cartel.
+// Si un panel se rompe por un dato raro, en vez de dejar la pantalla en blanco muestra qué falló y deja volver a intentar.
+class ErrorSeguro extends React.Component{
+  constructor(props){ super(props); this.state={error:null}; }
+  static getDerivedStateFromError(error){ return {error:error}; }
+  render(){
+    if(this.state.error){
+      var msg=String((this.state.error&&this.state.error.message)||this.state.error);
+      return(
+        <div style={{background:"#14100A",border:"1px solid #C1440E88",borderRadius:12,padding:"14px 16px",fontFamily:"'Inter',sans-serif",color:"#F0EDE8"}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#E0714A",marginBottom:6}}>⚠️ {this.props.nombre||"Esta pantalla"} tuvo un problema</div>
+          <div style={{fontSize:12,color:"#B8B8B8",lineHeight:1.5,marginBottom:8}}>Pasale este texto a quien te ayuda con la app: <code style={{color:"#D4A017",wordBreak:"break-word"}}>{msg}</code></div>
+          <button onClick={function(){ this.setState({error:null}); }.bind(this)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #D4A01788",background:"none",color:"#D4A017",fontWeight:700,cursor:"pointer"}}>Reintentar</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 function PautasFichaje(){
   var [abierto,setAbierto]=useState(true);
   var bloques=[
@@ -14520,16 +14538,18 @@ function PanelNovedades(p){
     var emps=(p.empleados||[]).filter(function(e){return e.activo!==false;});
     var fich=p.fichajes||[], just=p.justificativos||[];
     var desde14=fechaLocal(new Date(Date.now()-14*86400000));
-    var pend=just.filter(function(j){return j.estado==="pendiente";});
+    var pend=Array.isArray(just)?just.filter(function(j){return j&&j.estado==="pendiente";}):[];
     var abiertas=[], tardes=[];
     emps.forEach(function(e){
-      jornadasDe(fich.filter(function(f){return f.empleado_id===e.id;})).forEach(function(j){
-        if(j.entrada&&!j.salida&&Date.now()-new Date(j.entrada.momento).getTime()>16*3600000&&String(j.entrada.fecha||"").substring(0,10)>=desde14)abiertas.push({e:e,f:j.entrada});
-      });
-      if(jornadaDe(e)){
-        var r=resumenAsistencia(e,fich,mesEnCurso,p.vacaciones,just);
-        if(r.tarde.length>=2)tardes.push({e:e,n:r.tarde.length,fechas:r.tarde});
-      }
+      try{   // un dato raro de una ficha no tiene que romper todo Novedades
+        jornadasDe(fich.filter(function(f){return f.empleado_id===e.id;})).forEach(function(j){
+          if(j.entrada&&!j.salida&&Date.now()-new Date(j.entrada.momento).getTime()>16*3600000&&String(j.entrada.fecha||"").substring(0,10)>=desde14)abiertas.push({e:e,f:j.entrada});
+        });
+        if(jornadaDe(e)){
+          var r=resumenAsistencia(e,fich,mesEnCurso,p.vacaciones,just);
+          if(r.tarde.length>=2)tardes.push({e:e,n:r.tarde.length,fechas:r.tarde});
+        }
+      }catch(err){}
     });
     tardes.sort(function(x,y){return y.n-x.n;});
     return {pend:pend,abiertas:abiertas,tardes:tardes,total:pend.length+abiertas.length+tardes.length};
@@ -29259,6 +29279,7 @@ export default function App() {
             </div>
           )}
           {esSofia&&modulo==="novedades"&&(
+            <ErrorSeguro nombre="Novedades">
             <PanelNovedades controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
@@ -29280,6 +29301,7 @@ export default function App() {
               justificativos={justificativos} irFichaje={function(){abrirModulo("fichaje","fichajes_registro");}}
               irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />
+            </ErrorSeguro>
           )}
 
           {/* MÓDULO LOCALES */}

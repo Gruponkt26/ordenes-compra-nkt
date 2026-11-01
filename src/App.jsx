@@ -14136,8 +14136,6 @@ function PanelIIBB(p){
 // emitió) y las canceladas se muestran aparte, chiquitas, para que no inflen el número.
 function PanelOrdenesPorMes(p){
   var ordenes=p.ordenes||[];
-  var [fechaPlan,setFechaPlan]=useState("");
-  var [cambiandoPlan,setCambiandoPlan]=useState(false);
   var locales=LOCALES.filter(function(l){return l.id!=="l4";});
   var MESES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   var mesActual=diaDeNegocio().substring(0,7);
@@ -14556,6 +14554,8 @@ function PanelNovedades(p){
   })();
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
+  var [fechaPlan,setFechaPlan]=useState("");          // saldar entre dependencias: la fecha elegida
+  var [cambiandoPlan,setCambiandoPlan]=useState(false);
   var [tabNov,setTabNov]=useState("plata"); // plata | deudas | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);

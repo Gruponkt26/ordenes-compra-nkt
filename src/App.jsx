@@ -29268,6 +29268,22 @@ export default function App() {
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
 
+          {/* Resultados visible: para "traer el cierre del mes anterior" al traspaso hace falta calcular también el mes anterior, oculto. */}
+          {esSofia&&modulo==="admin"&&vista==="resultados"&&(
+            <div style={{display:"none"}}>
+              {(function(){
+                var hoyM=new Date().toISOString().slice(0,7), yy=parseInt(hoyM.slice(0,4),10), mm=parseInt(hoyM.slice(5,7),10);
+                var prevM=mm===1?(yy-1)+"-12":yy+"-"+("0"+(mm-1)).slice(-2);
+                return(
+              <PanelResultados mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+                );
+              })()}
+            </div>
+          )}
+
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
             <div style={{display:"none"}}>
@@ -29275,7 +29291,7 @@ export default function App() {
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
-              {comparaCostos&&(function(){
+              {(function(){
                 var hoyM=new Date().toISOString().slice(0,7), yy=parseInt(hoyM.slice(0,4),10), mm=parseInt(hoyM.slice(5,7),10);
                 var prevM=mm===1?(yy-1)+"-12":yy+"-"+("0"+(mm-1)).slice(-2), anioM=(yy-1)+"-"+hoyM.slice(5,7);
                 return(<div>
@@ -29283,10 +29299,12 @@ export default function App() {
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+                {comparaCostos&&(
               <PanelResultados mesInicial={anioM} onDatos={setDatosAnio} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
+                )}
                 </div>);
               })()}
             </div>

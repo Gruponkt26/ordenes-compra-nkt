@@ -29307,7 +29307,7 @@ export default function App() {
 
           {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
           {esSofia&&modulo==="competencia"&&(
-            <PanelCompetencia fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+            <PanelCompetencia ventasDeCierre={ventasDeCierre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
           {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}
@@ -29835,7 +29835,7 @@ export default function App() {
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {/* Mi ficha: lo laboral del propio empleado, sin sueldos ni observaciones */}
           {!esSofia&&subCompras==="competencia"&&(
-            <PanelCompetencia soloLectura={true} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+            <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
           {!esSofia&&subCompras==="mificha"&&empleadoDe(cu)&&misDatos!==null&&(

@@ -12236,6 +12236,14 @@ function jornadaDe(emp){
 }
 // Lo que le toca ese día: {franco, desde, hasta, minutos}. Sin jornada cargada devuelve
 // null —no se sabe—, que no es lo mismo que un franco.
+// ¿Ya terminó el turno de ese día? Hasta entonces no se puede decir que faltó: todavía puede entrar.
+function turnoTerminado(t, fecha){
+  if(!t||t.franco||!t.desde||!t.hasta)return true;
+  var fin=new Date(fecha+"T"+t.hasta+":00");
+  if(isNaN(fin.getTime()))return true;
+  if(String(t.hasta)<=String(t.desde))fin=new Date(fin.getTime()+86400000);   // el turno cruza la medianoche
+  return new Date()>=fin;
+}
 function turnoDe(emp, fecha){
   var j=jornadaDe(emp); if(!j)return null;
   var k=claveDia(fecha); if(!k)return null;
@@ -13566,6 +13574,7 @@ function PanelFichajes(p){
         var t=turnoDe(e,f); if(!t)return;
         if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
         if(FICHAJE_DESDE&&f<FICHAJE_DESDE&&!conMarcas[f])return;   // antes de usar el sistema no hay faltas
+        if(f===hoy&&!turnoTerminado(t,f))return;                    // el turno de hoy todavía no terminó: no es falta ni horas previstas
         previstas+=t.minutos;
         if(!conMarcas[f])faltas.push(f);
       });
@@ -13881,7 +13890,7 @@ function PanelFichajes(p){
                     var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
                     var t=x.tieneJornada?turnoDe(x.e,f):null;
                     var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0);
-                    var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0))?t.minutos:0;
+                    var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0)&&!(f===hoy&&!turnoTerminado(t,f)))?t.minutos:0;
                     accT+=trab; accP+=prev;
                     var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
                     return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem};

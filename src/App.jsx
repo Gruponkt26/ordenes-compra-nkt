@@ -22195,7 +22195,7 @@ function PanelResultados(p){
       var d=datos[l.id]||{};
       out.locales[l.id]={ventas:d.ventasCorregidas||0,gastos:d.totalGastos||0,resultado:d.resultado||0,dispEf:d.dispEfectivo||0,dispEl:d.dispElectronicoHoy||0,
         cajon:d.efectivoCajon||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0,
-        cierre:{efectivo:d.dispEfectivo||0,transferencia:d.dispTransferencia||0,debito:d.dispDebitoHoy||0,credito:d.dispCreditoHoy||0,otros:(d.dispOtros||0)+(d.dispMp||0)}};
+        pendiente:{credito:d.creditoPendienteNeto||0,debito:Math.max(0,(d.debitoPendienteNeto||0)-(d.creditoPendienteNeto||0)),fechas:d.debitoPendientePorFecha||[]}};
     });
     var js=JSON.stringify(out);
     if(js===ultimoEnvioRef.current)return;
@@ -22866,14 +22866,15 @@ function PanelResultados(p){
                   </div>
                 )}
                 {(function(){
+                  // Solo lo que quedó sin acreditar de débito y crédito del mes anterior: el resto del traspaso lo carga cada uno.
                   var pv=p.datosPrevMes, mesPrev=mesAnteriorDe(mesFiltro);
-                  var cz=pv&&pv.mes===mesPrev&&pv.locales&&pv.locales[l.id]&&pv.locales[l.id].cierre;
-                  if(!cz)return null;
+                  var pe=pv&&pv.mes===mesPrev&&pv.locales&&pv.locales[l.id]&&pv.locales[l.id].pendiente;
+                  if(!pe||(pe.debito<=0&&pe.credito<=0))return null;
                   return <button onClick={function(){
                     setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};
-                      n[l.id]={...c,efectivo:String(Math.round(cz.efectivo)),transferencia:String(Math.round(cz.transferencia)),debito:String(Math.round(cz.debito)),credito:String(Math.round(cz.credito)),otros:String(Math.round(cz.otros)),nota:(c.nota||"")||("Cierre de "+mesPrev+" traído de Resultados")};
+                      n[l.id]={...c,debito:String(Math.round(pe.debito)),credito:String(Math.round(pe.credito)),nota:(c.nota||"")||("Pendiente de acreditar de "+mesPrev+" (débito y crédito)")};
                       return n;});
-                  }} style={{width:"100%",padding:"7px",borderRadius:7,border:"1px solid #1A6B8A88",background:"none",color:"#3A9BC1",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",marginBottom:7}}>⬅️ Traer el cierre de {mesPrev} (revisalo y guardá)</button>;
+                  }} style={{width:"100%",padding:"7px",borderRadius:7,border:"1px solid #1A6B8A88",background:"none",color:"#3A9BC1",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",marginBottom:7}}>⬅️ Traer lo pendiente de acreditar de {mesPrev}: débito {fmt(pe.debito)} · crédito {fmt(pe.credito)}</button>;
                 })()}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
                   {MEDIOS_CORR.map(function(mc){

@@ -28910,19 +28910,18 @@ export default function App() {
                 var tot={ef:0,el:0,cj:0,pend:0};
                 if(dg)ids.forEach(function(id){var x=dg[id]||{};tot.ef+=x.dispEf||0;tot.el+=x.dispEl||0;tot.cj+=x.cajon||0;tot.pend+=x.pend||0;});
                 var th={fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1,textAlign:"right",padding:"0 0 6px"};
-                var num=function(v){return {textAlign:"right",fontSize:12,fontWeight:800,fontVariantNumeric:"tabular-nums",color:v<0?"#E0714A":"#F0EDE8",padding:"9px 0",whiteSpace:"nowrap"};};
+                var num=function(v){return {textAlign:"right",fontSize:"clamp(10.5px,3.1vw,13px)",fontWeight:800,fontVariantNumeric:"tabular-nums",color:v<0?"#E0714A":"#F0EDE8",padding:"9px 0",whiteSpace:"nowrap"};};
                 return(
                   <div style={{width:"100%",maxWidth:440,boxSizing:"border-box",margin:"0 auto",background:"#0C0C0C",border:"1px solid #D4A01744",borderRadius:16,padding:"14px 14px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
                       <div style={{fontSize:12,fontWeight:800,color:"#D4A017",textTransform:"uppercase",letterSpacing:1.5}}>💰 Disponibilidad hoy</div>
-                      <div style={{fontSize:10,color:"#6E6E6E"}}>{dg?"Al día de hoy":"Calculando…"}</div>
+                      {!dg&&<div style={{fontSize:10,color:"#6E6E6E"}}>Calculando…</div>}
                     </div>
                     <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed"}}>
                       <thead>
                         <tr>
-                          <th style={{...th,textAlign:"left",width:"21%"}}></th>
+                          <th style={{...th,textAlign:"left",width:"22%"}}></th>
                           {ids.map(function(id){var l=getLocal(id)||{}; return <th key={id} style={{...th,color:l.color,fontWeight:800}}><div style={{fontSize:14,letterSpacing:0}}>{l.emoji}</div>{String(l.nombre||"").replace(/^El /,"").replace(/ Nkt$/,"")}</th>;})}
-                          <th style={{...th,color:"#D4A017",fontWeight:800}}><div style={{fontSize:14,letterSpacing:0}}>∑</div>Todos</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -28935,7 +28934,6 @@ export default function App() {
                                 var x=(dg&&dg[id])||{};
                                 return <td key={id} style={num(x[f[1]]||0)}>{dg?P(x[f[1]]):"—"}{f[1]==="dispEl"&&dg&&x.pend>0?<div style={{fontSize:9,fontWeight:600,color:"#D4A017"}}>+{P(x.pend)}</div>:null}</td>;
                               })}
-                              <td style={{...num(suma),color:suma<0?"#E0714A":"#D4A017"}}>{dg?P(suma):"—"}{f[1]==="dispEl"&&dg&&tot.pend>0?<div style={{fontSize:9,fontWeight:600,color:"#D4A017"}}>+{P(tot.pend)}</div>:null}</td>
                             </tr>
                           );
                         })}
@@ -28944,14 +28942,17 @@ export default function App() {
                             <td style={{fontSize:10.5,fontWeight:800,color:"#F0EDE8",textTransform:"uppercase",letterSpacing:1,padding:"10px 4px 10px 0"}}>Total</td>
                             {ids.map(function(id){
                               var x=dg[id]||{}, t=(x.dispEf||0)+(x.dispEl||0)+(x.cajon||0);
-                              return <td key={id} style={{...num(t),fontSize:12.5,fontWeight:900}}>{P(t)}</td>;
+                              return <td key={id} style={{...num(t),fontSize:"clamp(10.5px,3.1vw,13px)",fontWeight:900}}>{P(t)}</td>;
                             })}
-                            <td style={{...num(tot.ef+tot.el+tot.cj),fontSize:12.5,fontWeight:900,color:(tot.ef+tot.el+tot.cj)<0?"#E0714A":"#D4A017"}}>{P(tot.ef+tot.el+tot.cj)}</td>
                           </tr>
                         )}
                       </tbody>
                     </table>
-                    <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,lineHeight:1.4}}>Caja mayor: efectivo ya retirado de la caja. Electrónico: lo ya acreditado (en dorado, lo que falta acreditar, que no entra en el total). Caja menor: el efectivo del cajón. Total = suma de las tres.</div>
+                    {dg&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",borderTop:"1px solid #1A1A1A",padding:"9px 0 2px"}}>
+                      <span style={{fontSize:10.5,fontWeight:800,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>Total del grupo</span>
+                      <span style={{fontSize:17,fontWeight:900,fontVariantNumeric:"tabular-nums",color:(tot.ef+tot.el+tot.cj)<0?"#E0714A":"#D4A017"}}>{P(tot.ef+tot.el+tot.cj)}</span>
+                    </div>}
+                    <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,lineHeight:1.4}}>Caja mayor: efectivo ya retirado de la caja. Electrónico: lo ya acreditado (en dorado, lo que falta acreditar, que no entra en el total). Caja menor: el efectivo del cajón. Total de cada local = suma de las tres.</div>
                   </div>
                 );
               })()}

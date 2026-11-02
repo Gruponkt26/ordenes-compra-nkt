@@ -165,17 +165,58 @@ function fmtNota(n) { return n === null ? "—" : n.toFixed(2).replace(".", ",")
 
 var MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 // La temporada va de octubre 2026 a marzo 2027.
-var PERIODOS = ["2026-10", "2026-11", "2026-12", "2027-01", "2027-02", "2027-03"];
-function nombrePeriodo(p) { var s = p.split("-"); return MESES[parseInt(s[1], 10) - 1] + " " + s[0]; }
+// Noviembre es el mes de prueba (se ve todo, pero no suma a la temporada). La competencia real son diciembre, enero y febrero.
+var PERIODOS = ["2026-11", "2026-12", "2027-01", "2027-02"];
+var TEMPORADA_MESES = ["2026-12", "2027-01", "2027-02"];
+var MES_PRUEBA = "2026-11";
+function nombrePeriodo(p) { var s = p.split("-"); return MESES[parseInt(s[1], 10) - 1] + " " + s[0] + (p === MES_PRUEBA ? " (prueba)" : ""); }
 
 // ─── PUNTUALIDAD Y CAJA ──────────────────────────────────────────────────────
-var INICIO_TEMPORADA = "2026-10-01";
-var FIN_TEMPORADA = "2027-03-31";
+var INICIO_TEMPORADA = "2026-12-01";
+var FIN_TEMPORADA = "2027-02-28";
+var INICIO_DATOS = "2026-11-01";            // desde cuándo se leen los fichajes (incluye el mes de prueba)
 var TOLERANCIA_MIN = 10;                    // minutos de gracia para llegar
 // Cómo se reparten los 100 puntos entre los indicadores que hoy se miden. Si alguno todavía no tiene
 // datos, el resto se reparte en proporción. Más adelante se suman ventas y checklists.
-var PESOS = { opiniones: 0.4, puntualidad: 0.3, caja: 0.3 };
-var NOMBRE_INDICADOR = { opiniones: "Opiniones de clientes", puntualidad: "Puntualidad", caja: "Caja prolija" };
+var PESOS = { ventas: 0.35, opiniones: 0.25, puntualidad: 0.2, caja: 0.2 };
+var NOMBRE_INDICADOR = { ventas: "Facturación", opiniones: "Opiniones de clientes", puntualidad: "Puntualidad", caja: "Caja prolija" };
+
+// Facturación: cuánto creció cada local contra el mes anterior, comparada con el crecimiento promedio de los tres locales.
+// Si el local creció igual que el promedio saca 50 puntos; cada punto de crecimiento por encima (o por debajo) suma (o resta) 2,5. De 0 a 100.
+var PUNTOS_POR_PUNTO = 2.5;
+function sumaVentas(p, localId, mes, hastaDia) {
+  var total = 0;
+  (p.cierres || []).forEach(function (c) {
+    if (c.local !== localId || !c.fecha) return;
+    var f = String(c.fecha).substring(0, 10);
+    if (f.substring(0, 7) !== mes || parseInt(f.substring(8, 10), 10) > hastaDia) return;
+    total += p.ventasDeCierre ? p.ventasDeCierre(c) : (parseFloat(c.total_ventas) || 0);
+  });
+  return total;
+}
+function mesAnt(m) { var pr = m.split("-"); var y = parseInt(pr[0], 10), mm = parseInt(pr[1], 10) - 1; if (mm === 0) { mm = 12; y--; } return y + "-" + pad2(mm); }
+// Un mes entero, o —si todavía no terminó— los mismos primeros días de este mes y del anterior, para no comparar medio mes con un mes entero.
+function calcVentasMes(p, mes, ids) {
+  var ayer = ayerStr();
+  var pr = mes.split("-");
+  var ultimo = new Date(parseInt(pr[0], 10), parseInt(pr[1], 10), 0).getDate();
+  var hasta = ultimo;
+  if (ayer.substring(0, 7) < mes) return null;                       // el mes ni empezó
+  if (ayer.substring(0, 7) === mes) hasta = parseInt(ayer.substring(8, 10), 10);
+  var ant = mesAnt(mes);
+  var out = {};
+  ids.forEach(function (id) {
+    var act = sumaVentas(p, id, mes, hasta), prev = sumaVentas(p, id, ant, hasta);
+    out[id] = { actual: act, previo: prev, crec: prev > 0 && act > 0 ? (act / prev - 1) * 100 : null, hasta: hasta, completo: hasta === ultimo };
+  });
+  var con = ids.filter(function (id) { return out[id].crec !== null; });
+  var prom = con.length ? con.reduce(function (a, id) { return a + out[id].crec; }, 0) / con.length : null;
+  ids.forEach(function (id) {
+    out[id].promedio = prom;
+    out[id].puntos = (out[id].crec === null || prom === null) ? null : Math.max(0, Math.min(100, 50 + (out[id].crec - prom) * PUNTOS_POR_PUNTO));
+  });
+  return out;
+}
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function fechaStr(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
@@ -204,7 +245,7 @@ async function cargarEntradas() {
   var mapa = {}, justif = {};
   try {
     for (var pagina = 0; pagina < 20; pagina++) {
-      var q = "fichajes?tipo=eq.entrada&fecha=gte." + INICIO_TEMPORADA + "&select=empleado_id,fecha,hora,momento&order=momento.asc&limit=1000&offset=" + (pagina * 1000);
+      var q = "fichajes?tipo=eq.entrada&fecha=gte." + INICIO_DATOS + "&select=empleado_id,fecha,hora,momento&order=momento.asc&limit=1000&offset=" + (pagina * 1000);
       var r = await fetch(SURL + "/rest/v1/" + q, { headers: SH });
       var d = await r.json();
       if (!Array.isArray(d)) break;
@@ -291,14 +332,14 @@ export function PanelCompetencia(props) {
   var [tab, setTab] = useState("ranking");
   var [entradas, setEntradas] = useState(null);
   var [opiniones, setOpiniones] = useState(null);
-  var [periodo, setPeriodo] = useState("temporada");
+  var [periodo, setPeriodo] = useState(function () { var m = ayerStr().substring(0, 7); return PERIODOS.indexOf(m) !== -1 && TEMPORADA_MESES.indexOf(m) === -1 ? m : (TEMPORADA_MESES.indexOf(m) !== -1 ? "temporada" : MES_PRUEBA); });
   var [filtroLocal, setFiltroLocal] = useState("todos");
 
   function recargar() { cargarOpiniones().then(setOpiniones); }
   useEffect(function () { recargar(); cargarEntradas().then(setEntradas); }, []);
 
   var lista = (opiniones || []).filter(function (o) {
-    return periodo === "temporada" ? PERIODOS.indexOf(String(o.fecha).substring(0, 7)) !== -1 : String(o.fecha).substring(0, 7) === periodo;
+    return periodo === "temporada" ? TEMPORADA_MESES.indexOf(String(o.fecha).substring(0, 7)) !== -1 : String(o.fecha).substring(0, 7) === periodo;
   });
 
   function resumen(localId, canal) {
@@ -329,7 +370,7 @@ export function PanelCompetencia(props) {
   return (
     <div style={{ fontFamily: "'Inter',sans-serif" }}>
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5 }}>Temporada oct 2026 – mar 2027</div>
+        <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5 }}>Temporada dic 2026 – feb 2027 · noviembre es de prueba</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800 }}>🏆 Competencia entre locales</div>
         {props.soloLectura && <div style={{ fontSize: 11.5, color: "#9A9A9A", marginTop: 4, lineHeight: 1.5 }}>Así va la competencia. Abajo de cada local está el detalle de por qué tiene ese puntaje.</div>}
       </div>
@@ -344,7 +385,7 @@ export function PanelCompetencia(props) {
       {tab !== "qr" && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
           <select value={periodo} onChange={function (e) { setPeriodo(e.target.value); }} style={sel}>
-            <option value="temporada">📅 Toda la temporada</option>
+            <option value="temporada">📅 Toda la temporada (dic – feb)</option>
             {PERIODOS.map(function (p) { return <option key={p} value={p}>{nombrePeriodo(p)}</option>; })}
           </select>
           <button onClick={function () { recargar(); cargarEntradas().then(setEntradas); }} style={{ ...sel, cursor: "pointer" }}>🔄 Actualizar</button>
@@ -358,12 +399,17 @@ export function PanelCompetencia(props) {
           var op = resumen(id, "salon");
           var pu = entradas ? calcPuntualidad(id, dias, props, entradas) : null;
           var ca = calcCaja(id, dias, props);
+          var meses = periodo === "temporada" ? TEMPORADA_MESES : [periodo];
+          var vm = meses.map(function (m) { return { mes: m, d: calcVentasMes(props, m, LOCALES_COMPETENCIA) }; }).filter(function (x) { return x.d; });
+          var ptsV = vm.map(function (x) { return x.d[id].puntos; }).filter(function (v) { return v !== null; });
+          var ventas = { meses: vm.map(function (x) { return Object.assign({ mes: x.mes }, x.d[id]); }), puntaje: ptsV.length ? ptsV.reduce(function (a, v) { return a + v; }, 0) / ptsV.length : null };
           var partes = {
+            ventas: ventas.puntaje,
             opiniones: op.general === null ? null : ((op.general - 1) / 4) * 100,
             puntualidad: pu ? pu.puntaje : null,
             caja: ca.puntaje,
           };
-          return { local: localDe(id), op: op, pu: pu, ca: ca, partes: partes, total: totalPuntos(partes) };
+          return { local: localDe(id), op: op, pu: pu, ca: ca, ventas: ventas, partes: partes, total: totalPuntos(partes) };
         }).sort(function (a, b) { return (b.total === null ? -1 : b.total) - (a.total === null ? -1 : a.total); });
         var medallas = ["🥇", "🥈", "🥉"];
         function Barra(q) {
@@ -393,9 +439,9 @@ export function PanelCompetencia(props) {
             <div style={{ ...tarjeta, fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6 }}>
               Cada local suma de 0 a 100 puntos. Hoy cuentan tres cosas:{" "}
               {Object.keys(PESOS).map(function (k) { return NOMBRE_INDICADOR[k] + " " + Math.round(PESOS[k] * 100) + "%"; }).join(" · ")}.
-              {" "}Pronto se suman ventas contra la meta y checklists. Si un indicador todavía no tiene datos, el resto se reparte en proporción.
+              {" "}Pronto se suman los checklists. Si un indicador todavía no tiene datos, el resto se reparte en proporción.
               <div style={{ marginTop: 6, color: "#6E6E6E" }}>
-                Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
+                Facturación: cuánto creció la facturación del local contra el mes anterior, comparado con el crecimiento promedio de los tres locales (igual al promedio = 50 puntos; cada punto de más o de menos suma o resta {PUNTOS_POR_PUNTO.toString().replace(".", ",")}). Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
               </div>
             </div>
 
@@ -413,6 +459,7 @@ export function PanelCompetencia(props) {
                     var ap = aportes(x.partes);
                     return (
                       <div>
+                        <Barra nombre="Facturación vs mes anterior" valor={x.partes.ventas} color={x.local.color} aporte={ap.ventas.aporte} maximo={ap.ventas.maximo} />
                         <Barra nombre="Opiniones de clientes" valor={x.partes.opiniones} color={x.local.color} aporte={ap.opiniones.aporte} maximo={ap.opiniones.maximo} />
                         <Barra nombre="Puntualidad" valor={x.partes.puntualidad} color={x.local.color} aporte={ap.puntualidad.aporte} maximo={ap.puntualidad.maximo} />
                         <Barra nombre="Caja prolija" valor={x.partes.caja} color={x.local.color} aporte={ap.caja.aporte} maximo={ap.caja.maximo} />
@@ -430,6 +477,14 @@ export function PanelCompetencia(props) {
                 <div key={x.local.id} style={{ ...tarjeta, padding: "11px 14px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: x.local.color, marginBottom: 6 }}>{x.local.emoji} {x.local.nombre}</div>
                   <div style={{ fontSize: 11.5, color: "#B8B8B8", lineHeight: 1.7 }}>
+                    <b style={{ color: "#E8E8E8" }}>Facturación:</b>{" "}
+                    {x.ventas.meses.length === 0 ? "todavía no empezó el período" : x.ventas.meses.map(function (m) {
+                      var fm = function (n) { return "$" + Math.round(n).toLocaleString("es-AR"); };
+                      var nom = nombrePeriodo(m.mes) + (m.completo ? "" : ", hasta el día " + m.hasta + " de cada mes");
+                      if (m.crec === null) return nom + ": sin ventas para comparar con " + nombrePeriodo(mesAnt(m.mes)).replace(" (prueba)", "");
+                      return nom + ": " + fm(m.actual) + " contra " + fm(m.previo) + " del mes anterior (" + (m.crec >= 0 ? "+" : "") + m.crec.toFixed(1).replace(".", ",") + "%); el promedio de los tres locales fue " + (m.promedio >= 0 ? "+" : "") + m.promedio.toFixed(1).replace(".", ",") + "% → " + fmtPts(m.puntos) + " de 100";
+                    }).join(" · ")}
+                    <br />
                     <b style={{ color: "#E8E8E8" }}>Opiniones:</b>{" "}
                     {x.op.general === null ? "todavía no hay opiniones de clientes en este período" : "promedio " + fmtNota(x.op.general) + " de 5 estrellas con " + x.op.cantidad + " opinion" + (x.op.cantidad === 1 ? "" : "es") + " = " + fmtPts(x.partes.opiniones) + " de 100" + (x.op.cantidad < MINIMO_OPINIONES ? " (todavía pocas: mínimo " + MINIMO_OPINIONES + ")" : "")}
                     <br />
@@ -445,7 +500,7 @@ export function PanelCompetencia(props) {
               );
             })}
             <div style={{ fontSize: 10.5, color: "#6E6E6E", lineHeight: 1.5 }}>
-              Los días de vacaciones y los francos no cuentan. Se cuenta hasta ayer, y desde el 1 de octubre de 2026.
+              Los días de vacaciones y los francos no cuentan. Se cuenta hasta ayer. La temporada va de diciembre 2026 a febrero 2027; noviembre es de prueba y no suma.
             </div>
           </div>
         );

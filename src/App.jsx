@@ -13223,6 +13223,151 @@ function PanelFichar(p){
 
 // Los PINs, que carga administración. Cuatro números por persona: no es una contraseña, es
 // lo que hace falta para que "marcá vos por mí" deje de ser gratis. Alcanza para eso.
+// Faltas o llegadas tarde del mes, por empleado: quién, cuántas y en qué fechas. Usa el mismo cálculo que la ficha de cada uno.
+function PanelFaltasTardes(p){
+  var tipo=p.tipo;   // "faltas" | "tardes"
+  var fichajes=p.fichajes||[], empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var mesHoy=fechaLocal().substring(0,7);
+  var [mes,setMes]=useState(mesHoy);
+  var [localF,setLocalF]=useState("all");
+  var meses=[mesHoy]; fichajes.forEach(function(f){ var m=String(f.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m); });
+  meses.sort().reverse();
+  var MN=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  function nom(m){ var pr=String(m).split("-"); return MN[parseInt(pr[1],10)]+" "+pr[0]; }
+  var sinJornada=0;
+  var filas=[];
+  empleados.filter(function(e){return localF==="all"||e.local===localF;}).forEach(function(e){
+    if(!jornadaDe(e)){ sinJornada++; return; }
+    var r=null; try{ r=resumenAsistencia(e,fichajes,mes,p.vacaciones,p.justificativos); }catch(err){ return; }
+    var lista=tipo==="faltas"?r.faltas.filter(function(f){return f.estado!=="previa";}):r.tarde;
+    if(lista.length>0)filas.push({e:e,lista:lista});
+  });
+  filas.sort(function(a,b){return b.lista.length-a.lista.length||String(a.e.nombre).localeCompare(String(b.e.nombre));});
+  var total=filas.reduce(function(a,x){return a+x.lista.length;},0);
+  var ESTADO={sin:["sin justificar","#C1440E"],pendiente:["en revisión","#D4A017"],aprobado:["justificada","#3A7D44"],rechazado:["rechazada","#C1440E"]};
+  var sel={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5};
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:"12px 14px",marginBottom:8};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={sel}>{meses.map(function(m){return <option key={m} value={m}>{nom(m)}</option>;})}</select>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={sel}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+        <span style={{fontSize:12,color:tipo==="faltas"?"#C1440E":"#E07B00",fontWeight:700}}>{total} {tipo==="faltas"?(total===1?"falta":"faltas"):(total===1?"llegada tarde":"llegadas tarde")} · {filas.length} persona{filas.length===1?"":"s"}</span>
+      </div>
+      {filas.length===0&&<div style={{...CAJA,textAlign:"center",color:"#3A7D44",fontSize:13}}>{tipo==="faltas"?"Sin faltas en "+nom(mes)+" ✅":"Sin llegadas tarde en "+nom(mes)+" ✅"}</div>}
+      {filas.map(function(x){
+        var loc=getLocal(x.e.local)||{};
+        var pierde=tipo==="tardes"&&x.lista.length>=3;
+        return(
+          <div key={x.e.id} style={{...CAJA,borderColor:pierde?"#C1440E66":"#161616"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline",flexWrap:"wrap"}}>
+              <span><b style={{fontSize:14,color:"#F0EDE8"}}>{x.e.nombre}</b><span style={{fontSize:11,color:"#7E7E7E"}}> · {loc.emoji} {loc.nombre}</span></span>
+              <span style={{fontSize:14,fontWeight:800,color:tipo==="faltas"?"#C1440E":"#E07B00"}}>{x.lista.length}</span>
+            </div>
+            {pierde&&<div style={{fontSize:11,color:"#E0714A",fontWeight:700,marginTop:3}}>⚠️ Llegó tarde {x.lista.length} veces: pierde el presentismo</div>}
+            <div style={{marginTop:6}}>
+              {x.lista.map(function(it,i){
+                var e=tipo==="faltas"?(ESTADO[it.estado]||ESTADO.sin):null;
+                return(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:"#B8B8B8",padding:"3px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <span>{fmtDate(tipo==="faltas"?it.fecha:it.fecha)}</span>
+                    {tipo==="faltas"?<span style={{color:e[1],fontWeight:700}}>{e[0]}{it.just&&it.just.motivo?" · “"+it.just.motivo+"”":""}</span>:<span style={{color:"#E07B00",fontWeight:700}}>+{it.min} min</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {sinJornada>0&&<div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>{sinJornada} empleado{sinJornada===1?"":"s"} sin jornada cargada: no se puede calcular (cargala en Jornadas).</div>}
+      <div style={{fontSize:10,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>{tipo==="faltas"?"Son los días que le tocaba trabajar y no marcó, sin contar vacaciones, francos ni el día de hoy hasta que termine su turno.":"Llegadas tarde: más de "+TOLERANCIA_ATRASO_MIN+" minutos después de la hora de entrada de su jornada. A la tercera del mes se pierde el presentismo."}</div>
+    </div>
+  );
+}
+
+// Cambios del mes en el personal: de local (coberturas), de franco y de jornada. Sale de las marcas (notas) y del registro de cambios de jornada.
+function PanelCambios(p){
+  var fichajes=p.fichajes||[], empleados=p.empleados||[];
+  var mesHoy=fechaLocal().substring(0,7);
+  var [mes,setMes]=useState(mesHoy);
+  var [localF,setLocalF]=useState("all");
+  var [tipoF,setTipoF]=useState("todos");
+  var MN=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  function nom(m){ var pr=String(m).split("-"); return MN[parseInt(pr[1],10)]+" "+pr[0]; }
+  var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+  var meses=[mesHoy];
+  fichajes.forEach(function(f){var m=String(f.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m);});
+  (p.cambiosJornada||[]).forEach(function(c){var m=String(c.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m);});
+  meses.sort().reverse();
+  var empDe=function(id){return empleados.find(function(e){return e.id===id;});};
+  var items=[], vistos={};
+  fichajes.forEach(function(f){
+    var fe=String(f.fecha||"").substring(0,10);
+    if(f.tipo!=="entrada"||fe.substring(0,7)!==mes)return;
+    var emp=empDe(f.empleado_id), notas=String(f.notas||"");
+    var mc=/Cobertura\|reemplaza=([^|]*)\|/.exec(notas), mf=/Franco trabajado\|dia=([^|]*)\|motivo=([^|]*)\|/.exec(notas);
+    var loc=getLocal(f.local)||{}, suyo=emp?getLocal(emp.local)||{}:{};
+    var k=f.empleado_id+"_"+fe;
+    if(mc||(emp&&emp.local&&f.local&&emp.local!==f.local&&!f.manual)){
+      if(!vistos["l"+k]){ vistos["l"+k]=1;
+        items.push({tipo:"local",fecha:fe,hora:f.hora,local:emp?emp.local:f.local,nombre:f.empleado_nombre,
+          txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(suyo.nombre?" (su local es "+suyo.nombre+")":"")+(mc&&mc[1]?" · reemplaza a "+mc[1]:(mc?" · refuerzo":""))});
+      }
+    }
+    if(mf&&!vistos["f"+k]){ vistos["f"+k]=1;
+      items.push({tipo:"franco",fecha:fe,hora:f.hora,local:emp?emp.local:f.local,nombre:f.empleado_nombre,
+        txt:"vino en su franco · "+(mf[1]?"lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"sin cambio de franco")+(mf[2]?" · “"+mf[2]+"”":"")});
+    }
+  });
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  (p.cambiosJornada||[]).forEach(function(c){
+    if(String(c.fecha||"").substring(0,7)!==mes)return;
+    var dif=[];
+    DIAS_SEM.forEach(function(d){
+      var a=descDia((c.antes||{})[d.k]), b=descDia((c.despues||{})[d.k]);
+      if(a!==b)dif.push(d.n+": "+(c.antes?a:"sin cargar")+" → "+b);
+    });
+    if(dif.length===0)return;
+    items.push({tipo:"jornada",fecha:c.fecha,hora:"",local:c.local,nombre:c.empleado_nombre,txt:(c.antes?"cambio de jornada":"primera carga de jornada")+" · "+dif.join(" · ")+(c.usuario?" · lo cargó "+c.usuario:"")});
+  });
+  var lista=items.filter(function(x){return (localF==="all"||x.local===localF)&&(tipoF==="todos"||x.tipo===tipoF);})
+    .sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha))||String(b.hora).localeCompare(String(a.hora));});
+  var TIPOS={local:["🔁 Local","#1A8A7B"],franco:["📅 Franco","#D4A017"],jornada:["🕐 Jornada","#8B2FC9"]};
+  var cuenta=function(t){return items.filter(function(x){return (localF==="all"||x.local===localF)&&(t==="todos"||x.tipo===t);}).length;};
+  var sel={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={sel}>{meses.map(function(m){return <option key={m} value={m}>{nom(m)}</option>;})}</select>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={sel}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        {[["todos","Todos"],["local","🔁 Local"],["franco","📅 Franco"],["jornada","🕐 Jornada"]].map(function(t){var act=tipoF===t[0]; return <button key={t[0]} onClick={function(){setTipoF(t[0]);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(act?"#D4A017":"#222"),background:act?"#D4A01722":"#0C0C0C",color:act?"#F0EDE8":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]} · {cuenta(t[0])}</button>;})}
+      </div>
+      {lista.length===0&&<div style={{background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:"14px",textAlign:"center",color:"#6E6E6E",fontSize:13}}>No hubo cambios en {nom(mes)}.</div>}
+      {lista.map(function(x,i){
+        var t=TIPOS[x.tipo], loc=getLocal(x.local)||{};
+        return(
+          <div key={i} style={{background:"#0A0A0A",border:"1px solid #161616",borderLeft:"3px solid "+t[1],borderRadius:10,padding:"9px 12px",marginBottom:7}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,color:"#7E7E7E",marginBottom:2}}>
+              <span style={{color:t[1],fontWeight:800}}>{t[0]}</span>
+              <span>{fmtDate(x.fecha)}{x.hora?" · "+x.hora:""}</span>
+            </div>
+            <div style={{fontSize:12.5,color:"#D8D8D8",lineHeight:1.5}}><b style={{color:"#F0EDE8"}}>{x.nombre}</b>{loc.nombre?<span style={{color:"#7E7E7E"}}> · {loc.emoji} {loc.nombre}</span>:null} {x.txt}</div>
+          </div>
+        );
+      })}
+      <div style={{fontSize:10,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Los cambios de jornada se registran desde que se agregó esta pestaña: los anteriores no tienen historial.</div>
+    </div>
+  );
+}
+
 function PanelPines(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [localF,setLocalF]=useState("all");
@@ -13367,9 +13512,14 @@ function PanelJornadas(p){
       if(x&&!x.franco&&!x.desde&&!x.hasta)jn[d.k]={franco:true,desde:"",hasta:""};
     });
     setGuardando(e.id);
+    var antes=jornadaDe(e);
     var r=await p.onSaveEmpleado({...e, jornada:jn});
     setGuardando("");
-    if(r!==false)setBorr(function(o){var n={...o};delete n[e.id];return n;});
+    if(r!==false){
+      setBorr(function(o){var n={...o};delete n[e.id];return n;});
+      // Queda anotado qué se cambió, quién y cuándo (la pestaña Cambios del Fichaje lo muestra).
+      if(p.onCambioJornada&&JSON.stringify(antes||null)!==JSON.stringify(jn))p.onCambioJornada({empleado_id:e.id,empleado_nombre:e.nombre,local:e.local,antes:antes,despues:jn});
+    }
   }
   function minSemana(e){
     return DIAS_SEM.reduce(function(a,d){
@@ -28262,6 +28412,11 @@ export default function App() {
     if(x.ambito!=="traspaso_pend")return;
     try{ var dp=JSON.parse(x.texto||"{}"); if(dp.local&&dp.mes)traspPend[dp.local+"_"+dp.mes]=(dp.items||[]).filter(function(i){return i&&i.fecha&&(parseFloat(i.monto)||0)>0;}); }catch(e){}
   });
+  var cambiosJornada=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="cambio_jornada")return;
+    try{ var dj=JSON.parse(x.texto||"{}"); if(dj.empleado_id)cambiosJornada.push({...dj,id:x.id,creado:x.created_at}); }catch(e){}
+  });
   var telUtiles=[];
   pautas.forEach(function(x){
     if(x.ambito!=="tel_util")return;
@@ -29323,8 +29478,8 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"],["fichajes_fichar","🕐 Fichar (mi marcación)","#1A8A7B"]].map(function(t){
-                  var act=vista===t[0]||(t[0]==="fichajes_registro"&&vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar");
+                {[["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"],["fichajes_faltas","🚫 Faltas","#C1440E"],["fichajes_tardes","🕒 Llegadas tarde","#E07B00"],["fichajes_cambios","🔁 Cambios","#D4A017"],["fichajes_fichar","🕐 Fichar (mi marcación)","#1A8A7B"]].map(function(t){
+                  var act=vista===t[0]||(t[0]==="fichajes_registro"&&vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios");
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
                 <button onClick={async function(){
@@ -29332,12 +29487,12 @@ export default function App() {
                   alert("🔧 Diagnóstico del fichaje\n\n"+r);
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
-              {vista!=="fichajes_fichar"&&<CajaPantallaLocal secretos={secretosFichaje}
+              {vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios"&&<CajaPantallaLocal secretos={secretosFichaje}
                 onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }}
                 onActivar={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")&&<ProbarUbicacion localesDatos={localesDatos}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")&&<ProbarUbicacion localesDatos={localesDatos}/>}
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
@@ -29352,9 +29507,13 @@ export default function App() {
                      }
                    }}/>
                 :vista==="fichajes_jornadas"
-                ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
+                ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado} onCambioJornada={function(c){guardarOfPauta("cambio_jornada",{id:"cjor_"+c.empleado_id+"_"+Date.now(),...c,fecha:fechaLocal(),usuario:cu.nombre});}}/>
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
+                :vista==="fichajes_cambios"
+                ?<PanelCambios fichajes={fichajes} empleados={empleados} cambiosJornada={cambiosJornada}/>
+                :vista==="fichajes_faltas"||vista==="fichajes_tardes"
+                ?<PanelFaltasTardes tipo={vista==="fichajes_faltas"?"faltas":"tardes"} empleados={empleados} fichajes={fichajes} vacaciones={vacaciones} justificativos={justificativos}/>
                 :vista==="fichajes_fichar"
                 ?<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
               onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}

@@ -24341,7 +24341,8 @@ function numALetras(n){
 }
 var RECIBO_CONCEPTOS=[["Sueldo básico","haber"],["Presentismo","haber"],["Horas extras","haber"],["Adicionales","haber"],["Adelanto de sueldo","descuento"],["Otros descuentos","descuento"]];
 function PanelRecibosFC(p){
-  var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
+  var empleadosTodos=p.empleados||[];
+  var empleados=empleadosTodos.filter(function(e){return e.activo!==false;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
   var [lista,setLista]=useState(null);
   var [form,setForm]=useState(null);
   var [guardando,setGuardando]=useState(false);
@@ -24356,6 +24357,33 @@ function PanelRecibosFC(p){
     }).catch(function(){ setLista([]); });
   }
   useEffect(function(){ cargar(); },[]);
+  // Un recibo ya armado con los datos de un sueldo: empleado, período y monto sin convenio (en los mixtos, el resto se liquida por convenio).
+  function nuevoDesdeSueldo(empId,periodo,monto,mixto){
+    var e=empleadosTodos.find(function(x){return x.id===empId;})||{};
+    setForm({id:null,empleador:EMPLEADORES[0].nombre,cuit:EMPLEADORES[0].cuit,domicilio:"",empleado_id:empId,nombre:e.nombre||"",cuil:e.cuil||"",categoria:e.categoria||"",
+      ingreso:e.fecha_alta?String(e.fecha_alta).substring(0,10):"",periodo:periodo||hoy.substring(0,7),fecha_pago:hoy,lugar:"",medio:"Efectivo",
+      obs:mixto?"Corresponde a la parte del sueldo fuera de convenio. El resto se liquida por convenio.":"",
+      lineas:RECIBO_CONCEPTOS.map(function(c,i){return {concepto:c[0],tipo:c[1],monto:i===0&&monto>0?String(Math.round(monto*100)/100):""};})});
+    window.scrollTo&&window.scrollTo(0,0);
+  }
+  useEffect(function(){
+    if(p.inicial){ nuevoDesdeSueldo(p.inicial.empleado_id,p.inicial.periodo,p.inicial.monto,p.inicial.mixto); if(p.onInicialUsado)p.onInicialUsado(); }
+  },[p.inicial]);
+  // Sueldos ya pagados de empleados fuera de convenio (o mixtos) que todavía no tienen su recibo.
+  var sinRecibo=[];
+  if(lista){
+    var desdeP=fechaLocal(new Date(Date.now()-100*86400000)).substring(0,7);
+    (p.sueldos||[]).forEach(function(sd){
+      if(sd.concepto_extra||(sd.estado!=="pagado"&&sd.estado!=="parcial")||String(sd.periodo||"")<desdeP)return;
+      var e=empleadosTodos.find(function(x){return x.id===sd.empleado_id;}); if(!e)return;
+      var conv=e.convenio||"sin_convenio"; if(conv==="convenio")return;
+      var monto=conv==="mixto"?(parseFloat(sd.monto_sin_convenio)||0):(sd.estado==="parcial"?(parseFloat(sd.monto_parcial)||0):(parseFloat(sd.monto)||0));
+      if(!(monto>0))return;
+      if(lista.some(function(r){return r.empleado_id===sd.empleado_id&&r.periodo===sd.periodo;}))return;
+      sinRecibo.push({empleado_id:e.id,nombre:e.nombre,periodo:sd.periodo,monto:monto,mixto:conv==="mixto"});
+    });
+    sinRecibo.sort(function(a,b){return String(b.periodo).localeCompare(String(a.periodo))||String(a.nombre).localeCompare(String(b.nombre));});
+  }
   function nuevo(){
     setForm({id:null,empleador:EMPLEADORES[0].nombre,cuit:EMPLEADORES[0].cuit,domicilio:"",empleado_id:"",nombre:"",cuil:"",categoria:"",ingreso:"",
       periodo:hoy.substring(0,7),fecha_pago:hoy,lugar:"",medio:"Efectivo",obs:"",
@@ -24438,6 +24466,17 @@ function PanelRecibosFC(p){
             <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Armá el recibo de un empleado fuera de convenio: completás los datos, agregás o borrás conceptos y bajás el PDF. Queda guardado para duplicarlo el mes que viene.</div>
             <button onClick={nuevo} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
           </div>
+          {sinRecibo.length>0&&(
+            <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:12,padding:"11px 14px",marginBottom:10}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:6}}>⚠️ Sueldos pagados sin recibo · {sinRecibo.length}</div>
+              {sinRecibo.map(function(x,i){return(
+                <div key={x.empleado_id+x.periodo} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"5px 0",borderTop:i===0?"none":"1px solid #1E1A10",flexWrap:"wrap"}}>
+                  <span style={{fontSize:12.5,color:"#D8D8D8"}}><b style={{color:"#F0EDE8"}}>{x.nombre}</b> · {x.periodo}{x.mixto?" · parte sin convenio":""} · {$(x.monto)}</span>
+                  <button onClick={function(){nuevoDesdeSueldo(x.empleado_id,x.periodo,x.monto,x.mixto);}} style={{...GH,padding:"5px 11px",fontSize:11.5}}>🧾 Armar recibo</button>
+                </div>
+              );})}
+            </div>
+          )}
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
             var t=totales(r);
             return(
@@ -24553,6 +24592,8 @@ function PanelSueldos(p){
   var usersAll=p.users||[];
   function userDe(emp){ return emp?usersAll.find(function(u){return u.empleado_id===emp.id;})||null:null; }
   var [sueldoEdit,setSueldoEdit]=useState(null);
+  var [ofrecerRecibo,setOfrecerRecibo]=useState(null);    // después de pagar un sueldo fuera de convenio: ofrecer armar el recibo
+  var [reciboInicial,setReciboInicial]=useState(null);
   var [datosEmp,setDatosEmp]=useState({});      // empleado_id → datos personales ampliados
   var [formExtra,setFormExtra]=useState({});
   useEffect(function(){ var vivo=true; sbLoadDatosEmp().then(function(d){ if(vivo)setDatosEmp(d); }); return function(){vivo=false;}; },[]);
@@ -24761,12 +24802,33 @@ function PanelSueldos(p){
       //   var montoEgreso=...
       // }
     });
+    // Sueldo pagado de alguien sin convenio o mixto: se ofrece armar el recibo (en los mixtos, solo con la parte sin convenio).
+    var empOf=empleados.find(function(x){return x.id===formSueldo.empleado_id;});
+    var convOf=(empOf&&empOf.convenio)||formSueldo.convenio||"sin_convenio";
+    if(mesesACargar.length===1&&(formSueldo.estado==="pagado"||formSueldo.estado==="parcial")&&convOf!=="convenio"){
+      var montoRec=convOf==="mixto"?montoSinConvenio:(formSueldo.estado==="parcial"?montoParcial:montoFinal);
+      if(montoRec>0)setOfrecerRecibo({empleado_id:formSueldo.empleado_id,nombre:formSueldo.empleado_nombre,periodo:mesesACargar[0],monto:montoRec,mixto:convOf==="mixto"});
+    }
     setShowFormSueldo(false);setSueldoEdit(null);setPreCargar(false);
     setFormSueldo({empleado_id:"",empleado_nombre:"",local:"l1",periodo:mesCurrent,fecha_pago:hoy,monto:"",monto_convenio:"",monto_sin_convenio:"",monto_parcial:"",medio_pago:"",estado:"pendiente",convenio:"sin_convenio",pagos:[{medio:"",monto:""}],notas:""});
   }
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {ofrecerRecibo&&(
+        <div onClick={function(){setOfrecerRecibo(null);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#0C0C0C",border:"1px solid #4CAF5066",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:380}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>🧾 ¿Armar el recibo?</div>
+            <div style={{fontSize:12.5,color:"#B8B8B8",lineHeight:1.6,marginBottom:14}}>
+              Se guardó el sueldo de <b style={{color:"#F0EDE8"}}>{ofrecerRecibo.nombre}</b> ({ofrecerRecibo.periodo}). {ofrecerRecibo.mixto?"Como es mixto, el recibo lleva solo la parte sin convenio":"Es un empleado fuera de convenio"}: <b style={{color:"#4CAF50"}}>${Math.round(ofrecerRecibo.monto).toLocaleString("es-AR")}</b>.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setReciboInicial({empleado_id:ofrecerRecibo.empleado_id,periodo:ofrecerRecibo.periodo,monto:ofrecerRecibo.monto,mixto:ofrecerRecibo.mixto});setTab("recibos");setOfrecerRecibo(null);}} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>Armar recibo</button>
+              <button onClick={function(){setOfrecerRecibo(null);}} style={{flex:1,padding:"11px",borderRadius:9,border:"1px solid #2A2A2A",background:"none",color:"#9A9A9A",fontSize:12.5,cursor:"pointer"}}>Ahora no</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
         <div>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
@@ -25059,7 +25121,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario}/>}
+      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

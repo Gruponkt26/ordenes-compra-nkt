@@ -181,8 +181,8 @@ var TOLERANCIA_MIN = 10;                    // minutos de gracia para llegar
 var PESOS = { ventas: 0.35, opiniones: 0.25, puntualidad: 0.2, caja: 0.2 };
 var NOMBRE_INDICADOR = { ventas: "Facturación", opiniones: "Opiniones de clientes", puntualidad: "Puntualidad", caja: "Caja prolija" };
 
-// Facturación: cuánto creció cada local contra el mes anterior, comparada con el crecimiento promedio de los tres locales.
-// Si el local creció igual que el promedio saca 50 puntos; cada punto de crecimiento por encima (o por debajo) suma (o resta) 2,5. De 0 a 100.
+// Facturación, en dos pasos: 1) cuánto creció el local contra su propio mes anterior (0% = 50 puntos, +20% = 100, −20% = 0) y
+// 2) cuánto creció comparado con el promedio de los tres locales (igual al promedio = 50 puntos). Cada punto de diferencia suma o resta 2,5.
 var PUNTOS_POR_PUNTO = 2.5;
 function sumaVentas(p, localId, mes, hastaDia) {
   var total = 0;
@@ -211,9 +211,15 @@ function calcVentasMes(p, mes, ids) {
   });
   var con = ids.filter(function (id) { return out[id].crec !== null; });
   var prom = con.length ? con.reduce(function (a, id) { return a + out[id].crec; }, 0) / con.length : null;
+  // Dos comparaciones, una después de la otra: 1) el local contra su propio mes anterior y 2) contra el crecimiento de los demás.
+  // El puntaje de la facturación es el promedio de las dos.
+  var tope = function (v) { return Math.max(0, Math.min(100, v)); };
   ids.forEach(function (id) {
     out[id].promedio = prom;
-    out[id].puntos = (out[id].crec === null || prom === null) ? null : Math.max(0, Math.min(100, 50 + (out[id].crec - prom) * PUNTOS_POR_PUNTO));
+    if (out[id].crec === null || prom === null) { out[id].puntosPropio = null; out[id].puntosRel = null; out[id].puntos = null; return; }
+    out[id].puntosPropio = tope(50 + out[id].crec * PUNTOS_POR_PUNTO);
+    out[id].puntosRel = tope(50 + (out[id].crec - prom) * PUNTOS_POR_PUNTO);
+    out[id].puntos = (out[id].puntosPropio + out[id].puntosRel) / 2;
   });
   return out;
 }
@@ -441,7 +447,7 @@ export function PanelCompetencia(props) {
               {Object.keys(PESOS).map(function (k) { return NOMBRE_INDICADOR[k] + " " + Math.round(PESOS[k] * 100) + "%"; }).join(" · ")}.
               {" "}Pronto se suman los checklists. Si un indicador todavía no tiene datos, el resto se reparte en proporción.
               <div style={{ marginTop: 6, color: "#6E6E6E" }}>
-                Facturación: cuánto creció la facturación del local contra el mes anterior, comparado con el crecimiento promedio de los tres locales (igual al promedio = 50 puntos; cada punto de más o de menos suma o resta {PUNTOS_POR_PUNTO.toString().replace(".", ",")}). Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
+                Facturación, en dos pasos: ① cuánto creció el local contra su propio mes anterior (0% = 50 puntos, cada punto de crecimiento suma {PUNTOS_POR_PUNTO.toString().replace(".", ",")}) y ② cuánto creció comparado con el promedio de los tres locales (igual al promedio = 50 puntos). El puntaje es el promedio de los dos. Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
               </div>
             </div>
 
@@ -478,12 +484,20 @@ export function PanelCompetencia(props) {
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: x.local.color, marginBottom: 6 }}>{x.local.emoji} {x.local.nombre}</div>
                   <div style={{ fontSize: 11.5, color: "#B8B8B8", lineHeight: 1.7 }}>
                     <b style={{ color: "#E8E8E8" }}>Facturación:</b>{" "}
-                    {x.ventas.meses.length === 0 ? "todavía no empezó el período" : x.ventas.meses.map(function (m) {
+                    {x.ventas.meses.length === 0 ? "todavía no empezó el período" : x.ventas.meses.map(function (m, k) {
                       var fm = function (n) { return "$" + Math.round(n).toLocaleString("es-AR"); };
-                      var nom = nombrePeriodo(m.mes) + (m.completo ? "" : ", hasta el día " + m.hasta + " de cada mes");
-                      if (m.crec === null) return nom + ": sin ventas para comparar con " + nombrePeriodo(mesAnt(m.mes)).replace(" (prueba)", "");
-                      return nom + ": " + fm(m.actual) + " contra " + fm(m.previo) + " del mes anterior (" + (m.crec >= 0 ? "+" : "") + m.crec.toFixed(1).replace(".", ",") + "%); el promedio de los tres locales fue " + (m.promedio >= 0 ? "+" : "") + m.promedio.toFixed(1).replace(".", ",") + "% → " + fmtPts(m.puntos) + " de 100";
-                    }).join(" · ")}
+                      var pc = function (n) { return (n >= 0 ? "+" : "") + n.toFixed(1).replace(".", ",") + "%"; };
+                      var nom = nombrePeriodo(m.mes) + (m.completo ? "" : " (hasta el día " + m.hasta + " de cada mes)");
+                      if (m.crec === null) return <div key={k} style={{ paddingLeft: 10 }}>{nom}: sin ventas para comparar con {nombrePeriodo(mesAnt(m.mes)).replace(" (prueba)", "")}</div>;
+                      return (
+                        <div key={k} style={{ paddingLeft: 10, marginTop: 2 }}>
+                          <b style={{ color: "#D8D8D8" }}>{nom}</b>
+                          <div>① Contra su propio mes anterior: {pc(m.crec)}{props.soloLectura ? "" : " (" + fm(m.actual) + " contra " + fm(m.previo) + ")"} → {fmtPts(m.puntosPropio)} de 100</div>
+                          <div>② Contra los demás locales: el promedio fue {pc(m.promedio)}, este local quedó {Math.abs(m.crec - m.promedio).toFixed(1).replace(".", ",")} puntos {m.crec - m.promedio >= 0 ? "por encima" : "por debajo"} → {fmtPts(m.puntosRel)} de 100</div>
+                          <div>Facturación del mes: promedio de ① y ② = <b style={{ color: "#E8E8E8" }}>{fmtPts(m.puntos)}</b></div>
+                        </div>
+                      );
+                    })}
                     <br />
                     <b style={{ color: "#E8E8E8" }}>Opiniones:</b>{" "}
                     {x.op.general === null ? "todavía no hay opiniones de clientes en este período" : "promedio " + fmtNota(x.op.general) + " de 5 estrellas con " + x.op.cantidad + " opinion" + (x.op.cantidad === 1 ? "" : "es") + " = " + fmtPts(x.partes.opiniones) + " de 100" + (x.op.cantidad < MINIMO_OPINIONES ? " (todavía pocas: mínimo " + MINIMO_OPINIONES + ")" : "")}

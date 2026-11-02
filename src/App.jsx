@@ -14726,6 +14726,89 @@ function semanaDe(fecha){
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 
+// Tarjeta de Novedades: lo que se movió con el personal en los últimos 7 días. Quién trabajó más que su jornada, en su franco, en otro local,
+// y los cambios de horario o de días laborales que se hicieron en Jornadas.
+function TarjetaCambiosPersonal(p){
+  var fichajes=p.fichajes||[], empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var [abierta,setAbierta]=useState(false);
+  var hoy=fechaLocal();
+  var desde=fechaLocal(new Date(Date.now()-6*86400000));
+  var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+  var items=[], vistos={};
+  var EXTRA_MIN=30;   // cuánto más que su jornada para avisar
+  empleados.forEach(function(e){
+    var mias=fichajes.filter(function(f){return f.empleado_id===e.id&&String(f.fecha||"").substring(0,10)>=desde;});
+    if(mias.length===0)return;
+    // Horas de más: por día, lo trabajado contra lo que le tocaba.
+    var porDia={};
+    try{ jornadasDe(mias).forEach(function(j){
+      if(!j.entrada||!j.salida)return;
+      var f=String(j.entrada.fecha).substring(0,10); if(f<desde)return;
+      porDia[f]=(porDia[f]||0)+minutosDe(j,e);
+    }); }catch(err){}
+    Object.keys(porDia).forEach(function(f){
+      var t=jornadaDe(e)?turnoDe(e,f):null;
+      if(!t||t.franco)return;
+      var extra=Math.round(porDia[f]-t.minutos);
+      if(extra>=EXTRA_MIN)items.push({tipo:"extra",fecha:f,nombre:e.nombre,local:e.local,txt:"trabajó "+fmtHs(porDia[f])+" y su jornada era de "+fmtHs(t.minutos)+" (+"+fmtHs(extra)+")"});
+    });
+    // Notas de las marcas: franco trabajado, cobertura en otro local.
+    mias.forEach(function(f){
+      if(f.tipo!=="entrada")return;
+      var fe=String(f.fecha).substring(0,10), n=String(f.notas||"");
+      var mc=/Cobertura\|reemplaza=([^|]*)\|/.exec(n), mf=/Franco trabajado\|dia=([^|]*)\|motivo=([^|]*)\|/.exec(n);
+      var loc=getLocal(f.local)||{}, k=e.id+"_"+fe;
+      if(mf&&!vistos["f"+k]){ vistos["f"+k]=1;
+        items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
+      }
+      if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco), sin aclarar el motivo"}); } }
+      if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual))&&!vistos["l"+k]){ vistos["l"+k]=1;
+        items.push({tipo:"local",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(mc&&mc[1]?" reemplazando a "+mc[1]:(mc?" de refuerzo":""))});
+      }
+    });
+  });
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  (p.cambiosJornada||[]).forEach(function(c){
+    var fc=String(c.fecha||"").substring(0,10); if(fc<desde)return;
+    var dif=[], cambiaDia=false;
+    DIAS_SEM.forEach(function(d){
+      var a=descDia((c.antes||{})[d.k]), b=descDia((c.despues||{})[d.k]);
+      if(a!==b){ dif.push(d.n+": "+(c.antes?a:"sin cargar")+" → "+b); if((a==="franco")!==(b==="franco"))cambiaDia=true; }
+    });
+    if(dif.length===0||!c.antes)return;
+    items.push({tipo:cambiaDia?"dia":"horario",fecha:fc,nombre:c.empleado_nombre,local:c.local,txt:(cambiaDia?"cambió sus días laborales":"cambió su horario")+" · "+dif.join(" · ")});
+  });
+  items.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
+  var TIPOS={extra:["⏱️","Horas de más","#E07B00"],franco:["📅","En su franco","#D4A017"],local:["🔁","Otro local","#1A8A7B"],horario:["🕐","Cambio de horario","#8B2FC9"],dia:["🗓️","Cambio de días laborales","#8B2FC9"]};
+  var cuentas=Object.keys(TIPOS).map(function(k){return {k:k,n:items.filter(function(x){return x.tipo===k;}).length};}).filter(function(c){return c.n>0;});
+  var visibles=abierta?items:items.slice(0,5);
+  return(
+    <div style={{background:"#0C0C0C",border:"1px solid "+(items.length>0?"#D4A01755":"#1E1E1E"),borderRadius:14,padding:"13px 15px",marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:items.length>0?8:0}}>
+        <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>🔁 Cambios del personal · últimos 7 días</div>
+        {p.irCambios&&<button onClick={p.irCambios} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Fichaje →</button>}
+      </div>
+      {items.length===0?<div style={{fontSize:12,color:"#4C9A5A",marginTop:4}}>Sin cambios: nadie trabajó de más, en su franco ni en otro local, y no se modificó ninguna jornada.</div>:(
+        <div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {cuentas.map(function(c){return <span key={c.k} style={{fontSize:10.5,fontWeight:700,color:TIPOS[c.k][2],border:"1px solid "+TIPOS[c.k][2]+"55",borderRadius:20,padding:"2px 9px"}}>{TIPOS[c.k][0]} {TIPOS[c.k][1]} · {c.n}</span>;})}
+          </div>
+          {visibles.map(function(x,i){
+            var t=TIPOS[x.tipo], loc=getLocal(x.local)||{};
+            return(
+              <div key={i} style={{padding:"6px 0",borderTop:"1px solid #141414",fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
+                <span style={{color:t[2],fontWeight:800}}>{t[0]}</span> <b style={{color:"#F0EDE8"}}>{x.nombre}</b>{loc.nombre?<span style={{color:"#7E7E7E"}}> · {loc.emoji} {loc.nombre}</span>:null} {x.txt}
+                <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(x.fecha)}</div>
+              </div>
+            );
+          })}
+          {items.length>5&&<button onClick={function(){setAbierta(!abierta);}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:11,cursor:"pointer",padding:"6px 0 0",fontFamily:"'Inter',sans-serif"}}>{abierta?"Ver menos":"+"+(items.length-5)+" más"}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelNovedades(p){
   var cierres=p.cierres||[], vencimientos=p.vencimientos||[], aportes=p.aportes||[], retiros=p.retiros||[];
   var vacaciones=p.vacaciones||[], empleados=p.empleados||[];
@@ -15257,6 +15340,9 @@ function PanelNovedades(p){
           })}
         </div>
       </div>
+
+      {/* Primero de todo: lo que se movió con el personal (horas de más, francos, otros locales, cambios de jornada). */}
+      <TarjetaCambiosPersonal fichajes={p.fichajes} empleados={p.empleados} cambiosJornada={p.cambiosJornada} irCambios={p.irCambios}/>
 
       {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
@@ -29675,7 +29761,7 @@ export default function App() {
               irSaldarCruzados={function(){abrirModulo("admin","cruzados");}}
               irSaldarOficina={function(){setLocInicial("l4");setLocTab("resumen");abrirModulo("locales","loc_inicio");}}
               irPersonal={function(){abrirModulo("personal","personal_inicio");}}
-              justificativos={justificativos} irFichaje={function(){abrirModulo("fichaje","fichajes_registro");}}
+              justificativos={justificativos} cambiosJornada={cambiosJornada} irCambios={function(){abrirModulo("fichaje","fichajes_cambios");}} irFichaje={function(){abrirModulo("fichaje","fichajes_registro");}}
               irMetricas={function(lid){setLocInicial(lid);setLocTab("metricas");abrirModulo("locales","loc_inicio");}}
             />
             </ErrorSeguro>

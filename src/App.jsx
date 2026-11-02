@@ -24355,6 +24355,7 @@ function PanelRecibosFC(p){
   var [form,setForm]=useState(null);
   var [guardando,setGuardando]=useState(false);
   var [calcVH,setCalcVH]=useState({bruto:"",horas:""});
+  var [msgPlan,setMsgPlan]=useState("");
   var hoy=fechaLocal();
   var $=function(n){return "$"+(Math.round((n||0)*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
   var n2=function(n){return (Math.round((n||0)*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
@@ -24368,6 +24369,26 @@ function PanelRecibosFC(p){
     }).catch(function(){});
   }
   useEffect(function(){ cargar(); },[]);
+  // ── Conexión con la planilla anual (Sueldos > Planilla anual) ──
+  function planDe(empId,periodo){
+    var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)-1;
+    return (p.planilla||[]).find(function(x){return x.empleado_id===empId&&!x.tipo_ag&&parseInt(x.mes,10)===m&&parseInt(x.anio,10)===y&&x.tipo!=="ag_jul"&&x.tipo!=="ag_dic";})||null;
+  }
+  // Pasa el recibo a la planilla: lo fuera de convenio y lo de convenio de ese empleado en ese mes.
+  function sincronizarPlanilla(f){
+    if(!p.onSavePlanilla||!f.empleado_id)return "";
+    var e=empleadosTodos.find(function(x){return x.id===f.empleado_id;}); if(!e)return "";
+    var c=reciboCalc(f), q=String(f.periodo).split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)-1;
+    var conv=Math.max(0,c.sueldoConv), sinc=Math.max(0,c.sueldoFuera);
+    if(!(sinc>0))return "";
+    var previo=planDe(f.empleado_id,f.periodo);
+    if(previo&&(Math.abs((parseFloat(previo.monto_sin_convenio)||0)-sinc)>1||Math.abs((parseFloat(previo.monto_convenio)||0)-conv)>1)){
+      if(!window.confirm("La planilla anual de "+periodoEnLetras(f.periodo)+" tiene: convenio $"+Math.round(parseFloat(previo.monto_convenio)||0).toLocaleString("es-AR")+" y sin convenio $"+Math.round(parseFloat(previo.monto_sin_convenio)||0).toLocaleString("es-AR")+".\n\nEl recibo da: convenio $"+Math.round(conv).toLocaleString("es-AR")+" y sin convenio $"+Math.round(sinc).toLocaleString("es-AR")+".\n\n¿Actualizo la planilla con los valores del recibo?"))return "La planilla no se tocó.";
+    }
+    var tipo=conv>0?"mixto":"sin_convenio";
+    p.onSavePlanilla({id:"plan_"+e.id+"_"+y+"_"+m,empleado_id:e.id,empleado_nombre:e.nombre,local:e.local,anio:y,mes:m,tipo:tipo,monto:conv+sinc,monto_convenio:conv,monto_sin_convenio:sinc});
+    return "✓ Planilla anual de "+periodoEnLetras(f.periodo)+" actualizada: convenio $"+Math.round(conv).toLocaleString("es-AR")+" · sin convenio $"+Math.round(sinc).toLocaleString("es-AR");
+  }
   function marcaDe(emp){ var l=emp&&getLocal(emp.local); return l?String(l.nombre).toUpperCase():"EL BODEGÓN NKT"; }
   function vacio(){
     return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:hoy.substring(0,7),fecha_pago:hoy,
@@ -24383,7 +24404,10 @@ function PanelRecibosFC(p){
   function aplicarEmpleado(f,id){
     var e=empleadosTodos.find(function(x){return x.id===id;});
     if(!e)return {...f,empleado_id:id};
-    return {...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:e.puesto||f.puesto};
+    var pl=planDe(id,f.periodo);
+    var g={...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:e.puesto||f.puesto};
+    if(pl&&(parseFloat(pl.monto_convenio)||0)>0&&(f.sueldo_convenio===""||f.sueldo_convenio===undefined))g.sueldo_convenio=String(pl.monto_convenio);
+    return g;
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||hoy.substring(0,7)},empId);
@@ -24419,6 +24443,7 @@ function PanelRecibosFC(p){
     setGuardando(false);
     if(err){ alert("No se pudo guardar el recibo:\n\n"+err); return; }
     setForm(function(f){return {...f,id:id};}); cargar();
+    setMsgPlan(sincronizarPlanilla(form));
   }
   function borrar(id){
     if(!window.confirm("¿Borrar este recibo guardado?"))return;
@@ -24535,7 +24560,7 @@ function PanelRecibosFC(p){
         var refDif=form.ref_monto!==""&&form.ref_monto!==undefined&&Math.abs((parseFloat(form.ref_monto)||0)-c.total)>1;
         return(
           <div>
-            <button onClick={function(){setForm(null);cargar();}} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:10}}>← Volver al listado</button>
+            <button onClick={function(){setForm(null);setMsgPlan("");cargar();}} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:10}}>← Volver al listado</button>
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>👤 Encabezado</div>
               <label style={LB}>Empleado (completa los datos)</label>
@@ -24601,6 +24626,16 @@ function PanelRecibosFC(p){
               </div>
               {form.ref_monto!==""&&form.ref_monto!==undefined&&<div style={{fontSize:11,color:refDif?"#D4A017":"#7E7E7E",marginTop:6}}>En Sueldos figura {$(parseFloat(form.ref_monto)||0)} fuera de convenio{refDif?" — no coincide con este recibo, revisalo.":"."}</div>}
             </div>
+            {(function(){
+              var pl=form.empleado_id?planDe(form.empleado_id,form.periodo):null;
+              return(
+                <div style={{fontSize:11.5,margin:"0 2px 10px",lineHeight:1.5,color:pl?"#3A9BC1":"#7E7E7E"}}>
+                  {pl?"📅 Planilla anual de "+periodoEnLetras(form.periodo)+": convenio $"+Math.round(parseFloat(pl.monto_convenio)||0).toLocaleString("es-AR")+" · sin convenio $"+Math.round(parseFloat(pl.monto_sin_convenio)||0).toLocaleString("es-AR")+". Al guardar el recibo, la planilla se actualiza con los valores de arriba."
+                      :(form.empleado_id?"📅 Ese mes todavía no está en la planilla anual: al guardar el recibo se carga solo.":"📅 Elegí un empleado de la lista para que el recibo se conecte con la planilla anual.")}
+                  {msgPlan&&<div style={{color:msgPlan.charAt(0)==="✓"?"#4CAF50":"#D4A017",fontWeight:700,marginTop:3}}>{msgPlan}</div>}
+                </div>
+              );
+            })()}
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={guardar} disabled={guardando} style={{padding:"11px 20px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>{guardando?"Guardando…":(form.id?"💾 Guardar cambios":"💾 Guardar recibo")}</button>
               <button onClick={function(){pdf(form);}} style={{...GH,padding:"11px 18px",fontSize:13}}>📄 Descargar PDF (2 copias)</button>
@@ -25171,7 +25206,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

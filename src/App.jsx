@@ -13541,6 +13541,8 @@ function PanelFichajes(p){
   function fmtMes(m){ var pr=String(m).split("-"); return ["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][parseInt(pr[1],10)]+" "+pr[0]; }
   var meses=[...new Set(fichajes.map(function(f){return String(f.fecha||"").substring(0,7);}).filter(Boolean))].sort().reverse();
   if(meses.indexOf(mesHoy)<0)meses.unshift(mesHoy);
+  // Si el mes elegido ya no tiene marcas (por ejemplo, se lo puso en cero), el selector pasa solo a otro mes: si no, mostraba uno y filtraba por el otro.
+  useEffect(function(){ if(meses.indexOf(mes)<0)setMes(meses[0]); });
 
   // Las jornadas se arman por empleado sobre todas sus marcas, y recién después se filtra
   // por mes: si no, un turno que cruza la medianoche del último día del mes se partiría al medio.

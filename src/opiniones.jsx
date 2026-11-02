@@ -437,7 +437,7 @@ export function PanelCompetencia(props) {
         return (
           <div>
             <div style={{ ...tarjeta, fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6 }}>
-              Cada local suma de 0 a 100 puntos. Hoy cuentan tres cosas:{" "}
+              Cada local suma de 0 a 100 puntos. Hoy cuentan {["", "una cosa", "dos cosas", "tres cosas", "cuatro cosas"][Object.keys(PESOS).length]}:{" "}
               {Object.keys(PESOS).map(function (k) { return NOMBRE_INDICADOR[k] + " " + Math.round(PESOS[k] * 100) + "%"; }).join(" · ")}.
               {" "}Pronto se suman los checklists. Si un indicador todavía no tiene datos, el resto se reparte en proporción.
               <div style={{ marginTop: 6, color: "#6E6E6E" }}>

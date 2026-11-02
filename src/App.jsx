@@ -12527,6 +12527,10 @@ function PanelFichar(p){
     try{ var o=JSON.parse(window.sessionStorage.getItem("nkt_fich_ok")||"null"); return o&&o.hasta>Date.now()?o:null; }catch(e){ return null; }
   });
   var [francoForm,setFrancoForm]=useState({id:"",modo:"cambio",dia:"",motivo:""});   // por qué viene en su franco
+  // Cobertura del día: el empleado va a trabajar a otro local (reemplaza a alguien) y marca ahí. Vale solo hoy y se guarda en este celular.
+  var [cobertura,setCoberturaEstado]=useState(function(){ try{ return JSON.parse(window.localStorage.getItem("nkt_cobertura")||"null"); }catch(e){ return null; } });
+  var [formCob,setFormCob]=useState(null);
+  function setCobertura(c){ setCoberturaEstado(c); try{ if(c)window.localStorage.setItem("nkt_cobertura",JSON.stringify(c)); else window.localStorage.removeItem("nkt_cobertura"); }catch(e){} }
   var [pantallaPrueba,setPantallaPrueba]=useState(false);   // mostrar el código sin bloquear el aparato (para probar)
   var [codigoTxt,setCodigoTxt]=useState("");
   var [codigoMsg,setCodigoMsg]=useState("");
@@ -12618,6 +12622,8 @@ function PanelFichar(p){
   var vinculandoEf=vinculando||vincularObligatorio;
   // Con el celular propio se ficha en el local de la ficha; los que cubren los tres locales pueden elegir otro.
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
+  var coberturaVigente=(soyYo&&cobertura&&cobertura.emp===soyYo.id&&cobertura.fecha===fechaLocal()&&cobertura.local&&cobertura.local!==soyYo.local)?cobertura:null;
+  if(coberturaVigente)local=coberturaVigente.local;
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
   var coordsLocal=(p.localesDatos||{})[local];
   var codigoVerif=!!codigoOk&&codigoOk.local===local&&codigoOk.hasta>Date.now();
@@ -12816,7 +12822,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -13054,6 +13060,40 @@ function PanelFichar(p){
           )}
         </div>
       )}
+      {soyYo&&!multiLocal&&soyYo.local&&(function(){
+        var otros=LOCALES.filter(function(l){return l.id!==soyYo.local;});
+        if(coberturaVigente){
+          var lc=getLocal(coberturaVigente.local)||{};
+          return(
+            <div style={{background:"#0F1A14",border:"1px solid #3A7D4488",borderRadius:12,padding:"10px 13px",marginBottom:12}}>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#3A7D44"}}>🔁 Hoy marcás en {lc.emoji} {lc.nombre}{coberturaVigente.reemplaza?" · reemplazás a "+coberturaVigente.reemplaza:""}</div>
+              <div style={{fontSize:11,color:"#9A9A9A",margin:"3px 0 7px"}}>Tenés que estar en ese local para marcar. Queda avisado a administración.</div>
+              <button onClick={function(){setCobertura(null);}} style={{...GH,padding:"6px 12px",fontSize:11.5}}>Volver a mi local</button>
+            </div>
+          );
+        }
+        if(!formCob)return <button onClick={function(){setFormCob({local:otros[0]?otros[0].id:"",reemplaza:""});}} style={{...GH,padding:"9px 13px",fontSize:12,marginBottom:12,width:"100%"}}>🔁 Hoy trabajo en otro local</button>;
+        var posibles=(p.empleados||[]).filter(function(e){return e.activo!==false&&e.local===formCob.local&&e.id!==soyYo.id;});
+        var INPc={padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box",marginBottom:8};
+        return(
+          <div style={{background:"#0A1014",border:"1px solid #1A6B8A66",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#3A9BC1",marginBottom:8}}>🔁 ¿Dónde trabajás hoy?</div>
+            <select value={formCob.local} onChange={function(e){var v=e.target.value;setFormCob({local:v,reemplaza:""});}} style={INPc}>
+              {otros.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+            </select>
+            <div style={{fontSize:11,color:"#9A9A9A",marginBottom:4}}>¿A quién reemplazás?</div>
+            <select value={formCob.reemplaza} onChange={function(e){var v=e.target.value;setFormCob({...formCob,reemplaza:v});}} style={INPc}>
+              <option value="">— A nadie en particular / refuerzo —</option>
+              {posibles.map(function(e){return <option key={e.id} value={e.nombre}>{e.nombre}</option>;})}
+            </select>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={function(){setCobertura({emp:soyYo.id,fecha:fechaLocal(),local:formCob.local,reemplaza:formCob.reemplaza});setFormCob(null);}} disabled={!formCob.local} style={{...BS("#1A6B8A"),flex:2,padding:"10px",fontSize:13}}>Confirmar</button>
+              <button onClick={function(){setFormCob(null);}} style={{...GH,flex:1,padding:"10px",fontSize:12}}>Cancelar</button>
+            </div>
+            <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:7,lineHeight:1.4}}>Vale solo por hoy. Para marcar tenés que estar en ese local. Administración ve el cambio en Novedades.</div>
+          </div>
+        );
+      })()}
       {ofrecerInstalar&&(
         <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 15px",marginBottom:12}}>
           <div style={{fontSize:12.5,fontWeight:800,color:"#1A6B8A",marginBottom:4}}>📲 Sumalo a tu pantalla de inicio</div>
@@ -15987,6 +16027,7 @@ function PanelNovedades(p){
                 return(
                   <div key={i} style={{padding:"6px 0",borderTop:i===0?"none":"1px solid #141414",fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
                     <b style={{color:"#F0EDE8"}}>{o.emp.nombre}</b> marcó en {dst?dst.emoji+" "+dst.nombre:o.f.local} <span style={{color:"#8C8C8C"}}>(su local es {org?org.emoji+" "+org.nombre:o.emp.local})</span>
+                    {(function(){ var mm=/Cobertura\|reemplaza=([^|]*)\|/.exec(o.f.notas||""); return mm?<span style={{color:"#D4A017"}}> · {mm[1]?"reemplaza a "+mm[1]:"refuerzo"}</span>:null; })()}
                     <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(String(o.f.fecha).substring(0,10))} · {o.horas.join(" · ")}</div>
                   </div>
                 );

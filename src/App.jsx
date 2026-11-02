@@ -22264,7 +22264,7 @@ function PanelResultados(p){
     localesFiltro.forEach(function(l){
       var d=datos[l.id]||{};
       out.locales[l.id]={ventas:d.ventasCorregidas||0,gastos:d.totalGastos||0,resultado:d.resultado||0,dispEf:d.dispEfectivo||0,dispEl:d.dispElectronicoHoy||0,
-        cajon:d.efectivoCajon||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0,
+        cajon:d.efectivoCajon||0,pend:d.debitoPendienteNeto||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0,
         pendiente:{credito:d.creditoPendienteNeto||0,debito:Math.max(0,(d.debitoPendienteNeto||0)-(d.creditoPendienteNeto||0)),fechas:d.debitoPendientePorFecha||[]}};
     });
     var js=JSON.stringify(out);
@@ -28902,6 +28902,49 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>Grupo NKT</div>
                 <div style={{fontSize:12,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:2}}>Panel de gestión</div>
               </div>
+              {(function(){
+                // Cuadro de lectura rápida: lo que hay hoy en cada local, sin entrar a ningún módulo.
+                var P=function(n){return (n<0?"−":"")+"$"+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
+                var dg=datosGrupo&&datosGrupo.locales?datosGrupo.locales:null;
+                var ids=["l3","l2","l1"];
+                var tot={ef:0,el:0,cj:0,pend:0};
+                if(dg)ids.forEach(function(id){var x=dg[id]||{};tot.ef+=x.dispEf||0;tot.el+=x.dispEl||0;tot.cj+=x.cajon||0;tot.pend+=x.pend||0;});
+                var th={fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1,textAlign:"right",padding:"0 0 6px"};
+                var num=function(v){return {textAlign:"right",fontSize:15,fontWeight:800,fontVariantNumeric:"tabular-nums",color:v<0?"#E0714A":"#F0EDE8",padding:"9px 0",whiteSpace:"nowrap"};};
+                return(
+                  <div style={{width:"100%",maxWidth:560,background:"#0C0C0C",border:"1px solid #D4A01744",borderRadius:16,padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                      <div style={{fontSize:12,fontWeight:800,color:"#D4A017",textTransform:"uppercase",letterSpacing:1.5}}>💰 Disponibilidad hoy</div>
+                      <div style={{fontSize:10,color:"#6E6E6E"}}>{dg?"Al día de hoy":"Calculando…"}</div>
+                    </div>
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      <thead><tr><th style={{...th,textAlign:"left"}}></th><th style={th}>Caja mayor</th><th style={th}>Electrónico</th><th style={th}>Caja menor</th></tr></thead>
+                      <tbody>
+                        {ids.map(function(id){
+                          var l=getLocal(id)||{}, x=(dg&&dg[id])||{};
+                          return(
+                            <tr key={id} style={{borderTop:"1px solid #1A1A1A"}}>
+                              <td style={{fontSize:13,fontWeight:700,color:l.color,padding:"9px 6px 9px 0",whiteSpace:"nowrap"}}>{l.emoji} {l.nombre}</td>
+                              <td style={num(x.dispEf||0)}>{dg?P(x.dispEf):"—"}</td>
+                              <td style={num(x.dispEl||0)}>{dg?P(x.dispEl):"—"}{dg&&x.pend>0?<div style={{fontSize:9.5,fontWeight:600,color:"#D4A017"}}>+{P(x.pend)} por acreditar</div>:null}</td>
+                              <td style={num(x.cajon||0)}>{dg?P(x.cajon):"—"}</td>
+                            </tr>
+                          );
+                        })}
+                        {dg&&(
+                          <tr style={{borderTop:"2px solid #222"}}>
+                            <td style={{fontSize:11,color:"#9A9A9A",textTransform:"uppercase",letterSpacing:1,padding:"9px 0"}}>Total</td>
+                            <td style={num(tot.ef)}>{P(tot.ef)}</td>
+                            <td style={num(tot.el)}>{P(tot.el)}</td>
+                            <td style={num(tot.cj)}>{P(tot.cj)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                    <div style={{fontSize:9.5,color:"#6E6E6E",marginTop:6,lineHeight:1.4}}>Caja mayor: efectivo ya retirado de la caja. Electrónico: lo que ya está acreditado. Caja menor: el efectivo que sigue en el cajón.</div>
+                  </div>
+                );
+              })()}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
                   {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},
@@ -29376,6 +29419,16 @@ export default function App() {
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
                 );
               })()}
+            </div>
+          )}
+
+          {/* Inicio: para el cuadro de disponibilidad hace falta calcular Resultados (oculto), igual que en Novedades. */}
+          {esSofia&&!modulo&&(
+            <div style={{display:"none"}}>
+              <PanelResultados onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
             </div>
           )}
 

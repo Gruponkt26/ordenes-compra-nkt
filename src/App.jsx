@@ -12076,6 +12076,19 @@ function inicioContable(j,emp){
   var horario=new Date(f+"T"+t.desde+":00");
   return (!isNaN(horario.getTime())&&ini<horario)?horario:ini;
 }
+// Cuánto de una jornada trabajada cae fuera del horario declarado de ese empleado: antes de que empiece o después de que termine.
+// En un día de franco es todo. Sin jornada cargada no se puede saber (0).
+function minutosFueraDeJornada(j,emp){
+  if(!j.entrada||!j.salida||!emp||!jornadaDe(emp))return 0;
+  var ini=inicioContable(j,emp), fin=new Date(j.salida.momento);
+  var total=(fin-ini)/60000; if(!(total>0))return 0;
+  var f=String(j.entrada.fecha||"").substring(0,10), t=turnoDe(emp,f);
+  if(!t||t.franco||!t.desde||!t.hasta)return total;
+  var w0=new Date(f+"T"+t.desde+":00"), w1=new Date(f+"T"+t.hasta+":00");
+  if(String(t.hasta)<=String(t.desde))w1=new Date(w1.getTime()+86400000);
+  var sup=Math.max(0,(Math.min(fin,w1)-Math.max(ini,w0))/60000);
+  return Math.max(0,total-sup);
+}
 function minutosDe(j,emp){
   if(!j.entrada||!j.salida)return 0;
   var d=(new Date(j.salida.momento)-inicioContable(j,emp))/60000;
@@ -14091,7 +14104,7 @@ function PanelFichajes(p){
                         );
                       })}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
-                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}</span>
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{(function(){ var fu=Math.round(x.jor.reduce(function(a,j){return a+minutosFueraDeJornada(j,x.e);},0)); return fu>=15?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
                         <b style={{color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}{x.previstas>0?<span style={{color:x.min>=x.previstas?"#3A7D44":"#C1440E",fontWeight:600}}> · según jornada {fmtHs(x.previstas)} ({(x.min>=x.previstas?"+":"−")+fmtHs(Math.abs(x.min-x.previstas))})</span>:null}</b>
                       </div>
                     </div>
@@ -14735,22 +14748,25 @@ function TarjetaCambiosPersonal(p){
   var desde=fechaLocal(new Date(Date.now()-6*86400000));
   var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
   var items=[], vistos={};
-  var EXTRA_MIN=30;   // cuánto más que su jornada para avisar
+  var EXTRA_MIN=30;   // cuánto fuera de su horario para avisar
+  var totalesFuera={}, francoMin={};
   empleados.forEach(function(e){
     var mias=fichajes.filter(function(f){return f.empleado_id===e.id&&String(f.fecha||"").substring(0,10)>=desde;});
     if(mias.length===0)return;
-    // Horas de más: por día, lo trabajado contra lo que le tocaba.
+    // Horas fuera de su jornada: por día, lo que trabajó antes o después de su horario (o todo, si era un franco).
     var porDia={};
     try{ jornadasDe(mias).forEach(function(j){
       if(!j.entrada||!j.salida)return;
       var f=String(j.entrada.fecha).substring(0,10); if(f<desde)return;
-      porDia[f]=(porDia[f]||0)+minutosDe(j,e);
+      var o=porDia[f]||(porDia[f]={total:0,fuera:0});
+      o.total+=minutosDe(j,e); o.fuera+=minutosFueraDeJornada(j,e);
     }); }catch(err){}
     Object.keys(porDia).forEach(function(f){
-      var t=jornadaDe(e)?turnoDe(e,f):null;
-      if(!t||t.franco)return;
-      var extra=Math.round(porDia[f]-t.minutos);
-      if(extra>=EXTRA_MIN)items.push({tipo:"extra",fecha:f,nombre:e.nombre,local:e.local,txt:"trabajó "+fmtHs(porDia[f])+" y su jornada era de "+fmtHs(t.minutos)+" (+"+fmtHs(extra)+")"});
+      var o=porDia[f], t=jornadaDe(e)?turnoDe(e,f):null;
+      if(!t)return;
+      if(o.fuera>0)totalesFuera[e.id]={e:e,min:((totalesFuera[e.id]||{}).min||0)+o.fuera};
+      if(t.franco){ francoMin[e.id+"_"+f]=o.total; return; }
+      if(o.fuera>=EXTRA_MIN)items.push({tipo:"extra",fecha:f,nombre:e.nombre,local:e.local,txt:"trabajó "+fmtHs(o.total)+", de las cuales "+fmtHs(o.fuera)+" fuera de su horario ("+t.desde+"–"+t.hasta+")"});
     });
     // Notas de las marcas: franco trabajado, cobertura en otro local.
     mias.forEach(function(f){
@@ -14759,9 +14775,9 @@ function TarjetaCambiosPersonal(p){
       var mc=/Cobertura\|reemplaza=([^|]*)\|/.exec(n), mf=/Franco trabajado\|dia=([^|]*)\|motivo=([^|]*)\|/.exec(n);
       var loc=getLocal(f.local)||{}, k=e.id+"_"+fe;
       if(mf&&!vistos["f"+k]){ vistos["f"+k]=1;
-        items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
+        items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(francoMin[e.id+"_"+fe]?" y trabajó "+fmtHs(francoMin[e.id+"_"+fe]):"")+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
       }
-      if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco), sin aclarar el motivo"}); } }
+      if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco)"+(francoMin[e.id+"_"+fe]?" durante "+fmtHs(francoMin[e.id+"_"+fe]):"")+", sin aclarar el motivo"}); } }
       if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual))&&!vistos["l"+k]){ vistos["l"+k]=1;
         items.push({tipo:"local",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(mc&&mc[1]?" reemplazando a "+mc[1]:(mc?" de refuerzo":""))});
       }
@@ -14782,12 +14798,17 @@ function TarjetaCambiosPersonal(p){
   var TIPOS={extra:["⏱️","Horas de más","#E07B00"],franco:["📅","En su franco","#D4A017"],local:["🔁","Otro local","#1A8A7B"],horario:["🕐","Cambio de horario","#8B2FC9"],dia:["🗓️","Cambio de días laborales","#8B2FC9"]};
   var cuentas=Object.keys(TIPOS).map(function(k){return {k:k,n:items.filter(function(x){return x.tipo===k;}).length};}).filter(function(c){return c.n>0;});
   var visibles=abierta?items:items.slice(0,5);
+  var porPersona=Object.keys(totalesFuera).map(function(k){return totalesFuera[k];}).filter(function(x){return x.min>=15;}).sort(function(a,b){return b.min-a.min;});
   return(
     <div style={{background:"#0C0C0C",border:"1px solid "+(items.length>0?"#D4A01755":"#1E1E1E"),borderRadius:14,padding:"13px 15px",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:items.length>0?8:0}}>
         <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:700}}>🔁 Cambios del personal · últimos 7 días</div>
         {p.irCambios&&<button onClick={p.irCambios} style={{background:"none",border:"none",color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:0,fontFamily:"'Inter',sans-serif"}}>Ver en Fichaje →</button>}
       </div>
+      {porPersona.length>0&&<div style={{background:"#14100A",border:"1px solid #E07B0044",borderRadius:10,padding:"8px 11px",marginBottom:8}}>
+        <div style={{fontSize:10,color:"#E07B00",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:3}}>⏱️ Horas fuera de su jornada · por persona</div>
+        {porPersona.map(function(x){ var l=getLocal(x.e.local)||{}; return <div key={x.e.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12.5,color:"#D8D8D8",padding:"2px 0"}}><span><b style={{color:"#F0EDE8"}}>{x.e.nombre}</b>{l.nombre?<span style={{color:"#7E7E7E"}}> · {l.emoji} {l.nombre}</span>:null}</span><b style={{color:"#E07B00",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</b></div>; })}
+      </div>}
       {items.length===0?<div style={{fontSize:12,color:"#4C9A5A",marginTop:4}}>Sin cambios: nadie trabajó de más, en su franco ni en otro local, y no se modificó ninguna jornada.</div>:(
         <div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>

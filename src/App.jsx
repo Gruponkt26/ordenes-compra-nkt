@@ -12635,7 +12635,9 @@ function PanelFichar(p){
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
   var coordsLocal=(p.localesDatos||{})[local];
   var codigoVerif=!!codigoOk&&codigoOk.local===local&&codigoOk.hasta>Date.now();
-  var cercaReq=!kiosco&&!codigoVerif&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
+  // Administración (Sofía, Belen) marca desde cualquier lugar: no se pide estar en el local ni el código.
+  var libre=!!p.esAdmin;
+  var cercaReq=!kiosco&&!libre&&!codigoVerif&&!!coordsLocal&&coordsLocal.lat!=null&&coordsLocal.lng!=null;
   function verificarCodigoEscrito(){
     var sec=(p.secretos||{})[local];
     if(!sec){ setCodigoMsg("Este local todavía no tiene pantalla de código. Avisá a administración."); return; }
@@ -12689,7 +12691,7 @@ function PanelFichar(p){
   // avisa cuántos faltan.
   function pinDe(emp){ return String((emp&&emp.pin)||"").trim(); }
   function elegir(emp){
-    if(!kiosco&&!vinculandoEf&&metodo==="codigo"&&!codigoVerif){ alert("Primero escribí el código del local (el que muestra la pantalla) y tocá Verificar."); return; }
+    if(!kiosco&&!vinculandoEf&&!libre&&metodo==="codigo"&&!codigoVerif){ alert("Primero escribí el código del local (el que muestra la pantalla) y tocá Verificar."); return; }
     cancelarVuelta(); setElegido(emp); setCara(null); setErrCam(""); setRecibo(null);
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
@@ -12830,7 +12832,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(libre?"libre (administración)":codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -13156,14 +13158,15 @@ function PanelFichar(p){
           📱 Este celular es mío — mostrame sólo a mí
         </button>
       )}
-      {!kiosco&&!vinculandoEf&&(
+      {!kiosco&&!vinculandoEf&&libre&&<div style={{padding:"9px 12px",borderRadius:10,border:"1px solid #1A6B8A66",background:"#0A1014",color:"#3A9BC1",fontSize:12,fontWeight:700,marginBottom:10}}>🌐 Administración: podés marcar desde cualquier lugar, sin ubicación ni código.</div>}
+      {!kiosco&&!vinculandoEf&&!libre&&(
         <div style={{display:"flex",gap:6,marginBottom:10}}>
           {[["ubicacion","📍 Marcar por ubicación"],["codigo","🔢 Marcar con el código del local"]].map(function(o){var act=metodo===o[0]; return(
             <button key={o[0]} onClick={function(){setMetodo(o[0]);}} style={{flex:1,padding:"10px 8px",borderRadius:10,border:"2px solid "+(act?"#1A6B8A":"#1E1E1E"),background:act?"#1A6B8A22":"#111",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:800,cursor:"pointer"}}>{o[1]}</button>);})}
         </div>
       )}
-      {!kiosco&&!vinculandoEf&&metodo==="ubicacion"&&!codigoVerif&&<div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>Se usa la ubicación de este celular. Si el GPS no te toma bien (adentro de la cocina, por ejemplo), cambiá a «código del local».</div>}
-      {!kiosco&&!vinculandoEf&&metodo==="codigo"&&!codigoVerif&&(
+      {!kiosco&&!vinculandoEf&&!libre&&metodo==="ubicacion"&&!codigoVerif&&<div style={{fontSize:11,color:"#7E7E7E",marginBottom:10}}>Se usa la ubicación de este celular. Si el GPS no te toma bien (adentro de la cocina, por ejemplo), cambiá a «código del local».</div>}
+      {!kiosco&&!vinculandoEf&&!libre&&metodo==="codigo"&&!codigoVerif&&(
         <div style={{background:"#0A1014",border:"1px solid #1A6B8A44",borderRadius:12,padding:"10px 12px",marginBottom:10}}>
           <div style={{fontSize:11.5,color:"#9A9A9A",marginBottom:6}}>Escaneá el QR de la pantalla del local con la cámara, o escribí acá el código de 6 números que muestra, y tocá Verificar. No usa el GPS.</div>
           <div style={{display:"flex",gap:8}}>
@@ -14002,6 +14005,20 @@ function PanelFichajes(p){
                   {!x.tieneJornada?<span style={{color:"#D4A017"}}> · sin jornada</span>:null}
                 </div>
                 {(function(){ var ac=accesoDe(x.e); return <div style={{fontSize:10,color:ac.col,marginTop:2}}>📱 {ac.txt}</div>; })()}
+                {(function(){
+                  // Cómo marcó este mes: por ubicación, con el código del local o libre (administración).
+                  var c={ubicacion:0,codigo:0,libre:0};
+                  fichajes.forEach(function(f){
+                    if(f.empleado_id!==x.e.id||f.manual||String(f.fecha||"").substring(0,7)!==mes)return;
+                    var n=String(f.notas||"");
+                    if(n.indexOf("Método: libre")!==-1)c.libre++; else if(n.indexOf("Método: código")!==-1)c.codigo++; else if(n.indexOf("Método: ubicación")!==-1)c.ubicacion++;
+                  });
+                  var partes=[];
+                  if(c.ubicacion)partes.push("📍 ubicación "+c.ubicacion);
+                  if(c.codigo)partes.push("🔢 código "+c.codigo);
+                  if(c.libre)partes.push("🌐 libre "+c.libre);
+                  return <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>🧭 Marca por: {partes.length?partes.join(" · "):"sin marcas con método registrado"}</div>;
+                })()}
               </span>
               <span style={{textAlign:"right"}}>
                 <div style={{fontSize:16,fontWeight:800,fontFamily:"'Playfair Display',serif",color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}</div>

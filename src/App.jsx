@@ -10318,6 +10318,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   function getFact(id){var FACTS=[{id:"f1",razonSocial:"Calzon Gitano SRL",cuit:"30-71844629-1"},{id:"f2",razonSocial:"Colantonio Carlos Nicolas",cuit:"20-26958479-4"}];return FACTS.find(function(f){return f.id===id;});}
 
   var [percIvaF,setPercIvaF]=useState("");
+  var [reclamarF,setReclamarF]=useState(false);   // "reclamar factura" al proveedor
   var [percIibbF,setPercIibbF]=useState("");
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
@@ -10330,6 +10331,14 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     onSave(g);
     var pi=cobraPercIVA(g)?parseFloat(String(percIvaF).replace(",",".")):NaN, pb=parseFloat(String(percIibbF).replace(",","."));
     if(g.facturado&&(!isNaN(pi)||!isNaN(pb)))GUARDAR_PERC(g.id,{iva:isNaN(pi)?0:pi,iibb:isNaN(pb)?0:pb});
+    // Reclamo de factura: se marca si no tiene factura y se tildó; si después llega la factura (o se destilda), queda como recibido.
+    var rec=RECLAMOS_FACTURA[g.id];
+    if(!g.facturado&&reclamarF){
+      if(!rec||rec.estado!=="pendiente")GUARDAR_RECLAMO(g.id,{estado:"pendiente",concepto:g.concepto,monto:g.monto,fecha:g.fecha,local:g.local,desde:hoy});
+    } else if(rec&&rec.estado==="pendiente"){
+      GUARDAR_RECLAMO(g.id,{...rec,estado:"recibida",recibida:hoy});
+    }
+    setReclamarF(false);
     setPercIvaF(""); setPercIibbF("");
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
@@ -10337,6 +10346,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
+    setReclamarF(!!(RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"));
     setEditId(g.id);
     setPercIvaF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iva||""):""); setPercIibbF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iibb||""):"");
     setForm({local:g.local,concepto:g.concepto,subramo:g.subramo||"",detalle:g.detalle||"",monto:String(g.monto),forma_pago:g.forma_pago||"Caja Mayor - Bodegón",notas:g.notas||"",fecha:g.fecha,facturado:g.facturado||false,facturacion:g.facturacion||""});
@@ -10361,7 +10371,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
-        <button onClick={function(){setShowForm(true);setEditId(null);setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
       </div>
 
       {/* Total */}
@@ -10396,6 +10406,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                     <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.concepto}</div>
                     {cruzado&&<div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>↔️ Cruzado {locMedio?locMedio.emoji+locMedio.nombre:""}</div>}
                     {esGastoDeuda(g)&&<div style={{fontSize:9,color:"#E0714A",background:"#E0714A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>🕓 Deuda</div>}
+                    {RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"&&!g.facturado&&<button onClick={function(){ if(window.confirm("¿Ya llegó la factura de «"+g.concepto+"»?\n\nSe saca de las facturas por reclamar."))GUARDAR_RECLAMO(g.id,{...RECLAMOS_FACTURA[g.id],estado:"recibida",recibida:hoy}); }} title="Tocá cuando llegue la factura" style={{fontSize:9,color:"#D4A017",background:"#D4A01722",border:"none",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap",cursor:"pointer"}}>📄 Reclamar factura</button>}
                   </div>
                   <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
@@ -10548,6 +10559,12 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                 <input type="checkbox" checked={form.facturado} onChange={function(e){setForm(function(f){return{...f,facturado:e.target.checked};});}}/>
                 Tiene factura
               </label>
+              {!form.facturado&&(
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:reclamarF?"#D4A017":"#888",cursor:"pointer",marginTop:6}}>
+                  <input type="checkbox" checked={reclamarF} onChange={function(e){setReclamarF(e.target.checked);}}/>
+                  📄 Reclamar factura al proveedor <span style={{fontSize:10,color:"#6E6E6E"}}>(queda pendiente en Novedades hasta que llegue)</span>
+                </label>
+              )}
               {form.facturado&&(
                 <select value={form.facturacion} onChange={function(e){setForm(function(f){return{...f,facturacion:e.target.value};});}} style={{...INP,marginTop:6}}>
                   <option value="">-- Seleccioná CUIT --</option>
@@ -14857,6 +14874,13 @@ function PanelNovedades(p){
     return {local:l, monto:efectivoTeoricoCaja(l.id,hoyReal,datosEfectivo)};
   });
   var mesEnCurso=hoy.substring(0,7);
+  // Facturas que hay que reclamarle a los proveedores: egresos marcados "Reclamar factura" que todavía no llegaron.
+  var reclamosPend=Object.keys(RECLAMOS_FACTURA).filter(function(k){return RECLAMOS_FACTURA[k]&&RECLAMOS_FACTURA[k].estado==="pendiente";}).map(function(k){
+    var r=RECLAMOS_FACTURA[k], g=(p.gastos||[]).find(function(x){return String(x.id)===k;});
+    if(g&&g.facturado)return null;                       // si el egreso pasó a tener factura, ya no hay nada que reclamar
+    var base=r.desde||(g&&g.fecha)||hoy;
+    return {id:k,concepto:(g&&g.concepto)||r.concepto||"Egreso",monto:parseFloat((g&&g.monto)||r.monto)||0,fecha:(g&&g.fecha)||r.fecha||base,local:(g&&g.local)||r.local,dias:Math.max(0,Math.round((new Date(hoy+"T12:00:00")-new Date(base+"T12:00:00"))/86400000))};
+  }).filter(Boolean).sort(function(a,b){return b.dias-a.dias;});
   // Lo del Fichaje que pide una decisión: justificativos por revisar, jornadas que quedaron sin salida y quienes ya llevan 2 o más llegadas tarde en el mes.
   var asist=(function(){
     var emps=(p.empleados||[]).filter(function(e){return e.activo!==false;});
@@ -15399,6 +15423,7 @@ function PanelNovedades(p){
             if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá esas marcas en el Registro"});
           });
         })();
+        if(reclamosPend.length>0)avisos.push({rojo:false,txt:reclamosPend.length+" factura"+(reclamosPend.length===1?"":"s")+" por reclamar a proveedores ("+reclamosPend.slice(0,3).map(function(x){return x.concepto;}).join(", ")+(reclamosPend.length>3?"…":"")+")",ir:function(){setTabNov("deudas");}});
         if(asist.pend.length>0)avisos.push({rojo:false,txt:asist.pend.length+" justificativo"+(asist.pend.length===1?"":"s")+" de faltas para revisar ("+asist.pend.map(function(j){return j.empleado_nombre;}).filter(function(v,i,a2){return a2.indexOf(v)===i;}).join(", ")+")",ir:function(){setTabNov("personal");}});
         if(asist.abiertas.length>0)avisos.push({rojo:false,txt:"Sin salida marcada: "+asist.abiertas.map(function(x){return x.e.nombre+" ("+fmtDate(String(x.f.fecha).substring(0,10))+")";}).join(", "),ir:function(){setTabNov("personal");}});
         asist.tardes.filter(function(x){return x.n>=3;}).forEach(function(x){ avisos.push({rojo:true,txt:x.e.nombre+" llegó tarde "+x.n+" veces en el mes: pierde el presentismo",ir:function(){setTabNov("personal");}}); });
@@ -16081,6 +16106,19 @@ function PanelNovedades(p){
                 detalle={x.rg.adeudadas+" cuota"+(x.rg.adeudadas===1?"":"s")+" vencida"+(x.rg.adeudadas===1?"":"s")+(x.rg.caido?"":" · con "+(x.rg.faltan===1?"una más":x.rg.faltan+" más")+" se cae")}
                 onClick={function(){p.irVencimientos(g.id);}}
                 der={x.rg.caido?"Se cayó":"Por caerse"} color={x.rg.caido?"#E0714A":"#D4A017"}/>;
+            })}
+          </Seccion>
+        )}
+
+        {reclamosPend.length>0&&(
+          <Seccion tab="deudas" id="reclamos" res={reclamosPend.length+" por reclamar · $"+Math.round(reclamosPend.reduce(function(a,x){return a+x.monto;},0)).toLocaleString("es-AR")} titulo="📄 Facturas por reclamar" color="#D4A017">
+            {reclamosPend.map(function(x,i){
+              var l=getLocal(x.local)||{};
+              return <Fila key={x.id} primera={i===0}
+                izq={<span>{x.concepto}<span style={{color:"#7E7E7E"}}> · {l.emoji} {l.nombre}</span></span>}
+                detalle={fmtDate(x.fecha)+" · hace "+x.dias+" día"+(x.dias===1?"":"s")+" · tocá para marcar que ya llegó"}
+                der={fmt(x.monto)} color={x.dias>=15?"#E0714A":"#D4A017"}
+                onClick={function(){ if(window.confirm("¿Ya llegó la factura de «"+x.concepto+"»?\n\nSe saca de las facturas por reclamar."))GUARDAR_RECLAMO(x.id,{...RECLAMOS_FACTURA[x.id],estado:"recibida",recibida:hoy}); }}/>;
             })}
           </Seccion>
         )}
@@ -19357,6 +19395,9 @@ function alicuotaIVACompra(g){
 // Percepciones tal cual figuran en cada factura (se cargan en el egreso). Si están, mandan sobre la estimación.
 var PERC_REALES={};
 var GUARDAR_PERC=function(){};
+// Facturas que hay que reclamarle al proveedor: egresos sin factura marcados para reclamar. {idEgreso:{estado:"pendiente"|"recibida", ...}}
+var RECLAMOS_FACTURA={};
+var GUARDAR_RECLAMO=function(){};
 // Coca Cola y Pepsi facturan con impuestos internos (en la factura de Coca Cola de oct-2026: 6,33 % del neto) que no
 // llevan IVA; La Serenísima no. Las percepciones: IVA RG 2408 = 3 % del neto; IIBB Bs. As. = 4 % de (neto + internos).
 var INTERNOS_BEBIDAS=0.0633, PERC_IVA_PCT=0.03, PERC_IIBB_PCT=0.04;
@@ -28945,6 +28986,13 @@ export default function App() {
   });
   PERC_REALES=percReales;
   GUARDAR_PERC=function(gid,d){ guardarOfPauta("perc_fact",{id:"perc_"+gid,iva:d.iva,iibb:d.iibb}); };
+  var reclamosFact={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="reclamo_factura")return;
+    try{ var dr2=JSON.parse(x.texto||"{}"); reclamosFact[String(x.id).replace(/^reclamo_/,"")]=dr2; }catch(e){}
+  });
+  RECLAMOS_FACTURA=reclamosFact;
+  GUARDAR_RECLAMO=function(gid,d){ guardarOfPauta("reclamo_factura",{id:"reclamo_"+gid,...d}); };
   // F.931 sin pagar como vencimientos (sólo para los avisos y la deuda de Novedades): el del CUIT propio en El Bodegón, el de la SRL en Kusama.
   var f931Virtuales=(cargasSociales||[]).filter(function(c){return (c.cuit==="c1"||c.cuit==="c2")&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0&&venceF931(c);})
     .map(function(c){return {id:"f931v_"+c.id,local:c.cuit==="c1"?"l1":"l2",grupo:"afip",area:"Administrativo",concepto:"F.931 "+(c.cuit==="c1"?"Bodegón (CUIT propio)":"SRL (Calzon Gitano)")+" "+c.periodo,

@@ -28910,9 +28910,9 @@ export default function App() {
                 var tot={ef:0,el:0,cj:0,pend:0};
                 if(dg)ids.forEach(function(id){var x=dg[id]||{};tot.ef+=x.dispEf||0;tot.el+=x.dispEl||0;tot.cj+=x.cajon||0;tot.pend+=x.pend||0;});
                 var th={fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1,textAlign:"right",padding:"0 0 6px"};
-                var num=function(v){return {textAlign:"right",fontSize:15,fontWeight:800,fontVariantNumeric:"tabular-nums",color:v<0?"#E0714A":"#F0EDE8",padding:"9px 0",whiteSpace:"nowrap"};};
+                var num=function(v){return {textAlign:"right",fontSize:14,fontWeight:800,fontVariantNumeric:"tabular-nums",color:v<0?"#E0714A":"#F0EDE8",padding:"9px 0",whiteSpace:"nowrap"};};
                 return(
-                  <div style={{width:"100%",maxWidth:560,background:"#0C0C0C",border:"1px solid #D4A01744",borderRadius:16,padding:"14px 16px"}}>
+                  <div style={{width:"100%",maxWidth:440,boxSizing:"border-box",margin:"0 auto",background:"#0C0C0C",border:"1px solid #D4A01744",borderRadius:16,padding:"14px 14px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
                       <div style={{fontSize:12,fontWeight:800,color:"#D4A017",textTransform:"uppercase",letterSpacing:1.5}}>💰 Disponibilidad hoy</div>
                       <div style={{fontSize:10,color:"#6E6E6E"}}>{dg?"Al día de hoy":"Calculando…"}</div>

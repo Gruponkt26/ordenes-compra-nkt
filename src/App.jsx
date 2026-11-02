@@ -27271,8 +27271,10 @@ async function sbLoadTraspasos() {
 async function sbSaveTraspaso(traspaso) {
   try {
     var h = {...SH, "Prefer": "resolution=merge-duplicates,return=representation"};
-    await fetch(SURL + "/rest/v1/traspasos_resultados", { method: "POST", headers: h, body: JSON.stringify(traspaso) });
-  } catch(e) {}
+    var r = await fetch(SURL + "/rest/v1/traspasos_resultados", { method: "POST", headers: h, body: JSON.stringify(traspaso) });
+    if (!r.ok) return "HTTP " + r.status + ": " + (await r.text()).slice(0, 300);
+    return "";
+  } catch(e) { return "sin conexión: " + (e && e.message ? e.message : e); }
 }
 
 // ─── ALERTAS STOCK ────────────────────────────────────────────────────────────
@@ -29673,7 +29675,7 @@ export default function App() {
                 setCorrResultados(function(prev){var n={...prev};n[corr.local+"_"+corr.mes]=corr;return n;});
               }}
               onSaveTraspaso={function(t){
-                sbSaveTraspaso(t);
+                sbSaveTraspaso(t).then(function(err){ if(err)alert("⚠️ El traspaso NO se guardó en la base.\n\n"+err+"\n\nPasale este texto a quien te ayuda con la app. Mientras tanto se ve en pantalla, pero se pierde al recargar."); });
                 setTraspasos(function(prev){var n={...prev};n[t.local+"_"+t.mes]=t;return n;});
               }} areasCustomGastos={areasCustomGastos}/>
           )}

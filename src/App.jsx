@@ -24315,61 +24315,85 @@ function completitudFicha(emp,ex){
   return {pct:Math.round(ok*100/items.length),ok:ok,total:items.length,faltan:items.filter(function(i){return !i[1];}).map(function(i){return i[0];})};
 }
 // ─── RECIBOS FUERA DE CONVENIO ───────────────────────────────────────────────
-// Un modelo de recibo para completar y modificar: datos del empleador y del empleado, y una tabla de conceptos donde se agregan y se borran
-// renglones (haberes y descuentos). Se guardan (pautas, ámbito "recibo_fc"), se duplican para el mes siguiente y se bajan en PDF.
-function numALetras(n){
-  var U=["","uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciséis","diecisiete","dieciocho","diecinueve","veinte","veintiuno","veintidós","veintitrés","veinticuatro","veinticinco","veintiséis","veintisiete","veintiocho","veintinueve"];
-  var D=["","","","treinta","cuarenta","cincuenta","sesenta","setenta","ochenta","noventa"];
-  var C=["","ciento","doscientos","trescientos","cuatrocientos","quinientos","seiscientos","setecientos","ochocientos","novecientos"];
-  function menosMil(x){
-    if(x===0)return ""; if(x===100)return "cien";
-    var c=Math.floor(x/100), r=x%100, t="";
-    if(c)t+=C[c]+(r?" ":"");
-    if(r<30)t+=U[r]; else { var d=Math.floor(r/10), u=r%10; t+=D[d]+(u?" y "+U[u]:""); }
-    return t;
-  }
-  function entero(x){
-    if(x===0)return "cero";
-    var m=Math.floor(x/1000000), k=Math.floor((x%1000000)/1000), r=x%1000, t=[];
-    if(m)t.push(m===1?"un millón":menosMil(m).replace(/uno$/,"un")+" millones");
-    if(k)t.push(k===1?"mil":menosMil(k).replace(/uno$/,"un")+" mil");
-    if(r)t.push(menosMil(r));
-    return t.join(" ");
-  }
-  var n2=Math.max(0,Math.round((n||0)*100)), e=Math.floor(n2/100), c=n2%100;
-  return entero(e)+" pesos"+(c?" con "+String(c).padStart(2,"0")+"/100":"");
+// El recibo de la casa: se toma el valor hora del recibo de convenio (ya con feriados, vacaciones, etc.) y se lo aplica a las horas
+// totales trabajadas; lo que excede las horas de convenio es el sueldo fuera de convenio. Se guardan (pautas, ámbito "recibo_fc"),
+// se duplican para el mes siguiente y se bajan en PDF con dos copias por hoja (empleador y empleado), con el logo del local.
+var MESES_LETRAS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function periodoEnLetras(per){ var pr=String(per||"").split("-"); var m=parseInt(pr[1],10); return m?MESES_LETRAS[m-1]+" "+pr[0]:String(per||""); }
+function reciboCalc(f){
+  var r2=function(n){return Math.round((n||0)*100)/100;};
+  var vh=parseFloat(f.valor_hora)||0, ht=parseFloat(f.horas_total)||0, hc=parseFloat(f.horas_convenio)||0;
+  var sueldoTotal=r2(ht*vh);
+  var sueldoConv=(f.sueldo_convenio!==""&&f.sueldo_convenio!==undefined&&f.sueldo_convenio!==null)?(parseFloat(f.sueldo_convenio)||0):Math.round(hc*vh);
+  var horasFuera=r2(ht-hc), sueldoFuera=r2(sueldoTotal-sueldoConv);
+  var desc=(f.descuentos||[]).reduce(function(a,d){return a+(parseFloat(d.monto)||0);},0);
+  return {vh:vh,ht:ht,hc:hc,sueldoTotal:sueldoTotal,sueldoConv:sueldoConv,horasFuera:horasFuera,sueldoFuera:sueldoFuera,desc:r2(desc),total:r2(sueldoFuera-desc)};
 }
-var RECIBO_CONCEPTOS=[["Sueldo básico","haber"],["Presentismo","haber"],["Horas extras","haber"],["Adicionales","haber"],["Adelanto de sueldo","descuento"],["Otros descuentos","descuento"]];
+var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto"];
+// Achica el logo subido para que entre cómodo en una pauta (máx. 420 px de ancho) y lo devuelve como dataURL.
+function logoADataUrl(file){
+  return new Promise(function(res){
+    var rd=new FileReader();
+    rd.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var w=Math.min(420,img.width), h=Math.round(img.height*(w/img.width));
+        var cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+        var cx=cv.getContext("2d"); cx.fillStyle="#fff"; cx.fillRect(0,0,w,h); cx.drawImage(img,0,0,w,h);
+        res({url:cv.toDataURL("image/jpeg",0.85),w:w,h:h});
+      };
+      img.onerror=function(){res(null);}; img.src=rd.result;
+    };
+    rd.onerror=function(){res(null);}; rd.readAsDataURL(file);
+  });
+}
 function PanelRecibosFC(p){
   var empleadosTodos=p.empleados||[];
   var empleados=empleadosTodos.filter(function(e){return e.activo!==false;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
   var [lista,setLista]=useState(null);
+  var [logos,setLogos]=useState({});       // local → {url,w,h}
   var [form,setForm]=useState(null);
   var [guardando,setGuardando]=useState(false);
+  var [calcVH,setCalcVH]=useState({bruto:"",horas:""});
   var hoy=fechaLocal();
-  var EMPLEADORES=[
-    {nombre:"Colantonio Carlos Nicolas",cuit:"20-26958479-4"},
-    {nombre:"Calzon Gitano SRL",cuit:"30-71844629-1"}
-  ];
+  var $=function(n){return "$"+(Math.round((n||0)*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
+  var n2=function(n){return (Math.round((n||0)*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
   function cargar(){
     fetch(SURL+"/rest/v1/pautas?ambito=eq.recibo_fc&order=created_at.desc&limit=500",{headers:SH}).then(function(r){return r.json();}).then(function(d){
-      setLista(Array.isArray(d)?d.map(function(f){ var x=null; try{ x=JSON.parse(f.texto); }catch(e){} return x?{...x,id:f.id,created_at:f.created_at}:null; }).filter(Boolean):[]);
+      setLista(Array.isArray(d)?d.map(function(f){ var x=null; try{ x=JSON.parse(f.texto); }catch(e){} return x&&x.valor_hora!==undefined?{...x,id:f.id,created_at:f.created_at}:null; }).filter(Boolean):[]);
     }).catch(function(){ setLista([]); });
+    fetch(SURL+"/rest/v1/pautas?ambito=eq.recibo_logo&limit=20",{headers:SH}).then(function(r){return r.json();}).then(function(d){
+      var o={}; if(Array.isArray(d))d.forEach(function(f){ try{ var x=JSON.parse(f.texto); if(x&&x.url)o[String(f.id).replace(/^recibologo_/,"")]=x; }catch(e){} });
+      setLogos(o);
+    }).catch(function(){});
   }
   useEffect(function(){ cargar(); },[]);
-  // Un recibo ya armado con los datos de un sueldo: empleado, período y monto sin convenio (en los mixtos, el resto se liquida por convenio).
+  function marcaDe(emp){ var l=emp&&getLocal(emp.local); return l?String(l.nombre).toUpperCase():"EL BODEGÓN NKT"; }
+  function vacio(){
+    return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:hoy.substring(0,7),fecha_pago:hoy,
+      valor_hora:"",horas_total:"",horas_convenio:"",sueldo_convenio:"",ref_monto:"",
+      descuentos:RECIBO_DESCUENTOS.map(function(c){return {concepto:c,monto:""};})};
+  }
+  function horasDelFichaje(empId,periodo){
+    var e=empleadosTodos.find(function(x){return x.id===empId;}); if(!e)return "";
+    var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
+    var min=0; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)min+=minutosDe(j,e); }); }catch(err){}
+    return min>0?String(Math.round(min/60*100)/100):"";
+  }
+  function aplicarEmpleado(f,id){
+    var e=empleadosTodos.find(function(x){return x.id===id;});
+    if(!e)return {...f,empleado_id:id};
+    return {...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:e.puesto||f.puesto};
+  }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
-    var e=empleadosTodos.find(function(x){return x.id===empId;})||{};
-    setForm({id:null,empleador:EMPLEADORES[0].nombre,cuit:EMPLEADORES[0].cuit,domicilio:"",empleado_id:empId,nombre:e.nombre||"",cuil:e.cuil||"",categoria:e.categoria||"",
-      ingreso:e.fecha_alta?String(e.fecha_alta).substring(0,10):"",periodo:periodo||hoy.substring(0,7),fecha_pago:hoy,lugar:"",medio:"Efectivo",
-      obs:mixto?"Corresponde a la parte del sueldo fuera de convenio. El resto se liquida por convenio.":"",
-      lineas:RECIBO_CONCEPTOS.map(function(c,i){return {concepto:c[0],tipo:c[1],monto:i===0&&monto>0?String(Math.round(monto*100)/100):""};})});
-    window.scrollTo&&window.scrollTo(0,0);
+    var f=aplicarEmpleado({...vacio(),periodo:periodo||hoy.substring(0,7)},empId);
+    f.horas_total=horasDelFichaje(empId,f.periodo); f.ref_monto=monto>0?String(Math.round(monto*100)/100):"";
+    setForm(f); window.scrollTo&&window.scrollTo(0,0);
   }
   useEffect(function(){
     if(p.inicial){ nuevoDesdeSueldo(p.inicial.empleado_id,p.inicial.periodo,p.inicial.monto,p.inicial.mixto); if(p.onInicialUsado)p.onInicialUsado(); }
   },[p.inicial]);
-  // Sueldos ya pagados de empleados fuera de convenio (o mixtos) que todavía no tienen su recibo.
+  // Sueldos pagados de empleados fuera de convenio (o mixtos) que todavía no tienen su recibo.
   var sinRecibo=[];
   if(lista){
     var desdeP=fechaLocal(new Date(Date.now()-100*86400000)).substring(0,7);
@@ -24384,22 +24408,6 @@ function PanelRecibosFC(p){
     });
     sinRecibo.sort(function(a,b){return String(b.periodo).localeCompare(String(a.periodo))||String(a.nombre).localeCompare(String(b.nombre));});
   }
-  function nuevo(){
-    setForm({id:null,empleador:EMPLEADORES[0].nombre,cuit:EMPLEADORES[0].cuit,domicilio:"",empleado_id:"",nombre:"",cuil:"",categoria:"",ingreso:"",
-      periodo:hoy.substring(0,7),fecha_pago:hoy,lugar:"",medio:"Efectivo",obs:"",
-      lineas:RECIBO_CONCEPTOS.map(function(c){return {concepto:c[0],tipo:c[1],monto:""};})});
-  }
-  function elegirEmpleado(id){
-    var e=empleados.find(function(x){return x.id===id;});
-    setForm(function(f){return {...f,empleado_id:id,nombre:e?e.nombre:f.nombre,cuil:e&&e.cuil?e.cuil:f.cuil,categoria:e&&e.categoria?e.categoria:f.categoria,ingreso:e&&e.fecha_alta?String(e.fecha_alta).substring(0,10):f.ingreso};});
-  }
-  function setLinea(i,k,v){ setForm(function(f){var l=f.lineas.slice(); l[i]={...l[i],[k]:v}; return {...f,lineas:l};}); }
-  function totales(f){
-    var h=0,d=0;
-    (f.lineas||[]).forEach(function(l){ var m=parseFloat(l.monto)||0; if(l.tipo==="descuento")d+=m; else h+=m; });
-    return {haberes:h,descuentos:d,neto:h-d};
-  }
-  var $=function(n){return "$"+(Math.round((n||0)*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
   async function guardar(){
     if(!form.nombre.trim()){ alert("Falta el nombre del empleado."); return; }
     setGuardando(true);
@@ -24418,53 +24426,79 @@ function PanelRecibosFC(p){
   }
   function duplicar(r){
     var d=new Date((r.periodo||hoy.substring(0,7))+"-01T12:00:00"); d.setMonth(d.getMonth()+1);
-    setForm({...r,id:null,created_at:undefined,periodo:d.toISOString().substring(0,7),fecha_pago:hoy});
+    var per=d.toISOString().substring(0,7);
+    setForm({...r,id:null,created_at:undefined,periodo:per,fecha_pago:hoy,horas_total:horasDelFichaje(r.empleado_id,per),horas_convenio:"",sueldo_convenio:"",ref_monto:"",
+      descuentos:(r.descuentos||[]).map(function(d2){return {concepto:d2.concepto,monto:""};})});
     window.scrollTo&&window.scrollTo(0,0);
   }
+  async function subirLogo(file){
+    if(!file)return;
+    var l=await logoADataUrl(file);
+    if(!l){ alert("No pude leer esa imagen. Probá con un PNG o JPG."); return; }
+    var key=form.local||"l1", ahora=new Date().toISOString();
+    var err=await sbSavePauta({id:"recibologo_"+key,ambito:"recibo_logo",texto:JSON.stringify(l),usuario:p.usuario||"",created_at:ahora,updated_at:ahora});
+    if(err){ alert("No se pudo guardar el logo:\n\n"+err); return; }
+    setLogos(function(prev){var o={...prev}; o[key]=l; return o;});
+  }
   function pdf(f){
-    var t=totales(f);
+    var c=reciboCalc(f);
     var doc=new jsPDF({unit:"mm",format:"a4"});
-    var W=210,m=15,y=18;
-    doc.setFont("helvetica","bold"); doc.setFontSize(15); doc.text("RECIBO DE SUELDO",W/2,y,{align:"center"}); y+=6;
-    doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.text("Fuera de convenio",W/2,y,{align:"center"}); y+=8;
-    doc.setDrawColor(120); doc.line(m,y,W-m,y); y+=6;
-    function par(a,b){ doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text(a,m,y); doc.setFont("helvetica","normal"); doc.text(String(b||"—"),m+34,y); y+=5.2; }
-    par("Empleador:",f.empleador); par("CUIT:",f.cuit); if(f.domicilio)par("Domicilio:",f.domicilio);
-    y+=1.5; doc.line(m,y,W-m,y); y+=6;
-    par("Empleado:",f.nombre); par("CUIL:",f.cuil); par("Categoría / tarea:",f.categoria); par("Fecha de ingreso:",f.ingreso?fmtDate(f.ingreso):"");
-    par("Período:",f.periodo); par("Fecha de pago:",f.fecha_pago?fmtDate(f.fecha_pago):""); par("Forma de pago:",f.medio);
-    y+=2;
-    doc.setFillColor(235,235,235); doc.rect(m,y-4.2,W-m*2,6.2,"F");
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text("Concepto",m+2,y); doc.text("Haberes",W-m-42,y,{align:"right"}); doc.text("Descuentos",W-m-2,y,{align:"right"}); y+=6.5;
-    doc.setFont("helvetica","normal");
-    (f.lineas||[]).filter(function(l){return String(l.concepto||"").trim()||(parseFloat(l.monto)||0)!==0;}).forEach(function(l){
-      var mo=parseFloat(l.monto)||0;
-      doc.text(String(l.concepto||""),m+2,y);
-      if(l.tipo==="descuento")doc.text($(mo),W-m-2,y,{align:"right"}); else doc.text($(mo),W-m-42,y,{align:"right"});
-      y+=5.4; doc.setDrawColor(225); doc.line(m,y-3.6,W-m,y-3.6);
-    });
-    y+=2; doc.setDrawColor(120); doc.line(m,y,W-m,y); y+=5.5;
-    doc.setFont("helvetica","bold"); doc.text("Totales",m+2,y); doc.text($(t.haberes),W-m-42,y,{align:"right"}); doc.text($(t.descuentos),W-m-2,y,{align:"right"}); y+=7;
-    doc.setFontSize(11); doc.text("NETO A COBRAR:  "+$(t.neto),W-m-2,y,{align:"right"}); y+=6;
-    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
-    var letras="Son: "+numALetras(t.neto); var ls=doc.splitTextToSize(letras,W-m*2); doc.text(ls,m+2,y); y+=ls.length*4.4+3;
-    if(f.obs){ var os=doc.splitTextToSize("Observaciones: "+f.obs,W-m*2); doc.text(os,m+2,y); y+=os.length*4.4+3; }
-    y+=4; doc.text((f.lugar?f.lugar+", ":"")+(f.fecha_pago?fmtDate(f.fecha_pago):""),m+2,y); y+=26;
-    doc.line(m+2,y,m+70,y); doc.line(W-m-70,y,W-m-2,y); y+=4.5;
-    doc.setFontSize(8); doc.text("Firma del empleador",m+36,y,{align:"center"}); doc.text("Firma del empleado",W-m-36,y,{align:"center"});
+    var logo=logos[f.local||"l1"];
+    var X=15, Wd=180, cols=[X,X+78,X+115,X+147,X+Wd];   // concepto | fecha | cantidad | valor
+    function bloque(y0){
+      var y=y0, RH=5.6;
+      doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH);
+      doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.text(String(f.marca||""),X+Wd/2-20,y+4,{align:"center"}); y+=RH;
+      // datos + logo
+      var hDatos=RH*5;
+      doc.setDrawColor(150); doc.rect(X,y,Wd,hDatos);
+      doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      var ls=["Empleado/a: "+(f.nombre||""),"Sector: "+(f.sector||""),"Puesto: "+(f.puesto||""),"Fecha de pago: "+(f.fecha_pago?(function(s){var q=s.split("-");return q[2]+"/"+q[1]+"/"+q[0].slice(2);})(f.fecha_pago):""),"Periodo: "+periodoEnLetras(f.periodo)];
+      ls.forEach(function(t,i){ doc.text(t,X+1.5,y+RH*(i+1)-1.6); });
+      if(logo&&logo.url){ try{ var mw=62, mh=hDatos-3, rw=mw, rh=rw*logo.h/logo.w; if(rh>mh){rh=mh; rw=rh*logo.w/logo.h;} doc.addImage(logo.url,"JPEG",X+Wd-rw-4,y+1.5,rw,rh); }catch(e){} }
+      y+=hDatos;
+      // encabezado de la tabla
+      doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH);
+      doc.setFont("helvetica","normal"); doc.setFontSize(8);
+      ["CONCEPTO","FECHA","CANTIDAD","VALOR"].forEach(function(t,i){ doc.text(t,(cols[i]+cols[i+1])/2,y+4,{align:"center"}); });
+      y+=RH;
+      function fila(concepto,fecha,cant,valor,neg){
+        doc.setDrawColor(150); doc.rect(X,y,Wd,RH);
+        for(var i=1;i<4;i++)doc.line(cols[i],y,cols[i],y+RH);
+        doc.setFont("helvetica",neg?"bold":"normal"); doc.setFontSize(8);
+        doc.text(String(concepto),cols[0]+1.2,y+4);
+        if(fecha)doc.text(String(fecha),(cols[1]+cols[2])/2,y+4,{align:"center"});
+        if(cant!=="")doc.text(String(cant),cols[3]-1.5,y+4,{align:"right"});
+        if(valor!==""){ doc.setFont("helvetica",neg?"bold":"normal"); doc.text("$",cols[3]+1.5,y+4); doc.text(String(valor),cols[4]-1.5,y+4,{align:"right"}); }
+        y+=RH;
+      }
+      var per=periodoEnLetras(f.periodo).toUpperCase();
+      fila("Valor hora "+per,"","",n2(c.vh));
+      fila("Horas totales trabajadas / Sueldo total","",n2(c.ht),n2(c.sueldoTotal));
+      fila("Horas por convenio / Sueldo por convenio","",n2(c.hc),n2(c.sueldoConv));
+      fila("Horas fuera de convenio / Sueldo fuera de convenio","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
+      doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
+      doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR FUERA DE CONVENIO:",X+22,y+4.2);
+      doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
+      return y+RH+0.6;
+    }
+    var fin=bloque(18);
+    bloque(fin+14);
     doc.save("Recibo_"+String(f.nombre||"empleado").replace(/[^a-z0-9]+/gi,"_")+"_"+(f.periodo||"")+".pdf");
   }
   var INP={padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var LB={display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:4};
   var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:"12px 14px",marginBottom:10};
-  var campo=function(label,k,tipo){return <div><label style={LB}>{label}</label><input type={tipo||"text"} value={form[k]||""} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,[k]:v};});}} style={INP}/></div>;};
+  var campo=function(label,k,tipo,extra){return <div><label style={LB}>{label}</label><input type={tipo||"text"} step={tipo==="number"?"0.01":undefined} value={form[k]===undefined||form[k]===null?"":form[k]} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,[k]:v};});}} style={INP} {...(extra||{})}/></div>;};
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       {!form&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Armá el recibo de un empleado fuera de convenio: completás los datos, agregás o borrás conceptos y bajás el PDF. Queda guardado para duplicarlo el mes que viene.</div>
-            <button onClick={nuevo} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
+            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Recibo fuera de convenio: tomás el valor hora del recibo de convenio, cargás las horas trabajadas y las de convenio, y se calcula lo que queda fuera de convenio. Baja en PDF con dos copias por hoja.</div>
+            <button onClick={function(){setForm(vacio());}} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
           </div>
           {sinRecibo.length>0&&(
             <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:12,padding:"11px 14px",marginBottom:10}}>
@@ -24478,12 +24512,12 @@ function PanelRecibosFC(p){
             </div>
           )}
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
-            var t=totales(r);
+            var c=reciboCalc(r);
             return(
               <div key={r.id} style={{...CAJA,display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{r.nombre}</div>
-                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.periodo} · {r.empleador} · neto <b style={{color:"#4CAF50"}}>{$(t.neto)}</b></div>
+                  <div style={{fontSize:11,color:"#7E7E7E"}}>{periodoEnLetras(r.periodo)} · {r.marca} · fuera de convenio <b style={{color:"#4CAF50"}}>{$(c.total)}</b></div>
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={function(){setForm(r);window.scrollTo&&window.scrollTo(0,0);}} style={{...GH,padding:"6px 11px",fontSize:11.5}}>✎ Abrir</button>
@@ -24497,63 +24531,79 @@ function PanelRecibosFC(p){
         </div>
       )}
       {form&&(function(){
-        var t=totales(form);
+        var c=reciboCalc(form), logo=logos[form.local||"l1"];
+        var refDif=form.ref_monto!==""&&form.ref_monto!==undefined&&Math.abs((parseFloat(form.ref_monto)||0)-c.total)>1;
         return(
           <div>
             <button onClick={function(){setForm(null);cargar();}} style={{...GH,padding:"6px 12px",fontSize:12,marginBottom:10}}>← Volver al listado</button>
             <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>🏢 Empleador</div>
-              <label style={LB}>Razón social</label>
-              <select value={form.empleador} onChange={function(e){var v=e.target.value;var x=EMPLEADORES.find(function(z){return z.nombre===v;});setForm(function(f){return {...f,empleador:v,cuit:x?x.cuit:f.cuit};});}} style={{...INP,marginBottom:8}}>
-                {EMPLEADORES.map(function(x){return <option key={x.nombre} value={x.nombre}>{x.nombre}</option>;})}
-                {EMPLEADORES.every(function(x){return x.nombre!==form.empleador;})&&<option value={form.empleador}>{form.empleador}</option>}
-              </select>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("CUIT","cuit")}{campo("Domicilio","domicilio")}</div>
-            </div>
-            <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>👤 Empleado</div>
-              <label style={LB}>Elegir de la lista (completa los datos)</label>
-              <select value={form.empleado_id||""} onChange={function(e){elegirEmpleado(e.target.value);}} style={{...INP,marginBottom:8}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>👤 Encabezado</div>
+              <label style={LB}>Empleado (completa los datos)</label>
+              <select value={form.empleado_id||""} onChange={function(e){var id=e.target.value;setForm(function(f){var g=aplicarEmpleado(f,id); if(id&&!g.horas_total)g.horas_total=horasDelFichaje(id,g.periodo); return g;});}} style={{...INP,marginBottom:8}}>
                 <option value="">— escribir a mano —</option>
                 {empleados.map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
               </select>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Nombre y apellido","nombre")}{campo("CUIL","cuil")}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Categoría / tarea","categoria")}{campo("Fecha de ingreso","ingreso","date")}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Empleado/a","nombre")}{campo("Encabezado (local)","marca")}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Sector","sector")}{campo("Puesto","puesto")}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Período (mes)","periodo","month")}{campo("Fecha de pago","fecha_pago","date")}</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
+                {logo&&logo.url?<img src={logo.url} alt="logo" style={{height:42,borderRadius:6,background:"#fff"}}/>:<span style={{fontSize:11,color:"#7E7E7E"}}>Sin logo cargado para este local.</span>}
+                <label style={{...GH,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>🖼️ {logo&&logo.url?"Cambiar logo":"Subir logo"}<input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){subirLogo(e.target.files&&e.target.files[0]);e.target.value="";}}/></label>
+              </div>
             </div>
             <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>📅 Período y pago</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Período (mes)","periodo","month")}{campo("Fecha de pago","fecha_pago","date")}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Lugar","lugar")}{campo("Forma de pago","medio")}</div>
-            </div>
-            <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>🧾 Conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los renglones que necesites</span></div>
-              {form.lineas.map(function(l,i){
-                return(
-                  <div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 106px 96px 26px",gap:6,marginBottom:6,alignItems:"center"}}>
-                    <input value={l.concepto} onChange={function(e){setLinea(i,"concepto",e.target.value);}} placeholder="Concepto" style={INP}/>
-                    <select value={l.tipo} onChange={function(e){setLinea(i,"tipo",e.target.value);}} style={{...INP,padding:"8px 4px"}}><option value="haber">Haber</option><option value="descuento">Descuento</option></select>
-                    <input type="number" step="0.01" value={l.monto} onChange={function(e){setLinea(i,"monto",e.target.value);}} placeholder="Monto" style={INP}/>
-                    <button onClick={function(){setForm(function(f){return {...f,lineas:f.lineas.filter(function(_,k){return k!==i;})};});}} title="Borrar renglón" style={{background:"none",border:"none",color:"#C1440E",cursor:"pointer",fontSize:14}}>✕</button>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>⏱️ Valor hora y horas</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                {campo("Valor hora $","valor_hora","number")}
+                <div>
+                  <label style={LB}>Horas totales trabajadas</label>
+                  <div style={{display:"flex",gap:6}}>
+                    <input type="number" step="0.01" value={form.horas_total} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,horas_total:v};});}} style={INP}/>
+                    {form.empleado_id&&<button onClick={function(){var h=horasDelFichaje(form.empleado_id,form.periodo); if(!h){alert("No hay horas cerradas en el Fichaje para ese empleado en "+periodoEnLetras(form.periodo)+".");return;} setForm(function(f){return {...f,horas_total:h};});}} title="Traer las horas del mes desde el Fichaje" style={{...GH,padding:"0 10px",fontSize:11,whiteSpace:"nowrap"}}>🕐 Fichaje</button>}
                   </div>
-                );
-              })}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"4px 0 10px"}}>
-                <button onClick={function(){setForm(function(f){return {...f,lineas:f.lineas.concat([{concepto:"",tipo:"haber",monto:""}])};});}} style={{...GH,padding:"6px 12px",fontSize:12}}>+ Agregar concepto</button>
+                </div>
               </div>
-              <div style={{borderTop:"1px solid #1E1E1E",paddingTop:8,fontSize:12.5}}>
-                <div style={{display:"flex",justifyContent:"space-between",color:"#B8B8B8"}}><span>Total haberes</span><b>{$(t.haberes)}</b></div>
-                <div style={{display:"flex",justifyContent:"space-between",color:"#B8B8B8"}}><span>Total descuentos</span><b>{$(t.descuentos)}</b></div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:15,marginTop:4}}><span style={{color:"#F0EDE8",fontWeight:800}}>Neto a cobrar</span><b style={{color:t.neto<0?"#E0714A":"#4CAF50"}}>{$(t.neto)}</b></div>
-                <div style={{fontSize:11,color:"#7E7E7E",marginTop:4}}>Son: {numALetras(t.neto)}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {campo("Horas por convenio","horas_convenio","number")}
+                <div>
+                  <label style={LB}>Sueldo por convenio $ <span style={{textTransform:"none",color:"#6E6E6E"}}>(si lo dejás vacío = horas × valor hora)</span></label>
+                  <input type="number" step="0.01" value={form.sueldo_convenio} placeholder={String(c.sueldoConv)} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,sueldo_convenio:v};});}} style={INP}/>
+                </div>
               </div>
+              <details style={{marginTop:10}}>
+                <summary style={{fontSize:11.5,color:"#3A9BC1",cursor:"pointer"}}>🧮 Calcular el valor hora desde el recibo de convenio</summary>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,marginTop:8,alignItems:"end"}}>
+                  <div><label style={LB}>Total del recibo de convenio $</label><input type="number" step="0.01" value={calcVH.bruto} onChange={function(e){setCalcVH({...calcVH,bruto:e.target.value});}} style={INP}/></div>
+                  <div><label style={LB}>Horas de ese recibo</label><input type="number" step="0.01" value={calcVH.horas} onChange={function(e){setCalcVH({...calcVH,horas:e.target.value});}} style={INP}/></div>
+                  <button onClick={function(){var b=parseFloat(calcVH.bruto),h=parseFloat(calcVH.horas); if(!(b>0&&h>0)){alert("Cargá el total y las horas del recibo de convenio.");return;} setForm(function(f){return {...f,valor_hora:String(Math.round(b/h*100)/100)};});}} style={{...GH,padding:"9px 12px",fontSize:12}}>Usar</button>
+                </div>
+                <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:4}}>Total ÷ horas = valor hora (con feriados, vacaciones y demás ya incluidos en ese total).</div>
+              </details>
             </div>
             <div style={CAJA}>
-              <label style={LB}>Observaciones (opcional)</label>
-              <textarea value={form.obs||""} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,obs:v};});}} rows={2} style={{...INP,resize:"vertical"}}/>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
+              {(form.descuentos||[]).map(function(d,i){return(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 110px 26px",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <input value={d.concepto} onChange={function(e){var v=e.target.value;setForm(function(f){var l=f.descuentos.slice(); l[i]={...l[i],concepto:v}; return {...f,descuentos:l};});}} placeholder="Concepto" style={INP}/>
+                  <input type="number" step="0.01" value={d.monto} onChange={function(e){var v=e.target.value;setForm(function(f){var l=f.descuentos.slice(); l[i]={...l[i],monto:v}; return {...f,descuentos:l};});}} placeholder="Monto" style={INP}/>
+                  <button onClick={function(){setForm(function(f){return {...f,descuentos:f.descuentos.filter(function(_,k){return k!==i;})};});}} title="Borrar" style={{background:"none",border:"none",color:"#C1440E",cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              );})}
+              <button onClick={function(){setForm(function(f){return {...f,descuentos:(f.descuentos||[]).concat([{concepto:"",monto:""}])};});}} style={{...GH,padding:"6px 12px",fontSize:12}}>+ Agregar descuento</button>
+            </div>
+            <div style={{...CAJA,borderColor:"#4CAF5055"}}>
+              <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo total ({n2(c.ht)} h × {n2(c.vh)})</span><b>{$(c.sueldoTotal)}</b></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({n2(c.horasFuera)} h)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                {c.desc>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Descuentos</span><b>− {$(c.desc)}</b></div>}
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>Total a cobrar fuera de convenio</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
+              </div>
+              {form.ref_monto!==""&&form.ref_monto!==undefined&&<div style={{fontSize:11,color:refDif?"#D4A017":"#7E7E7E",marginTop:6}}>En Sueldos figura {$(parseFloat(form.ref_monto)||0)} fuera de convenio{refDif?" — no coincide con este recibo, revisalo.":"."}</div>}
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={guardar} disabled={guardando} style={{padding:"11px 20px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>{guardando?"Guardando…":(form.id?"💾 Guardar cambios":"💾 Guardar recibo")}</button>
-              <button onClick={function(){pdf(form);}} style={{...GH,padding:"11px 18px",fontSize:13}}>📄 Descargar PDF</button>
+              <button onClick={function(){pdf(form);}} style={{...GH,padding:"11px 18px",fontSize:13}}>📄 Descargar PDF (2 copias)</button>
             </div>
           </div>
         );
@@ -25121,7 +25171,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

@@ -14104,7 +14104,10 @@ function PanelFichajes(p){
                         );
                       })}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
-                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{(function(){ var fu=Math.round(x.jor.reduce(function(a,j){return a+minutosFueraDeJornada(j,x.e);},0)); return fu>=15?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{(function(){
+                          // Igual que en Novedades: solo los días en que se pasó 30 minutos o más, o que trabajó en un franco.
+                          var porD={}; x.jor.forEach(function(j){ var f=String((j.entrada||j.salida).fecha).substring(0,10); porD[f]=(porD[f]||0)+minutosFueraDeJornada(j,x.e); });
+                          var fu=Math.round(Object.keys(porD).reduce(function(a,f){ var t=turnoDe(x.e,f); return a+((porD[f]>=30||(t&&t.franco&&porD[f]>0))?porD[f]:0); },0)); return fu>0?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
                         <b style={{color:"#F0EDE8",fontVariantNumeric:"tabular-nums"}}>{fmtHs(x.min)}{x.previstas>0?<span style={{color:x.min>=x.previstas?"#3A7D44":"#C1440E",fontWeight:600}}> · según jornada {fmtHs(x.previstas)} ({(x.min>=x.previstas?"+":"−")+fmtHs(Math.abs(x.min-x.previstas))})</span>:null}</b>
                       </div>
                     </div>
@@ -14764,7 +14767,8 @@ function TarjetaCambiosPersonal(p){
     Object.keys(porDia).forEach(function(f){
       var o=porDia[f], t=jornadaDe(e)?turnoDe(e,f):null;
       if(!t)return;
-      if(o.fuera>0)totalesFuera[e.id]={e:e,min:((totalesFuera[e.id]||{}).min||0)+o.fuera};
+      // Solo cuentan los días en que se pasó de verdad (30 min o más) o que trabajó en un franco: unos minutos sueltos no se acumulan.
+      if(o.fuera>=EXTRA_MIN||(t.franco&&o.fuera>0))totalesFuera[e.id]={e:e,min:((totalesFuera[e.id]||{}).min||0)+o.fuera};
       if(t.franco){ francoMin[e.id+"_"+f]=o.total; return; }
       if(o.fuera>=EXTRA_MIN)items.push({tipo:"extra",fecha:f,nombre:e.nombre,local:e.local,txt:"trabajó "+fmtHs(o.total)+", de las cuales "+fmtHs(o.fuera)+" fuera de su horario ("+t.desde+"–"+t.hasta+")"});
     });
@@ -14798,7 +14802,7 @@ function TarjetaCambiosPersonal(p){
   var TIPOS={extra:["⏱️","Horas de más","#E07B00"],franco:["📅","En su franco","#D4A017"],local:["🔁","Otro local","#1A8A7B"],horario:["🕐","Cambio de horario","#8B2FC9"],dia:["🗓️","Cambio de días laborales","#8B2FC9"]};
   var cuentas=Object.keys(TIPOS).map(function(k){return {k:k,n:items.filter(function(x){return x.tipo===k;}).length};}).filter(function(c){return c.n>0;});
   var visibles=abierta?items:items.slice(0,5);
-  var porPersona=Object.keys(totalesFuera).map(function(k){return totalesFuera[k];}).filter(function(x){return x.min>=15;}).sort(function(a,b){return b.min-a.min;});
+  var porPersona=Object.keys(totalesFuera).map(function(k){return totalesFuera[k];}).filter(function(x){return x.min>0;}).sort(function(a,b){return b.min-a.min;});
   return(
     <div style={{background:"#0C0C0C",border:"1px solid "+(items.length>0?"#D4A01755":"#1E1E1E"),borderRadius:14,padding:"13px 15px",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:items.length>0?8:0}}>

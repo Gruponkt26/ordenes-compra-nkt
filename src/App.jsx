@@ -2581,6 +2581,8 @@ function GestProveedoresPanel(p) {
   // Editar un movimiento existente. El tipo no se cambia (un pago genera su egreso y una
   // compra no): para eso se borra y se vuelve a cargar. Si es un pago, también se actualiza
   // el egreso que generó, que se reconoce por su id "egr_prov_"+id del movimiento.
+  // Un pago genera su egreso (el reclamo va con el egreso); una compra a cuenta corriente no, así que lleva su propia clave.
+  function claveReclamo(m){ return m.tipo==="pago"?"egr_prov_"+m.id:"mov_"+m.id; }
   function abrirEditarMov(m){
     var eg=(p.gastos||[]).find(function(g){return g.id==="egr_prov_"+m.id;});
     if(eg&&Array.isArray(eg.pagos)&&eg.pagos.length>1){
@@ -2588,7 +2590,8 @@ function GestProveedoresPanel(p) {
       return;
     }
     setFormMov({tipo:m.tipo,local:m.local,monto:String(m.monto),medio_pago:m.tipo==="pago"?(m.medio_pago||""):"",fecha:m.fecha||new Date().toISOString().split("T")[0],
-      notas:m.notas||"",facturado:eg?!!eg.facturado:false,facturacion:eg&&eg.facturado?(eg.facturacion||""):""});
+      notas:m.notas||"",facturado:eg?!!eg.facturado:false,facturacion:eg&&eg.facturado?(eg.facturacion||""):"",
+      reclamar:!!(RECLAMOS_FACTURA[claveReclamo(m)]&&RECLAMOS_FACTURA[claveReclamo(m)].estado==="pendiente")});
     setEditMovId(m.id);
     setShowFormMov(true);
   }
@@ -2598,6 +2601,14 @@ function GestProveedoresPanel(p) {
     var movId=editando?editando.id:String(Date.now());
     var mov={id:movId,prov_id:sel,local:formMov.local,tipo:formMov.tipo,monto:parseFloat(formMov.monto),medio_pago:formMov.tipo==="pago"?formMov.medio_pago:"Cuenta corriente",fecha:formMov.fecha,notas:formMov.notas,usuario:editando?(editando.usuario||p.usuario||""):(p.usuario||""),created_at:editando?(editando.created_at||new Date().toISOString()):new Date().toISOString()};
     if(onSaveMov)onSaveMov(mov);
+    // Reclamar factura: se marca si se tildó y no tiene factura; si llega la factura o se destilda, queda como recibida.
+    var kRec=claveReclamo(mov), recPrev=RECLAMOS_FACTURA[kRec], hoyR=new Date().toISOString().split("T")[0];
+    var nomProv=(provs.find(function(pv){return pv.id===sel;})||{}).nombre||"Proveedor";
+    if(formMov.reclamar&&!formMov.facturado){
+      if(!recPrev||recPrev.estado!=="pendiente")GUARDAR_RECLAMO(kRec,{estado:"pendiente",concepto:nomProv+(mov.tipo==="compra"?" · compra":" · pago"),monto:mov.monto,fecha:mov.fecha,local:mov.local,desde:hoyR});
+    } else if(recPrev&&recPrev.estado==="pendiente"){
+      GUARDAR_RECLAMO(kRec,{...recPrev,estado:"recibida",recibida:hoyR});
+    }
     // Si es pago, generar egreso automático en Egresos → Proveedores. Queda atado al
     // movimiento guardando mov_id adentro de "pagos" (que ya es JSON libre, así no hace
     // falta agregar ninguna columna nueva a la tabla): si alguien borra este egreso desde
@@ -2805,6 +2816,7 @@ function GestProveedoresPanel(p) {
                               <div style={{display:"flex",alignItems:"center",gap:6}}>
                                 <span style={{fontSize:10,fontWeight:700,color:m.tipo==="compra"?"#C1440E":"#3A7D44"}}>{m.tipo==="compra"?"📦 Compra":"💸 Pago"}</span>
                                 <span style={{fontSize:10,color:loc?loc.color:"#8C8C8C"}}>{loc?loc.emoji+" "+loc.nombre:m.local}</span>
+                                {RECLAMOS_FACTURA[claveReclamo(m)]&&RECLAMOS_FACTURA[claveReclamo(m)].estado==="pendiente"&&<button onClick={function(){ if(window.confirm("¿Ya llegó la factura de este movimiento?\n\nSe saca de las facturas por reclamar."))GUARDAR_RECLAMO(claveReclamo(m),{...RECLAMOS_FACTURA[claveReclamo(m)],estado:"recibida",recibida:new Date().toISOString().split("T")[0]}); }} title="Tocá cuando llegue la factura" style={{fontSize:9,color:"#D4A017",background:"#D4A01722",border:"none",borderRadius:4,padding:"1px 5px",cursor:"pointer"}}>📄 Reclamar factura</button>}
                               </div>
                               <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{m.fecha} · {m.medio_pago}</div>
                               {m.notas&&<div style={{fontSize:9,color:"#6E6E6E",fontStyle:"italic",marginTop:2}}>📝 {m.notas}</div>}
@@ -2878,12 +2890,22 @@ function GestProveedoresPanel(p) {
                             ):(
                               <div style={{fontSize:9,color:"#8C8C8C",marginTop:6,lineHeight:1.5}}>Si tiene factura, marcalo: si no, ese IVA no entra al crédito fiscal del mes.</div>
                             )}
+                            {!formMov.facturado&&(
+                              <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,marginTop:8}}>
+                                <input type="checkbox" checked={!!formMov.reclamar} onChange={function(e){var v=e.target.checked;setFormMov(function(f){return{...f,reclamar:v};});}}/>
+                                <span style={{color:formMov.reclamar?"#D4A017":"#888",fontWeight:formMov.reclamar?700:400}}>📄 Reclamar factura al proveedor</span>
+                              </label>
+                            )}
                           </div>
                         )}
                         {formMov.tipo==="compra"&&(
                           <div style={{marginBottom:10,background:"#0A1A0A",border:"1px solid #3A7D4422",borderRadius:8,padding:"8px 12px"}}>
                             <div style={{fontSize:10,color:"#3A7D44"}}>📋 Cuenta corriente — sin medio de pago</div>
                             <div style={{fontSize:9,color:"#2A5A32",marginTop:4}}>La factura se marca al pagar, que es cuando el gasto entra a Egresos.</div>
+                            <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:12,marginTop:8}}>
+                              <input type="checkbox" checked={!!formMov.reclamar} onChange={function(e){var v=e.target.checked;setFormMov(function(f){return{...f,reclamar:v};});}}/>
+                              <span style={{color:formMov.reclamar?"#D4A017":"#888",fontWeight:formMov.reclamar?700:400}}>📄 Reclamar factura de esta compra</span>
+                            </label>
                           </div>
                         )}
                         {/* Notas */}

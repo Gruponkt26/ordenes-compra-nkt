@@ -10319,6 +10319,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
 
   var [percIvaF,setPercIvaF]=useState("");
   var [reclamarF,setReclamarF]=useState(false);   // "reclamar factura" al proveedor
+  var [ocNum,setOcNum]=useState("");              // número de orden de compra del egreso
   var [percIibbF,setPercIibbF]=useState("");
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
@@ -10338,6 +10339,9 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     } else if(rec&&rec.estado==="pendiente"){
       GUARDAR_RECLAMO(g.id,{...rec,estado:"recibida",recibida:hoy});
     }
+    var ocTxt=String(ocNum||"").trim();
+    if(ocTxt!==String(OC_EGRESOS[g.id]||""))GUARDAR_OC(g.id,ocTxt);
+    setOcNum("");
     setReclamarF(false);
     setPercIvaF(""); setPercIibbF("");
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
@@ -10346,6 +10350,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
+    setOcNum(OC_EGRESOS[g.id]||"");
     setReclamarF(!!(RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"));
     setEditId(g.id);
     setPercIvaF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iva||""):""); setPercIibbF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iibb||""):"");
@@ -10371,7 +10376,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
-        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
       </div>
 
       {/* Total */}
@@ -10408,7 +10413,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                     {esGastoDeuda(g)&&<div style={{fontSize:9,color:"#E0714A",background:"#E0714A22",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>🕓 Deuda</div>}
                     {RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"&&!g.facturado&&<button onClick={function(){ if(window.confirm("¿Ya llegó la factura de «"+g.concepto+"»?\n\nSe saca de las facturas por reclamar."))GUARDAR_RECLAMO(g.id,{...RECLAMOS_FACTURA[g.id],estado:"recibida",recibida:hoy}); }} title="Tocá cuando llegue la factura" style={{fontSize:9,color:"#D4A017",background:"#D4A01722",border:"none",borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap",cursor:"pointer"}}>📄 Reclamar factura</button>}
                   </div>
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{loc?loc.emoji+" "+loc.nombre:g.local} · {g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}{OC_EGRESOS[g.id]?" · OC N° "+OC_EGRESOS[g.id]:""}</div>
                   {fact&&<div style={{fontSize:10,color:"#D4A017",marginTop:1}}>🧾 {fact.razonSocial}</div>}
                   {g.detalle&&<div style={{fontSize:10,color:esEgresoDeVenc(g)?"#D4A017":"#3A7D44",marginTop:1}}>{esEgresoDeVenc(g)?"📅":"🛒"} {g.detalle}</div>}
                   {g.notas&&<div style={{fontSize:10,color:"#6E6E6E",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
@@ -10445,7 +10450,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                       <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{g.concepto}</div>
                       <div style={{fontSize:9,color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px"}}>↔️ {loc?loc.emoji+" "+loc.nombre:g.local}</div>
                     </div>
-                    <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>{g.fecha} · {g.forma_pago}{g.subramo?" · "+g.subramo:""}{OC_EGRESOS[g.id]?" · OC N° "+OC_EGRESOS[g.id]:""}</div>
                     {g.notas&&<div style={{fontSize:10,color:"#6E6E6E",fontStyle:"italic",marginTop:1}}>📝 {g.notas}</div>}
                   </div>
                   <div style={{textAlign:"right",marginLeft:10}}>
@@ -10505,6 +10510,11 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
             <div style={{marginBottom:10}}>
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Sub-rama (opcional)</label>
               <input value={form.subramo} onChange={function(e){setForm(function(f){return{...f,subramo:e.target.value};});}} placeholder="Ej: VEP, Plan de pagos, Honorarios..." style={INP}/>
+            </div>
+            {/* Orden de compra número */}
+            <div style={{marginBottom:10}}>
+              <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Orden de compra número (opcional)</label>
+              <input value={ocNum} onChange={function(e){setOcNum(e.target.value);}} placeholder="Ej: 1234" style={INP}/>
             </div>
 
             {/* Detalle de productos */}
@@ -19397,6 +19407,9 @@ var PERC_REALES={};
 var GUARDAR_PERC=function(){};
 // Facturas que hay que reclamarle al proveedor: egresos sin factura marcados para reclamar. {idEgreso:{estado:"pendiente"|"recibida", ...}}
 var RECLAMOS_FACTURA={};
+// Número de orden de compra de cada egreso: {idEgreso:"1234"}. Va aparte (pauta oc_egreso) para no tocar la tabla de gastos.
+var OC_EGRESOS={};
+var GUARDAR_OC=function(){};
 var GUARDAR_RECLAMO=function(){};
 // Coca Cola y Pepsi facturan con impuestos internos (en la factura de Coca Cola de oct-2026: 6,33 % del neto) que no
 // llevan IVA; La Serenísima no. Las percepciones: IVA RG 2408 = 3 % del neto; IIBB Bs. As. = 4 % de (neto + internos).
@@ -28992,6 +29005,13 @@ export default function App() {
     try{ var dr2=JSON.parse(x.texto||"{}"); reclamosFact[String(x.id).replace(/^reclamo_/,"")]=dr2; }catch(e){}
   });
   RECLAMOS_FACTURA=reclamosFact;
+  var ocEgr={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="oc_egreso")return;
+    try{ var dq=JSON.parse(x.texto||"{}"); if(dq.numero)ocEgr[String(x.id).replace(/^oc_/,"")]=String(dq.numero); }catch(e){}
+  });
+  OC_EGRESOS=ocEgr;
+  GUARDAR_OC=function(gid,numero){ guardarOfPauta("oc_egreso",{id:"oc_"+gid,numero:numero}); };
   GUARDAR_RECLAMO=function(gid,d){ guardarOfPauta("reclamo_factura",{id:"reclamo_"+gid,...d}); };
   // F.931 sin pagar como vencimientos (sólo para los avisos y la deuda de Novedades): el del CUIT propio en El Bodegón, el de la SRL en Kusama.
   var f931Virtuales=(cargasSociales||[]).filter(function(c){return (c.cuit==="c1"||c.cuit==="c2")&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0&&venceF931(c);})

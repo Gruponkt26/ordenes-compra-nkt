@@ -10081,10 +10081,10 @@ function gastosEgresosDe(gastos,lid){
   return lid==="l4"?propios.concat(agruparEgresosOficina(gastos)):propios;
 }
 
-var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Adquisiciones","Retiros","Aportes"];
+var AREAS_BASE=["Proveedores","Sueldos","Mantenimiento","Servicios","Alquileres","Administrativo","Marketing","Obras","Adquisiciones","Capacitación del personal","Retiros","Aportes"];
 var AREA_COLORES={
   "Proveedores":"#1A6B8A","Sueldos":"#4CAF50","Mantenimiento":"#E07B00",
-  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44","Adquisiciones":"#2AA6A6","Concesión NKT":"#D4A017",
+  "Servicios":"#8B2FC9","Alquileres":"#8B6BB8","Administrativo":"#D4A017","Marketing":"#C1440E","Obras":"#3A7D44","Adquisiciones":"#2AA6A6","Capacitación del personal":"#5B8DEF","Concesión NKT":"#D4A017",
   "Retiros":"#8B4513",
   "Aportes":"#3A7D44",
   "F.931":"#4CAF50"
@@ -10202,6 +10202,16 @@ var CONCEPTOS_POR_AREA={
       {nombre:"Materiales de construcción",sub:"Materiales"},
       {nombre:"Pintura",sub:"Materiales"},{nombre:"Herrería",sub:"Mano de obra"},
       {nombre:"Plomería",sub:"Mano de obra"},{nombre:"Equipamiento",sub:"Equipamiento"},
+    ]
+  },
+  "Capacitación del personal":{
+    grupos:["Cursos","Talleres","Certificaciones","Otros"],
+    items:[
+      {nombre:"Curso de manipulación de alimentos",sub:"Certificaciones"},
+      {nombre:"Curso de atención al cliente",sub:"Cursos"},
+      {nombre:"Capacitación en seguridad e higiene",sub:"Cursos"},
+      {nombre:"Taller de cocina",sub:"Talleres"},
+      {nombre:"Taller de coctelería",sub:"Talleres"},
     ]
   },
 };

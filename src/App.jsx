@@ -14584,7 +14584,9 @@ function PanelNovedades(p){
     var v={};
     LOCALES.filter(function(l){return l.id!=="l4";}).forEach(function(l){
       var x=(p.cajaInicial||{})[l.id+"|"+mesCaja];
-      v[l.id]=x===undefined?"":String(x);
+      // Sin saldo cargado, se propone lo que quedó en el cajón al cerrar el mes anterior (se puede corregir antes de guardar).
+      var dp=p.datosPrev, prop=(dp&&dp.mes===mesAnteriorDe(mesCaja)&&dp.locales&&dp.locales[l.id])?Math.round(dp.locales[l.id].cajon||0):0;
+      v[l.id]=x===undefined?(prop>0?String(prop):""):String(x);
     });
     setIniVal(v);setIniAbierto(true);
   }
@@ -15389,7 +15391,7 @@ function PanelNovedades(p){
         <div onClick={function(){setIniAbierto(false);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div onClick={function(e){e.stopPropagation();}} style={{background:"#0C0C0C",border:"1px solid #2A2A2A",borderRadius:16,padding:"18px 20px",width:"100%",maxWidth:380}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>Saldo inicial de la caja menor</div>
-            <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>Con cuánto efectivo arranca cada caja en {mesCaja}. Si queda vacío, arranca en $0.</div>
+            <div style={{fontSize:11,color:"#7E7E7E",marginBottom:12}}>Con cuánto efectivo arranca cada caja en {mesCaja}. Si no cargaste nada, te propongo lo que quedó en el cajón al cerrar {mesAnteriorDe(mesCaja)}: revisalo y guardá. Si queda vacío, arranca en $0.</div>
             {LOCALES.filter(function(l){return l.id!=="l4";}).map(function(l){
               return(
                 <div key={l.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -22192,7 +22194,8 @@ function PanelResultados(p){
     localesFiltro.forEach(function(l){
       var d=datos[l.id]||{};
       out.locales[l.id]={ventas:d.ventasCorregidas||0,gastos:d.totalGastos||0,resultado:d.resultado||0,dispEf:d.dispEfectivo||0,dispEl:d.dispElectronicoHoy||0,
-        cajon:d.efectivoCajon||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0};
+        cajon:d.efectivoCajon||0,porCat:d.porCat||{},porCatDeuda:d.porCatDeuda||{},retiros:d.retirosTotales||0,aportes:d.aportesModMonto||0,
+        cierre:{efectivo:d.dispEfectivo||0,transferencia:d.dispTransferencia||0,debito:d.dispDebitoHoy||0,credito:d.dispCreditoHoy||0,otros:(d.dispOtros||0)+(d.dispMp||0)}};
     });
     var js=JSON.stringify(out);
     if(js===ultimoEnvioRef.current)return;
@@ -22862,6 +22865,16 @@ function PanelResultados(p){
                     No hay traspaso cargado para este mes — la disponibilidad de abajo NO incluye ningún arrastre de {d.traspaso.mes}. Cargalo a mano con el saldo real del banco/efectivo de cierre de ese mes.
                   </div>
                 )}
+                {(function(){
+                  var pv=p.datosPrevMes, mesPrev=mesAnteriorDe(mesFiltro);
+                  var cz=pv&&pv.mes===mesPrev&&pv.locales&&pv.locales[l.id]&&pv.locales[l.id].cierre;
+                  if(!cz)return null;
+                  return <button onClick={function(){
+                    setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};
+                      n[l.id]={...c,efectivo:String(Math.round(cz.efectivo)),transferencia:String(Math.round(cz.transferencia)),debito:String(Math.round(cz.debito)),credito:String(Math.round(cz.credito)),otros:String(Math.round(cz.otros)),nota:(c.nota||"")||("Cierre de "+mesPrev+" traído de Resultados")};
+                      return n;});
+                  }} style={{width:"100%",padding:"7px",borderRadius:7,border:"1px solid #1A6B8A88",background:"none",color:"#3A9BC1",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",marginBottom:7}}>⬅️ Traer el cierre de {mesPrev} (revisalo y guardá)</button>;
+                })()}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:7}}>
                   {MEDIOS_CORR.map(function(mc){
                     var tv=traspLocal[l.id]||(traspasos[l.id+"_"+mesFiltro]||{});
@@ -29633,7 +29646,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+            <PanelResultados datosPrevMes={datosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               transfPropias={transfPropias} onSaveTransfPropia={function(x){guardarOfPauta("transf_propia",x);}} impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){

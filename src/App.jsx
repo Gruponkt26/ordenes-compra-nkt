@@ -22867,7 +22867,7 @@ function PanelResultados(p){
                     </div>
                   </div>
                 )}
-                {d.arrastrePendienteNeto>0&&(
+                {d.arrastrePendienteNeto>0&&!(d.heredItems&&d.heredItems.length>0)&&(   // si ya está cargado en el traspaso, esas mismas fechas figuran arriba como pendientes
                   <div style={{background:"#1A140A",border:"1px solid #D4A01744",borderRadius:8,padding:"10px 12px",marginTop:6}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                       <span style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⏳ Pendiente de acreditar del mes anterior</span>

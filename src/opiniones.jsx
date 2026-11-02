@@ -442,6 +442,27 @@ export function PanelCompetencia(props) {
         }
         return (
           <div>
+            {props.soloLectura && (
+              <div style={{ ...tarjeta, fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.6 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#F0EDE8", marginBottom: 6 }}>¿Cómo se calcula el puntaje?</div>
+                <div style={{ marginBottom: 8 }}>Cada local suma de 0 a 100 puntos. Gana el local que más puntos junta en la temporada (diciembre, enero y febrero). <b style={{ color: "#E8E8E8" }}>Noviembre es de prueba</b>: se ve todo, pero no cuenta para ganar.</div>
+                {[
+                  ["ventas", "📈", "Cuánto creció la facturación del local contra su mes anterior, y cuánto creció comparado con los otros dos locales. Se mira en porcentajes. Crecer más suma más."],
+                  ["opiniones", "⭐", "Lo que opinan los clientes en el código QR de la mesa. 5 estrellas = 100 puntos y 1 estrella = 0."],
+                  ["puntualidad", "⏰", "Los turnos en que se marcó la entrada hasta 10 minutos después de la hora de entrada. Cada falta o atraso baja el puntaje."],
+                  ["caja", "🧾", "Los días en que se cerró la caja y no hubo diferencias. Cerrar todos los días y sin diferencias da el máximo."]
+                ].map(function (r) {
+                  return (
+                    <div key={r[0]} style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: "1px solid #1A1A1A" }}>
+                      <div style={{ width: 22 }}>{r[1]}</div>
+                      <div style={{ minWidth: 0 }}><b style={{ color: "#E8E8E8" }}>{NOMBRE_INDICADOR[r[0]]} · {Math.round(PESOS[r[0]] * 100)}% del puntaje.</b> {r[2]}</div>
+                    </div>
+                  );
+                })}
+                <div style={{ marginTop: 6, fontSize: 11.5, color: "#8C8C8C" }}>Abajo, en cada local, ves cuántos puntos le aportó cada cosa y por qué.</div>
+              </div>
+            )}
+            {!props.soloLectura && (
             <div style={{ ...tarjeta, fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6 }}>
               Cada local suma de 0 a 100 puntos. Hoy cuentan {["", "una cosa", "dos cosas", "tres cosas", "cuatro cosas"][Object.keys(PESOS).length]}:{" "}
               {Object.keys(PESOS).map(function (k) { return NOMBRE_INDICADOR[k] + " " + Math.round(PESOS[k] * 100) + "%"; }).join(" · ")}.
@@ -449,7 +470,7 @@ export function PanelCompetencia(props) {
               <div style={{ marginTop: 6, color: "#6E6E6E" }}>
                 Facturación, en dos pasos: ① cuánto creció el local contra su propio mes anterior (0% = 50 puntos, cada punto de crecimiento suma {PUNTOS_POR_PUNTO.toString().replace(".", ",")}) y ② cuánto creció comparado con el promedio de los tres locales (igual al promedio = 50 puntos). El puntaje es el promedio de los dos. Opiniones: 5 estrellas = 100, 1 estrella = 0. Puntualidad: turnos en que se marcó la entrada hasta {TOLERANCIA_MIN} minutos después de la hora. Caja: días con el cierre hecho y sin diferencias.
               </div>
-            </div>
+            </div>)}
 
             {filas.map(function (x, i) {
               return (

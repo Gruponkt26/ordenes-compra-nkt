@@ -331,10 +331,11 @@ export function PanelCompetencia(props) {
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5 }}>Temporada oct 2026 – mar 2027</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800 }}>🏆 Competencia entre locales</div>
+        {props.soloLectura && <div style={{ fontSize: 11.5, color: "#9A9A9A", marginTop: 4, lineHeight: 1.5 }}>Así va la competencia. Abajo de cada local está el detalle de por qué tiene ese puntaje.</div>}
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"]].map(function (t) {
+        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"]].filter(function (t) { return !props.soloLectura || t[0] === "ranking"; }).map(function (t) {
           var act = tab === t[0];
           return <button key={t[0]} onClick={function () { setTab(t[0]); }} style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid " + (act ? "#D4A017" : "#1A1A1A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#8C8C8C", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
         })}
@@ -367,14 +368,25 @@ export function PanelCompetencia(props) {
         var medallas = ["🥇", "🥈", "🥉"];
         function Barra(q) {
           return (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
               <div style={{ width: 128, fontSize: 11.5, color: "#B8B8B8" }}>{q.nombre}</div>
               <div style={{ flex: 1, height: 6, background: "#1A1A1A", borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ width: (q.valor === null ? 0 : Math.max(0, Math.min(100, q.valor))) + "%", height: "100%", background: q.color }} />
               </div>
               <div style={{ width: 44, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{q.valor === null ? "—" : fmtPts(q.valor)}</div>
+              {q.aporte !== undefined && <div style={{ width: "100%", fontSize: 10.5, color: "#7E7E7E", paddingLeft: 136 }}>{q.aporte === null ? "sin datos todavía: no suma ni resta" : "aporta " + fmtPts(q.aporte) + " de " + fmtPts(q.maximo) + " puntos"}</div>}
             </div>
           );
+        }
+        // Cuánto aporta cada indicador al total: su peso (repartido si falta alguno) por su puntaje.
+        function aportes(partes) {
+          var w = 0; Object.keys(PESOS).forEach(function (k) { if (partes[k] !== null && partes[k] !== undefined) w += PESOS[k]; });
+          var out = {};
+          Object.keys(PESOS).forEach(function (k) {
+            var tiene = partes[k] !== null && partes[k] !== undefined && w > 0;
+            out[k] = { aporte: tiene ? (PESOS[k] / w) * partes[k] : null, maximo: tiene ? (PESOS[k] / w) * 100 : PESOS[k] * 100 };
+          });
+          return out;
         }
         return (
           <div>
@@ -397,9 +409,16 @@ export function PanelCompetencia(props) {
                       <div style={{ fontSize: 10, color: "#6E6E6E" }}>de 100 puntos</div>
                     </div>
                   </div>
-                  <Barra nombre="Opiniones de clientes" valor={x.partes.opiniones} color={x.local.color} />
-                  <Barra nombre="Puntualidad" valor={x.partes.puntualidad} color={x.local.color} />
-                  <Barra nombre="Caja prolija" valor={x.partes.caja} color={x.local.color} />
+                  {(function () {
+                    var ap = aportes(x.partes);
+                    return (
+                      <div>
+                        <Barra nombre="Opiniones de clientes" valor={x.partes.opiniones} color={x.local.color} aporte={ap.opiniones.aporte} maximo={ap.opiniones.maximo} />
+                        <Barra nombre="Puntualidad" valor={x.partes.puntualidad} color={x.local.color} aporte={ap.puntualidad.aporte} maximo={ap.puntualidad.maximo} />
+                        <Barra nombre="Caja prolija" valor={x.partes.caja} color={x.local.color} aporte={ap.caja.aporte} maximo={ap.caja.maximo} />
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -411,6 +430,9 @@ export function PanelCompetencia(props) {
                 <div key={x.local.id} style={{ ...tarjeta, padding: "11px 14px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: x.local.color, marginBottom: 6 }}>{x.local.emoji} {x.local.nombre}</div>
                   <div style={{ fontSize: 11.5, color: "#B8B8B8", lineHeight: 1.7 }}>
+                    <b style={{ color: "#E8E8E8" }}>Opiniones:</b>{" "}
+                    {x.op.general === null ? "todavía no hay opiniones de clientes en este período" : "promedio " + fmtNota(x.op.general) + " de 5 estrellas con " + x.op.cantidad + " opinion" + (x.op.cantidad === 1 ? "" : "es") + " = " + fmtPts(x.partes.opiniones) + " de 100" + (x.op.cantidad < MINIMO_OPINIONES ? " (todavía pocas: mínimo " + MINIMO_OPINIONES + ")" : "")}
+                    <br />
                     <b style={{ color: "#E8E8E8" }}>Puntualidad:</b>{" "}
                     {entradas === null ? "cargando fichajes…" : (pu.previstas === 0
                       ? "sin turnos para comparar en este período" + (pu.sinJornada ? " (" + pu.sinJornada + " empleado" + (pu.sinJornada === 1 ? "" : "s") + " sin jornada cargada)" : "")

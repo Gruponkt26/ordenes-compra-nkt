@@ -20951,8 +20951,25 @@ function PanelRetiros(p) {
               var dsp=dispOrigen();
               if(!dsp)return <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>Todavía no se cargó la disponibilidad de esta cuenta (se calcula en Resultados).</div>;
               var antes=dsp.antes, que=dsp.que, m=parseFloat(form.monto)||0, quedaria=antes-m;
+              // La disponibilidad de la cuenta, separada: efectivo (Caja Mayor) por un lado y electrónico por el otro. El que se elige como origen se marca.
+              var dc=(p.dispCuentas||{})[form.local_cuenta]||{};
+              var oSel=form.tipo_retiro+(form.subtipo?" - "+form.subtipo:"");
+              var origenEf=oSel.indexOf("Caja Mayor")===0;
+              var $r=function(n){return (n<0?"−":"")+"$"+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
+              var filasD=[["💵 Efectivo · Caja Mayor",dc.ef,origenEf]];
+              if(form.local_cuenta==="dep"){
+                filasD.push(["🔷 Electrónico · Belo Nicolás",dc.belo,!origenEf&&oSel.indexOf("Belo")!==-1]);
+                filasD.push(["🍋 Electrónico · Lemon Sofía",dc.lemon,!origenEf&&oSel.indexOf("Lemon")!==-1]);
+              } else filasD.push(["📲 Electrónico",dc.el,!origenEf]);
               return(
                 <div style={{marginTop:8,background:"#0A0A0A",border:"1px solid "+(quedaria<0&&m>0?"#C1440E66":"#2A2A2A"),borderRadius:9,padding:"8px 11px"}}>
+                  <div style={{fontSize:9,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Disponible en esta cuenta</div>
+                  {filasD.map(function(f){return f[1]==null?null:(
+                    <div key={f[0]} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,padding:"2px 0",color:f[2]?"#F0EDE8":"#8C8C8C",fontWeight:f[2]?700:400}}>
+                      <span>{f[0]}{f[2]?" ← sale de acá":""}</span><span style={{color:f[1]<0?"#C1440E":(f[2]?"#F0EDE8":"#9A9A9A")}}>{$r(f[1])}</span>
+                    </div>
+                  );})}
+                  <div style={{borderTop:"1px solid #1A1A1A",margin:"6px 0"}}/>
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}><span style={{color:"#9A9A9A"}}>💰 Disponible ahora en {que}</span><b style={{color:antes<0?"#C1440E":"#F0EDE8"}}>${Math.round(antes).toLocaleString("es-AR")}</b></div>
                   {m>0&&<div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11,marginTop:3}}><span style={{color:"#7E7E7E"}}>Quedaría después de este retiro</span><b style={{color:quedaria<0?"#C1440E":"#3A7D44"}}>{quedaria<0?"−":""}${Math.abs(Math.round(quedaria)).toLocaleString("es-AR")}</b></div>}
                   {quedaria<0&&m>0&&<div style={{fontSize:10.5,color:"#C1440E",marginTop:4}}>⚠️ El retiro es mayor que lo disponible en esa cuenta: al guardar te va a pedir confirmación.</div>}

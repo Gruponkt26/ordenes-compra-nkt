@@ -13223,6 +13223,71 @@ function PanelFichar(p){
 
 // Los PINs, que carga administración. Cuatro números por persona: no es una contraseña, es
 // lo que hace falta para que "marcá vos por mí" deje de ser gratis. Alcanza para eso.
+// Faltas o llegadas tarde del mes, por empleado: quién, cuántas y en qué fechas. Usa el mismo cálculo que la ficha de cada uno.
+function PanelFaltasTardes(p){
+  var tipo=p.tipo;   // "faltas" | "tardes"
+  var fichajes=p.fichajes||[], empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
+  var mesHoy=fechaLocal().substring(0,7);
+  var [mes,setMes]=useState(mesHoy);
+  var [localF,setLocalF]=useState("all");
+  var meses=[mesHoy]; fichajes.forEach(function(f){ var m=String(f.fecha||"").substring(0,7); if(m&&meses.indexOf(m)<0)meses.push(m); });
+  meses.sort().reverse();
+  var MN=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  function nom(m){ var pr=String(m).split("-"); return MN[parseInt(pr[1],10)]+" "+pr[0]; }
+  var sinJornada=0;
+  var filas=[];
+  empleados.filter(function(e){return localF==="all"||e.local===localF;}).forEach(function(e){
+    if(!jornadaDe(e)){ sinJornada++; return; }
+    var r=null; try{ r=resumenAsistencia(e,fichajes,mes,p.vacaciones,p.justificativos); }catch(err){ return; }
+    var lista=tipo==="faltas"?r.faltas.filter(function(f){return f.estado!=="previa";}):r.tarde;
+    if(lista.length>0)filas.push({e:e,lista:lista});
+  });
+  filas.sort(function(a,b){return b.lista.length-a.lista.length||String(a.e.nombre).localeCompare(String(b.e.nombre));});
+  var total=filas.reduce(function(a,x){return a+x.lista.length;},0);
+  var ESTADO={sin:["sin justificar","#C1440E"],pendiente:["en revisión","#D4A017"],aprobado:["justificada","#3A7D44"],rechazado:["rechazada","#C1440E"]};
+  var sel={padding:"8px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12.5};
+  var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:12,padding:"12px 14px",marginBottom:8};
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+        <select value={mes} onChange={function(e){setMes(e.target.value);}} style={sel}>{meses.map(function(m){return <option key={m} value={m}>{nom(m)}</option>;})}</select>
+        <select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={sel}>
+          <option value="all">Todos los locales</option>
+          {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+        </select>
+        <span style={{fontSize:12,color:tipo==="faltas"?"#C1440E":"#E07B00",fontWeight:700}}>{total} {tipo==="faltas"?(total===1?"falta":"faltas"):(total===1?"llegada tarde":"llegadas tarde")} · {filas.length} persona{filas.length===1?"":"s"}</span>
+      </div>
+      {filas.length===0&&<div style={{...CAJA,textAlign:"center",color:"#3A7D44",fontSize:13}}>{tipo==="faltas"?"Sin faltas en "+nom(mes)+" ✅":"Sin llegadas tarde en "+nom(mes)+" ✅"}</div>}
+      {filas.map(function(x){
+        var loc=getLocal(x.e.local)||{};
+        var pierde=tipo==="tardes"&&x.lista.length>=3;
+        return(
+          <div key={x.e.id} style={{...CAJA,borderColor:pierde?"#C1440E66":"#161616"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"baseline",flexWrap:"wrap"}}>
+              <span><b style={{fontSize:14,color:"#F0EDE8"}}>{x.e.nombre}</b><span style={{fontSize:11,color:"#7E7E7E"}}> · {loc.emoji} {loc.nombre}</span></span>
+              <span style={{fontSize:14,fontWeight:800,color:tipo==="faltas"?"#C1440E":"#E07B00"}}>{x.lista.length}</span>
+            </div>
+            {pierde&&<div style={{fontSize:11,color:"#E0714A",fontWeight:700,marginTop:3}}>⚠️ Llegó tarde {x.lista.length} veces: pierde el presentismo</div>}
+            <div style={{marginTop:6}}>
+              {x.lista.map(function(it,i){
+                var e=tipo==="faltas"?(ESTADO[it.estado]||ESTADO.sin):null;
+                return(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:"#B8B8B8",padding:"3px 0",borderTop:i===0?"none":"1px solid #141414"}}>
+                    <span>{fmtDate(tipo==="faltas"?it.fecha:it.fecha)}</span>
+                    {tipo==="faltas"?<span style={{color:e[1],fontWeight:700}}>{e[0]}{it.just&&it.just.motivo?" · “"+it.just.motivo+"”":""}</span>:<span style={{color:"#E07B00",fontWeight:700}}>+{it.min} min</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {sinJornada>0&&<div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>{sinJornada} empleado{sinJornada===1?"":"s"} sin jornada cargada: no se puede calcular (cargala en Jornadas).</div>}
+      <div style={{fontSize:10,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>{tipo==="faltas"?"Son los días que le tocaba trabajar y no marcó, sin contar vacaciones, francos ni el día de hoy hasta que termine su turno.":"Llegadas tarde: más de "+TOLERANCIA_ATRASO_MIN+" minutos después de la hora de entrada de su jornada. A la tercera del mes se pierde el presentismo."}</div>
+    </div>
+  );
+}
+
 function PanelPines(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [localF,setLocalF]=useState("all");
@@ -29323,8 +29388,8 @@ export default function App() {
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>🕐 Fichaje</div>
               </div>
               <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-                {[["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"],["fichajes_fichar","🕐 Fichar (mi marcación)","#1A8A7B"]].map(function(t){
-                  var act=vista===t[0]||(t[0]==="fichajes_registro"&&vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar");
+                {[["fichajes_registro","📋 Registro","#1A6B8A"],["fichajes_jornadas","📆 Jornadas","#3A7D44"],["fichajes_pines","🔑 PINs","#8B2FC9"],["fichajes_faltas","🚫 Faltas","#C1440E"],["fichajes_tardes","🕒 Llegadas tarde","#E07B00"],["fichajes_fichar","🕐 Fichar (mi marcación)","#1A8A7B"]].map(function(t){
+                  var act=vista===t[0]||(t[0]==="fichajes_registro"&&vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes");
                   return <button key={t[0]} onClick={function(){setVista(t[0]);}} style={{padding:"8px 16px",borderRadius:8,border:"1px solid "+(act?t[2]:"#1E1E1E"),background:act?t[2]+"22":"#111",color:act?t[2]:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
                 })}
                 <button onClick={async function(){
@@ -29332,12 +29397,12 @@ export default function App() {
                   alert("🔧 Diagnóstico del fichaje\n\n"+r);
                 }} style={{...GH,padding:"8px 14px",fontSize:12,marginLeft:"auto"}} title="Probar la tabla y el bucket de fotos">🔧 Probar guardado</button>
               </div>
-              {vista!=="fichajes_fichar"&&<CajaPantallaLocal secretos={secretosFichaje}
+              {vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&<CajaPantallaLocal secretos={secretosFichaje}
                 onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }}
                 onActivar={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")&&<ProbarUbicacion localesDatos={localesDatos}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
-              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar")
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes")&&<ProbarUbicacion localesDatos={localesDatos}/>}
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
+              {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif}
@@ -29355,6 +29420,8 @@ export default function App() {
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado}/>
                 :vista==="fichajes_pines"
                 ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
+                :vista==="fichajes_faltas"||vista==="fichajes_tardes"
+                ?<PanelFaltasTardes tipo={vista==="fichajes_faltas"?"faltas":"tardes"} empleados={empleados} fichajes={fichajes} vacaciones={vacaciones} justificativos={justificativos}/>
                 :vista==="fichajes_fichar"
                 ?<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
               onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}

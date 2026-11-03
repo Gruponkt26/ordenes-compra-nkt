@@ -10298,6 +10298,36 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
   var [esDeuda,setEsDeuda]=useState(false);
   var admiteDeuda=AREAS_CON_DEUDA.indexOf(area)!==-1;
+  // Cargos del banco en un solo paso: comisión con su IVA, percepción de IVA e IIBB.
+  var [banco,setBanco]=useState(null);
+  function abrirBanco(){
+    var m0=cuentasDebito()[0];
+    setBanco({fecha:hoy,medio:m0?m0.value:"",local:(m0&&detectarLocalMedio(m0.value))||"l1",cuit:FACTURACION[0].id,comision:"",iva:"",percIva:"",iibb:"",ivaManual:false});
+  }
+  function setB(k,v){
+    setBanco(function(b){
+      var n={...b}; n[k]=v;
+      if(k==="comision"&&!b.ivaManual){var c=parseFloat(String(v).replace(",","."))||0;n.iva=c>0?String(Math.round(c*21)/100):"";}
+      if(k==="iva")n.ivaManual=true;
+      if(k==="medio"){var l=detectarLocalMedio(v);if(l)n.local=l;}
+      return n;
+    });
+  }
+  function num(v){return parseFloat(String(v||"").replace(",","."))||0;}
+  function guardarBanco(){
+    var com=num(banco.comision), iva=num(banco.iva), pI=num(banco.percIva), ib=num(banco.iibb);
+    if(com<=0&&pI<=0&&ib<=0){alert("Cargá al menos la comisión, la percepción o el IIBB.");return;}
+    if(!banco.medio){alert("Elegí la cuenta de la que se debitó.");return;}
+    var mes=banco.fecha.substring(0,7), base=Date.now(), n=0;
+    function egreso(concepto,monto,fact,detalle){
+      n++;
+      onSave({id:String(base)+"_b"+n,local:banco.local,concepto:concepto,subramo:"",detalle:detalle||"",monto:monto,forma_pago:banco.medio,facturado:!!fact,facturacion:fact?banco.cuit:"",categoria:"Administrativo",area:"Administrativo",notas:"Cargos del banco",fecha:banco.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[{medio:banco.medio,monto:monto}]});
+    }
+    if(com>0)egreso("Comisión servicio de cuenta",Math.round((com+iva)*100)/100,true,"Comisión "+fmt(com)+" + IVA "+fmt(iva));
+    if(pI>0){egreso("Percepción IVA banco",pI,false,"Percepción de IVA del banco");GUARDAR_CRED_IVA({id:"credfisc_"+base+"_b",cuit:banco.cuit,mes:mes,monto:pI,detalle:"Percepción de IVA del banco",fecha_factura:banco.fecha});}
+    if(ib>0){egreso("Ingresos Brutos banco",ib,false,"Imp. Ingresos Brutos del banco");GUARDAR_CRED_IIBB({id:"credibb_"+base+"_b",cuit:banco.cuit,mes:mes,monto:ib,detalle:"Ingresos Brutos del banco"});}
+    setBanco(null);
+  }
 
   var grupos_medios=GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
@@ -10422,8 +10452,34 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
-        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+        {area==="Administrativo"&&<button onClick={abrirBanco} style={{marginLeft:"auto",padding:"7px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"#1A6B8A22",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏦 Cargos del banco</button>}
+        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:area==="Administrativo"?0:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
       </div>
+
+      {banco&&(
+        <div style={{background:"#0A0F14",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 14px",marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#1A6B8A",marginBottom:4}}>🏦 Cargos del banco</div>
+          <div style={{fontSize:10,color:"#8C8C8C",lineHeight:1.5,marginBottom:10}}>Copiá los importes del resumen. Se crean los egresos de una vez: la comisión con su IVA (con factura, así el IVA suma al crédito fiscal), y la percepción de IVA y el IIBB como egresos aparte que además quedan a favor en IVA e Ingresos Brutos.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:9}}>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha</label><input type="date" value={banco.fecha} onChange={function(e){setB("fecha",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Cuenta de la que se debitó</label>
+              <select value={banco.medio} onChange={function(e){setB("medio",e.target.value);}} style={INP}>{cuentasDebito().map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Gasto de</label>
+              <select value={banco.local} onChange={function(e){setB("local",e.target.value);}} style={INP}>{LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>CUIT del IVA</label>
+              <select value={banco.cuit} onChange={function(e){setB("cuit",e.target.value);}} style={INP}>{FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Comisión (sin IVA)</label><input type="number" placeholder="Ej: 95000" value={banco.comision} onChange={function(e){setB("comision",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>IVA 21% (se calcula solo)</label><input type="number" value={banco.iva} onChange={function(e){setB("iva",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Percepción de IVA</label><input type="number" placeholder="Ej: 12068,75" value={banco.percIva} onChange={function(e){setB("percIva",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Imp. Ingresos Brutos</label><input type="number" placeholder="Ej: 3800" value={banco.iibb} onChange={function(e){setB("iibb",e.target.value);}} style={INP}/></div>
+          </div>
+          <div style={{fontSize:11,color:"#9A9A9A",marginBottom:10}}>Total que sale de la cuenta: <b style={{color:"#F0EDE8"}}>{fmt(num(banco.comision)+num(banco.iva)+num(banco.percIva)+num(banco.iibb))}</b></div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardarBanco} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Cargar todo</button>
+            <button onClick={function(){setBanco(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
       {/* Total */}
       <div style={{background:"#111",border:"1px solid "+colorAccent+"33",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -19529,6 +19585,8 @@ var PAPELERA_VENC=[];
 var GUARDAR_PAP=function(){};
 var BORRAR_PAP=function(){};
 var GUARDAR_OC=function(){};
+var GUARDAR_CRED_IVA=function(){};
+var GUARDAR_CRED_IIBB=function(){};
 var GUARDAR_RECLAMO=function(){};
 // Coca Cola y Pepsi facturan con impuestos internos (en la factura de Coca Cola de oct-2026: 6,33 % del neto) que no
 // llevan IVA; La Serenísima no. Las percepciones: IVA RG 2408 = 3 % del neto; IIBB Bs. As. = 4 % de (neto + internos).
@@ -29156,6 +29214,8 @@ export default function App() {
   });
   OC_EGRESOS=ocEgr;
   GUARDAR_OC=function(gid,numero){ guardarOfPauta("oc_egreso",{id:"oc_"+gid,numero:numero}); };
+  GUARDAR_CRED_IVA=function(c){ guardarCreditoFiscal(c); };
+  GUARDAR_CRED_IIBB=function(c){ guardarCreditoIIBB(c); };
   GUARDAR_RECLAMO=function(gid,d){ guardarOfPauta("reclamo_factura",{id:"reclamo_"+gid,...d}); };
   // F.931 sin pagar como vencimientos (sólo para los avisos y la deuda de Novedades): el del CUIT propio en El Bodegón, el de la SRL en Kusama.
   var f931Virtuales=(cargasSociales||[]).filter(function(c){return (c.cuit==="c1"||c.cuit==="c2")&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0&&venceF931(c);})

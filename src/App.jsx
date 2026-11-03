@@ -10328,6 +10328,35 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     if(ib>0){egreso("Ingresos Brutos banco",ib,false,"Imp. Ingresos Brutos del banco");GUARDAR_CRED_IIBB({id:"credibb_"+base+"_b",cuit:banco.cuit,mes:mes,monto:ib,detalle:"Ingresos Brutos del banco"});}
     setBanco(null);
   }
+  // Combustible: un egreso por el total y, aparte, el IVA y las percepciones que quedan a favor.
+  var [comb,setComb]=useState(null);
+  function abrirComb(){
+    var m0=MEDIOS_EGRESO[0];
+    setComb({fecha:hoy,medio:m0?m0.value:"",local:"l1",cuit:FACTURACION[FACTURACION.length>1?1:0].id,neto:"",iva:"",ivaManual:false,nograv:"",percIibb:"",percIva:"",iibbManual:false,detalle:""});
+  }
+  function setCb(k,v){
+    setComb(function(b){
+      var n={...b}; n[k]=v;
+      var neto=num(k==="neto"?v:b.neto), ng=num(k==="nograv"?v:b.nograv);
+      if((k==="neto")&&!b.ivaManual)n.iva=neto>0?String(Math.round(neto*21)/100):"";
+      if((k==="neto"||k==="nograv")&&!b.iibbManual&&neto>0)n.percIibb=String(Math.round((neto+ng)*4)/100);
+      if(k==="iva")n.ivaManual=true;
+      if(k==="percIibb")n.iibbManual=true;
+      return n;
+    });
+  }
+  function totalComb(){ return num(comb.neto)+num(comb.iva)+num(comb.nograv)+num(comb.percIibb)+num(comb.percIva); }
+  function guardarComb(){
+    var total=Math.round(totalComb()*100)/100, iva=num(comb.iva), pI=num(comb.percIva), ib=num(comb.percIibb);
+    if(!(num(comb.neto)>0)){alert("Cargá el neto gravado de la factura.");return;}
+    if(!comb.medio){alert("Elegí con qué se pagó.");return;}
+    var base=Date.now(), mes=comb.fecha.substring(0,7);
+    var det="Neto "+fmt(num(comb.neto))+" + IVA "+fmt(iva)+(num(comb.nograv)>0?" + no gravados "+fmt(num(comb.nograv)):"")+(ib>0?" + perc. IIBB "+fmt(ib):"")+(pI>0?" + perc. IVA "+fmt(pI):"")+(comb.detalle?" · "+comb.detalle:"");
+    onSave({id:String(base)+"_c",local:comb.local,concepto:"Combustible",subramo:"",detalle:det,monto:total,forma_pago:comb.medio,facturado:false,facturacion:"",categoria:"Administrativo",area:"Administrativo",notas:"Combustible",fecha:comb.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:[{medio:comb.medio,monto:total}]});
+    if(iva+pI>0)GUARDAR_CRED_IVA({id:"credfisc_"+base+"_c",cuit:comb.cuit,mes:mes,monto:Math.round((iva+pI)*100)/100,detalle:"IVA combustible"+(pI>0?" (con percepción)":""),fecha_factura:comb.fecha});
+    if(ib>0)GUARDAR_CRED_IIBB({id:"credibb_"+base+"_c",cuit:comb.cuit,mes:mes,monto:ib,detalle:"Percepción IIBB combustible"});
+    setComb(null);
+  }
 
   var grupos_medios=GRUPOS_MEDIOS_EGRESO;
   function totalPagosEgreso(){return pagosEgreso.reduce(function(a,p){return a+(parseFloat(p.monto)||0);},0);}
@@ -10452,9 +10481,37 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
         {localesFiltro.map(function(l){return(
           <button key={l.id} onClick={function(){setFiltroLocal(filtroLocal===l.id?"all":l.id);}} style={{padding:"4px 10px",borderRadius:20,border:"1px solid "+(filtroLocal===l.id?l.color:"#1A1A1A"),background:filtroLocal===l.id?l.color+"22":"none",color:filtroLocal===l.id?l.color:"#7E7E7E",fontSize:11,cursor:"pointer"}}>{l.emoji} {l.nombre}</button>
         );})}
-        {area==="Administrativo"&&<button onClick={abrirBanco} style={{marginLeft:"auto",padding:"7px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"#1A6B8A22",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏦 Cargos del banco</button>}
+        {area==="Administrativo"&&<button onClick={abrirComb} style={{marginLeft:"auto",padding:"7px 12px",borderRadius:8,border:"1px solid #D4A01766",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⛽ Combustible</button>}
+        {area==="Administrativo"&&<button onClick={abrirBanco} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"#1A6B8A22",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏦 Cargos del banco</button>}
         <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:area==="Administrativo"?0:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
       </div>
+
+      {comb&&(
+        <div style={{background:"#14110A",border:"1px solid #D4A01755",borderRadius:12,padding:"13px 14px",marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#D4A017",marginBottom:4}}>⛽ Carga de combustible</div>
+          <div style={{fontSize:10,color:"#8C8C8C",lineHeight:1.5,marginBottom:10}}>Copiá los importes del ticket. Se crea un egreso por el total, y el IVA y la percepción de IIBB quedan a favor en IVA e Ingresos Brutos. Los no gravados (impuesto a los combustibles y al dióxido de carbono) son costo: van dentro del total.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:9,marginBottom:9}}>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha</label><input type="date" value={comb.fecha} onChange={function(e){setCb("fecha",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Se pagó con</label>
+              <select value={comb.medio} onChange={function(e){setCb("medio",e.target.value);}} style={INP}>{grupos_medios.map(function(g){return <optgroup key={g} label={"── "+g+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===g;}).map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Gasto de</label>
+              <select value={comb.local} onChange={function(e){setCb("local",e.target.value);}} style={INP}>{LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>CUIT de la factura</label>
+              <select value={comb.cuit} onChange={function(e){setCb("cuit",e.target.value);}} style={INP}>{FACTURACION.map(function(f){return <option key={f.id} value={f.id}>{f.razonSocial}</option>;})}</select></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Neto gravado</label><input type="number" placeholder="Ej: 35262,91" value={comb.neto} onChange={function(e){setCb("neto",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>IVA 21% (se calcula solo)</label><input type="number" value={comb.iva} onChange={function(e){setCb("iva",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Conceptos no gravados</label><input type="number" placeholder="Comb. líq. + CO2" value={comb.nograv} onChange={function(e){setCb("nograv",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Perc. IIBB (4% del neto + no gravados)</label><input type="number" value={comb.percIibb} onChange={function(e){setCb("percIibb",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Perc. IVA (si la trae)</label><input type="number" value={comb.percIva} onChange={function(e){setCb("percIva",e.target.value);}} style={INP}/></div>
+            <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Detalle (opcional)</label><input value={comb.detalle} placeholder="Ej: Infinia 20,96 l" onChange={function(e){setCb("detalle",e.target.value);}} style={INP}/></div>
+          </div>
+          <div style={{fontSize:11,color:"#9A9A9A",marginBottom:10}}>Total que sale: <b style={{color:"#F0EDE8"}}>{fmt(totalComb())}</b> <span style={{color:"#6E6E6E"}}>· compará con el total del ticket</span></div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={guardarComb} style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:"#D4A017",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>💾 Cargar combustible</button>
+            <button onClick={function(){setComb(null);}} style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #2A2A2A",background:"none",color:"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
       {banco&&(
         <div style={{background:"#0A0F14",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 14px",marginBottom:12}}>

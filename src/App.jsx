@@ -24864,6 +24864,7 @@ function PanelRecibosFC(p){
         if(parseFloat(f.dias_feriados)>0)fila("Días feriados","",String(parseFloat(f.dias_feriados)),"");
         fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
+      // El recibo no dice si es de convenio o fuera de convenio: solo las horas que se pagan y su valor.
       fila("Valor hora "+per,"","",n2(c.vh));
       if(c.hc>0){
         // Mixto: se detallan las horas totales, las de convenio y las que se pagan acá.

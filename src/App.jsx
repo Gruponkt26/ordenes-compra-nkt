@@ -24862,17 +24862,16 @@ function PanelRecibosFC(p){
       if(f.modo==="fijo"||f.modo==="jornada"){
         if(f.modo==="jornada")fila("Jornadas trabajadas / Valor de la jornada","",String(parseFloat(f.dias_trabajados)||0),n2(parseFloat(f.valor_jornada)||0));
         if(parseFloat(f.dias_feriados)>0)fila("Días feriados","",String(parseFloat(f.dias_feriados)),"");
-        fila((f.modo==="fijo"?"Sueldo fuera de convenio (monto fijo) ":"Sueldo fuera de convenio ")+per,"","",n2(c.sueldoFuera),true);
+        fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
+      // El recibo no dice si es de convenio o fuera de convenio: solo las horas que se pagan y su valor.
       fila("Valor hora "+per,"","",n2(c.vh));
-      fila("Horas totales trabajadas / Sueldo total","",n2(c.ht),n2(c.sueldoTotal));
-      fila("Horas por convenio / Sueldo por convenio","",n2(c.hc),n2(c.sueldoConv));
-      fila("Horas fuera de convenio / Sueldo fuera de convenio","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
       }
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR FUERA DE CONVENIO:",X+22,y+4.2);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR:",X+22,y+4.2);
       doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
       return y+RH+0.6;
     }

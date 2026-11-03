@@ -24868,9 +24868,9 @@ function PanelRecibosFC(p){
       fila("Valor hora "+per,"","",n2(c.vh));
       if(c.hc>0){
         // Mixto: se detallan las horas totales, las de convenio y las que se pagan acá.
-        fila("Horas totales trabajadas","",n2(c.ht),"");
-        fila("Horas por convenio","",n2(c.hc),"");
-        fila("Horas fuera de convenio / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+        fila("Horas totales trabajadas / Sueldo total","",n2(c.ht),n2(c.sueldoTotal));
+        fila("Horas por convenio / Sueldo por convenio","",n2(c.hc),n2(c.sueldoConv));
+        fila("Horas fuera de convenio / Sueldo fuera de convenio","",n2(c.horasFuera),n2(c.sueldoFuera),true);
       } else {
         fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
       }

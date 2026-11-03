@@ -9580,7 +9580,8 @@ function adelantosDelPeriodo(adelantos, empleadoId, periodo, sueldos){
       var s=(sueldos||[]).find(function(x){return String(x.id)===String(a.sueldo_id);});
       if(s)return s.periodo===periodo;
     }
-    return (a.fecha||"").substring(0,7)===periodo;
+    var m=/\[sueldo:(\d{4}-\d{2})\]/.exec(a.notas||"");
+    return (m?m[1]:(a.fecha||"").substring(0,7))===periodo;
   });
 }
 function sumaAdelantos(lista){return (lista||[]).reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);}

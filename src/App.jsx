@@ -7410,12 +7410,18 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   var [showAdelantos,setShowAdelantos]=useState(false);
   var [verAplicados,setVerAplicados]=useState(false);
   var [showAdelantoForm,setShowAdelantoForm]=useState(false);
-  var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
+  var [adelantoForm,setAdelantoForm]=useState({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:"",mes_sueldo:""});
   var [editAdelantoId,setEditAdelantoId]=useState(null); // adelanto pendiente que se está editando
   var fmt=function(n){return "$"+(Math.round(parseFloat(n)||0)).toLocaleString("es-AR");};
   var fmtFechaCorta=function(f){if(!f)return"";var d=new Date(f+"T00:00:00");return isNaN(d.getTime())?f:d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});};
   var adelantos=(p&&p.adelantos)||[];
-  function adelantosDe(empleadoId){return adelantos.filter(function(a){return a.empleado_id===empleadoId&&!a.aplicado;});}
+  // A qué sueldo corresponde un adelanto: se guarda en las notas como "[sueldo:AAAA-MM]" (no hace falta tocar la base).
+  // Sin esa marca el adelanto se descuenta de la próxima liquidación que se pague, como siempre.
+  function mesSueldoAdel(a){var m=/\[sueldo:(\d{4}-\d{2})\]/.exec(a&&a.notas||"");return m?m[1]:"";}
+  function notasAdel(a){return String(a&&a.notas||"").replace(/\s*\[sueldo:\d{4}-\d{2}\]\s*/g," ").trim();}
+  function etiquetaMes(m){var P=m.split("-");var N=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];return N[parseInt(P[1],10)-1]+" "+P[0];}
+  function mesesParaAdelanto(){var out=[],d=new Date();d.setDate(1);for(var i=-3;i<=1;i++){var x=new Date(d.getFullYear(),d.getMonth()+i,1);out.push(x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0"));}return out.reverse();}
+  function adelantosDe(empleadoId,mes){return adelantos.filter(function(a){var ms=mesSueldoAdel(a);return a.empleado_id===empleadoId&&!a.aplicado&&(!ms||!mes||ms===mes);});}
   // A qué liquidación se descontó un adelanto ya aplicado
   function periodoDeAdelanto(a){
     if(!a.sueldo_id)return "";
@@ -7442,12 +7448,12 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
   // Editar un adelanto pendiente: el formulario se llena con sus datos y al guardar se reemplaza.
   function abrirEditarAdelanto(a){
     var pagos=(Array.isArray(a.pagos)&&a.pagos.length>0)?a.pagos.map(function(pg){return {medio:pg.medio||"",monto:String(pg.monto||"")};}):[{medio:a.medio_pago||"",monto:String(a.monto||"")}];
-    setAdelantoForm({empleado_id:a.empleado_id||"",monto:String(a.monto||""),pagos:pagos,fecha:a.fecha||hoy,notas:a.notas||""});
+    setAdelantoForm({empleado_id:a.empleado_id||"",monto:String(a.monto||""),pagos:pagos,fecha:a.fecha||hoy,notas:notasAdel(a),mes_sueldo:mesSueldoAdel(a)});
     setEditAdelantoId(a.id); setShowAdelantoForm(true); setShowAdelantos(true);
   }
   function cerrarFormAdelanto(){
     setShowAdelantoForm(false); setEditAdelantoId(null);
-    setAdelantoForm({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:""});
+    setAdelantoForm({empleado_id:"",monto:"",pagos:[{medio:"",monto:""}],fecha:hoy,notas:"",mes_sueldo:""});
   }
   function doGuardarAdelanto(){
     if(!adelantoForm.empleado_id||!adelantoForm.monto)return;
@@ -7464,7 +7470,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       medio_pago:pagosValidos[0].medio||"",
       pagos:pagosValidos,
       fecha:adelantoForm.fecha,
-      notas:adelantoForm.notas||"",
+      notas:((adelantoForm.mes_sueldo?"[sueldo:"+adelantoForm.mes_sueldo+"] ":"")+(adelantoForm.notas||"")).trim(),
       usuario:(anterior&&anterior.usuario)||usuario||"",
       aplicado:false,
       sueldo_id:null,
@@ -7635,7 +7641,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var porLocal={l1:0,l3:0,l2:0}, abonado=0;
     pagosOf.forEach(function(q){abonado+=q.total;Object.keys(q.porLocal).forEach(function(l){porLocal[l]=(porLocal[l]||0)+q.porLocal[l];});});
     if(pagosOf.length===0&&rec)abonado=montoAbonadoSueldo(rec);
-    var adel=adelantos.filter(function(x){return x.empleado_id===pl.empleado_id&&(!x.aplicado||(rec&&String(x.sueldo_id)===String(rec.id)));})
+    var adel=adelantos.filter(function(x){return x.empleado_id===pl.empleado_id&&((!x.aplicado&&(!mesSueldoAdel(x)||mesSueldoAdel(x)===mesFiltro))||(rec&&String(x.sueldo_id)===String(rec.id)));})
       .reduce(function(t,x){return t+(parseFloat(x.monto)||0);},0);
     var monto=parseFloat(pl.monto)||0;
     return {rec:rec,pagos:pagosOf,porLocal:porLocal,abonado:abonado,adelantos:adel,monto:monto,falta:Math.max(0,monto-adel-abonado)};
@@ -7704,7 +7710,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
     });
     // Los adelantos pendientes pasan a descontarse de este sueldo (ya figuran en lo que falta).
-    adelantosDe(modalPl.empleado_id).forEach(function(a){
+    adelantosDe(modalPl.empleado_id,mesFiltro).forEach(function(a){
       if(p&&p.onSaveAdelanto)p.onSaveAdelanto({...a,aplicado:true,sueldo_id:s.id});
     });
     setShowModal(false);
@@ -7749,7 +7755,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       monto:T,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
       notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos});
     // Los adelantos pendientes pasan a descontarse de este sueldo (ya figuran en lo que falta).
-    adelantosDe(modalPl.empleado_id).forEach(function(a){
+    adelantosDe(modalPl.empleado_id,mesFiltro).forEach(function(a){
       if(p&&p.onSaveAdelanto)p.onSaveAdelanto({...a,aplicado:true,sueldo_id:s.id});
     });
     setShowModal(false);
@@ -7826,6 +7832,13 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha</label>
                   <input type="date" value={adelantoForm.fecha} onChange={function(e){setAdelantoForm(function(f){return{...f,fecha:e.target.value};});}} style={INP}/>
                 </div>
+                <div style={{marginBottom:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>¿De qué sueldo es?</label>
+                  <select value={adelantoForm.mes_sueldo||""} onChange={function(e){setAdelantoForm(function(f){return{...f,mes_sueldo:e.target.value};});}} style={INP}>
+                    <option value="">La próxima liquidación que se pague</option>
+                    {mesesParaAdelanto().map(function(m){return <option key={m} value={m}>Sueldo de {etiquetaMes(m)}</option>;})}
+                  </select>
+                </div>
                 <div style={{marginBottom:10}}>
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Notas</label>
                   <input value={adelantoForm.notas} onChange={function(e){setAdelantoForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Opcional..." style={INP}/>
@@ -7842,7 +7855,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
               <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderTop:"1px solid #1A1A1A"}}>
                 <div>
                   <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{a.empleado_nombre}</div>
-                  <div style={{fontSize:9,color:"#8C8C8C"}}>{fmtFechaCorta(a.fecha)} · {textoMedios(a)}{a.notas?" · "+a.notas:""}</div>
+                  <div style={{fontSize:9,color:"#8C8C8C"}}>{fmtFechaCorta(a.fecha)} · {textoMedios(a)}{mesSueldoAdel(a)?" · 📅 sueldo de "+etiquetaMes(mesSueldoAdel(a)):""}{notasAdel(a)?" · "+notasAdel(a):""}</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:12,fontWeight:700,color:"#D4A017"}}>{fmt(a.monto)}</span>
@@ -7866,7 +7879,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                     <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderTop:"1px solid #141414"}}>
                       <div>
                         <div style={{fontSize:11,color:"#9A9A9A"}}>{a.empleado_nombre}</div>
-                        <div style={{fontSize:9,color:"#7E7E7E"}}>{fmtFechaCorta(a.fecha)} · {textoMedios(a)}{a.notas?" · "+a.notas:""}</div>
+                        <div style={{fontSize:9,color:"#7E7E7E"}}>{fmtFechaCorta(a.fecha)} · {textoMedios(a)}{notasAdel(a)?" · "+notasAdel(a):""}</div>
                         <div style={{fontSize:9,color:"#3A7D44"}}>✓ descontado{per?" del sueldo de "+per:" de una liquidación"}</div>
                       </div>
                       <span style={{fontSize:11,fontWeight:700,color:"#8C8C8C"}}>{fmt(a.monto)}</span>
@@ -7950,7 +7963,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
             var est=pago?ESTADOS_S.find(function(e){return e[0]===pago.estado;}):null;
             var loc=LOCALES.find(function(l){return l.id===pl.local;});
             // Adelantos pendientes del empleado: se descuentan de esta liquidación
-            var adelFila=adelantosDe(pl.empleado_id);
+            var adelFila=adelantosDe(pl.empleado_id,mesFiltro);
             var adelFilaTot=sumaAdelantos(adelFila);
             var faltaFila=faltaPagarSueldo(pl.monto,adelFila,pago);
             return(

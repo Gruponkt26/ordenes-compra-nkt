@@ -17058,10 +17058,25 @@ function PanelVencimientos(p){
   function borrar(v){
     var eg=egresosDe(v);
     var que=esFactura(v)?"la factura":(esPlan(v)?"el plan":"el vencimiento");
-    var msg="¿Borrar "+que+" \""+v.concepto+"\"?";
+    var det=[v.concepto];
+    var mm=parseFloat(v.monto)||0;
+    if(mm>0)det.push("$"+Math.round(mm).toLocaleString("es-AR"));
+    if(!v.recurrente&&v.fecha)det.push("vence el "+fmtDate(String(v.fecha).substring(0,10)));
+    var loc=getLocal(v.local);
+    var msg="¿Borrar "+que+" «"+det.join(" · ")+"»"+(loc?" de "+loc.nombre:"")+"?";
     if(eg.length>0)msg+="\n\nTambién se borra"+(eg.length===1?"":"n")+" "+eg.length+" egreso"+(eg.length===1?"":"s")+" que generó al pagarse. Si no, quedaría ese gasto cargado sin nada que lo respalde.";
+    msg+="\n\nQueda en la 🗑️ Papelera de Deuda por si lo necesitás restaurar.";
     if(!window.confirm(msg))return;
+    // Antes de borrar se guarda una copia (con los egresos que se llevan) en la papelera.
+    GUARDAR_PAP({v:v,egresos:(p.gastos||[]).filter(function(g){return eg.indexOf(g.id)!==-1;}),concepto:v.concepto,monto:mm,local:v.local,borrado:hoy,usuario:usuario});
     onDelete(v.id, eg);
+  }
+  // Volver a poner lo que se borró: el vencimiento y los egresos que se habían llevado.
+  function restaurar(it){
+    if(!window.confirm("¿Restaurar «"+it.concepto+"»?"+((it.egresos||[]).length>0?"\n\nTambién vuelven "+it.egresos.length+" egreso"+(it.egresos.length===1?"":"s")+" que se habían borrado con él.":"")))return;
+    onSave(it.v);
+    (it.egresos||[]).forEach(function(g){ if(onSaveEgreso)onSaveEgreso(g); });
+    BORRAR_PAP(it.id);
   }
 
   function abrirPago(x){
@@ -17334,6 +17349,25 @@ function PanelVencimientos(p){
           <div style={{fontSize:11,color:"#8C8C8C",lineHeight:1.5}}>Lo que ya pasó de fecha y sigue sin pagar. Al pagarlo sale de acá y queda en Egresos.</div>
           <div style={{fontSize:20,fontWeight:800,color:itemsD.length?"#E0714A":"#3A7D44",fontFamily:"'Playfair Display',serif",whiteSpace:"nowrap"}}>{fmt(totD)}</div>
         </div>
+        {(function(){
+          var desdeP=fechaLocal(new Date(Date.now()-60*86400000));
+          var pap=PAPELERA_VENC.filter(function(it){return it.v&&(!p.localFijo||it.v.local===p.localFijo)&&String(it.borrado||"")>=desdeP;}).sort(function(a,b){return String(b.borrado||"").localeCompare(String(a.borrado||""));});
+          if(pap.length===0)return null;
+          return(
+            <details style={{background:"#0F0F0F",border:"1px solid #2A2A2A",borderRadius:12,padding:"9px 13px",marginBottom:12}}>
+              <summary style={{fontSize:12,fontWeight:800,color:"#9A9A9A",cursor:"pointer"}}>🗑️ Papelera · {pap.length} borrad{pap.length===1?"a":"as"} en los últimos 60 días</summary>
+              {pap.map(function(it){return(
+                <div key={it.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #1A1A1A",marginTop:6}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:12,color:"#D8D8D8"}}>{it.concepto}{it.monto>0?" · $"+Math.round(it.monto).toLocaleString("es-AR"):""}{(!it.v.recurrente&&it.v.fecha)?" · vencía "+fmtDate(String(it.v.fecha).substring(0,10)):(it.v.recurrente?" · se repite":"")}</div>
+                    <div style={{fontSize:10,color:"#7E7E7E"}}>{(getLocal(it.local)||{}).nombre||""} · borrada el {it.borrado?fmtDate(String(it.borrado).substring(0,10)):""}{it.usuario?" por "+it.usuario:""}</div>
+                  </div>
+                  <button onClick={function(){restaurar(it);}} style={{...GH,padding:"5px 11px",fontSize:11.5,flexShrink:0}}>↩︎ Restaurar</button>
+                </div>
+              );})}
+            </details>
+          );
+        })()}
         {itemsD.length===0?(
           <div style={{textAlign:"center",padding:"30px 0",color:"#3A7D44",fontSize:14}}>✅ No hay deuda: está todo al día.</div>
         ):GRUPOS_VENC.filter(function(g){return itemsD.some(function(x){return grupoIdDe(x.v)===g.id;});}).map(function(g0){
@@ -19474,6 +19508,10 @@ var GUARDAR_PERC=function(){};
 var RECLAMOS_FACTURA={};
 // Número de orden de compra de cada egreso: {idEgreso:"1234"}. Va aparte (pauta oc_egreso) para no tocar la tabla de gastos.
 var OC_EGRESOS={};
+// Papelera de vencimientos: lo que se borra desde Vencimientos o Deuda queda guardado (pauta venc_papelera) para poder restaurarlo.
+var PAPELERA_VENC=[];
+var GUARDAR_PAP=function(){};
+var BORRAR_PAP=function(){};
 var GUARDAR_OC=function(){};
 var GUARDAR_RECLAMO=function(){};
 // Coca Cola y Pepsi facturan con impuestos internos (en la factura de Coca Cola de oct-2026: 6,33 % del neto) que no
@@ -29087,6 +29125,14 @@ export default function App() {
     try{ var dr2=JSON.parse(x.texto||"{}"); reclamosFact[String(x.id).replace(/^reclamo_/,"")]=dr2; }catch(e){}
   });
   RECLAMOS_FACTURA=reclamosFact;
+  var papelera=[];
+  pautas.forEach(function(x){
+    if(x.ambito!=="venc_papelera")return;
+    try{ var dpp=JSON.parse(x.texto||"{}"); if(dpp.v)papelera.push({...dpp,id:x.id}); }catch(e){}
+  });
+  PAPELERA_VENC=papelera;
+  GUARDAR_PAP=function(item){ guardarOfPauta("venc_papelera",{id:"vpap_"+item.v.id+"_"+Date.now(),...item}); };
+  BORRAR_PAP=function(id){ borrarPauta(id); };
   var ocEgr={};
   pautas.forEach(function(x){
     if(x.ambito!=="oc_egreso")return;

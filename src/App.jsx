@@ -24638,6 +24638,11 @@ function reciboCalc(f){
   var sueldoTotal=r2(ht*vh);
   var sueldoConv=(f.sueldo_convenio!==""&&f.sueldo_convenio!==undefined&&f.sueldo_convenio!==null)?(parseFloat(f.sueldo_convenio)||0):Math.round(hc*vh);
   var horasFuera=r2(ht-hc), sueldoFuera=r2(sueldoTotal-sueldoConv);
+  // Monto fijo o por jornada: no hay valor hora ni horas, lo de afuera es directamente ese monto.
+  if(f.modo==="fijo"||f.modo==="jornada"){
+    sueldoFuera=f.modo==="fijo"?r2(parseFloat(f.monto_fijo)||0):r2((parseFloat(f.dias_trabajados)||0)*(parseFloat(f.valor_jornada)||0));
+    sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
+  }
   var desc=(f.descuentos||[]).reduce(function(a,d){return a+(parseFloat(d.monto)||0);},0);
   return {vh:vh,ht:ht,hc:hc,sueldoTotal:sueldoTotal,sueldoConv:sueldoConv,horasFuera:horasFuera,sueldoFuera:sueldoFuera,desc:r2(desc),total:r2(sueldoFuera-desc)};
 }
@@ -24708,9 +24713,10 @@ function PanelRecibosFC(p){
     if(!p.onSavePlanilla||!f.empleado_id)return "";
     var e=empleadosTodos.find(function(x){return x.id===f.empleado_id;}); if(!e)return "";
     var c=reciboCalc(f), q=String(f.periodo).split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)-1;
-    var conv=Math.max(0,c.sueldoConv), sinc=Math.max(0,c.sueldoFuera);
-    if(!(sinc>0))return "";
     var previo=planDe(f.empleado_id,f.periodo);
+    // Con monto fijo o jornada el recibo no calcula la parte de convenio: se deja la que ya tiene la planilla.
+    var conv=(f.modo==="fijo"||f.modo==="jornada")?(previo?(parseFloat(previo.monto_convenio)||0):0):Math.max(0,c.sueldoConv), sinc=Math.max(0,c.sueldoFuera);
+    if(!(sinc>0))return "";
     if(previo&&(Math.abs((parseFloat(previo.monto_sin_convenio)||0)-sinc)>1||Math.abs((parseFloat(previo.monto_convenio)||0)-conv)>1)){
       if(!window.confirm("La planilla anual de "+periodoEnLetras(f.periodo)+" tiene: convenio $"+Math.round(parseFloat(previo.monto_convenio)||0).toLocaleString("es-AR")+" y sin convenio $"+Math.round(parseFloat(previo.monto_sin_convenio)||0).toLocaleString("es-AR")+".\n\nEl recibo da: convenio $"+Math.round(conv).toLocaleString("es-AR")+" y sin convenio $"+Math.round(sinc).toLocaleString("es-AR")+".\n\n¿Actualizo la planilla con los valores del recibo?"))return "La planilla no se tocó.";
     }
@@ -24720,7 +24726,7 @@ function PanelRecibosFC(p){
   }
   function marcaDe(emp){ var l=emp&&getLocal(emp.local); return l?String(l.nombre).toUpperCase():"EL BODEGÓN NKT"; }
   function vacio(){
-    return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:hoy.substring(0,7),fecha_pago:hoy,
+    return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:mesAnteriorDe(hoy),fecha_pago:hoy,modo:"",monto_fijo:"",valor_jornada:"",dias_trabajados:"",dias_feriados:"",
       valor_hora:"",horas_total:"",horas_convenio:"",sueldo_convenio:"",ref_monto:"",
       descuentos:RECIBO_DESCUENTOS.map(function(c){return {concepto:c,monto:""};})};
   }
@@ -24730,16 +24736,26 @@ function PanelRecibosFC(p){
     var min=0; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)min+=minutosDe(j,e); }); }catch(err){}
     return min>0?String(Math.round(min/60*100)/100):"";
   }
+  function diasDelFichaje(empId,periodo){
+    var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
+    var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
+    var n=Object.keys(dias).length; return n>0?String(n):"";
+  }
   function aplicarEmpleado(f,id){
     var e=empleadosTodos.find(function(x){return x.id===id;});
     if(!e)return {...f,empleado_id:id};
     var pl=planDe(id,f.periodo);
     var g={...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:((p.datosEmp||{})[e.id]||{}).puesto||e.puesto||f.puesto};
     if(pl&&(parseFloat(pl.monto_convenio)||0)>0&&(f.sueldo_convenio===""||f.sueldo_convenio===undefined))g.sueldo_convenio=String(pl.monto_convenio);
+    // Según cómo cobra (ficha): monto fijo o por jornada no usan valor hora ni horas.
+    var ex=(p.datosEmp||{})[id]||{}, mod=modalidadSueldoDe(e,ex);
+    g.modo=(mod==="sin_fijo"||mod==="conv_fijo")?"fijo":(mod==="jornada"?"jornada":"");
+    if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
+    if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
     return g;
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
-    var f=aplicarEmpleado({...vacio(),periodo:periodo||hoy.substring(0,7)},empId);
+    var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
     f.horas_total=horasDelFichaje(empId,f.periodo); f.ref_monto=monto>0?String(Math.round(monto*100)/100):"";
     setForm(f); window.scrollTo&&window.scrollTo(0,0);
   }
@@ -24827,10 +24843,16 @@ function PanelRecibosFC(p){
         y+=RH;
       }
       var per=periodoEnLetras(f.periodo).toUpperCase();
+      if(f.modo==="fijo"||f.modo==="jornada"){
+        if(f.modo==="jornada")fila("Jornadas trabajadas / Valor de la jornada","",String(parseFloat(f.dias_trabajados)||0),n2(parseFloat(f.valor_jornada)||0));
+        if(parseFloat(f.dias_feriados)>0)fila("Días feriados","",String(parseFloat(f.dias_feriados)),"");
+        fila((f.modo==="fijo"?"Sueldo fuera de convenio (monto fijo) ":"Sueldo fuera de convenio ")+per,"","",n2(c.sueldoFuera),true);
+      } else {
       fila("Valor hora "+per,"","",n2(c.vh));
       fila("Horas totales trabajadas / Sueldo total","",n2(c.ht),n2(c.sueldoTotal));
       fila("Horas por convenio / Sueldo por convenio","",n2(c.hc),n2(c.sueldoConv));
       fila("Horas fuera de convenio / Sueldo fuera de convenio","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      }
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
@@ -24899,6 +24921,27 @@ function PanelRecibosFC(p){
                 <label style={{...GH,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>🖼️ {logo&&logo.url?"Cambiar logo":"Subir logo"}<input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){subirLogo(e.target.files&&e.target.files[0]);e.target.value="";}}/></label>
               </div>
             </div>
+            {(form.modo==="fijo"||form.modo==="jornada")?(
+              <div style={CAJA}>
+                <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>💵 Sueldo fuera de convenio <span style={{fontWeight:400,color:"#7E7E7E"}}>· {form.modo==="fijo"?"monto fijo":"por jornada diaria"}</span></div>
+                {form.modo==="fijo"?(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Monto fijo $","monto_fijo","number")}{campo("Días feriados","dias_feriados","number")}</div>
+                ):(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    {campo("Valor de la jornada $","valor_jornada","number")}
+                    <div>
+                      <label style={LB}>Días trabajados</label>
+                      <div style={{display:"flex",gap:6}}>
+                        <input type="number" step="1" value={form.dias_trabajados||""} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,dias_trabajados:v};});}} style={INP}/>
+                        {form.empleado_id&&<button onClick={function(){var d=diasDelFichaje(form.empleado_id,form.periodo); if(!d){alert("No hay días con marcas en el Fichaje para ese empleado en "+periodoEnLetras(form.periodo)+".");return;} setForm(function(f){return {...f,dias_trabajados:d};});}} title="Contar los días con marcas en el Fichaje" style={{...GH,padding:"0 10px",fontSize:11,whiteSpace:"nowrap"}}>🕐 Fichaje</button>}
+                      </div>
+                    </div>
+                    {campo("Días feriados","dias_feriados","number")}
+                  </div>
+                )}
+                <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>Los días feriados se anotan y salen en el recibo. No cambian el monto: si cobran distinto, ajustalo en el monto.</div>
+              </div>
+            ):(
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>⏱️ Valor hora y horas</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -24928,6 +24971,7 @@ function PanelRecibosFC(p){
                 <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:4}}>Total ÷ horas = valor hora (con feriados, vacaciones y demás ya incluidos en ese total).</div>
               </details>
             </div>
+            )}
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
               {(form.descuentos||[]).map(function(d,i){return(
@@ -24941,9 +24985,13 @@ function PanelRecibosFC(p){
             </div>
             <div style={{...CAJA,borderColor:"#4CAF5055"}}>
               <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
+                {(form.modo==="fijo"||form.modo==="jornada")?(
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)}{parseFloat(form.dias_feriados)>0?" · "+form.dias_feriados+" feriados":""})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                ):(<>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo total ({n2(c.ht)} h × {n2(c.vh)})</span><b>{$(c.sueldoTotal)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({n2(c.horasFuera)} h)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                </>)}
                 {c.desc>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Descuentos</span><b>− {$(c.desc)}</b></div>}
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>Total a cobrar fuera de convenio</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
               </div>

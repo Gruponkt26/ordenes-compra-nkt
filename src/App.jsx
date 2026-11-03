@@ -18301,7 +18301,8 @@ function PanelVencimientos(p){
       {/* La planilla del plan: una fila por cuota, con su monto y su fecha editables */}
       {grupoFiltro&&!verTodos&&(function(){
         var planes=vencimientos.filter(function(v){
-          return v.activo!==false&&tieneCuotas(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro)&&pasaFiltro(v);
+          return v.activo!==false&&tieneCuotas(v)&&(grupoFiltro==="all"||grupoIdDe(v)===grupoFiltro)&&pasaFiltro(v)
+            &&!(resumenPlan(v).completo&&cuotasDelMes(v,mesFiltro).length===0);
         });
         if(planes.length===0)return null;
         return(

@@ -15490,7 +15490,7 @@ function PanelNovedades(p){
             if(nombres.length>1)avisos.push({rojo:true,txt:"Un mismo celular fichó por "+nombres.join(" y ")+" (últimos 14 días): revisá esas marcas en el Registro"});
           });
         })();
-        if(reclamosPend.length>0)avisos.push({rojo:false,txt:reclamosPend.length+" factura"+(reclamosPend.length===1?"":"s")+" por reclamar a proveedores ("+reclamosPend.slice(0,3).map(function(x){return x.concepto;}).join(", ")+(reclamosPend.length>3?"…":"")+")",ir:function(){setTabNov("deudas");}});
+        if(reclamosPend.length>0)avisos.push({rojo:false,txt:reclamosPend.length+" factura"+(reclamosPend.length===1?"":"s")+" por reclamar a proveedores ("+reclamosPend.slice(0,3).map(function(x){return x.concepto;}).join(", ")+(reclamosPend.length>3?"…":"")+")",ir:function(){setTabNov("deudas");setExpandido(function(e){return {...e,sec_reclamos:true};});}});
         if(asist.pend.length>0)avisos.push({rojo:false,txt:asist.pend.length+" justificativo"+(asist.pend.length===1?"":"s")+" de faltas para revisar ("+asist.pend.map(function(j){return j.empleado_nombre;}).filter(function(v,i,a2){return a2.indexOf(v)===i;}).join(", ")+")",ir:function(){setTabNov("personal");}});
         if(asist.abiertas.length>0)avisos.push({rojo:false,txt:"Sin salida marcada: "+asist.abiertas.map(function(x){return x.e.nombre+" ("+fmtDate(String(x.f.fecha).substring(0,10))+")";}).join(", "),ir:function(){setTabNov("personal");}});
         asist.tardes.filter(function(x){return x.n>=3;}).forEach(function(x){ avisos.push({rojo:true,txt:x.e.nombre+" llegó tarde "+x.n+" veces en el mes: pierde el presentismo",ir:function(){setTabNov("personal");}}); });
@@ -15616,7 +15616,7 @@ function PanelNovedades(p){
                     <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
                   )}
                   {a.ir&&(
-                    <button onClick={a.ir} style={{background:"none",border:"1px solid #D4A01744",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"2px 8px",flexShrink:0}}>Ver</button>
+                    <button onClick={function(){a.ir();setTimeout(function(){var el=document.getElementById("nov_tabs");if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}} style={{background:"none",border:"1px solid #D4A01744",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"2px 8px",flexShrink:0}}>Ver</button>
                   )}
                   {a.resolverId&&(
                     <button onClick={function(){p.onResolverAvisoCaja(a.resolverId);}} style={{background:"none",border:"1px solid #E0714A44",borderRadius:6,color:"#E0714A",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Resuelto</button>
@@ -15891,7 +15891,7 @@ function PanelNovedades(p){
       )}
 
       {/* Pestañas: lo de todos los días queda arriba, el resto se consulta por tema */}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      <div id="nov_tabs" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,scrollMarginTop:8}}>
         {[["plata","💰 Plata"],["deudas","💳 Deudas"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
           var act=tabNov===t[0];
           return <button key={t[0]} onClick={function(){setTabNov(t[0]);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?"#D4A017":"#222"),background:act?"#D4A01722":"#0C0C0C",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;

@@ -14944,6 +14944,7 @@ function PanelNovedades(p){
   // Facturas que hay que reclamarle a los proveedores: egresos marcados "Reclamar factura" que todavía no llegaron.
   var reclamosPend=Object.keys(RECLAMOS_FACTURA).filter(function(k){return RECLAMOS_FACTURA[k]&&RECLAMOS_FACTURA[k].estado==="pendiente";}).map(function(k){
     var r=RECLAMOS_FACTURA[k], g=(p.gastos||[]).find(function(x){return String(x.id)===k;});
+    if(!g&&(p.gastos||[]).length>0)return null;          // el egreso se borró: el reclamo queda huérfano y no cuenta
     if(g&&g.facturado)return null;                       // si el egreso pasó a tener factura, ya no hay nada que reclamar
     var base=r.desde||(g&&g.fecha)||hoy;
     return {id:k,concepto:(g&&g.concepto)||r.concepto||"Egreso",monto:parseFloat((g&&g.monto)||r.monto)||0,fecha:(g&&g.fecha)||r.fecha||base,local:(g&&g.local)||r.local,dias:Math.max(0,Math.round((new Date(hoy+"T12:00:00")-new Date(base+"T12:00:00"))/86400000))};

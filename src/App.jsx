@@ -12018,7 +12018,7 @@ function cuotasDe(v){
   var total=parseInt(v.cuotas||0,10)||0;
   if(total<=0)return null;
   var previas=parseInt(v.cuotas_previas||0,10)||0;
-  var pagadas=previas+((v.pagos||[]).length);
+  var pagadas=previas+((v.pagos||[]).filter(function(pg){return !pg.anulado;}).length);
   return {total:total,previas:previas,pagadas:Math.min(pagadas,total),faltan:Math.max(0,total-pagadas),completo:pagadas>=total};
 }
 
@@ -17161,6 +17161,16 @@ function PanelVencimientos(p){
     }
     setPagando(null);
   }
+  // Anular UNA deuda (un mes de un alquiler que se repite, o una cuota de un plan) sin borrar el resto: queda marcada como "anulada",
+  // sin plata ni egreso, y sale de la deuda y de lo que vence. Se puede deshacer como cualquier pago.
+  function anularDeuda(x){
+    var pagoAnulado={fecha:hoy,monto:0,base:0,interes:0,medio:"",medios:[],facturado:false,facturacion:"",egreso_id:null,anulado:true};
+    if(x.cuota){ guardarCuota(x.v,x.cuota.nro,{pago:pagoAnulado}); return; }
+    var per=x.periodo||periodoDe(x.v.fecha);
+    var pagos=(x.v.pagos||[]).filter(function(pg){return pg.periodo!==per;});
+    pagos.push({periodo:per,...pagoAnulado});
+    onSave({...x.v,pagos:pagos});
+  }
   // Deshacer el pago borra el egreso que había generado: son la misma plata, y dejar el
   // egreso suelto sería contarla como gastada sin que nada la explique.
   function deshacerPago(x){
@@ -17174,6 +17184,7 @@ function PanelVencimientos(p){
   }
 
   function estado(x){
+    if(x.pago&&x.pago.anulado)return {txt:"🚫 Anulado",color:"#7E7E7E"};
     if(x.pago)return {txt:"✅ Pagado",color:"#3A7D44"};
     if(x.dias===null)return {txt:"—",color:"#8C8C8C"};
     if(x.dias<0)return {txt:"⚠️ Vencido hace "+Math.abs(x.dias)+" día"+(Math.abs(x.dias)===1?"":"s"),color:"#C1440E"};
@@ -17346,8 +17357,14 @@ function PanelVencimientos(p){
                       <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.cuota?x.cuota.monto:x.v.monto)}</span>
                       <button onClick={function(){ if(x.periodo)setMesFiltro(x.periodo); abrirPago(x); }} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
                       <button onClick={function(){
-                          // Un plan en cuotas o un vencimiento que se repite se borra entero: se avisa antes, para no llevarse más de lo que se quería.
-                          if(x.cuota||x.v.recurrente){ if(!window.confirm("«"+x.v.concepto+"» "+(x.cuota?"es un plan en cuotas":"se repite todos los meses")+".\n\nBorrarlo saca "+(x.cuota?"TODAS las cuotas":"TODOS los meses")+", no solo esta deuda. ¿Seguís?"))return; }
+                          // Una deuda suelta se borra directo. Si forma parte de una serie (alquiler que se repite, plan en cuotas) se ofrece primero
+                          // borrar SOLO esta; si no, se pregunta por la serie entera.
+                          if(x.cuota||x.v.recurrente){
+                            var que=x.cuota?("la cuota "+(x.cuota.nro===0?"del anticipo":x.cuota.nro)):("el mes "+(x.periodo||""));
+                            if(window.confirm("«"+x.v.concepto+"» · borrar solo "+que+"?\n\nAceptar: se anula SOLO esta deuda y el resto queda como está.\nCancelar: ver otras opciones."))anularDeuda(x);
+                            else if(window.confirm("¿Borrar «"+x.v.concepto+"» ENTERO?\n\nSe borran "+(x.cuota?"todas las cuotas del plan":"todos los meses")+".")) borrar(x.v);
+                            return;
+                          }
                           borrar(x.v);
                         }} title="Borrar esta deuda" style={{background:"none",border:"1px solid #C1440E55",borderRadius:6,color:"#C1440E",fontSize:11,cursor:"pointer",padding:"3px 7px"}}>🗑️</button>
                     </div>

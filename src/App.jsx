@@ -17345,6 +17345,11 @@ function PanelVencimientos(p){
                     <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                       <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(x.cuota?x.cuota.monto:x.v.monto)}</span>
                       <button onClick={function(){ if(x.periodo)setMesFiltro(x.periodo); abrirPago(x); }} style={{background:"#3A7D44",border:"none",borderRadius:6,color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",padding:"5px 10px",fontFamily:"'Inter',sans-serif"}}>✓ Pagar</button>
+                      <button onClick={function(){
+                          // Un plan en cuotas o un vencimiento que se repite se borra entero: se avisa antes, para no llevarse más de lo que se quería.
+                          if(x.cuota||x.v.recurrente){ if(!window.confirm("«"+x.v.concepto+"» "+(x.cuota?"es un plan en cuotas":"se repite todos los meses")+".\n\nBorrarlo saca "+(x.cuota?"TODAS las cuotas":"TODOS los meses")+", no solo esta deuda. ¿Seguís?"))return; }
+                          borrar(x.v);
+                        }} title="Borrar esta deuda" style={{background:"none",border:"1px solid #C1440E55",borderRadius:6,color:"#C1440E",fontSize:11,cursor:"pointer",padding:"3px 7px"}}>🗑️</button>
                     </div>
                   </div>
                 );

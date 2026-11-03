@@ -24810,7 +24810,23 @@ function PanelRecibosFC(p){
     if(err){ alert("No se pudo guardar el logo:\n\n"+err); return; }
     setLogos(function(prev){var o={...prev}; o[key]=l; return o;});
   }
-  function pdf(f){
+  // El PDF se arma en el momento de abonar: antes de bajarlo se pregunta qué día se paga, así la fecha del recibo es la justa.
+  var [pdfPide,setPdfPide]=useState(null);   // {f, fecha}
+  function pdf(f){ setPdfPide({f:f,fecha:hoy}); }
+  async function confirmarPdf(){
+    var pd=pdfPide; if(!pd||!pd.fecha)return;
+    var f={...pd.f,fecha_pago:pd.fecha};
+    setPdfPide(null);
+    pdfGenerar(f);
+    if(form&&form.id===f.id&&f.id)setForm(function(x){return {...x,fecha_pago:pd.fecha};});
+    if(f.id){   // el recibo ya estaba guardado: queda con la fecha en que se abonó
+      var ahora=new Date().toISOString(), previo=(lista||[]).find(function(x){return x.id===f.id;});
+      var datos={...f}; delete datos.id; delete datos.created_at;
+      var err=await sbSavePauta({id:f.id,ambito:"recibo_fc",texto:JSON.stringify(datos),usuario:p.usuario||"",created_at:(previo&&previo.created_at)||ahora,updated_at:ahora});
+      if(!err)cargar();
+    }
+  }
+  function pdfGenerar(f){
     var c=reciboCalc(f);
     var doc=new jsPDF({unit:"mm",format:"a4"});
     var logo=logos[f.local||"l1"];
@@ -24870,6 +24886,19 @@ function PanelRecibosFC(p){
   var campo=function(label,k,tipo,extra){return <div><label style={LB}>{label}</label><input type={tipo||"text"} step={tipo==="number"?"0.01":undefined} value={form[k]===undefined||form[k]===null?"":form[k]} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,[k]:v};});}} style={INP} {...(extra||{})}/></div>;};
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {pdfPide&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#4CAF50",marginBottom:6}}>📄 Recibo de {pdfPide.f.nombre||"empleado"}</div>
+            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,marginBottom:12}}>¿Qué día se abona? Es la fecha de pago que va a salir en el recibo.</div>
+            <input type="date" value={pdfPide.fecha} onChange={function(e){var v=e.target.value;setPdfPide(function(x){return {...x,fecha:v};});}} style={{...INP,marginBottom:14}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={confirmarPdf} disabled={!pdfPide.fecha} style={{flex:2,padding:"11px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>Descargar PDF (2 copias)</button>
+              <button onClick={function(){setPdfPide(null);}} style={{flex:1,padding:"11px",borderRadius:9,border:"1px solid #333",background:"none",color:"#888",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {!form&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>

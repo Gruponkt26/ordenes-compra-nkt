@@ -24666,7 +24666,8 @@ var MODALIDADES_SUELDO=[
   ["conv_sin","📋 Convenio + sin convenio (por horas)","mixto"],
   ["sin_conv","Sin convenio (por horas)","sin_convenio"],
   ["sin_fijo","Sin convenio · monto fijo","sin_convenio"],
-  ["conv_fijo","📋 Convenio + monto fijo","mixto"]
+  ["conv_fijo","📋 Convenio + monto fijo","mixto"],
+  ["jornada","Por jornada diaria","sin_convenio"]
 ];
 function modalidadSueldoDe(emp,ex){
   var m=(ex&&ex.modalidad_sueldo)||"";
@@ -24888,7 +24889,7 @@ function PanelRecibosFC(p){
               {form.empleado_id&&(function(){
                 var e=empleadosTodos.find(function(x){return x.id===form.empleado_id;}); if(!e)return null;
                 var ex=(p.datosEmp||{})[e.id]||{}, m=modalidadSueldoDe(e,ex);
-                return <div style={{fontSize:11.5,color:"#4CAF50",background:"#4CAF5014",border:"1px solid #4CAF5044",borderRadius:8,padding:"7px 10px",marginBottom:8}}>💰 Cobra: <b>{etiquetaModalidad(m)}</b>{(m==="sin_fijo"||m==="conv_fijo")&&parseFloat(ex.monto_fijo)>0?" · monto fijo "+$(parseFloat(ex.monto_fijo)):""}{ex.puesto?" · "+ex.puesto:""}</div>;
+                return <div style={{fontSize:11.5,color:"#4CAF50",background:"#4CAF5014",border:"1px solid #4CAF5044",borderRadius:8,padding:"7px 10px",marginBottom:8}}>💰 Cobra: <b>{etiquetaModalidad(m)}</b>{(m==="sin_fijo"||m==="conv_fijo")&&parseFloat(ex.monto_fijo)>0?" · monto fijo "+$(parseFloat(ex.monto_fijo)):""}{m==="jornada"&&parseFloat(ex.valor_jornada)>0?" · "+$(parseFloat(ex.valor_jornada))+" por jornada":""}{ex.puesto?" · "+ex.puesto:""}</div>;
               })()}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Empleado/a","nombre")}{campo("Encabezado (local)","marca")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Sector","sector")}{campo("Puesto","puesto")}</div>
@@ -25081,6 +25082,10 @@ function PanelSueldos(p){
                 </div>
                 {(function(){
                   var m=modalidadSueldoDe(formEmp,formExtra);
+                  if(m==="jornada")return <div style={{marginTop:8}}>
+                    <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Valor de la jornada $ <span style={{textTransform:"none",color:"#6E6E6E"}}>(lo que cobra por cada día trabajado)</span></label>
+                    <input type="number" placeholder="0" value={formExtra.valor_jornada||""} onChange={function(e){var v=e.target.value;setFormExtra(function(x){return{...x,valor_jornada:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                  </div>;
                   if(m!=="sin_fijo"&&m!=="conv_fijo")return null;
                   return <div style={{marginTop:8}}>
                     <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Monto fijo mensual $ <span style={{textTransform:"none",color:"#6E6E6E"}}>({m==="sin_fijo"?"todo el sueldo, fuera de convenio":"lo que cobra aparte del convenio"})</span></label>

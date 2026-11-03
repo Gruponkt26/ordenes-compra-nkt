@@ -24659,6 +24659,22 @@ function logoADataUrl(file){
     rd.onerror=function(){res(null);}; rd.readAsDataURL(file);
   });
 }
+// Cómo cobra el sueldo cada empleado (se elige en su ficha; lo ve solo la administración).
+// "conv" = lo que tiene recibo de convenio, "sin" = lo que queda fuera de convenio.
+var MODALIDADES_SUELDO=[
+  ["solo_convenio","📋 Solo convenio","convenio"],
+  ["conv_sin","📋 Convenio + sin convenio (por horas)","mixto"],
+  ["sin_conv","Sin convenio (por horas)","sin_convenio"],
+  ["sin_fijo","Sin convenio · monto fijo","sin_convenio"],
+  ["conv_fijo","📋 Convenio + monto fijo","mixto"]
+];
+function modalidadSueldoDe(emp,ex){
+  var m=(ex&&ex.modalidad_sueldo)||"";
+  if(m&&MODALIDADES_SUELDO.some(function(x){return x[0]===m;}))return m;
+  var c=(emp&&emp.convenio)||"sin_convenio";
+  return c==="convenio"?"solo_convenio":(c==="mixto"?"conv_sin":"sin_conv");
+}
+function etiquetaModalidad(m){var x=MODALIDADES_SUELDO.find(function(y){return y[0]===m;});return x?x[1].replace(/^📋 /,""):"";}
 function PanelRecibosFC(p){
   var empleadosTodos=p.empleados||[];
   var empleados=empleadosTodos.filter(function(e){return e.activo!==false;}).sort(function(a,b){return String(a.nombre).localeCompare(String(b.nombre));});
@@ -24717,7 +24733,7 @@ function PanelRecibosFC(p){
     var e=empleadosTodos.find(function(x){return x.id===id;});
     if(!e)return {...f,empleado_id:id};
     var pl=planDe(id,f.periodo);
-    var g={...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:e.puesto||f.puesto};
+    var g={...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:((p.datosEmp||{})[e.id]||{}).puesto||e.puesto||f.puesto};
     if(pl&&(parseFloat(pl.monto_convenio)||0)>0&&(f.sueldo_convenio===""||f.sueldo_convenio===undefined))g.sueldo_convenio=String(pl.monto_convenio);
     return g;
   }
@@ -24834,7 +24850,7 @@ function PanelRecibosFC(p){
       {!form&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Recibo fuera de convenio: tomás el valor hora del recibo de convenio, cargás las horas trabajadas y las de convenio, y se calcula lo que queda fuera de convenio. Baja en PDF con dos copias por hoja.</div>
+            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Carga de sueldos: elegís al empleado y se ve cómo cobra (se define en su ficha). Para lo que tiene parte fuera de convenio, tomás el valor hora del recibo de convenio, cargás las horas trabajadas y las de convenio, y se calcula lo que queda fuera de convenio. Baja en PDF con dos copias por hoja.</div>
             <button onClick={function(){setForm(vacio());}} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
           </div>
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
@@ -24869,6 +24885,11 @@ function PanelRecibosFC(p){
                 <option value="">— escribir a mano —</option>
                 {empleados.map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
               </select>
+              {form.empleado_id&&(function(){
+                var e=empleadosTodos.find(function(x){return x.id===form.empleado_id;}); if(!e)return null;
+                var ex=(p.datosEmp||{})[e.id]||{}, m=modalidadSueldoDe(e,ex);
+                return <div style={{fontSize:11.5,color:"#4CAF50",background:"#4CAF5014",border:"1px solid #4CAF5044",borderRadius:8,padding:"7px 10px",marginBottom:8}}>💰 Cobra: <b>{etiquetaModalidad(m)}</b>{(m==="sin_fijo"||m==="conv_fijo")&&parseFloat(ex.monto_fijo)>0?" · monto fijo "+$(parseFloat(ex.monto_fijo)):""}{ex.puesto?" · "+ex.puesto:""}</div>;
+              })()}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Empleado/a","nombre")}{campo("Encabezado (local)","marca")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Sector","sector")}{campo("Puesto","puesto")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Período (mes)","periodo","month")}{campo("Fecha de pago","fecha_pago","date")}</div>
@@ -25040,14 +25061,32 @@ function PanelSueldos(p){
                 {CATEGORIAS_EMP.map(function(c){return <option key={c}>{c}</option>;})}
               </select>
 
-              {/* Situación laboral */}
+              {/* Puesto y cómo cobra el sueldo: solo lo ve la administración; con esto se arma la Carga de sueldos */}
               <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Situación laboral</label>
-                <div style={{display:"flex",gap:6}}>
-                  {[["convenio","📋 Convenio"],["sin_convenio","Sin convenio"],["mixto","📋 + Sin conv."]].map(function(op){return(
-                    <button key={op[0]} onClick={function(){setFormEmp(function(f){return{...f,convenio:op[0]};});}} style={{flex:1,padding:"8px",borderRadius:8,border:"2px solid "+(formEmp.convenio===op[0]?"#4CAF50":"#2A2A2A"),background:formEmp.convenio===op[0]?"#4CAF5022":"#0F0F0F",color:formEmp.convenio===op[0]?"#4CAF50":"#8C8C8C",fontSize:10,fontWeight:700,cursor:"pointer"}}>{op[1]}</button>
-                  );})}
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Puesto</label>
+                <input list="puestos-lista" placeholder="ej: Mozo, Cocinero, Encargado, Cajero" value={formExtra.puesto||""} onChange={function(e){var v=e.target.value;setFormExtra(function(x){return{...x,puesto:v};});}}
+                  style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                <datalist id="puestos-lista">{["Mozo/a","Cocinero/a","Ayudante de cocina","Encargado/a","Cajero/a","Barman","Runner","Limpieza","Administrativo/a","Seguridad"].map(function(c){return <option key={c} value={c}/>;})}</datalist>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>💰 Cómo cobra el sueldo <span style={{textTransform:"none",color:"#6E6E6E"}}>(lo ves solo vos)</span></label>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {(function(){
+                    var actual=modalidadSueldoDe(formEmp,formExtra);
+                    return MODALIDADES_SUELDO.map(function(op){
+                      var act=actual===op[0];
+                      return <button key={op[0]} onClick={function(){setFormExtra(function(x){return{...x,modalidad_sueldo:op[0]};});setFormEmp(function(f){return{...f,convenio:op[2]};});}} style={{padding:"9px 11px",borderRadius:8,border:"2px solid "+(act?"#4CAF50":"#2A2A2A"),background:act?"#4CAF5022":"#0F0F0F",color:act?"#4CAF50":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer",textAlign:"left"}}>{act?"● ":"○ "}{op[1]}</button>;
+                    });
+                  })()}
                 </div>
+                {(function(){
+                  var m=modalidadSueldoDe(formEmp,formExtra);
+                  if(m!=="sin_fijo"&&m!=="conv_fijo")return null;
+                  return <div style={{marginTop:8}}>
+                    <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Monto fijo mensual $ <span style={{textTransform:"none",color:"#6E6E6E"}}>({m==="sin_fijo"?"todo el sueldo, fuera de convenio":"lo que cobra aparte del convenio"})</span></label>
+                    <input type="number" placeholder="0" value={formExtra.monto_fijo||""} onChange={function(e){var v=e.target.value;setFormExtra(function(x){return{...x,monto_fijo:v};});}} style={{padding:"9px 12px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"}}/>
+                  </div>;
+                })()}
               </div>
               {formEmp.convenio!=="sin_convenio"&&(
                 <div>
@@ -25251,7 +25290,7 @@ function PanelSueldos(p){
           {id:"vacaciones",label:"🏖️ Vacaciones",subs:[["vacaciones","🏖️ Vacaciones"]]},
           {id:"empleados",label:"✏️ Modificar datos",subs:[["empleados","✏️ Modificar datos"]]}
         ].concat(p.onSaveUser?[{id:"accesos",label:"🔑 Accesos",subs:[["accesos","🔑 Accesos"]]}]:[]).concat([
-          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"],["recibos","🧾 Recibos fuera de convenio"]].concat(p.showCuit?[["cuit","🏛️ F931"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[])}
+          {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"],["recibos","🧾 Carga de sueldos"]].concat(p.showCuit?[["cuit","🏛️ F931"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[])}
         ]);
         if(p.showF931!==false)MODULOS.push({id:"cuit",label:"🏛️ F.931",subs:[["cargas","🏛️ F.931"]]});
         var actual=MODULOS.find(function(m){return m.subs.some(function(t){return t[0]===tab;});})||MODULOS.find(function(m){return m.id==="sueldos";})||MODULOS[0];
@@ -25507,7 +25546,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

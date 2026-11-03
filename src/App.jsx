@@ -24864,16 +24864,27 @@ function PanelRecibosFC(p){
         if(parseFloat(f.dias_feriados)>0)fila("Días feriados","",String(parseFloat(f.dias_feriados)),"");
         fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
-      // El recibo no dice si es de convenio o fuera de convenio: solo las horas que se pagan y su valor.
       fila("Valor hora "+per,"","",n2(c.vh));
-      fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      if(c.hc>0){
+        // Mixto: se detallan las horas totales, las de convenio y las que se pagan acá.
+        fila("Horas totales trabajadas","",n2(c.ht),"");
+        fila("Horas por convenio","",n2(c.hc),"");
+        fila("Horas fuera de convenio / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      } else {
+        fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
+      }
       }
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
       doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR:",X+22,y+4.2);
       doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
-      return y+RH+0.6;
+      // Firmas: del empleador y del empleado, en todos los recibos.
+      var ys=y+RH+0.6+14;
+      doc.setDrawColor(90); doc.line(X+8,ys,X+78,ys); doc.line(X+Wd-78,ys,X+Wd-8,ys);
+      doc.setFont("helvetica","normal"); doc.setFontSize(8);
+      doc.text("Firma del empleador",X+43,ys+4,{align:"center"}); doc.text("Firma del empleado",X+Wd-43,ys+4,{align:"center"});
+      return ys+5;
     }
     var fin=bloque(18);
     bloque(fin+14);

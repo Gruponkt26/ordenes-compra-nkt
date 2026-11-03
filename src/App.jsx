@@ -20847,7 +20847,7 @@ function PanelRetiros(p) {
   var [filtroLocal,setFiltroLocal]=useState("all");
   // local_cuenta = de qué local es la cuenta de la que SALIÓ la plata, que puede no ser
   // el local al que corresponde el retiro (mismo criterio que el pago cruzado de los gastos).
-  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Caja Mayor",subtipo:"Bodegón",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy};
+  var FORM_VACIO={socio:"",local:"l1",local_cuenta:"l1",monto:"",tipo_retiro:"Caja Mayor",subtipo:"Bodegón",clase:"dinero",bien:"",cotizacion:"",notas:"",fecha:hoy,extras:[]};
   var [form,setForm]=useState(FORM_VACIO);
   var [editando,setEditando]=useState(null); // retiro que se esta editando, o null si es alta
   var [errorGuardado,setErrorGuardado]=useState(null);
@@ -20917,7 +20917,8 @@ function PanelRetiros(p) {
       tipo_retiro:t.tipo,
       subtipo:t.subtipo,
       notas:r.notas||"",
-      fecha:r.fecha||hoy
+      fecha:r.fecha||hoy,
+      extras:[]
     });
     setShowForm(true);
   }
@@ -20941,6 +20942,24 @@ function PanelRetiros(p) {
     var ya=(editando&&editando.clase!=="bien"&&((editando.local_cuenta||editando.local)===form.local_cuenta)&&(editando.tipo_retiro||"")===o)?(parseFloat(editando.monto)||0):0;
     return {antes:v+ya,que:que};
   }
+  // Disponible de un origen puntual (para un retiro repartido en varios medios).
+  function dispDe(o){
+    var dc=(p.dispCuentas||{})[form.local_cuenta];
+    if(!dc)return null;
+    var v, que;
+    if(o.indexOf("Caja Mayor")===0){ v=dc.ef; que="Caja Mayor"; }
+    else if(form.local_cuenta==="dep"&&o.indexOf("Belo")!==-1){ v=dc.belo; que="Belo Nicolás"; }
+    else if(form.local_cuenta==="dep"&&o.indexOf("Lemon")!==-1){ v=dc.lemon; que="Lemon Sofía"; }
+    else { v=dc.el; que="electrónico del local"; }
+    return v==null?null:{antes:v,que:que};
+  }
+  // Un retiro puede salir de varios medios: el primero se lleva lo que no se asignó a los demás.
+  function partesRetiro(){
+    var total=parseFloat(form.monto)||0, extras=(form.extras||[]).filter(function(x){return x.origen;});
+    var sumaEx=extras.reduce(function(a,x){return a+(parseFloat(x.monto)||0);},0);
+    var o1=form.tipo_retiro+(form.subtipo?" - "+form.subtipo:"");
+    return [{origen:o1,monto:Math.round((total-sumaEx)*100)/100}].concat(extras.map(function(x){return {origen:x.origen,monto:parseFloat(x.monto)||0};}));
+  }
 
   function doSave(){
     // Sin socio o sin monto no se puede guardar: antes salía en silencio y parecía que el
@@ -20957,6 +20976,27 @@ function PanelRetiros(p) {
       return;
     }
     setFaltanDatos(false);
+    var multi=!esBien&&!editando&&(form.extras||[]).length>0;
+    if(multi){
+      var partes=partesRetiro();
+      if(partes.some(function(x){return x.monto<=0;})){
+        setFaltanDatos(true);
+        setErrorGuardado("Cada medio tiene que llevar un monto mayor a cero. Lo que no asignás a los demás se lo lleva el primero: revisá que no pases del total.");
+        return;
+      }
+      var neg=partes.filter(function(x){var d=dispDe(x.origen);return d&&d.antes-x.monto<0;});
+      if(neg.length>0&&!window.confirm("Este retiro deja en negativo: "+neg.map(function(x){return x.origen;}).join(", ")+".\n\nSi falta cargar algún ingreso o traspaso, conviene cargarlo antes.\n\n¿Guardar igual?"))return;
+      var base=Date.now(), cot=parseFloat(form.cotizacion)||0;
+      setErrorGuardado(null);
+      partes.forEach(function(x,i){
+        var r={id:String(base)+"_"+i,socio:form.socio.trim(),local:form.local,local_cuenta:form.local_cuenta||form.local,monto:x.monto,tipo_retiro:x.origen,clase:"dinero",bien:"",cotizacion:cot,usd:cot>0?Math.round(x.monto/cot*100)/100:0,
+          notas:((form.notas||"")+" · parte "+(i+1)+" de "+partes.length+" de un retiro de $"+Math.round(parseFloat(form.monto)||0).toLocaleString("es-AR")).replace(/^ · /,""),
+          fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString()};
+        Promise.resolve(onSave(r)).then(function(res){ if(res&&res.ok===false)setErrorGuardado(res.error||"No se pudo guardar en Supabase."); }).catch(function(e){ setErrorGuardado("No se pudo guardar en Supabase. "+(e&&e.message?e.message:"")); });
+      });
+      cerrarForm();
+      return;
+    }
     var dsp=dispOrigen();
     if(dsp&&dsp.antes-(parseFloat(form.monto)||0)<0){
       if(!window.confirm("Este retiro deja "+dsp.que+" en negativo.\n\nDisponible ahora: $"+Math.round(dsp.antes).toLocaleString("es-AR")+"\nRetiro: $"+Math.round(parseFloat(form.monto)||0).toLocaleString("es-AR")+"\nQuedaría: −$"+Math.abs(Math.round(dsp.antes-(parseFloat(form.monto)||0))).toLocaleString("es-AR")+"\n\nSi falta cargar algún ingreso o traspaso, conviene cargarlo antes.\n\n¿Guardar igual?"))return;
@@ -21121,6 +21161,30 @@ function PanelRetiros(p) {
                 </div>
               );
             })()}
+            {!editando&&(
+              <div style={{marginTop:10}}>
+                {(form.extras||[]).map(function(x,i){
+                  var d=dispDe(x.origen||""), m=parseFloat(x.monto)||0;
+                  return(
+                    <div key={i} style={{background:"#0A0A0A",border:"1px solid #2A2A2A",borderRadius:9,padding:"8px 10px",marginBottom:7}}>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <select value={x.origen} onChange={function(e){var v=e.target.value;setForm(function(f){var n=(f.extras||[]).slice();n[i]={...n[i],origen:v};return{...f,extras:n};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,flex:1,minWidth:0}}>
+                          {origenesOpts.map(function(o){return <option key={o} value={o}>{o}</option>;})}
+                        </select>
+                        <input type="number" placeholder="Monto $" value={x.monto} onChange={function(e){var v=e.target.value;setForm(function(f){var n=(f.extras||[]).slice();n[i]={...n[i],monto:v};return{...f,extras:n};});}} style={{padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:100}}/>
+                        <button onClick={function(){setForm(function(f){return{...f,extras:(f.extras||[]).filter(function(_,k){return k!==i;})};});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer"}}>✕</button>
+                      </div>
+                      {d&&<div style={{fontSize:10.5,color:"#8C8C8C",marginTop:5}}>Disponible en {d.que}: ${Math.round(d.antes).toLocaleString("es-AR")}{m>0?" · quedaría "+(d.antes-m<0?"−":"")+"$"+Math.abs(Math.round(d.antes-m)).toLocaleString("es-AR"):""}</div>}
+                    </div>
+                  );
+                })}
+                <button onClick={function(){setForm(function(f){return{...f,extras:(f.extras||[]).concat([{origen:origenesOpts[1]||origenesOpts[0]||"",monto:""}])};});}} style={{background:"none",border:"1px solid #8B2FC966",borderRadius:7,color:"#8B2FC9",fontSize:11,fontWeight:700,padding:"6px 12px",cursor:"pointer"}}>➕ Sacar también de otro medio</button>
+                {(form.extras||[]).length>0&&(function(){
+                  var ps=partesRetiro();
+                  return <div style={{fontSize:10.5,color:ps[0].monto>0?"#9A9A9A":"#C1440E",marginTop:7,lineHeight:1.5}}>Total del retiro ${Math.round(parseFloat(form.monto)||0).toLocaleString("es-AR")}: <b style={{color:"#F0EDE8"}}>${Math.round(ps[0].monto).toLocaleString("es-AR")}</b> salen de {ps[0].origen} (lo que no asignás abajo) y el resto de los otros medios. Se guarda un retiro por cada medio.</div>;
+                })()}
+              </div>
+            )}
             {form.local_cuenta!==form.local?(
               <div style={{fontSize:10,color:"#E07B00",marginTop:6,lineHeight:1.5}}>
                 ↔️ Retiro cruzado — le corresponde a {(getLocal(form.local)||{}).nombre}, pero la plata salió de una cuenta de {(getLocal(form.local_cuenta)||{}).nombre}. La disponibilidad se descuenta de {(getLocal(form.local_cuenta)||{}).nombre}.
@@ -24773,17 +24837,6 @@ function PanelRecibosFC(p){
             <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Recibo fuera de convenio: tomás el valor hora del recibo de convenio, cargás las horas trabajadas y las de convenio, y se calcula lo que queda fuera de convenio. Baja en PDF con dos copias por hoja.</div>
             <button onClick={function(){setForm(vacio());}} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
           </div>
-          {sinRecibo.length>0&&(
-            <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:12,padding:"11px 14px",marginBottom:10}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:6}}>⚠️ Sueldos pagados sin recibo · {sinRecibo.length}</div>
-              {sinRecibo.map(function(x,i){return(
-                <div key={x.empleado_id+x.periodo} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"5px 0",borderTop:i===0?"none":"1px solid #1E1A10",flexWrap:"wrap"}}>
-                  <span style={{fontSize:12.5,color:"#D8D8D8"}}><b style={{color:"#F0EDE8"}}>{x.nombre}</b> · {x.periodo}{x.mixto?" · parte sin convenio":""} · {$(x.monto)}</span>
-                  <button onClick={function(){nuevoDesdeSueldo(x.empleado_id,x.periodo,x.monto,x.mixto);}} style={{...GH,padding:"5px 11px",fontSize:11.5}}>🧾 Armar recibo</button>
-                </div>
-              );})}
-            </div>
-          )}
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
             var c=reciboCalc(r);
             return(

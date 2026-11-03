@@ -17135,12 +17135,12 @@ function PanelVencimientos(p){
     if(!v.recurrente&&v.fecha)det.push("vence el "+fmtDate(String(v.fecha).substring(0,10)));
     var loc=getLocal(v.local);
     var msg="¿Borrar "+que+" «"+det.join(" · ")+"»"+(loc?" de "+loc.nombre:"")+"?";
-    if(eg.length>0)msg+="\n\nTambién se borra"+(eg.length===1?"":"n")+" "+eg.length+" egreso"+(eg.length===1?"":"s")+" que generó al pagarse. Si no, quedaría ese gasto cargado sin nada que lo respalde.";
+    if(eg.length>0)msg+="\n\nLos "+eg.length+" pago"+(eg.length===1?"":"s")+" que ya se hicieron quedan en Egresos y siguen descontando de la cuenta. Si querés borrarlos, hacelo desde Egresos.";
     msg+="\n\nQueda en la 🗑️ Papelera de Deuda por si lo necesitás restaurar.";
     if(!window.confirm(msg))return;
     // Antes de borrar se guarda una copia (con los egresos que se llevan) en la papelera.
-    GUARDAR_PAP({v:v,egresos:(p.gastos||[]).filter(function(g){return eg.indexOf(g.id)!==-1;}),concepto:v.concepto,monto:mm,local:v.local,borrado:hoy,usuario:usuario});
-    onDelete(v.id, eg);
+    GUARDAR_PAP({v:v,egresos:[],concepto:v.concepto,monto:mm,local:v.local,borrado:hoy,usuario:usuario});
+    onDelete(v.id, []);
   }
   // Volver a poner lo que se borró: el vencimiento y los egresos que se habían llevado.
   function restaurar(it){

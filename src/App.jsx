@@ -24973,9 +24973,23 @@ function PanelRecibosFC(p){
               </div>
             ):(
             <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>⏱️ Valor hora y horas</div>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>⏱️ Convenio y horas</div>
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>Cargá lo que cobra por convenio y las horas de ese sueldo: el valor hora se calcula solo. Después las horas totales trabajadas (a mano o desde el Fichaje) y lo que queda fuera de convenio sale solo.</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                {campo("Valor hora $","valor_hora","number")}
+                <div>
+                  <label style={LB}>Sueldo por convenio $</label>
+                  <input type="number" step="0.01" value={form.sueldo_convenio===undefined?"":form.sueldo_convenio} onChange={function(e){var v=e.target.value;setForm(function(f){var g={...f,sueldo_convenio:v};var sc=parseFloat(v)||0,hc=parseFloat(f.horas_convenio)||0;if(sc>0&&hc>0)g.valor_hora=String(Math.round(sc/hc*10000)/10000);return g;});}} style={INP}/>
+                </div>
+                <div>
+                  <label style={LB}>Horas de ese sueldo por convenio</label>
+                  <input type="number" step="0.01" value={form.horas_convenio===undefined?"":form.horas_convenio} onChange={function(e){var v=e.target.value;setForm(function(f){var g={...f,horas_convenio:v};var sc=parseFloat(f.sueldo_convenio)||0,hc=parseFloat(v)||0;if(sc>0&&hc>0)g.valor_hora=String(Math.round(sc/hc*10000)/10000);return g;});}} style={INP}/>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <label style={LB}>Valor hora $ <span style={{textTransform:"none",color:"#6E6E6E"}}>(sueldo ÷ horas de convenio)</span></label>
+                  <input type="number" step="0.01" value={form.valor_hora===undefined?"":form.valor_hora} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,valor_hora:v};});}} style={INP}/>
+                </div>
                 <div>
                   <label style={LB}>Horas totales trabajadas</label>
                   <div style={{display:"flex",gap:6}}>
@@ -24984,22 +24998,7 @@ function PanelRecibosFC(p){
                   </div>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                {campo("Horas por convenio","horas_convenio","number")}
-                <div>
-                  <label style={LB}>Sueldo por convenio $ <span style={{textTransform:"none",color:"#6E6E6E"}}>(si lo dejás vacío = horas × valor hora)</span></label>
-                  <input type="number" step="0.01" value={form.sueldo_convenio} placeholder={String(c.sueldoConv)} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,sueldo_convenio:v};});}} style={INP}/>
-                </div>
-              </div>
-              <details style={{marginTop:10}}>
-                <summary style={{fontSize:11.5,color:"#3A9BC1",cursor:"pointer"}}>🧮 Calcular el valor hora desde el recibo de convenio</summary>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,marginTop:8,alignItems:"end"}}>
-                  <div><label style={LB}>Total del recibo de convenio $</label><input type="number" step="0.01" value={calcVH.bruto} onChange={function(e){setCalcVH({...calcVH,bruto:e.target.value});}} style={INP}/></div>
-                  <div><label style={LB}>Horas de ese recibo</label><input type="number" step="0.01" value={calcVH.horas} onChange={function(e){setCalcVH({...calcVH,horas:e.target.value});}} style={INP}/></div>
-                  <button onClick={function(){var b=parseFloat(calcVH.bruto),h=parseFloat(calcVH.horas); if(!(b>0&&h>0)){alert("Cargá el total y las horas del recibo de convenio.");return;} setForm(function(f){return {...f,valor_hora:String(Math.round(b/h*100)/100)};});}} style={{...GH,padding:"9px 12px",fontSize:12}}>Usar</button>
-                </div>
-                <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:4}}>Total ÷ horas = valor hora (con feriados, vacaciones y demás ya incluidos en ese total).</div>
-              </details>
+              <div style={{fontSize:11.5,color:"#4CAF50",marginTop:8}}>Horas fuera de convenio: <b>{n2(c.horasFuera)} h</b> × {$(c.vh)} = <b>{$(c.sueldoFuera)}</b></div>
             </div>
             )}
             <div style={CAJA}>

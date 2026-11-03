@@ -10658,6 +10658,16 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   );
 }
 
+// Si un egreso se pagó con los medios de otra dependencia (Caja Mayor o cuenta de otro local), devuelve ese local: es un pago cruzado.
+function localQuePaga(g){
+  var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
+  for(var i=0;i<medios.length;i++){
+    var medio=medios[i].medio||medios[i].tipo||g.forma_pago;
+    var l=medios[i].local||getLocalFromMedio(medio)||localDeCajaMayor(medio);
+    if(l&&l!==g.local)return {local:l,medio:medio};
+  }
+  return null;
+}
 function PanelEgresos(p){
   var gastos=p.gastos||[], onSave=p.onSave, onDelete=p.onDelete, usuario=p.usuario;
   var conceptosCustom=p.conceptosCustom||[], onSaveConcepto=p.onSaveConcepto, onDeleteConcepto=p.onDeleteConcepto;
@@ -10827,7 +10837,7 @@ function PanelEgresos(p){
                             return(
                               <div key={g.id} style={{borderBottom:"1px solid #0F0F0F"}}>
                                 <div onClick={function(){setGastoDetalle(function(prev){return prev===g.id?null:g.id;});}} style={{display:"flex",justifyContent:"space-between",padding:"4px 4px",fontSize:10,cursor:"pointer"}}>
-                                  <span style={{color:"#888"}}>{g.concepto}{g.subramo?" · "+g.subramo:""}</span>
+                                  <span style={{color:"#888"}}>{g.concepto}{g.subramo?" · "+g.subramo:""}{(function(){ var q=localQuePaga(g); var lq=q&&getLocal(q.local); return q?<span style={{color:"#1A6B8A",background:"#1A6B8A22",borderRadius:4,padding:"1px 5px",marginLeft:6,whiteSpace:"nowrap"}}>↔️ pagado con {lq?lq.emoji+" "+lq.nombre:q.local}</span>:null; })()}</span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
                                 </div>
                                 {gAbierto&&(
@@ -10836,6 +10846,7 @@ function PanelEgresos(p){
                                     <div><span style={{color:"#8C8C8C"}}>🕐 Hora: </span><span style={{color:"#F0EDE8"}}>{g.created_at?fmtDateTime(g.created_at).split(" ")[1]:"—"}</span></div>
                                     <div><span style={{color:"#8C8C8C"}}>💰 Valor: </span><span style={{color:"#F0EDE8",fontWeight:700}}>{fmt(g.monto)}</span></div>
                                     <div><span style={{color:"#8C8C8C"}}>💳 Medio: </span><span style={{color:"#F0EDE8"}}>{medioPagoGasto(g)}</span></div>
+                                    {(function(){ var q=localQuePaga(g); var lq=q&&getLocal(q.local); return q?<div style={{gridColumn:"1 / -1",color:"#1A6B8A"}}>↔️ Pago cruzado: es un gasto de {l.nombre}, lo pagó {lq?lq.nombre:q.local} ({q.medio}). Le queda como deuda con {lq?lq.nombre:q.local}.</div>:null; })()}
                                     {g.detalle&&<div style={{gridColumn:"1 / -1"}}><span style={{color:"#8C8C8C"}}>{esEgresoDeVenc(g)?"📅 ":"📝 "}</span><span style={{color:"#D4A017"}}>{g.detalle}</span></div>}
                                   </div>
                                 )}

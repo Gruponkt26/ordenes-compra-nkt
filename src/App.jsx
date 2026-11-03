@@ -24944,7 +24944,8 @@ function PanelRecibosFC(p){
               })()}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Empleado/a","nombre")}{campo("Encabezado (local)","marca")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Sector","sector")}{campo("Puesto","puesto")}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Período (mes)","periodo","month")}{campo("Fecha de pago","fecha_pago","date")}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>{campo("Período (mes)","periodo","month")}</div>
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>La fecha de pago se pone al bajar el PDF, el día que se abona.</div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
                 {logo&&logo.url?<img src={logo.url} alt="logo" style={{height:42,borderRadius:6,background:"#fff"}}/>:<span style={{fontSize:11,color:"#7E7E7E"}}>Sin logo cargado para este local.</span>}
                 <label style={{...GH,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>🖼️ {logo&&logo.url?"Cambiar logo":"Subir logo"}<input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){subirLogo(e.target.files&&e.target.files[0]);e.target.value="";}}/></label>

@@ -24749,7 +24749,8 @@ function PanelRecibosFC(p){
     if(pl&&(parseFloat(pl.monto_convenio)||0)>0&&(f.sueldo_convenio===""||f.sueldo_convenio===undefined))g.sueldo_convenio=String(pl.monto_convenio);
     // Según cómo cobra (ficha): monto fijo o por jornada no usan valor hora ni horas.
     var ex=(p.datosEmp||{})[id]||{}, mod=modalidadSueldoDe(e,ex);
-    g.modo=(mod==="sin_fijo"||mod==="conv_fijo")?"fijo":(mod==="jornada"?"jornada":"");
+    g.modo=(mod==="sin_fijo"||mod==="conv_fijo")?"fijo":(mod==="jornada"?"jornada":(mod==="sin_conv"?"horas":""));
+    if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
     return g;
@@ -24984,7 +24985,8 @@ function PanelRecibosFC(p){
               </div>
             ):(
             <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>⏱️ Convenio y horas</div>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>{form.modo==="horas"?"⏱️ Valor hora y horas":"⏱️ Convenio y horas"}</div>
+              {form.modo!=="horas"&&(<>
               <div style={{fontSize:10.5,color:"#7E7E7E",marginBottom:8,lineHeight:1.5}}>Cargá lo que cobra por convenio y las horas de ese sueldo: el valor hora se calcula solo. Después las horas totales trabajadas (a mano o desde el Fichaje) y lo que queda fuera de convenio sale solo.</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                 <div>
@@ -24996,9 +24998,10 @@ function PanelRecibosFC(p){
                   <input type="number" step="0.01" value={form.horas_convenio===undefined?"":form.horas_convenio} onChange={function(e){var v=e.target.value;setForm(function(f){var g={...f,horas_convenio:v};var sc=parseFloat(f.sueldo_convenio)||0,hc=parseFloat(v)||0;if(sc>0&&hc>0)g.valor_hora=String(Math.round(sc/hc*10000)/10000);return g;});}} style={INP}/>
                 </div>
               </div>
+              </>)}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
-                  <label style={LB}>Valor hora $ <span style={{textTransform:"none",color:"#6E6E6E"}}>(sueldo ÷ horas de convenio)</span></label>
+                  <label style={LB}>Valor hora $ {form.modo!=="horas"&&<span style={{textTransform:"none",color:"#6E6E6E"}}>(sueldo ÷ horas de convenio)</span>}</label>
                   <input type="number" step="0.01" value={form.valor_hora===undefined?"":form.valor_hora} onChange={function(e){var v=e.target.value;setForm(function(f){return {...f,valor_hora:v};});}} style={INP}/>
                 </div>
                 <div>
@@ -25009,7 +25012,7 @@ function PanelRecibosFC(p){
                   </div>
                 </div>
               </div>
-              <div style={{fontSize:11.5,color:"#4CAF50",marginTop:8}}>Horas fuera de convenio: <b>{n2(c.horasFuera)} h</b> × {$(c.vh)} = <b>{$(c.sueldoFuera)}</b></div>
+              <div style={{fontSize:11.5,color:"#4CAF50",marginTop:8}}>{form.modo==="horas"?"Horas trabajadas":"Horas fuera de convenio"}: <b>{n2(c.horasFuera)} h</b> × {$(c.vh)} = <b>{$(c.sueldoFuera)}</b></div>
             </div>
             )}
             <div style={CAJA}>
@@ -25027,6 +25030,8 @@ function PanelRecibosFC(p){
               <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
                 {(form.modo==="fijo"||form.modo==="jornada")?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)}{parseFloat(form.dias_feriados)>0?" · "+form.dias_feriados+" feriados":""})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                ):form.modo==="horas"?(
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo ({n2(c.horasFuera)} h × {n2(c.vh)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 ):(<>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo total ({n2(c.ht)} h × {n2(c.vh)})</span><b>{$(c.sueldoTotal)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>

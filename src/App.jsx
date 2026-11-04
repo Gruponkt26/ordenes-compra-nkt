@@ -4730,6 +4730,49 @@ function detalleOficinaPar(gastos,deudor,acreedor){
     return {fecha:e.fecha,concepto:e.concepto,total:e.total,difD:difD,difA:difA,mediosD:lista(e.medios[deudor]),mediosA:lista(e.medios[acreedor])};
   }).filter(function(e){return Math.abs(e.difD)>=1||Math.abs(e.difA)>=1;}).sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
 }
+// Lo que se debieron las dependencias en un mes, línea por línea: pagos cruzados (un egreso de una pagado con el medio de otra),
+// lo que se puso de más o de menos en los gastos de la Oficina, y las devoluciones ya registradas.
+// [{fecha,deudor,acreedor,m,concepto,tipo:"cruzado"|"oficina"|"devolucion",medio?}]
+function lineasSaldarMes(gastos,mes){
+  var L=[], ids=["l1","l2","l3","dep"];
+  for(var i=0;i<ids.length;i++)for(var j=i+1;j<ids.length;j++){
+    (function(a,b){
+      detalleCruzadoPar(gastos,a,b).forEach(function(x){
+        if(String(x.fecha).slice(0,7)!==mes)return;
+        L.push({fecha:x.fecha,deudor:x.signo===1?a:b,acreedor:x.signo===1?b:a,m:x.monto,concepto:x.concepto,tipo:"cruzado",medio:x.medio});
+      });
+    })(ids[i],ids[j]);
+  }
+  // Oficina: cada egreso se reparte 50/30/20; quien puso de menos le debe a quien puso de más, en proporción a lo que puso de más cada uno.
+  var porEg={};
+  (gastos||[]).filter(function(g){return esParteOficinaGasto(g)&&String(g.fecha||"").slice(0,7)===mes&&String(g.fecha||"").slice(0,7)>=SALDOS_CRUZADOS_DESDE;}).forEach(function(g){
+    var k=String(g.id).replace(/_l[123]$/,"");
+    var e=porEg[k]||(porEg[k]={fecha:g.fecha,concepto:g.concepto,costo:{l1:0,l3:0,l2:0},puso:{l1:0,l3:0,l2:0}});
+    if(e.costo[g.local]!==undefined)e.costo[g.local]+=parseFloat(g.monto)||0;
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:g.monto}];
+    pagos.forEach(function(pg){
+      var m=String(pg.medio||pg.tipo||""), d=localDeCajaMayor(m)||getLocalFromMedio(m);
+      if(d!=="l1"&&d!=="l2"&&d!=="l3")d=g.local;
+      e.puso[d]+=parseFloat(pg.monto)||0;
+    });
+  });
+  Object.keys(porEg).forEach(function(k){
+    var e=porEg[k], dif={}; ["l1","l2","l3"].forEach(function(l){dif[l]=e.puso[l]-e.costo[l];});
+    var tot=["l1","l2","l3"].reduce(function(t,l){return t+Math.max(0,dif[l]);},0);
+    if(tot<1)return;
+    ["l1","l2","l3"].forEach(function(d){
+      var falta=Math.max(0,-dif[d]); if(falta<1)return;
+      ["l1","l2","l3"].forEach(function(a){
+        var cred=Math.max(0,dif[a]); if(cred<1||a===d)return;
+        L.push({fecha:e.fecha,deudor:d,acreedor:a,m:falta*cred/tot,concepto:e.concepto+" (Oficina)",tipo:"oficina"});
+      });
+    });
+  });
+  (SALDOS_CRUZADOS||[]).filter(function(x){return String(x.fecha||"").slice(0,7)===mes;}).forEach(function(x){
+    L.push({fecha:x.fecha,deudor:x.deudor,acreedor:x.acreedor,m:parseFloat(x.monto)||0,concepto:"Devolución"+(x.nota?" · "+x.nota:""),tipo:"devolucion",medio:x.medio});
+  });
+  return L.sort(function(x,y){return String(y.fecha).localeCompare(String(x.fecha));});
+}
 function DetalleSaldo({items,tipo,deudor,acreedor}){
   var fmtD=function(n){return "$"+(Math.round(n)||0).toLocaleString("es-AR");};
   var d=getLocal(deudor), a=getLocal(acreedor);
@@ -15247,6 +15290,7 @@ function PanelNovedades(p){
   var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
   var [fechaPlan,setFechaPlan]=useState("");          // saldar entre dependencias: la fecha elegida
   var [cambiandoPlan,setCambiandoPlan]=useState(false);
+  var [mesSaldar,setMesSaldar]=useState(null);   // mes de la tarjeta "Saldar dependencias"
   var [tabNov,setTabNov]=useState("plata"); // plata | deudas | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
@@ -16700,6 +16744,70 @@ function PanelNovedades(p){
                   </div>
                 );
               })}
+            </Seccion>
+          );
+        })()}
+
+        {(function(){
+          // Saldar dependencias: por mes, línea por línea qué dependencia le debe a cuál y por qué, y un resumen con los totales.
+          var hoyS=diaDeNegocio(), mesActual=hoyS.substring(0,7), mes=mesSaldar||mesActual;
+          var meses=[], mm=SALDOS_CRUZADOS_DESDE;
+          while(mm<=mesActual){ meses.push(mm); var q=mm.split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)+1; if(m>12){m=1;y++;} mm=y+"-"+(m<10?"0"+m:m); }
+          meses.reverse();
+          var lineas=lineasSaldarMes(p.gastos||[],mes);
+          var nom=function(id){var l=getLocal(id);return l?l.emoji+" "+l.nombre:id;};
+          // Neto de cada par en el mes: lo que se generó menos lo que ya se devolvió.
+          var dir={}; lineas.forEach(function(x){ var k=x.deudor+">"+x.acreedor; dir[k]=(dir[k]||0)+(x.tipo==="devolucion"?-x.m:x.m); });
+          var ids=["l1","l2","l3","dep"], pares=[], debe={}, leDeben={};
+          for(var i=0;i<ids.length;i++)for(var j=i+1;j<ids.length;j++){
+            var a=ids[i], b=ids[j], n=(dir[a+">"+b]||0)-(dir[b+">"+a]||0);
+            if(Math.abs(n)<1)continue;
+            var d=n>0?a:b, ac=n>0?b:a, mto=Math.abs(n);
+            pares.push({d:d,a:ac,m:mto}); debe[d]=(debe[d]||0)+mto; leDeben[ac]=(leDeben[ac]||0)+mto;
+          }
+          var totalMes=pares.reduce(function(t,x){return t+x.m;},0);
+          return(
+            <Seccion tab="deudas" id="saldar_mes" res={lineas.length+" movimientos · "+fmt(totalMes)+" a saldar en "+mes} titulo={"🔁 Saldar dependencias"} color="#1A8A7B">
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:11,color:"#8C8C8C"}}>Mes</span>
+                <select value={mes} onChange={function(e){setMesSaldar(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12}}>
+                  {meses.map(function(x){return <option key={x} value={x}>{x}</option>;})}
+                </select>
+              </div>
+              {lineas.length===0?<div style={{fontSize:12,color:"#4C9A5A"}}>Sin pagos cruzados ni gastos de la Oficina para saldar en {mes}.</div>:(
+                <div>
+                  {lineas.map(function(x,i){
+                    var dev=x.tipo==="devolucion";
+                    return(
+                      <div key={i} style={{padding:"6px 0",borderTop:i===0?"none":"1px solid #141414",fontSize:12,lineHeight:1.5}}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+                          <span style={{color:"#D8D8D8"}}>{dev?<span><b style={{color:"#4C9A5A"}}>{nom(x.deudor)}</b> le devolvió a <b style={{color:"#F0EDE8"}}>{nom(x.acreedor)}</b></span>:<span><b style={{color:"#F0EDE8"}}>{nom(x.deudor)}</b> le debe a <b style={{color:"#F0EDE8"}}>{nom(x.acreedor)}</b></span>}</span>
+                          <b style={{color:dev?"#4C9A5A":"#E07B00",whiteSpace:"nowrap"}}>{dev?"− ":""}{fmt(x.m)}</b>
+                        </div>
+                        <div style={{fontSize:10.5,color:"#7E7E7E"}}>{fmtDate(String(x.fecha).substring(0,10))} · por {x.concepto}{x.medio&&!dev?" · "+x.medio:""}</div>
+                      </div>
+                    );
+                  })}
+                  <div style={{marginTop:12,paddingTop:10,borderTop:"2px solid #1A8A7B55"}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"#1A8A7B",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Resumen de {mes}</div>
+                    {pares.length===0?<div style={{fontSize:12,color:"#4C9A5A"}}>✅ Todo saldado en este mes.</div>:pares.map(function(x,i){return(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:12.5,padding:"3px 0"}}>
+                        <span style={{color:"#D8D8D8"}}>{nom(x.d)} le debe a {nom(x.a)}</span><b style={{color:"#F0EDE8"}}>{fmt(x.m)}</b>
+                      </div>);})}
+                    {pares.length>0&&(
+                      <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #1E1E1E"}}>
+                        {ids.filter(function(l){return debe[l]||leDeben[l];}).map(function(l){return(
+                          <div key={l} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:12,padding:"2px 0"}}>
+                            <span style={{color:"#B8B8B8"}}>{nom(l)}</span>
+                            <span style={{color:"#9A9A9A"}}>{leDeben[l]?"le deben "+fmt(leDeben[l]):""}{leDeben[l]&&debe[l]?" · ":""}{debe[l]?"debe "+fmt(debe[l]):""}</span>
+                          </div>);})}
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:800,color:"#F0EDE8",marginTop:6}}><span>Total a saldar en {mes}</span><span>{fmt(totalMes)}</span></div>
+                      </div>
+                    )}
+                    <div style={{fontSize:10,color:"#6E6E6E",marginTop:6,lineHeight:1.5}}>El saldo de cada mes es lo generado menos lo devuelto en ese mes. Lo acumulado de todos los meses está en «Para saldar entre dependencias».</div>
+                  </div>
+                </div>
+              )}
             </Seccion>
           );
         })()}

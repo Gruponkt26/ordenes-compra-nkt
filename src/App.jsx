@@ -10432,7 +10432,35 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [reclamarF,setReclamarF]=useState(false);   // "reclamar factura" al proveedor
   var [ocNum,setOcNum]=useState("");              // número de orden de compra del egreso
   var [fechaFactF,setFechaFactF]=useState("");    // fecha de la factura (si el egreso tiene factura)
+  var [tipoFact,setTipoFact]=useState("auto");    // tipo de factura: cómo se calculan el IVA y las percepciones
+  var [pctOtro,setPctOtro]=useState({iva:"21",pIva:"",pIibb:""});
   var [percIibbF,setPercIibbF]=useState("");
+  // Tipos de factura: alícuota de IVA y porcentajes de percepción sobre el neto. "auto" = como siempre (21 % o 10,5 % según el proveedor).
+  var TIPOS_FACT=[["auto","Automático (21 % o 10,5 % según el proveedor)"],["21","Solo IVA 21 %"],["105","Solo IVA 10,5 %"],["21pp","IVA 21 % + percepción IVA 3 % + percepción IIBB 4 %"],["105pp","IVA 10,5 % + percepción IVA 3 % + percepción IIBB 4 %"],["otro","Otro (porcentajes a mano)"]];
+  function tasasTipo(){
+    if(tipoFact==="21")return {a:0.21,pi:0,pb:0};
+    if(tipoFact==="105")return {a:0.105,pi:0,pb:0};
+    if(tipoFact==="21pp")return {a:0.21,pi:0.03,pb:0.04};
+    if(tipoFact==="105pp")return {a:0.105,pi:0.03,pb:0.04};
+    if(tipoFact==="otro")return {a:(parseFloat(String(pctOtro.iva).replace(",","."))||0)/100,pi:(parseFloat(String(pctOtro.pIva).replace(",","."))||0)/100,pb:(parseFloat(String(pctOtro.pIibb).replace(",","."))||0)/100};
+    return null;
+  }
+  // Neto, IVA y percepciones de esta factura según el tipo elegido (o los importes exactos del ticket si se cargaron).
+  function desgloseForm(){
+    var M=parseFloat(form.monto)||0, t=tasasTipo();
+    var ex_i=parseFloat(String(percIvaF).replace(",",".")), ex_b=parseFloat(String(percIibbF).replace(",","."));
+    var hayEx=!isNaN(ex_i)||!isNaN(ex_b);
+    if(!(M>0)||(!t&&!hayEx))return null;
+    var a=t?t.a:alicuotaIVACompra({categoria:area,subramo:form.subramo,concepto:form.concepto});
+    var pI,pB,neto;
+    if(hayEx){
+      // Lo que el ticket trae manda; lo que no cargaste se estima con el tipo elegido (si hay uno).
+      var est=t?M/(1+a+t.pi+t.pb):0;
+      pI=isNaN(ex_i)?(t?est*t.pi:0):ex_i; pB=isNaN(ex_b)?(t?est*t.pb:0):ex_b; neto=Math.max(0,(M-pI-pB)/(1+a));
+    }
+    else { neto=M/(1+a+t.pi+t.pb); pI=neto*t.pi; pB=neto*t.pb; }
+    return {neto:neto,iva:neto*a,pI:pI,pB:pB,a:a,exacto:hayEx};
+  }
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
     var pagosValidos=pagosEgreso.filter(function(p){return parseFloat(p.monto)>0&&p.medio;});
@@ -10442,8 +10470,11 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
     var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
-    var pi=cobraPercIVA(g)?parseFloat(String(percIvaF).replace(",",".")):NaN, pb=parseFloat(String(percIibbF).replace(",","."));
-    if(g.facturado&&(!isNaN(pi)||!isNaN(pb)))GUARDAR_PERC(g.id,{iva:isNaN(pi)?0:pi,iibb:isNaN(pb)?0:pb});
+    var pi=parseFloat(String(percIvaF).replace(",",".")), pb=parseFloat(String(percIibbF).replace(",","."));
+    if(g.facturado){
+      var dgf=desgloseForm(), tt=tasasTipo();
+      if(!isNaN(pi)||!isNaN(pb)||(tt&&dgf))GUARDAR_PERC(g.id,{iva:dgf?dgf.pI:(isNaN(pi)?0:pi),iibb:dgf?dgf.pB:(isNaN(pb)?0:pb),alic:tt?tt.a:0});
+    }
     // Reclamo de factura: se marca si no tiene factura y se tildó; si después llega la factura (o se destilda), queda como recibido.
     var rec=RECLAMOS_FACTURA[g.id];
     if(!g.facturado&&reclamarF){
@@ -10455,6 +10486,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     if(ocTxt!==String(OC_EGRESOS[g.id]||""))GUARDAR_OC(g.id,ocTxt);
     if(g.facturado&&String(fechaFactF||"")!==String(FECHAS_FACTURA[g.id]||""))GUARDAR_FF(g.id,fechaFactF||"");
     setFechaFactF("");
+    setTipoFact("auto"); setPctOtro({iva:"21",pIva:"",pIibb:""});
     setOcNum("");
     setReclamarF(false);
     setPercIvaF(""); setPercIibbF("");
@@ -10466,6 +10498,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   function abrirEditar(g){
     setOcNum(OC_EGRESOS[g.id]||"");
     setFechaFactF(FECHAS_FACTURA[g.id]||"");
+    setTipoFact("auto");
     setReclamarF(!!(RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"));
     setEditId(g.id);
     setPercIvaF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iva||""):""); setPercIibbF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iibb||""):"");
@@ -10758,16 +10791,31 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   <div style={{fontSize:9,color:"#6E6E6E",marginTop:3}}>Sale en el cuadro de Crédito fiscal del módulo IVA. Si la dejás vacía, se usa la fecha del egreso.</div>
                 </div>
               )}
-              {form.facturado&&PERCIBEN_IVA_IIBB.test(form.concepto||"")&&(
+              {form.facturado&&(
                 <div style={{marginTop:8,background:"#0C140C",border:"1px solid #4C9A5A44",borderRadius:9,padding:"9px 11px"}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#4C9A5A",marginBottom:5}}>Percepciones de la factura (a favor)</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#4C9A5A",marginBottom:5}}>Tipo de factura · IVA y percepciones (a favor)</div>
+                  <select value={tipoFact} onChange={function(e){setTipoFact(e.target.value);}} style={{...INP,marginBottom:6}}>
+                    {TIPOS_FACT.map(function(t){return <option key={t[0]} value={t[0]}>{t[1]}</option>;})}
+                  </select>
+                  {tipoFact==="otro"&&(
+                    <div style={{display:"flex",gap:8,marginBottom:6}}>
+                      <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>IVA %</label><input value={pctOtro.iva} onChange={function(e){var v=e.target.value;setPctOtro(function(o){return {...o,iva:v};});}} inputMode="decimal" style={INP}/></div>
+                      <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA %</label><input value={pctOtro.pIva} onChange={function(e){var v=e.target.value;setPctOtro(function(o){return {...o,pIva:v};});}} inputMode="decimal" style={INP}/></div>
+                      <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IIBB %</label><input value={pctOtro.pIibb} onChange={function(e){var v=e.target.value;setPctOtro(function(o){return {...o,pIibb:v};});}} inputMode="decimal" style={INP}/></div>
+                    </div>
+                  )}
                   <div style={{display:"flex",gap:8}}>
-                    {cobraPercIVA({concepto:form.concepto})&&<div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA ($)</label>
-                      <input value={percIvaF} onChange={function(e){setPercIvaF(e.target.value);}} placeholder="Ej: 1692,60" inputMode="decimal" style={INP}/></div>}
-                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IIBB ($)</label>
-                      <input value={percIibbF} onChange={function(e){setPercIibbF(e.target.value);}} placeholder="Ej: 2399,74" inputMode="decimal" style={INP}/></div>
+                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IVA del ticket ($)</label>
+                      <input value={percIvaF} onChange={function(e){setPercIvaF(e.target.value);}} placeholder="Opcional: el importe exacto" inputMode="decimal" style={INP}/></div>
+                    <div style={{flex:1}}><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:3}}>Perc. IIBB del ticket ($)</label>
+                      <input value={percIibbF} onChange={function(e){setPercIibbF(e.target.value);}} placeholder="Opcional: el importe exacto" inputMode="decimal" style={INP}/></div>
                   </div>
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Copiá los importes de las líneas «PERC. IVA» y «PERC. I.B.» de la factura. Si los dejás vacíos, la app estima con 3 % (IVA, salvo Pepsi que no lo cobra) y 4 % (IIBB).</div>
+                  {(function(){
+                    var d=desgloseForm(); if(!d)return null;
+                    var R=function(n){return "$"+(Math.round(n*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
+                    return <div style={{fontSize:11,color:"#B8D8BC",marginTop:7,lineHeight:1.6}}>Neto <b>{R(d.neto)}</b> · IVA {(d.a*100).toString().replace(".",",")} % <b>{R(d.iva)}</b>{(d.pI>0||d.pB>0)?<span> · perc. IVA <b>{R(d.pI)}</b> · perc. IIBB <b>{R(d.pB)}</b></span>:null}<div style={{fontSize:10,color:"#7E7E7E"}}>{d.exacto?"Con los importes exactos del ticket.":"Calculado con el tipo de factura."} Crédito de IVA del mes: {R(d.iva+d.pI)}.</div></div>;
+                  })()}
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Si el ticket trae los importes de las percepciones, cargalos: mandan sobre el cálculo. Si queda en «Automático» y no cargás nada, se calcula como siempre.</div>
                 </div>
               )}
             </div>
@@ -19771,6 +19819,7 @@ function desgloseCompra(g){
   var monto=parseFloat((g&&g.monto)||0)||0, alic=alicuotaIVACompra(g);
   var perciben=!!(g&&g.facturado&&PERCIBEN_IVA_IIBB.test(g.concepto||""));
   var real=(g&&g.facturado&&PERC_REALES[g.id])?PERC_REALES[g.id]:null;
+  if(real&&real.alic>0)alic=real.alic;   // alícuota elegida en el egreso (ej: 10,5 % en una factura de otro rubro)
   if(!real&&!perciben){ var n0=monto/(1+alic); return {neto:n0,ivaProp:monto-n0,perc:{iva:0,iibb:0},alic:alic}; }
   var int=esBebidaConInternos(g)?INTERNOS_BEBIDAS:0, neto, perc;
   if(real){
@@ -29602,10 +29651,10 @@ export default function App() {
   var percReales={};
   pautas.forEach(function(x){
     if(x.ambito!=="perc_fact")return;
-    try{ var dp=JSON.parse(x.texto||"{}"); percReales[String(x.id).replace(/^perc_/,"")]={iva:parseFloat(dp.iva)||0,iibb:parseFloat(dp.iibb)||0}; }catch(e){}
+    try{ var dp=JSON.parse(x.texto||"{}"); percReales[String(x.id).replace(/^perc_/,"")]={iva:parseFloat(dp.iva)||0,iibb:parseFloat(dp.iibb)||0,alic:parseFloat(dp.alic)||0}; }catch(e){}
   });
   PERC_REALES=percReales;
-  GUARDAR_PERC=function(gid,d){ guardarOfPauta("perc_fact",{id:"perc_"+gid,iva:d.iva,iibb:d.iibb}); };
+  GUARDAR_PERC=function(gid,d){ guardarOfPauta("perc_fact",{id:"perc_"+gid,iva:d.iva,iibb:d.iibb,alic:d.alic||0}); };
   var reclamosFact={};
   pautas.forEach(function(x){
     if(x.ambito!=="reclamo_factura")return;

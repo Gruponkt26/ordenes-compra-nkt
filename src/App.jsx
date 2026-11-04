@@ -10408,6 +10408,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
 
   // Gastos de otros locales cubiertos por este local (cruzados entrantes)
   var gastosCubiertos=(todosGastos||[]).filter(function(g){
+    if((g.area||g.categoria||"Otros")!==area)return false; // solo los del área que se está mirando
     if(g.local===miLocal)return false; // no los propios
     var medios=g.pagos&&g.pagos.length>0?g.pagos:[{medio:g.forma_pago}];
     return medios.some(function(pago){

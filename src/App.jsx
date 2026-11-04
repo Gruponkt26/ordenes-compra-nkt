@@ -12466,7 +12466,15 @@ function turnoTerminado(t, fecha){
   if(String(t.hasta)<=String(t.desde))fin=new Date(fin.getTime()+86400000);   // el turno cruza la medianoche
   return new Date()>=fin;
 }
+// Horario de un día puntual cargado por el propio empleado (ej: hoy entra otro horario): {"empId|AAAA-MM-DD":{desde,hasta}}. Manda sobre su jornada.
+var TURNOS_DIA={};
 function turnoDe(emp, fecha){
+  var ov=emp&&fecha?TURNOS_DIA[emp.id+"|"+String(fecha).substring(0,10)]:null;
+  if(ov&&ov.desde&&ov.hasta){
+    var oa=String(ov.desde).split(":"), ob=String(ov.hasta).split(":");
+    var o1=parseInt(oa[0],10)*60+parseInt(oa[1],10), o2=parseInt(ob[0],10)*60+parseInt(ob[1],10);
+    return {franco:false, desde:ov.desde, hasta:ov.hasta, minutos:o2>o1?(o2-o1):(o2+1440-o1), cambiado:true};
+  }
   var j=jornadaDe(emp); if(!j)return null;
   var k=claveDia(fecha); if(!k)return null;
   var d=j[k];
@@ -12760,6 +12768,7 @@ function PanelFichar(p){
   // Cobertura del día: el empleado va a trabajar a otro local (reemplaza a alguien) y marca ahí. Vale solo hoy y se guarda en este celular.
   var [cobertura,setCoberturaEstado]=useState(function(){ try{ return JSON.parse(window.localStorage.getItem("nkt_cobertura")||"null"); }catch(e){ return null; } });
   var [formCob,setFormCob]=useState(null);
+  var [formHor,setFormHor]=useState(null);   // cambiar el horario de hoy: {desde,hasta}
   function setCobertura(c){ setCoberturaEstado(c); try{ if(c)window.localStorage.setItem("nkt_cobertura",JSON.stringify(c)); else window.localStorage.removeItem("nkt_cobertura"); }catch(e){} }
   var [pantallaPrueba,setPantallaPrueba]=useState(false);   // mostrar el código sin bloquear el aparato (para probar)
   var [codigoTxt,setCodigoTxt]=useState("");
@@ -13054,7 +13063,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(libre?"libre (administración)":codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+((TURNOS_DIA[elegido.id+"|"+fechaLocal()]||{}).desde?"Horario del día cambiado por el empleado: "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].desde+" a "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].hasta+". ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(libre?"libre (administración)":codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -13325,6 +13334,37 @@ function PanelFichar(p){
             <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:7,lineHeight:1.4}}>Vale solo por hoy. Para marcar tenés que estar en ese local. Administración ve el cambio en Novedades.</div>
           </div>
         );
+      })()}
+      {soyYo&&p.onTurnoDia&&(function(){
+        var hoyF=fechaLocal(), ov=TURNOS_DIA[soyYo.id+"|"+hoyF];
+        var INPh={padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
+        if(formHor){
+          return(
+            <div style={{background:"#0A1014",border:"1px solid #D4A01766",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#D4A017",marginBottom:8}}>🕐 ¿En qué horario trabajás hoy?</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <div><div style={{fontSize:11,color:"#9A9A9A",marginBottom:3}}>Entro a las</div><input type="time" value={formHor.desde} onChange={function(e){var v=e.target.value;setFormHor({...formHor,desde:v});}} style={INPh}/></div>
+                <div><div style={{fontSize:11,color:"#9A9A9A",marginBottom:3}}>Salgo a las</div><input type="time" value={formHor.hasta} onChange={function(e){var v=e.target.value;setFormHor({...formHor,hasta:v});}} style={INPh}/></div>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={function(){ if(!/^\d{2}:\d{2}$/.test(formHor.desde)||!/^\d{2}:\d{2}$/.test(formHor.hasta)){alert("Poné la hora de entrada y la de salida.");return;} p.onTurnoDia(soyYo,hoyF,formHor.desde,formHor.hasta); setFormHor(null); }} style={{...BS("#D4A017"),flex:2,padding:"10px",fontSize:13,color:"#000"}}>Guardar</button>
+                <button onClick={function(){setFormHor(null);}} style={{...GH,flex:1,padding:"10px",fontSize:12}}>Cancelar</button>
+              </div>
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:7,lineHeight:1.4}}>Vale solo por hoy. Las horas y la llegada tarde se cuentan con este horario. Administración ve el cambio en el Registro.</div>
+            </div>
+          );
+        }
+        if(ov)return(
+          <div style={{background:"#14110A",border:"1px solid #D4A01788",borderRadius:12,padding:"10px 13px",marginBottom:12}}>
+            <div style={{fontSize:12.5,fontWeight:800,color:"#D4A017"}}>🕐 Hoy tu horario es {ov.desde} a {ov.hasta}</div>
+            <div style={{display:"flex",gap:6,marginTop:7}}>
+              <button onClick={function(){setFormHor({desde:ov.desde,hasta:ov.hasta});}} style={{...GH,padding:"6px 12px",fontSize:11.5}}>Cambiar</button>
+              <button onClick={function(){p.onTurnoDia(soyYo,hoyF,"","");}} style={{...GH,padding:"6px 12px",fontSize:11.5}}>Volver a mi horario de siempre</button>
+            </div>
+          </div>
+        );
+        var t0=turnoDe(soyYo,hoyF);
+        return <button onClick={function(){setFormHor({desde:(t0&&t0.desde)||"",hasta:(t0&&t0.hasta)||""});}} style={{...GH,padding:"9px 13px",fontSize:12,marginBottom:12,width:"100%"}}>🕐 Hoy entro en otro horario</button>;
       })()}
       {ofrecerInstalar&&(
         <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"13px 15px",marginBottom:12}}>
@@ -14135,6 +14175,7 @@ function PanelFichajes(p){
               <span style={{fontSize:12.5,fontWeight:700,color:f.tipo==="salida"?"#C1440E":"#3A7D44",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
               {f._mad&&<span title="Salida de madrugada: es del turno de este día" style={{fontSize:10,color:"#8C8C8C"}}>🌙 madrugada del {DS[new Date(String(f.fecha).substring(0,10)+"T12:00:00").getDay()].toLowerCase()}</span>}
               <span style={{fontSize:11,color:otro?"#D4A017":(loc?loc.color:"#8C8C8C")}}>{loc?loc.emoji+" "+loc.nombre:f.local}{otro?" ⚠️":""}</span>
+              {emp&&TURNOS_DIA[emp.id+"|"+String(f.fecha).substring(0,10)]&&<span title="El empleado cambió su horario de ese día" style={{fontSize:10.5,color:"#D4A017",fontWeight:700}}>🕐 horario del día: {TURNOS_DIA[emp.id+"|"+String(f.fecha).substring(0,10)].desde}–{TURNOS_DIA[emp.id+"|"+String(f.fecha).substring(0,10)].hasta}</span>}
               {tarde>0&&<span title="Llegó después de su horario de entrada" style={{fontSize:10.5,color:"#E07B00",fontWeight:800}}>⏰ tarde {tarde>=60?Math.floor(tarde/60)+" h "+(tarde%60)+" min":tarde+" min"}</span>}
               {cel&&<span title="Esta marca se hizo desde un celular que usa otra persona" style={{fontSize:10.5,color:"#B07CE0",fontWeight:800}}>📱 {cel.txt}</span>}
               {f.manual&&<span title="Carga manual" style={{fontSize:10,color:"#7E7E7E"}}>✎</span>}
@@ -29479,6 +29520,15 @@ export default function App() {
     if(x.ambito!=="traspaso_pend")return;
     try{ var dp=JSON.parse(x.texto||"{}"); if(dp.local&&dp.mes)traspPend[dp.local+"_"+dp.mes]=(dp.items||[]).filter(function(i){return i&&i.fecha&&(parseFloat(i.monto)||0)>0;}); }catch(e){}
   });
+  var turnosDia={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="turno_dia")return;
+    try{ var dd=JSON.parse(x.texto||"{}"); if(dd.empleado_id&&dd.fecha&&dd.desde&&dd.hasta)turnosDia[dd.empleado_id+"|"+dd.fecha]={desde:dd.desde,hasta:dd.hasta,usuario:dd.usuario||""}; }catch(e){}
+  });
+  TURNOS_DIA=turnosDia;
+  function guardarTurnoDia(emp,fecha,desde,hasta){
+    guardarOfPauta("turno_dia",{id:"turnodia_"+emp.id+"_"+fecha,empleado_id:emp.id,fecha:fecha,desde:desde,hasta:hasta,usuario:emp.nombre});
+  }
   var cambiosJornada=[];
   pautas.forEach(function(x){
     if(x.ambito!=="cambio_jornada")return;
@@ -30614,7 +30664,7 @@ export default function App() {
                 ?<PanelFaltasTardes tipo={vista==="fichajes_faltas"?"faltas":"tardes"} empleados={empleados} fichajes={fichajes} vacaciones={vacaciones} justificativos={justificativos}/>
                 :vista==="fichajes_fichar"
                 ?<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
-              onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+              onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onTurnoDia={guardarTurnoDia} onFichar={guardarFichaje}
               justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
                 :null}
             </div>
@@ -31222,7 +31272,7 @@ export default function App() {
 
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
-              onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onFichar={guardarFichaje}
+              onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onTurnoDia={guardarTurnoDia} onFichar={guardarFichaje}
               justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}
 

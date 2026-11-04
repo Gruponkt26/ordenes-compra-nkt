@@ -10426,6 +10426,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [percIvaF,setPercIvaF]=useState("");
   var [reclamarF,setReclamarF]=useState(false);   // "reclamar factura" al proveedor
   var [ocNum,setOcNum]=useState("");              // número de orden de compra del egreso
+  var [fechaFactF,setFechaFactF]=useState("");    // fecha de la factura (si el egreso tiene factura)
   var [percIibbF,setPercIibbF]=useState("");
   function doSave(){
     if(!form.concepto.trim()||!form.monto)return;
@@ -10447,6 +10448,8 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     }
     var ocTxt=String(ocNum||"").trim();
     if(ocTxt!==String(OC_EGRESOS[g.id]||""))GUARDAR_OC(g.id,ocTxt);
+    if(g.facturado&&String(fechaFactF||"")!==String(FECHAS_FACTURA[g.id]||""))GUARDAR_FF(g.id,fechaFactF||"");
+    setFechaFactF("");
     setOcNum("");
     setReclamarF(false);
     setPercIvaF(""); setPercIibbF("");
@@ -10457,6 +10460,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   }
   function abrirEditar(g){
     setOcNum(OC_EGRESOS[g.id]||"");
+    setFechaFactF(FECHAS_FACTURA[g.id]||"");
     setReclamarF(!!(RECLAMOS_FACTURA[g.id]&&RECLAMOS_FACTURA[g.id].estado==="pendiente"));
     setEditId(g.id);
     setPercIvaF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iva||""):""); setPercIibbF(PERC_REALES[g.id]?String(PERC_REALES[g.id].iibb||""):"");
@@ -10484,7 +10488,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
         );})}
         {area==="Administrativo"&&<button onClick={abrirComb} style={{marginLeft:"auto",padding:"7px 12px",borderRadius:8,border:"1px solid #D4A01766",background:"#D4A01722",color:"#D4A017",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>⛽ Combustible</button>}
         {area==="Administrativo"&&<button onClick={abrirBanco} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #1A6B8A66",background:"#1A6B8A22",color:"#1A6B8A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>🏦 Cargos del banco</button>}
-        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:area==="Administrativo"?0:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
+        <button onClick={function(){setShowForm(true);setEditId(null);setReclamarF(false);setOcNum("");setFechaFactF("");setForm({local:"l1",concepto:"",monto:"",forma_pago:"Efectivo",notas:"",fecha:hoy,facturado:false,facturacion:""}); }} style={{marginLeft:area==="Administrativo"?0:"auto",padding:"7px 14px",borderRadius:8,border:"none",background:colorAccent,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo</button>
       </div>
 
       {comb&&(
@@ -10741,6 +10745,13 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                   <option value="f1">Calzon Gitano SRL — 30-71844629-1</option>
                   <option value="f2">Colantonio Carlos Nicolas — 20-26958479-4</option>
                 </select>
+              )}
+              {form.facturado&&(
+                <div style={{marginTop:8}}>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Fecha de la factura (opcional)</label>
+                  <input type="date" value={fechaFactF} onChange={function(e){setFechaFactF(e.target.value);}} style={INP}/>
+                  <div style={{fontSize:9,color:"#6E6E6E",marginTop:3}}>Sale en el cuadro de Crédito fiscal del módulo IVA. Si la dejás vacía, se usa la fecha del egreso.</div>
+                </div>
               )}
               {form.facturado&&PERCIBEN_IVA_IIBB.test(form.concepto||"")&&(
                 <div style={{marginTop:8,background:"#0C140C",border:"1px solid #4C9A5A44",borderRadius:9,padding:"9px 11px"}}>
@@ -19643,6 +19654,9 @@ var PAPELERA_VENC=[];
 var GUARDAR_PAP=function(){};
 var BORRAR_PAP=function(){};
 var GUARDAR_OC=function(){};
+// Fecha de la factura de cada egreso con factura: {idEgreso:"2026-11-03"}. Va aparte (pauta fecha_factura_eg) para no tocar la tabla de gastos.
+var FECHAS_FACTURA={};
+var GUARDAR_FF=function(){};
 var GUARDAR_CRED_IVA=function(){};
 var GUARDAR_CRED_IIBB=function(){};
 var GUARDAR_RECLAMO=function(){};
@@ -26195,6 +26209,28 @@ function PanelSueldos(p){
 }
 
 // ─── PANEL IVA ────────────────────────────────────────────────────────────────
+// Filas del cuadro de crédito fiscal de un local: una por comprobante, con la fecha de la factura, el comercio o entidad,
+// el neto, el IVA y el total. "exacto" = el IVA salió de la factura o se cargó a mano; "est." = lo calculó la app (21 % o 10,5 %).
+function filasCreditoFiscal(items,atrasadas){
+  var rows=[];
+  (atrasadas||[]).forEach(function(c){
+    var f=FACTURACION.find(function(x){return x.id===c.cuit;});
+    rows.push({fecha:c.fecha_factura||"",comercio:c.detalle||"Crédito cargado a mano",cuit:f?f.razonSocial:c.cuit,neto:null,iva:parseFloat(c.monto)||0,total:null,tipo:"manual"});
+  });
+  (items||[]).forEach(function(g){
+    var f=FACTURACION.find(function(x){return x.id===(g.cuitUsado||g.facturacion);});
+    var monto=parseFloat(g.monto)||0, neto=g.neto!=null?g.neto:null;
+    rows.push({fecha:FECHAS_FACTURA[g.id]||g.fecha||"",comercio:g.concepto,cuit:f?f.razonSocial:"",neto:neto,iva:g.ivaCalc||0,total:monto,tipo:PERC_REALES[g.id]?"exacto":"est."});
+  });
+  rows.sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+  return rows;
+}
+function descargarCSV(nombre,filas){
+  var esc=function(v){var t=String(v==null?"":v);return /[;"\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;};
+  var txt="\ufeff"+filas.map(function(r){return r.map(esc).join(";");}).join("\r\n");
+  var blob=new Blob([txt],{type:"text/csv;charset=utf-8"}), a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=nombre; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
 function PanelIVA(p) {
   var gastos=p.gastos, cierres=p.cierres||[];
   var creditosFiscales=p.creditosFiscales||[];
@@ -26845,6 +26881,21 @@ function PanelIVA(p) {
             )}
           </div>
 
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:10}}>
+            <div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.5,maxWidth:520}}>Un cuadro por local con cada comprobante del mes. <b style={{color:"#E07B00"}}>Estimado</b> = el IVA lo calcula la app (21 % o 10,5 %); <b style={{color:"#4C9A5A"}}>a mano / exacto</b> = sale de la factura. La fecha es la de la factura si la cargaste en el egreso; si no, la del egreso.</div>
+            <button onClick={function(){
+              var filas=[["Local","Fecha factura","Comercio / entidad","CUIT","Neto","IVA","Total","Tipo"]];
+              LOCALES_CTRL.forEach(function(l){
+                var loc=comprasPorLocal[l.id];
+                var atr=creditosMes.filter(function(c){return ["l1","l2","l3"].find(function(x){return CUIT_DE_LOCAL[x]===c.cuit;})===l.id;});
+                filasCreditoFiscal(loc?loc.items:[],atr).forEach(function(r){
+                  filas.push([l.nombre,r.fecha?fmtDate(String(r.fecha).substring(0,10)):"",r.comercio,r.cuit,r.neto==null?"":Math.round(r.neto*100)/100,Math.round(r.iva*100)/100,r.total==null?"":Math.round(r.total*100)/100,r.tipo==="est."?"estimado":(r.tipo==="manual"?"a mano":"exacto")]);
+                });
+              });
+              descargarCSV("Credito_fiscal_"+mesFiltro+".csv",filas);
+            }} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📥 Bajar a Excel</button>
+          </div>
+
           {LOCALES_CTRL.map(function(l){
             var loc=comprasPorLocal[l.id];
             // Crédito de facturas atrasadas cargado a mano: se muestra en el local de su CUIT (si lo
@@ -26868,30 +26919,36 @@ function PanelIVA(p) {
                     <div style={{fontSize:16,fontWeight:800,color:"#D4A017"}}>{fmt((loc?loc.ivaCF:0)+totalAtrasadas)}</div>
                   </div>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {atrasadas.map(function(c){
-                    return(
-                      <div key={c.id} style={{borderBottom:"1px solid #1A1A1A",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div>
-                          <div style={{fontSize:11,color:"#F0EDE8"}}>{c.detalle||"Factura atrasada"}</div>
-                          <div style={{fontSize:10,color:"#4C9A5A"}}>Crédito de factura atrasada{c.fecha_factura?" · "+fmtDate(c.fecha_factura):""}</div>
-                        </div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#4C9A5A"}}>{fmt(parseFloat(c.monto||0)||0)}</div>
-                      </div>
-                    );
-                  })}
-                  {(loc?loc.items:[]).map(function(g){
-                    return(
-                      <div key={g.id} style={{borderBottom:"1px solid #1A1A1A",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div>
-                          <div style={{fontSize:11,color:"#F0EDE8"}}>{g.concepto}</div>
-                          <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(g.fecha)} · {g.categoria} · IVA: {fmt(g.ivaCalc)}</div>
-                        </div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#8C8C8C"}}>{fmt(parseFloat(g.monto||0))}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+                {(function(){
+                  var filas=filasCreditoFiscal(loc?loc.items:[],atrasadas);
+                  var R=function(n){return n==null?"—":(n<0?"−":"")+"$"+Math.abs(Math.round(n)).toLocaleString("es-AR");};
+                  var th={fontSize:9,color:"#7E7E7E",textTransform:"uppercase",fontWeight:600,padding:"4px 6px",textAlign:"right",whiteSpace:"nowrap"};
+                  var td={fontSize:11,padding:"6px 6px",textAlign:"right",borderTop:"1px solid #1A1A1A",whiteSpace:"nowrap"};
+                  return(
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",minWidth:480}}>
+                        <thead><tr><th style={{...th,textAlign:"left"}}>Fecha factura</th><th style={{...th,textAlign:"left"}}>Comercio / entidad</th><th style={th}>Neto</th><th style={th}>IVA</th><th style={th}>Total</th><th style={th}></th></tr></thead>
+                        <tbody>
+                          {filas.map(function(r,i){return(
+                            <tr key={i}>
+                              <td style={{...td,textAlign:"left",color:"#9A9A9A"}}>{r.fecha?fmtDate(String(r.fecha).substring(0,10)):"—"}</td>
+                              <td style={{...td,textAlign:"left",color:"#F0EDE8",whiteSpace:"normal"}}>{r.comercio}</td>
+                              <td style={{...td,color:"#8C8C8C"}}>{R(r.neto)}</td>
+                              <td style={{...td,color:r.tipo==="manual"?"#4C9A5A":"#D4A017",fontWeight:700}}>{R(r.iva)}</td>
+                              <td style={{...td,color:"#8C8C8C"}}>{R(r.total)}</td>
+                              <td style={{...td,fontSize:9,color:r.tipo==="est."?"#E07B00":"#4C9A5A"}}>{r.tipo==="est."?"estimado":(r.tipo==="manual"?"a mano":"exacto")}</td>
+                            </tr>
+                          );})}
+                          <tr>
+                            <td style={{...td,textAlign:"left",fontWeight:800,color:"#F0EDE8"}} colSpan={3}>Total {l.nombre}</td>
+                            <td style={{...td,fontWeight:800,color:"#D4A017"}}>{R(filas.reduce(function(a,r){return a+r.iva;},0))}</td>
+                            <td style={td}></td><td style={td}></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -29462,6 +29519,13 @@ export default function App() {
   });
   OC_EGRESOS=ocEgr;
   GUARDAR_OC=function(gid,numero){ guardarOfPauta("oc_egreso",{id:"oc_"+gid,numero:numero}); };
+  var ffEgr={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="fecha_factura_eg")return;
+    try{ var dq=JSON.parse(x.texto||"{}"); if(dq.fecha)ffEgr[String(x.id).replace(/^ff_/,"")]=String(dq.fecha); }catch(e){}
+  });
+  FECHAS_FACTURA=ffEgr;
+  GUARDAR_FF=function(gid,fecha){ guardarOfPauta("fecha_factura_eg",{id:"ff_"+gid,fecha:fecha}); };
   GUARDAR_CRED_IVA=function(c){ guardarCreditoFiscal(c); };
   GUARDAR_CRED_IIBB=function(c){ guardarCreditoIIBB(c); };
   GUARDAR_RECLAMO=function(gid,d){ guardarOfPauta("reclamo_factura",{id:"reclamo_"+gid,...d}); };

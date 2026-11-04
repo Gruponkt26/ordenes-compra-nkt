@@ -24992,6 +24992,21 @@ function PanelRecibosFC(p){
     var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
     var n=Object.keys(dias).length; return n>0?String(n):"";
   }
+  // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
+  function adelantosDeEmpleado(empId,periodo){
+    return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
+  }
+  // Pone el total de adelantos en el renglón "Descuento adelanto" (si no tiene monto cargado o si se pide pisarlo).
+  function conAdelanto(f,pisar){
+    if(f.modo==="aguinaldo"&&!pisar)return f;
+    var tot=f.empleado_id?adelantosDeEmpleado(f.empleado_id,f.periodo):0;
+    if(!(tot>0))return f;
+    var ds=(f.descuentos||[]).slice(), i=ds.findIndex(function(d){return /adelanto/i.test(d.concepto||"");});
+    if(i===-1)ds.push({concepto:"Descuento adelanto",monto:String(Math.round(tot*100)/100)});
+    else if(pisar||!(parseFloat(ds[i].monto)>0))ds[i]={...ds[i],monto:String(Math.round(tot*100)/100)};
+    else return f;
+    return {...f,descuentos:ds};
+  }
   function aplicarEmpleado(f,id){
     var e=empleadosTodos.find(function(x){return x.id===id;});
     if(!e)return {...f,empleado_id:id};
@@ -25009,7 +25024,7 @@ function PanelRecibosFC(p){
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
-    return g;
+    return conAdelanto(g,false);
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
@@ -25323,6 +25338,12 @@ function PanelRecibosFC(p){
                 </div>
               );})}
               <button onClick={function(){setForm(function(f){return {...f,descuentos:(f.descuentos||[]).concat([{concepto:"",monto:""}])};});}} style={{...GH,padding:"6px 12px",fontSize:12}}>+ Agregar descuento</button>
+              {(function(){
+                if(!form.empleado_id||form.modo==="aguinaldo")return null;
+                var tot=adelantosDeEmpleado(form.empleado_id,form.periodo);
+                if(!(tot>0))return <div style={{fontSize:11,color:"#7E7E7E",marginTop:7}}>Sin adelantos cargados para {periodoEnLetras(form.periodo)}. Si diste uno para este sueldo, cargalo en Egresos → Sueldos → Adelantos y elegí «¿De qué sueldo es?».</div>;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>Adelantos de {periodoEnLetras(form.periodo)}: <b>{$(tot)}</b> <button onClick={function(){setForm(function(f){return conAdelanto(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer al descuento</button></div>;
+              })()}
               {(function(){
                 var e=form.empleado_id?empleadosTodos.find(function(x){return x.id===form.empleado_id;}):null; if(!e)return null;
                 var n=null; try{ n=resumenAsistencia(e,p.fichajes||[],form.periodo,[],[]).tarde.length; }catch(err){}
@@ -25952,7 +25973,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

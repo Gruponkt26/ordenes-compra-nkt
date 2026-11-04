@@ -13606,7 +13606,7 @@ function PanelCambios(p){
         txt:"vino en su franco · "+(mf[1]?"lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"sin cambio de franco")+(mf[2]?" · “"+mf[2]+"”":"")});
     }
   });
-  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta+(d.local?" en "+((getLocal(d.local)||{}).nombre||d.local):""); };
   (p.cambiosJornada||[]).forEach(function(c){
     if(String(c.fecha||"").substring(0,7)!==mes)return;
     var dif=[];
@@ -15090,7 +15090,7 @@ function TarjetaCambiosPersonal(p){
       }
     });
   });
-  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta+(d.local?" en "+((getLocal(d.local)||{}).nombre||d.local):""); };
   (p.cambiosJornada||[]).forEach(function(c){
     var fc=String(c.fecha||"").substring(0,10); if(fc<desde)return;
     var dif=[], cambiaDia=false;

@@ -10331,8 +10331,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   // Combustible: un egreso por el total y, aparte, el IVA y las percepciones que quedan a favor.
   var [comb,setComb]=useState(null);
   function abrirComb(){
-    var m0=MEDIOS_EGRESO[0];
-    setComb({fecha:hoy,medio:m0?m0.value:"",local:"l1",cuit:FACTURACION[FACTURACION.length>1?1:0].id,neto:"",iva:"",ivaManual:false,nograv:"",percIibb:"",percIva:"",iibbManual:false,detalle:""});
+    setComb({fecha:hoy,medio:CAJA_MAYOR_POR_LOCAL.l1,local:"l1",cuit:FACTURACION[FACTURACION.length>1?1:0].id,neto:"",iva:"",ivaManual:false,nograv:"",percIibb:"",percIva:"",iibbManual:false,detalle:""});
   }
   function setCb(k,v){
     setComb(function(b){
@@ -10342,6 +10341,8 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
       if((k==="neto"||k==="nograv")&&!b.iibbManual&&neto>0)n.percIibb=String(Math.round((neto+ng)*4)/100);
       if(k==="iva")n.ivaManual=true;
       if(k==="percIibb")n.iibbManual=true;
+      // Si estaba la Caja Mayor del local anterior, pasa a la del nuevo.
+      if(k==="local"&&CAJA_MAYOR_POR_LOCAL[v]&&Object.keys(CAJA_MAYOR_POR_LOCAL).some(function(l){return CAJA_MAYOR_POR_LOCAL[l]===b.medio;}))n.medio=CAJA_MAYOR_POR_LOCAL[v];
       return n;
     });
   }

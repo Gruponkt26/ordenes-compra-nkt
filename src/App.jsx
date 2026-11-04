@@ -24859,17 +24859,20 @@ function reciboCalc(f){
   var sueldoConv=(f.sueldo_convenio!==""&&f.sueldo_convenio!==undefined&&f.sueldo_convenio!==null)?(parseFloat(f.sueldo_convenio)||0):Math.round(hc*vh);
   var horasFuera=r2(ht-hc), sueldoFuera=r2(sueldoTotal-sueldoConv);
   // Monto fijo o por jornada: no hay valor hora ni horas, lo de afuera es directamente ese monto.
-  if(f.modo==="fijo"||f.modo==="jornada"){
+  if(f.modo==="aguinaldo"){
+    sueldoFuera=r2(parseFloat(f.monto_aguinaldo)||0);
+    sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
+  } else if(f.modo==="fijo"||f.modo==="jornada"){
     sueldoFuera=f.modo==="fijo"?r2(parseFloat(f.monto_fijo)||0):r2((parseFloat(f.dias_trabajados)||0)*(parseFloat(f.valor_jornada)||0));
     sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
   }
   var desc=(f.descuentos||[]).reduce(function(a,d){return a+(parseFloat(d.monto)||0);},0);
-  var hab=haberesRecibo(f);
+  var hab=f.modo==="aguinaldo"?0:haberesRecibo(f);
   return {vh:vh,ht:ht,hc:hc,sueldoTotal:sueldoTotal,sueldoConv:sueldoConv,horasFuera:horasFuera,sueldoFuera:sueldoFuera,haberes:r2(hab),desc:r2(desc),total:r2(sueldoFuera+hab-desc)};
 }
 var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
 // Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
-var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["aguinaldo","Aguinaldo",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
+var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
 function haberesRecibo(f){
   var e=(f&&f.extras)||{};
   return RECIBO_CONCEPTOS.reduce(function(a,c){return c[2]?a+(parseFloat((e[c[0]]||{}).monto)||0):a;},0);
@@ -24940,9 +24943,23 @@ function PanelRecibosFC(p){
     if(!p.onSavePlanilla||!f.empleado_id)return "";
     var e=empleadosTodos.find(function(x){return x.id===f.empleado_id;}); if(!e)return "";
     var c=reciboCalc(f), q=String(f.periodo).split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)-1;
+    // Lo que figura en la planilla es el sueldo: lo del recibo más vacaciones y feriados, menos consumo y presentismo. El descuento por adelanto no se
+    // resta porque los adelantos ya se descuentan al pagar el sueldo (si no, se descontarían dos veces).
+    var descAdel=(f.descuentos||[]).reduce(function(a,d){return /adelanto/i.test(d.concepto||"")?a+(parseFloat(d.monto)||0):a;},0);
+    var neto=Math.max(0,c.total+descAdel);
+    if(f.modo==="aguinaldo"){
+      var tAg=f.ag_tipo==="ag_jul"?"ag_jul":"ag_dic";
+      if(!(neto>0))return "";
+      var pa=(p.planilla||[]).find(function(x){return x.empleado_id===e.id&&parseInt(x.anio,10)===y&&x.tipo===tAg;});
+      if(pa&&Math.abs((parseFloat(pa.monto)||0)-neto)>1){
+        if(!window.confirm("La planilla anual tiene el aguinaldo de "+(tAg==="ag_jul"?"julio":"diciembre")+" "+y+" en $"+Math.round(parseFloat(pa.monto)||0).toLocaleString("es-AR")+".\n\nEl recibo da $"+Math.round(neto).toLocaleString("es-AR")+".\n\n¿Actualizo la planilla?"))return "La planilla no se tocó.";
+      }
+      p.onSavePlanilla({id:"plan_"+e.id+"_"+y+"_"+tAg,empleado_id:e.id,empleado_nombre:e.nombre,local:e.local,anio:y,mes:null,tipo:tAg,monto:neto,monto_convenio:0,monto_sin_convenio:neto});
+      return "✓ Aguinaldo de "+(tAg==="ag_jul"?"julio":"diciembre")+" "+y+" cargado en la planilla anual: $"+Math.round(neto).toLocaleString("es-AR");
+    }
     var previo=planDe(f.empleado_id,f.periodo);
     // Con monto fijo o jornada el recibo no calcula la parte de convenio: se deja la que ya tiene la planilla.
-    var conv=(f.modo==="fijo"||f.modo==="jornada")?(previo?(parseFloat(previo.monto_convenio)||0):0):Math.max(0,c.sueldoConv), sinc=Math.max(0,c.sueldoFuera);
+    var conv=(f.modo==="fijo"||f.modo==="jornada")?(previo?(parseFloat(previo.monto_convenio)||0):0):Math.max(0,c.sueldoConv), sinc=neto;
     if(!(sinc>0))return "";
     if(previo&&(Math.abs((parseFloat(previo.monto_sin_convenio)||0)-sinc)>1||Math.abs((parseFloat(previo.monto_convenio)||0)-conv)>1)){
       if(!window.confirm("La planilla anual de "+periodoEnLetras(f.periodo)+" tiene: convenio $"+Math.round(parseFloat(previo.monto_convenio)||0).toLocaleString("es-AR")+" y sin convenio $"+Math.round(parseFloat(previo.monto_sin_convenio)||0).toLocaleString("es-AR")+".\n\nEl recibo da: convenio $"+Math.round(conv).toLocaleString("es-AR")+" y sin convenio $"+Math.round(sinc).toLocaleString("es-AR")+".\n\n¿Actualizo la planilla con los valores del recibo?"))return "La planilla no se tocó.";
@@ -24957,6 +24974,13 @@ function PanelRecibosFC(p){
       valor_hora:"",horas_total:"",horas_convenio:"",sueldo_convenio:"",ref_monto:"",
       descuentos:RECIBO_DESCUENTOS.map(function(c){return {concepto:c,monto:""};})};
   }
+  function vacioAguinaldo(){
+    // Lo que toca pagar ahora: de enero a junio el de diciembre pasado; de julio a septiembre el de junio; de octubre en adelante el de diciembre.
+    var d=new Date(), mm=d.getMonth(), y=d.getFullYear(), tipo=mm<6?"ag_dic":(mm<9?"ag_jul":"ag_dic");
+    if(mm<6)y=y-1;
+    return {...vacio(),modo:"aguinaldo",valor_hora:"",ag_tipo:tipo,ag_anio:String(y),periodo:y+(tipo==="ag_jul"?"-06":"-12"),monto_aguinaldo:"",
+      descuentos:[{concepto:"Descuento adelanto",monto:""}]};
+  }
   function horasDelFichaje(empId,periodo){
     var e=empleadosTodos.find(function(x){return x.id===empId;}); if(!e)return "";
     var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
@@ -24968,19 +24992,39 @@ function PanelRecibosFC(p){
     var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
     var n=Object.keys(dias).length; return n>0?String(n):"";
   }
+  // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
+  function adelantosDeEmpleado(empId,periodo){
+    return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
+  }
+  // Pone el total de adelantos en el renglón "Descuento adelanto" (si no tiene monto cargado o si se pide pisarlo).
+  function conAdelanto(f,pisar){
+    if(f.modo==="aguinaldo"&&!pisar)return f;
+    var tot=f.empleado_id?adelantosDeEmpleado(f.empleado_id,f.periodo):0;
+    if(!(tot>0))return f;
+    var ds=(f.descuentos||[]).slice(), i=ds.findIndex(function(d){return /adelanto/i.test(d.concepto||"");});
+    if(i===-1)ds.push({concepto:"Descuento adelanto",monto:String(Math.round(tot*100)/100)});
+    else if(pisar||!(parseFloat(ds[i].monto)>0))ds[i]={...ds[i],monto:String(Math.round(tot*100)/100)};
+    else return f;
+    return {...f,descuentos:ds};
+  }
   function aplicarEmpleado(f,id){
     var e=empleadosTodos.find(function(x){return x.id===id;});
     if(!e)return {...f,empleado_id:id};
     var pl=planDe(id,f.periodo);
     var g={...f,empleado_id:id,local:e.local||f.local,marca:marcaDe(e),nombre:e.nombre,sector:e.categoria||f.sector,puesto:((p.datosEmp||{})[e.id]||{}).puesto||e.puesto||f.puesto};
     if(pl&&(parseFloat(pl.monto_convenio)||0)>0&&(f.sueldo_convenio===""||f.sueldo_convenio===undefined))g.sueldo_convenio=String(pl.monto_convenio);
+    if(f.modo==="aguinaldo"){
+      var pAg=(p.planilla||[]).find(function(x){return x.empleado_id===id&&parseInt(x.anio,10)===parseInt(f.ag_anio,10)&&x.tipo===f.ag_tipo;});
+      if(pAg&&!f.monto_aguinaldo)g.monto_aguinaldo=String(pAg.monto_sin_convenio||pAg.monto||"");
+      return g;
+    }
     // Según cómo cobra (ficha): monto fijo o por jornada no usan valor hora ni horas.
     var ex=(p.datosEmp||{})[id]||{}, mod=modalidadSueldoDe(e,ex);
     g.modo=(mod==="sin_fijo"||mod==="conv_fijo")?"fijo":(mod==="jornada"?"jornada":(mod==="sin_conv"?"horas":""));
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
-    return g;
+    return conAdelanto(g,false);
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
@@ -25087,7 +25131,9 @@ function PanelRecibosFC(p){
         y+=RH;
       }
       var per=periodoEnLetras(f.periodo).toUpperCase();
-      if(f.modo==="fijo"||f.modo==="jornada"){
+      if(f.modo==="aguinaldo"){
+        fila("Aguinaldo "+(f.ag_tipo==="ag_jul"?"1.er semestre ":"2.º semestre ")+(f.ag_anio||String(f.periodo).substring(0,4)),"","",n2(c.sueldoFuera),true);
+      } else if(f.modo==="fijo"||f.modo==="jornada"){
         if(f.modo==="jornada")fila("Jornadas trabajadas / Valor de la jornada","",String(parseFloat(f.dias_trabajados)||0),n2(parseFloat(f.valor_jornada)||0));
         fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
@@ -25147,7 +25193,10 @@ function PanelRecibosFC(p){
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
             <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,maxWidth:520}}>Carga de sueldos: elegís al empleado y se ve cómo cobra (se define en su ficha). Para lo que tiene parte fuera de convenio, tomás el valor hora del recibo de convenio, cargás las horas trabajadas y las de convenio, y se calcula lo que queda fuera de convenio. Baja en PDF con dos copias por hoja.</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             <button onClick={function(){setForm(vacio());}} style={{padding:"9px 16px",borderRadius:9,border:"none",background:"#4CAF50",color:"#000",fontWeight:800,fontSize:13,cursor:"pointer"}}>+ Nuevo recibo</button>
+            <button onClick={function(){setForm(vacioAguinaldo());}} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #8B2FC9",background:"#8B2FC922",color:"#B07CE0",fontWeight:800,fontSize:13,cursor:"pointer"}}>🎁 Recibo de aguinaldo</button>
+            </div>
           </div>
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
             var c=reciboCalc(r);
@@ -25155,7 +25204,7 @@ function PanelRecibosFC(p){
               <div key={r.id} style={{...CAJA,display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{r.nombre}</div>
-                  <div style={{fontSize:11,color:"#7E7E7E"}}>{periodoEnLetras(r.periodo)} · {r.marca} · fuera de convenio <b style={{color:"#4CAF50"}}>{$(c.total)}</b></div>
+                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.modo==="aguinaldo"?"🎁 Aguinaldo "+(r.ag_tipo==="ag_jul"?"1.er semestre":"2.º semestre")+" "+(r.ag_anio||String(r.periodo).substring(0,4)):periodoEnLetras(r.periodo)} · {r.marca} · {r.modo==="aguinaldo"?"a cobrar":"fuera de convenio"} <b style={{color:"#4CAF50"}}>{$(c.total)}</b></div>
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={function(){setForm(r);window.scrollTo&&window.scrollTo(0,0);}} style={{...GH,padding:"6px 11px",fontSize:11.5}}>✎ Abrir</button>
@@ -25188,14 +25237,33 @@ function PanelRecibosFC(p){
               })()}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Empleado/a","nombre")}{campo("Encabezado (local)","marca")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{campo("Sector","sector")}{campo("Puesto","puesto")}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>{campo("Período (mes)","periodo","month")}</div>
+              {form.modo!=="aguinaldo"&&<div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>{campo("Período (mes)","periodo","month")}</div>}
               <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>La fecha de pago se pone al bajar el PDF, el día que se abona.</div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
                 {logo&&logo.url?<img src={logo.url} alt="logo" style={{height:42,borderRadius:6,background:"#fff"}}/>:<span style={{fontSize:11,color:"#7E7E7E"}}>Sin logo cargado para este local.</span>}
                 <label style={{...GH,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>🖼️ {logo&&logo.url?"Cambiar logo":"Subir logo"}<input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){subirLogo(e.target.files&&e.target.files[0]);e.target.value="";}}/></label>
               </div>
             </div>
-            {(form.modo==="fijo"||form.modo==="jornada")?(
+            {form.modo==="aguinaldo"?(
+              <div style={CAJA}>
+                <div style={{fontSize:12,fontWeight:800,color:"#B07CE0",marginBottom:8}}>🎁 Aguinaldo</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>
+                    <label style={LB}>Semestre</label>
+                    <select value={form.ag_tipo||"ag_dic"} onChange={function(e){var v=e.target.value;setForm(function(f){var g={...f,ag_tipo:v,periodo:(f.ag_anio||hoy.substring(0,4))+(v==="ag_jul"?"-06":"-12")}; return f.empleado_id?aplicarEmpleado({...g,monto_aguinaldo:""},f.empleado_id):g;});}} style={INP}>
+                      <option value="ag_jul">1.er semestre (enero a junio) · se paga en julio</option>
+                      <option value="ag_dic">2.º semestre (julio a diciembre) · se paga en diciembre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={LB}>Año</label>
+                    <input type="number" value={form.ag_anio||""} onChange={function(e){var v=e.target.value;setForm(function(f){var g={...f,ag_anio:v,periodo:v+(f.ag_tipo==="ag_jul"?"-06":"-12")}; return f.empleado_id?aplicarEmpleado({...g,monto_aguinaldo:""},f.empleado_id):g;});}} style={INP}/>
+                  </div>
+                </div>
+                {campo("Monto del aguinaldo $","monto_aguinaldo","number")}
+                <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6,lineHeight:1.5}}>Si la planilla anual ya tiene el aguinaldo de ese empleado, el monto viene de ahí. Al guardar, el aguinaldo queda cargado en su fila de la planilla.</div>
+              </div>
+            ):(form.modo==="fijo"||form.modo==="jornada")?(
               <div style={CAJA}>
                 <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>💵 Sueldo fuera de convenio <span style={{fontWeight:400,color:"#7E7E7E"}}>· {form.modo==="fijo"?"monto fijo":"por jornada diaria"}</span></div>
                 {form.modo==="fijo"?(
@@ -25245,8 +25313,8 @@ function PanelRecibosFC(p){
               <div style={{fontSize:11.5,color:"#4CAF50",marginTop:8}}>{form.modo==="horas"?"Horas trabajadas":"Horas fuera de convenio"}: <b>{n2(c.horasFuera)} h</b> × {$(c.vh)} = <b>{$(c.sueldoFuera)}</b></div>
             </div>
             )}
-            <div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· vacaciones, aguinaldo, feriados y ausencias</span></div>
+            {form.modo!=="aguinaldo"&&<div style={CAJA}>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· vacaciones, feriados y ausencias</span></div>
               {RECIBO_CONCEPTOS.map(function(cc){
                 var ex=((form.extras||{})[cc[0]])||{};
                 function setEx(campo,v){ setForm(function(f){var e={...(f.extras||{})}; e[cc[0]]={...(e[cc[0]]||{}),[campo]:v}; return {...f,extras:e};}); }
@@ -25258,8 +25326,8 @@ function PanelRecibosFC(p){
                   </div>
                 );
               })}
-              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones, aguinaldo y feriados se suman al total a cobrar. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. En el recibo salen solo los que cargues.</div>
-            </div>
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones y feriados se suman al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. En el recibo salen solo los que cargues.</div>
+            </div>}
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
               {(form.descuentos||[]).map(function(d,i){return(
@@ -25271,6 +25339,12 @@ function PanelRecibosFC(p){
               );})}
               <button onClick={function(){setForm(function(f){return {...f,descuentos:(f.descuentos||[]).concat([{concepto:"",monto:""}])};});}} style={{...GH,padding:"6px 12px",fontSize:12}}>+ Agregar descuento</button>
               {(function(){
+                if(!form.empleado_id||form.modo==="aguinaldo")return null;
+                var tot=adelantosDeEmpleado(form.empleado_id,form.periodo);
+                if(!(tot>0))return <div style={{fontSize:11,color:"#7E7E7E",marginTop:7}}>Sin adelantos cargados para {periodoEnLetras(form.periodo)}. Si diste uno para este sueldo, cargalo en Egresos → Sueldos → Adelantos y elegí «¿De qué sueldo es?».</div>;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>Adelantos de {periodoEnLetras(form.periodo)}: <b>{$(tot)}</b> <button onClick={function(){setForm(function(f){return conAdelanto(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer al descuento</button></div>;
+              })()}
+              {(function(){
                 var e=form.empleado_id?empleadosTodos.find(function(x){return x.id===form.empleado_id;}):null; if(!e)return null;
                 var n=null; try{ n=resumenAsistencia(e,p.fichajes||[],form.periodo,[],[]).tarde.length; }catch(err){}
                 if(n==null)return null;
@@ -25279,7 +25353,9 @@ function PanelRecibosFC(p){
             </div>
             <div style={{...CAJA,borderColor:"#4CAF5055"}}>
               <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
-                {(form.modo==="fijo"||form.modo==="jornada")?(
+                {form.modo==="aguinaldo"?(
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Aguinaldo</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                ):(form.modo==="fijo"||form.modo==="jornada")?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 ):form.modo==="horas"?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo ({n2(c.horasFuera)} h × {n2(c.vh)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
@@ -25288,13 +25364,14 @@ function PanelRecibosFC(p){
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({n2(c.horasFuera)} h)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 </>)}
-                {c.haberes>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Vacaciones, aguinaldo y feriados</span><b>+ {$(c.haberes)}</b></div>}
+                {c.haberes>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Vacaciones y feriados</span><b>+ {$(c.haberes)}</b></div>}
                 {c.desc>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Descuentos</span><b>− {$(c.desc)}</b></div>}
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>Total a cobrar fuera de convenio</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>{form.modo==="aguinaldo"?"Total a cobrar":"Total a cobrar fuera de convenio"}</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
               </div>
               {form.ref_monto!==""&&form.ref_monto!==undefined&&<div style={{fontSize:11,color:refDif?"#D4A017":"#7E7E7E",marginTop:6}}>En Sueldos figura {$(parseFloat(form.ref_monto)||0)} fuera de convenio{refDif?" — no coincide con este recibo, revisalo.":"."}</div>}
             </div>
             {(function(){
+              if(form.modo==="aguinaldo")return <div style={{fontSize:11.5,margin:"0 2px 10px",lineHeight:1.5,color:"#B07CE0"}}>🎁 Al guardar, el aguinaldo se carga en la fila de aguinaldo de la planilla anual. Podés bajar el PDF cuando se abone, con la fecha de pago.{msgPlan&&<div style={{color:msgPlan.charAt(0)==="✓"?"#4CAF50":"#D4A017",fontWeight:700,marginTop:3}}>{msgPlan}</div>}</div>;
               var pl=form.empleado_id?planDe(form.empleado_id,form.periodo):null;
               return(
                 <div style={{fontSize:11.5,margin:"0 2px 10px",lineHeight:1.5,color:pl?"#3A9BC1":"#7E7E7E"}}>
@@ -25896,7 +25973,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

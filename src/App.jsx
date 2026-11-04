@@ -14097,17 +14097,46 @@ function PanelFichajes(p){
         });
         var fechas=Object.keys(dias).sort().reverse();
         var DS=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+        // Celulares: cada marca guarda "Disp:xxxx" en las notas. El dueño de un celular es quien más lo usó; si otro ficha con ese aparato, se resalta.
+        var dispUso={};
+        fichajes.forEach(function(x){
+          var m=/Disp:([a-z0-9]+)/.exec(x.notas||""); if(!m||m[1]==="sinid")return;
+          var d=dispUso[m[1]]=dispUso[m[1]]||{}; d[x.empleado_id]=(d[x.empleado_id]||0)+1;
+        });
+        function celularDeOtro(f){
+          var m=/Disp:([a-z0-9]+)/.exec(f.notas||""); if(!m||m[1]==="sinid")return null;
+          var d=dispUso[m[1]]||{}, ids=Object.keys(d); if(ids.length<2)return null;
+          var mio=d[f.empleado_id]||0, mejor=ids.slice().sort(function(a,b){return d[b]-d[a];})[0];
+          if(mejor!==f.empleado_id&&d[mejor]>mio){ var o=empleados.find(function(e){return e.id===mejor;}); return {txt:"con el celular de "+(o?o.nombre:"otro compañero")}; }
+          var empatados=ids.filter(function(i){return d[i]===d[mejor];}).length;
+          if(d[mejor]===mio&&empatados>1){ var otros=ids.filter(function(i){return i!==f.empleado_id;}).map(function(i){var o=empleados.find(function(e){return e.id===i;});return o?o.nombre:"otro";}); return {txt:"celular compartido con "+otros.join(", ")}; }
+          return null;
+        }
+        // Llegada tarde: primera entrada del día, más de TOLERANCIA_ATRASO_MIN minutos después de su horario.
+        function tardeDe(f,emp){
+          if(f.tipo!=="entrada"||!emp)return 0;
+          var dia=String(f.fecha||"").substring(0,10), t=turnoDe(emp,dia);
+          if(!t||t.franco||!t.desde)return 0;
+          if(fichajes.some(function(x){return x.empleado_id===f.empleado_id&&x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===dia&&String(x.momento||x.hora)<String(f.momento||f.hora);}))return 0;
+          var a=String(f.hora||"").split(":"), b=t.desde.split(":");
+          var min=(parseInt(a[0],10)*60+parseInt(a[1],10))-(parseInt(b[0],10)*60+parseInt(b[1],10));
+          return min>TOLERANCIA_ATRASO_MIN?min:0;
+        }
         function fila(f){
           var emp=empleados.find(function(e){return e.id===f.empleado_id;});
           var loc=getLocal(f.local);
           var otro=emp&&emp.local&&f.local&&emp.local!==f.local;
           var lej=lejosDe(f);
+          var tarde=tardeDe(f,emp), cel=celularDeOtro(f);
+          var resalte=cel?"#9B59D0":(tarde?"#E07B00":null);
           return(
-            <div key={f.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0",borderTop:"1px solid #141414",flexWrap:"wrap"}}>
+            <div key={f.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px "+(resalte?"8px":"0"),borderTop:"1px solid #141414",flexWrap:"wrap",background:resalte?resalte+"1A":"none",borderLeft:resalte?"3px solid "+resalte:"none",borderRadius:resalte?6:0,margin:resalte?"2px 0":0}}>
               <b style={{fontSize:12.5,color:"#F0EDE8"}}>{f.empleado_nombre}</b>
               <span style={{fontSize:12.5,fontWeight:700,color:f.tipo==="salida"?"#C1440E":"#3A7D44",fontVariantNumeric:"tabular-nums"}}>{f.hora}</span>
               {f._mad&&<span title="Salida de madrugada: es del turno de este día" style={{fontSize:10,color:"#8C8C8C"}}>🌙 madrugada del {DS[new Date(String(f.fecha).substring(0,10)+"T12:00:00").getDay()].toLowerCase()}</span>}
               <span style={{fontSize:11,color:otro?"#D4A017":(loc?loc.color:"#8C8C8C")}}>{loc?loc.emoji+" "+loc.nombre:f.local}{otro?" ⚠️":""}</span>
+              {tarde>0&&<span title="Llegó después de su horario de entrada" style={{fontSize:10.5,color:"#E07B00",fontWeight:800}}>⏰ tarde {tarde>=60?Math.floor(tarde/60)+" h "+(tarde%60)+" min":tarde+" min"}</span>}
+              {cel&&<span title="Esta marca se hizo desde un celular que usa otra persona" style={{fontSize:10.5,color:"#B07CE0",fontWeight:800}}>📱 {cel.txt}</span>}
               {f.manual&&<span title="Carga manual" style={{fontSize:10,color:"#7E7E7E"}}>✎</span>}
               {String(f.notas||"").indexOf("Ubicación imprecisa")===0&&<span title={f.notas} style={{fontSize:10,color:"#D4A017",fontWeight:700}}>⚠️ GPS impreciso</span>}
               {f.lat!=null&&f.lng!=null?<button onClick={function(){setMapaDe(f);}} style={{background:"none",border:"none",padding:0,fontSize:10,cursor:"pointer",color:lej?"#C1440E":"#3A7D44",fontWeight:700}}>📍{lej?fmtDistancia(lej):""}</button>:(!f.manual&&<span title="Sin ubicación" style={{fontSize:10,color:"#D4A017"}}>📍✕</span>)}
@@ -14138,7 +14167,7 @@ function PanelFichajes(p){
                 </div>
               );
             })}
-            <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5}}>⚠️ = marcó en un local que no es el suyo · 📍 = ubicación (en rojo la distancia cuando estaba lejos del local) · ✎ = carga manual.</div>
+            <div style={{fontSize:10,color:"#6E6E6E",lineHeight:1.5}}>⚠️ = marcó en un local que no es el suyo · 📍 = ubicación (en rojo la distancia cuando estaba lejos del local) · ✎ = carga manual · <span style={{color:"#E07B00"}}>naranja ⏰ = llegó tarde</span> · <span style={{color:"#B07CE0"}}>violeta 📱 = marcó con el celular de otro compañero</span>.</div>
           </div>
         );
       })()}

@@ -3210,7 +3210,12 @@ function PautasFichaje(){
       "Los días de vacaciones o licencia cargados no cuentan como falta."]},
     {t:"🔄 Francos",l:[
       "Si marcás la entrada en un día que es tu franco, la app te pregunta por qué venís: si cambiaste tu franco (y a qué día pasa) o cuál es el otro motivo. No podés marcar sin contestar.",
-      "Eso le llega a administración en Novedades, con el día al que cambiaste tu franco."]}
+      "Eso le llega a administración en Novedades, con el día al que cambiaste tu franco."]},
+    {t:"🔁 Cambio de local o de horario por hoy",l:[
+      "Si hoy te mandan a trabajar a otro local: en la pantalla de fichar tocá «🔁 Hoy trabajo en otro local», elegí el local y a quién reemplazás (o dejalo como refuerzo). Para marcar tenés que estar en ese local.",
+      "Si hoy entrás o salís a otra hora: tocá «🕐 Hoy entro en otro horario» y poné a qué hora entrás y a qué hora salís. La llegada tarde y las horas se cuentan con ese horario.",
+      "Los dos valen solo por hoy y quedan a la vista de administración. Conviene hacerlo antes de marcar la entrada. Si ya marcaste, avisá a administración.",
+      "Si tu jornada ya dice que ese día trabajás en otro local (por ejemplo, todos los lunes), no tenés que hacer nada: la app ya sabe dónde marcás."]}
   ];
   return(
     <div style={{background:"#0A1014",border:"1px solid #1A6B8A55",borderRadius:12,padding:"12px 14px",marginBottom:14}}>

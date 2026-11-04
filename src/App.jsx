@@ -12466,6 +12466,12 @@ function turnoTerminado(t, fecha){
   if(String(t.hasta)<=String(t.desde))fin=new Date(fin.getTime()+86400000);   // el turno cruza la medianoche
   return new Date()>=fin;
 }
+// ¿Ese día de la semana su jornada lo manda a trabajar a ese local? (ej: los lunes en Colantonio's). No es un cambio de local ni una cobertura.
+function esLocalFijoDelDia(emp,fecha,localId){
+  if(!emp||!fecha||!localId)return false;
+  var t=turnoDe(emp,String(fecha).substring(0,10));
+  return !!(t&&!t.franco&&t.local&&t.local===localId&&emp.local!==localId);
+}
 // Horario de un día puntual cargado por el propio empleado (ej: hoy entra otro horario): {"empId|AAAA-MM-DD":{desde,hasta}}. Manda sobre su jornada.
 var TURNOS_DIA={};
 function turnoDe(emp, fecha){
@@ -12483,7 +12489,7 @@ function turnoDe(emp, fecha){
   var m1=parseInt(a[0],10)*60+parseInt(a[1],10), m2=parseInt(b[0],10)*60+parseInt(b[1],10);
   // Un turno que termina antes de empezar cruza la medianoche: cierra al día siguiente.
   var min=m2>m1?(m2-m1):(m2+1440-m1);
-  return {franco:false, desde:d.desde, hasta:d.hasta, minutos:min};
+  return {franco:false, desde:d.desde, hasta:d.hasta, minutos:min, local:d.local||""};
 }
 // Los días del mes hasta hoy: lo que viene todavía no se le puede reclamar a nadie.
 function diasDelMesHasta(mes, hoy){
@@ -12863,6 +12869,10 @@ function PanelFichar(p){
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
   var coberturaVigente=(soyYo&&cobertura&&cobertura.emp===soyYo.id&&cobertura.fecha===fechaLocal()&&cobertura.local&&cobertura.local!==soyYo.local)?cobertura:null;
   if(coberturaVigente)local=coberturaVigente.local;
+  // Local fijo de hoy según su jornada (ej: los lunes en Colantonio's): se marca ahí sin tocar nada, salvo que haya elegido otro (multi-local) o tenga una cobertura.
+  var turnoHoyF=soyYo?turnoDe(soyYo,fechaLocal()):null;
+  var localFijoHoy=(soyYo&&!coberturaVigente&&!(multiLocal&&eligioLocal)&&turnoHoyF&&!turnoHoyF.franco&&turnoHoyF.local&&turnoHoyF.local!==soyYo.local)?turnoHoyF.local:null;
+  if(localFijoHoy)local=localFijoHoy;
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
   var coordsLocal=(p.localesDatos||{})[local];
   var codigoVerif=!!codigoOk&&codigoOk.local===local&&codigoOk.hasta>Date.now();
@@ -13063,7 +13073,7 @@ function PanelFichar(p){
       fecha:fechaLocal(ahora), hora:horaLocal(ahora), tipo:tipo, momento:ahora.toISOString(),
       foto_url:null, cara:null, lat:pos?pos.lat:null, lng:pos?pos.lng:null,
       aparato:kiosco?"kiosco":"celular", usuario:p.usuario||"", manual:false,
-      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+((TURNOS_DIA[elegido.id+"|"+fechaLocal()]||{}).desde?"Horario del día cambiado por el empleado: "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].desde+" a "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].hasta+". ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(libre?"libre (administración)":codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
+      con_pin:!!pinDe(elegido), notas:(coberturaVigente&&elegido&&coberturaVigente.emp===elegido.id?"Cobertura|reemplaza="+String(coberturaVigente.reemplaza||"").replace(/[|\n]/g," ")+"| ":"")+((TURNOS_DIA[elegido.id+"|"+fechaLocal()]||{}).desde?"Horario del día cambiado por el empleado: "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].desde+" a "+TURNOS_DIA[elegido.id+"|"+fechaLocal()].hasta+". ":"")+(esFrancoEnt?francoNota(elegido)+" ":"")+(infoTarde?"Llegada tarde: +"+infoTarde.min+" min (nº "+infoTarde.nro+" del mes). ":"")+"Disp:"+idDispositivo()+". Método: "+(libre?"libre (administración)":codigoVerif?"código del local":"ubicación")+". "+(codigoVerif?"Verificado con el código del local. ":"")+(cercaReq&&lecturaImprecisa(pos)&&distanciaEfectiva(coordsLocal,pos)>RADIO_LOCAL?"Ubicación imprecisa (GPS ±"+pos.acc+" m). ":"")+((elegido.local&&elegido.local!==local&&!localFijoHoy)?("Marcó en "+((getLocal(local)||{}).nombre||local)+" (su local es "+((getLocal(elegido.local)||{}).nombre||elegido.local)+")"):"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar el fichaje."); setFase("camara"); return; }
     setRecibo({...fila, tarde:infoTarde, aviso:pos?"":"No se pudo tomar la ubicación: la marca quedó guardada sin ella. Activá la ubicación del celular para este sitio."});
@@ -13303,6 +13313,15 @@ function PanelFichar(p){
       )}
       {soyYo&&!multiLocal&&soyYo.local&&(function(){
         var otros=LOCALES.filter(function(l){return l.id!==soyYo.local;});
+        if(localFijoHoy){
+          var lfx=getLocal(localFijoHoy)||{};
+          return(
+            <div style={{background:"#0F1A14",border:"1px solid #3A7D4488",borderRadius:12,padding:"10px 13px",marginBottom:12}}>
+              <div style={{fontSize:12.5,fontWeight:800,color:"#3A7D44"}}>📍 Hoy marcás en {lfx.emoji} {lfx.nombre}</div>
+              <div style={{fontSize:11,color:"#9A9A9A",marginTop:3}}>Es tu local de hoy según tu jornada. Tenés que estar ahí para marcar.</div>
+            </div>
+          );
+        }
         if(coberturaVigente){
           var lc=getLocal(coberturaVigente.local)||{};
           return(
@@ -13587,7 +13606,7 @@ function PanelCambios(p){
         txt:"vino en su franco · "+(mf[1]?"lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"sin cambio de franco")+(mf[2]?" · “"+mf[2]+"”":"")});
     }
   });
-  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta+(d.local?" en "+((getLocal(d.local)||{}).nombre||d.local):""); };
   (p.cambiosJornada||[]).forEach(function(c){
     if(String(c.fecha||"").substring(0,7)!==mes)return;
     var dif=[];
@@ -13759,7 +13778,7 @@ function PanelJornadas(p){
     DIAS_SEM.forEach(function(d){
       var act=j[d.k];
       if(act&&act.franco)return;   // los francos se respetan
-      j[d.k]={franco:false, desde:base.desde, hasta:base.hasta};
+      j[d.k]={franco:false, desde:base.desde, hasta:base.hasta, local:(act&&act.local)||""};
     });
     setBorr(function(o){var n={...o};n[e.id]=j;return n;});
   }
@@ -13854,6 +13873,11 @@ function PanelJornadas(p){
                       <input type="time" value={x.hasta||""} disabled={esFranco}
                         onChange={function(ev){tocar(e,d.k,"hasta",ev.target.value);}}
                         style={{...INP,width:104,opacity:esFranco?0.3:1,padding:"6px 8px",fontSize:12}}/>
+                      <select value={x.local||""} disabled={esFranco} onChange={function(ev){tocar(e,d.k,"local",ev.target.value);}} title="Local donde trabaja ese día"
+                        style={{...INP,width:"auto",opacity:esFranco?0.3:1,padding:"6px 8px",fontSize:11.5,color:x.local?"#D4A017":"#8C8C8C"}}>
+                        <option value="">su local</option>
+                        {LOCALES.filter(function(l){return l.id!==e.local&&l.id!=="l4";}).map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
+                      </select>
                     </div>
                   );
                 })}
@@ -14165,7 +14189,7 @@ function PanelFichajes(p){
         function fila(f){
           var emp=empleados.find(function(e){return e.id===f.empleado_id;});
           var loc=getLocal(f.local);
-          var otro=emp&&emp.local&&f.local&&emp.local!==f.local;
+          var otro=emp&&emp.local&&f.local&&emp.local!==f.local&&!esLocalFijoDelDia(emp,f.fecha,f.local);
           var lej=lejosDe(f);
           var tarde=tardeDe(f,emp), cel=celularDeOtro(f);
           var resalte=cel?"#9B59D0":(tarde?"#E07B00":null);
@@ -15061,12 +15085,12 @@ function TarjetaCambiosPersonal(p){
         items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(francoMin[e.id+"_"+fe]?" y trabajó "+fmtHs(francoMin[e.id+"_"+fe]):"")+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
       }
       if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco)"+(francoMin[e.id+"_"+fe]?" durante "+fmtHs(francoMin[e.id+"_"+fe]):"")+", sin aclarar el motivo"}); } }
-      if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual))&&!vistos["l"+k]){ vistos["l"+k]=1;
+      if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual&&!esLocalFijoDelDia(e,f.fecha,f.local)))&&!vistos["l"+k]){ vistos["l"+k]=1;
         items.push({tipo:"local",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(mc&&mc[1]?" reemplazando a "+mc[1]:(mc?" de refuerzo":""))});
       }
     });
   });
-  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta; };
+  var descDia=function(d){ return (!d||d.franco||!d.desde)?"franco":d.desde+"–"+d.hasta+(d.local?" en "+((getLocal(d.local)||{}).nombre||d.local):""); };
   (p.cambiosJornada||[]).forEach(function(c){
     var fc=String(c.fecha||"").substring(0,10); if(fc<desde)return;
     var dif=[], cambiaDia=false;
@@ -16603,7 +16627,7 @@ function PanelNovedades(p){
           (p.fichajes||[]).forEach(function(f){
             if(f.manual||!f.fecha||String(f.fecha).substring(0,10)<desdeF)return;
             var emp=(p.empleados||[]).find(function(e){return e.id===f.empleado_id;});
-            if(!emp||!emp.local||!f.local||emp.local===f.local)return;
+            if(!emp||!emp.local||!f.local||emp.local===f.local||esLocalFijoDelDia(emp,f.fecha,f.local))return;
             var k=f.empleado_id+"_"+String(f.fecha).substring(0,10)+"_"+f.local;
             if(vistos[k]){ vistos[k].horas.push(f.tipo+" "+f.hora); return; }
             vistos[k]={emp:emp,f:f,horas:[f.tipo+" "+f.hora]}; otros.push(vistos[k]);

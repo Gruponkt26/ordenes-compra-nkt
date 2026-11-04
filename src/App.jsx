@@ -24864,9 +24864,16 @@ function reciboCalc(f){
     sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
   }
   var desc=(f.descuentos||[]).reduce(function(a,d){return a+(parseFloat(d.monto)||0);},0);
-  return {vh:vh,ht:ht,hc:hc,sueldoTotal:sueldoTotal,sueldoConv:sueldoConv,horasFuera:horasFuera,sueldoFuera:sueldoFuera,desc:r2(desc),total:r2(sueldoFuera-desc)};
+  var hab=haberesRecibo(f);
+  return {vh:vh,ht:ht,hc:hc,sueldoTotal:sueldoTotal,sueldoConv:sueldoConv,horasFuera:horasFuera,sueldoFuera:sueldoFuera,haberes:r2(hab),desc:r2(desc),total:r2(sueldoFuera+hab-desc)};
 }
-var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto"];
+var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
+// Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
+var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["aguinaldo","Aguinaldo",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
+function haberesRecibo(f){
+  var e=(f&&f.extras)||{};
+  return RECIBO_CONCEPTOS.reduce(function(a,c){return c[2]?a+(parseFloat((e[c[0]]||{}).monto)||0):a;},0);
+}
 // Achica el logo subido para que entre cómodo en una pauta (máx. 420 px de ancho) y lo devuelve como dataURL.
 function logoADataUrl(file){
   return new Promise(function(res){
@@ -24946,7 +24953,7 @@ function PanelRecibosFC(p){
   }
   function marcaDe(emp){ var l=emp&&getLocal(emp.local); return l?String(l.nombre).toUpperCase():"EL BODEGÓN NKT"; }
   function vacio(){
-    return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:mesAnteriorDe(hoy),fecha_pago:hoy,modo:"",monto_fijo:"",valor_jornada:"",dias_trabajados:"",dias_feriados:"",
+    return {id:null,local:"l1",marca:"EL BODEGÓN NKT",empleado_id:"",nombre:"",sector:"",puesto:"",periodo:mesAnteriorDe(hoy),fecha_pago:hoy,modo:"",monto_fijo:"",valor_jornada:"",dias_trabajados:"",extras:{},
       valor_hora:"",horas_total:"",horas_convenio:"",sueldo_convenio:"",ref_monto:"",
       descuentos:RECIBO_DESCUENTOS.map(function(c){return {concepto:c,monto:""};})};
   }
@@ -25018,7 +25025,7 @@ function PanelRecibosFC(p){
   function duplicar(r){
     var d=new Date((r.periodo||hoy.substring(0,7))+"-01T12:00:00"); d.setMonth(d.getMonth()+1);
     var per=d.toISOString().substring(0,7);
-    setForm({...r,id:null,created_at:undefined,periodo:per,fecha_pago:hoy,horas_total:horasDelFichaje(r.empleado_id,per),horas_convenio:"",sueldo_convenio:"",ref_monto:"",
+    setForm({...r,id:null,created_at:undefined,periodo:per,fecha_pago:hoy,horas_total:horasDelFichaje(r.empleado_id,per),horas_convenio:"",sueldo_convenio:"",ref_monto:"",extras:{},
       descuentos:(r.descuentos||[]).map(function(d2){return {concepto:d2.concepto,monto:""};})});
     window.scrollTo&&window.scrollTo(0,0);
   }
@@ -25082,7 +25089,6 @@ function PanelRecibosFC(p){
       var per=periodoEnLetras(f.periodo).toUpperCase();
       if(f.modo==="fijo"||f.modo==="jornada"){
         if(f.modo==="jornada")fila("Jornadas trabajadas / Valor de la jornada","",String(parseFloat(f.dias_trabajados)||0),n2(parseFloat(f.valor_jornada)||0));
-        if(parseFloat(f.dias_feriados)>0)fila("Días feriados","",String(parseFloat(f.dias_feriados)),"");
         fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
       // El recibo no dice si es de convenio o fuera de convenio: solo las horas que se pagan y su valor.
@@ -25096,6 +25102,12 @@ function PanelRecibosFC(p){
         fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
       }
       }
+      // Otros conceptos (solo los que tienen algo cargado): vacaciones, aguinaldo, feriados y ausencias justificadas.
+      RECIBO_CONCEPTOS.forEach(function(cc){
+        var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
+        if(!(dias>0)&&!(mon>0))return;
+        fila(cc[1],"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
+      });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
@@ -25109,7 +25121,7 @@ function PanelRecibosFC(p){
       return ys+5;
     }
     var fin=bloque(18);
-    bloque(fin+14);
+    bloque(fin+(fin>135?6:14));
     doc.save("Recibo_"+String(f.nombre||"empleado").replace(/[^a-z0-9]+/gi,"_")+"_"+(f.periodo||"")+".pdf");
   }
   var INP={padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
@@ -25187,7 +25199,7 @@ function PanelRecibosFC(p){
               <div style={CAJA}>
                 <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>💵 Sueldo fuera de convenio <span style={{fontWeight:400,color:"#7E7E7E"}}>· {form.modo==="fijo"?"monto fijo":"por jornada diaria"}</span></div>
                 {form.modo==="fijo"?(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Monto fijo $","monto_fijo","number")}{campo("Días feriados","dias_feriados","number")}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Monto fijo $","monto_fijo","number")}</div>
                 ):(
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                     {campo("Valor de la jornada $","valor_jornada","number")}
@@ -25198,10 +25210,8 @@ function PanelRecibosFC(p){
                         {form.empleado_id&&<button onClick={function(){var d=diasDelFichaje(form.empleado_id,form.periodo); if(!d){alert("No hay días con marcas en el Fichaje para ese empleado en "+periodoEnLetras(form.periodo)+".");return;} setForm(function(f){return {...f,dias_trabajados:d};});}} title="Contar los días con marcas en el Fichaje" style={{...GH,padding:"0 10px",fontSize:11,whiteSpace:"nowrap"}}>🕐 Fichaje</button>}
                       </div>
                     </div>
-                    {campo("Días feriados","dias_feriados","number")}
                   </div>
                 )}
-                <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>Los días feriados se anotan y salen en el recibo. No cambian el monto: si cobran distinto, ajustalo en el monto.</div>
               </div>
             ):(
             <div style={CAJA}>
@@ -25236,6 +25246,21 @@ function PanelRecibosFC(p){
             </div>
             )}
             <div style={CAJA}>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· vacaciones, aguinaldo, feriados y ausencias</span></div>
+              {RECIBO_CONCEPTOS.map(function(cc){
+                var ex=((form.extras||{})[cc[0]])||{};
+                function setEx(campo,v){ setForm(function(f){var e={...(f.extras||{})}; e[cc[0]]={...(e[cc[0]]||{}),[campo]:v}; return {...f,extras:e};}); }
+                return(
+                  <div key={cc[0]} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 80px 110px",gap:6,marginBottom:6,alignItems:"center"}}>
+                    <div style={{fontSize:12.5,color:"#D8D8D8"}}>{cc[1]}</div>
+                    <input type="number" step="0.5" value={ex.dias||""} onChange={function(e){setEx("dias",e.target.value);}} placeholder="Días" style={INP}/>
+                    {cc[2]?<input type="number" step="0.01" value={ex.monto||""} onChange={function(e){setEx("monto",e.target.value);}} placeholder="Monto $" style={INP}/>:<div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.3}}>no suma</div>}
+                  </div>
+                );
+              })}
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones, aguinaldo y feriados se suman al total a cobrar. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. En el recibo salen solo los que cargues.</div>
+            </div>
+            <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
               {(form.descuentos||[]).map(function(d,i){return(
                 <div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 110px 26px",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -25245,11 +25270,17 @@ function PanelRecibosFC(p){
                 </div>
               );})}
               <button onClick={function(){setForm(function(f){return {...f,descuentos:(f.descuentos||[]).concat([{concepto:"",monto:""}])};});}} style={{...GH,padding:"6px 12px",fontSize:12}}>+ Agregar descuento</button>
+              {(function(){
+                var e=form.empleado_id?empleadosTodos.find(function(x){return x.id===form.empleado_id;}):null; if(!e)return null;
+                var n=null; try{ n=resumenAsistencia(e,p.fichajes||[],form.periodo,[],[]).tarde.length; }catch(err){}
+                if(n==null)return null;
+                return <div style={{fontSize:11,color:n>=3?"#C1440E":"#7E7E7E",marginTop:7}}>Llegadas tarde en {periodoEnLetras(form.periodo)}: <b>{n}</b>{n>=3?" · con 3 o más se pierde el presentismo: cargá el descuento.":" (a la tercera se pierde el presentismo)."}</div>;
+              })()}
             </div>
             <div style={{...CAJA,borderColor:"#4CAF5055"}}>
               <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
                 {(form.modo==="fijo"||form.modo==="jornada")?(
-                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)}{parseFloat(form.dias_feriados)>0?" · "+form.dias_feriados+" feriados":""})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 ):form.modo==="horas"?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo ({n2(c.horasFuera)} h × {n2(c.vh)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 ):(<>
@@ -25257,6 +25288,7 @@ function PanelRecibosFC(p){
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({n2(c.horasFuera)} h)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 </>)}
+                {c.haberes>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Vacaciones, aguinaldo y feriados</span><b>+ {$(c.haberes)}</b></div>}
                 {c.desc>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Descuentos</span><b>− {$(c.desc)}</b></div>}
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>Total a cobrar fuera de convenio</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
               </div>

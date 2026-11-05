@@ -25109,6 +25109,15 @@ function PanelRecibosFC(p){
     var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
     var n=Object.keys(dias).length; return n>0?String(n):"";
   }
+  // Quienes cobran con y sin convenio: su recibo no lleva feriados, presentismo ni ausencias injustificadas.
+  function esMixtoRecibo(f){
+    if(!f||f.modo==="aguinaldo")return false;
+    var e=f.empleado_id?empleadosTodos.find(function(x){return x.id===f.empleado_id;}):null;
+    var mod=e?modalidadSueldoDe(e,(p.datosEmp||{})[e.id]):"";
+    if(mod==="conv_sin"||mod==="conv_fijo")return true;
+    return f.modo!=="fijo"&&f.modo!=="jornada"&&(parseFloat(f.horas_convenio)>0||parseFloat(f.sueldo_convenio)>0);
+  }
+  var CONCEPTOS_NO_MIXTO=["feriados","injustificadas"];
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
   function adelantosDeEmpleado(empId,periodo){
     return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
@@ -25141,7 +25150,12 @@ function PanelRecibosFC(p){
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
-    return conAdelanto(g,false);
+    g=conAdelanto(g,false);
+    if(esMixtoRecibo(g)){
+      var exM={...(g.extras||{})}; CONCEPTOS_NO_MIXTO.forEach(function(k){delete exM[k];});
+      g={...g,extras:exM,descuentos:(g.descuentos||[]).filter(function(d){return !/presentismo/i.test(d.concepto||"");})};
+    }
+    return g;
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
@@ -25266,15 +25280,17 @@ function PanelRecibosFC(p){
       }
       }
       // Otros conceptos: salen siempre, estén completos o no ese mes (en blanco figuran con "-"), así todos los recibos tienen las mismas filas.
+      var mixtoPdf=esMixtoRecibo(f);
       RECIBO_CONCEPTOS.forEach(function(cc){
+        if(mixtoPdf&&CONCEPTOS_NO_MIXTO.indexOf(cc[0])!==-1)return;
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         var lab=cc[1];
         fila(lab,"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
-      (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
+      (f.descuentos||[]).forEach(function(d){ if(mixtoPdf&&/presentismo/i.test(d.concepto||""))return; var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text((f.modo!=="aguinaldo"&&f.modo!=="fijo"&&f.modo!=="jornada"&&c.hc>0)?"TOTAL SIN CONVENIO:":"TOTAL A COBRAR:",X+22,y+4.2);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text(mixtoPdf?"TOTAL SIN CONVENIO:":"TOTAL A COBRAR:",X+22,y+4.2);
       doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
       var yTxt=y+RH+0.6;
       // Firma del empleado, en todos los recibos.
@@ -25433,7 +25449,7 @@ function PanelRecibosFC(p){
             )}
             {form.modo!=="aguinaldo"&&<div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· feriados y ausencias</span></div>
-              {RECIBO_CONCEPTOS.map(function(cc){
+              {RECIBO_CONCEPTOS.filter(function(cc){return !(esMixtoRecibo(form)&&CONCEPTOS_NO_MIXTO.indexOf(cc[0])!==-1);}).map(function(cc){
                 var ex=((form.extras||{})[cc[0]])||{};
                 function setEx(campo,v){ setForm(function(f){var e={...(f.extras||{})}; e[cc[0]]={...(e[cc[0]]||{}),[campo]:v}; return {...f,extras:e};}); }
                 return(
@@ -25463,7 +25479,7 @@ function PanelRecibosFC(p){
                 return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>Adelantos de {periodoEnLetras(form.periodo)}: <b>{$(tot)}</b> <button onClick={function(){setForm(function(f){return conAdelanto(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer al descuento</button></div>;
               })()}
               {(function(){
-                var e=form.empleado_id?empleadosTodos.find(function(x){return x.id===form.empleado_id;}):null; if(!e)return null;
+                var e=form.empleado_id?empleadosTodos.find(function(x){return x.id===form.empleado_id;}):null; if(!e||esMixtoRecibo(form))return null;
                 var n=null; try{ n=resumenAsistencia(e,p.fichajes||[],form.periodo,[],[]).tarde.length; }catch(err){}
                 if(n==null)return null;
                 return <div style={{fontSize:11,color:n>=3?"#C1440E":"#7E7E7E",marginTop:7}}>Llegadas tarde en {periodoEnLetras(form.periodo)}: <b>{n}</b>{n>=3?" · con 3 o más se pierde el presentismo: cargá el descuento.":" (a la tercera se pierde el presentismo)."}</div>;

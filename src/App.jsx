@@ -24982,6 +24982,14 @@ function reciboCalc(f){
 var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
 // Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
 var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
+// 7 días = "1 semana", 14 = "2 semanas", 10 = "1 semana y 3 días": las vacaciones suelen ser por semana.
+function textoSemanas(d){
+  var n=Math.round(parseFloat(d)||0); if(n<=0)return "";
+  var sem=Math.floor(n/7), res=n%7, t=[];
+  if(sem>0)t.push(sem+(sem===1?" semana":" semanas"));
+  if(res>0)t.push(res+(res===1?" día":" días"));
+  return t.join(" y ");
+}
 function haberesRecibo(f){
   var e=(f&&f.extras)||{};
   return RECIBO_CONCEPTOS.reduce(function(a,c){return c[2]?a+(parseFloat((e[c[0]]||{}).monto)||0):a;},0);
@@ -25101,6 +25109,29 @@ function PanelRecibosFC(p){
     var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
     var n=Object.keys(dias).length; return n>0?String(n):"";
   }
+  // Vacaciones cargadas en la app para ese empleado en ese mes (no cuentan las licencias): días corridos que caen dentro del mes.
+  function vacacionesDelMes(empId,periodo){
+    var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10);
+    if(!y||!m)return {dias:0,tramos:[]};
+    var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[];
+    (p.vacaciones||[]).forEach(function(v){
+      if(v.empleado_id!==empId||String(v.notas||"").indexOf("[Licencia]")===0||!v.fecha_desde||!v.fecha_hasta)return;
+      var a=new Date(v.fecha_desde+"T12:00:00"), b=new Date(v.fecha_hasta+"T12:00:00");
+      var d0=a>ini?a:ini, d1=b<fin?b:fin;
+      var n=Math.round((d1-d0)/86400000)+1;
+      if(n>0){ dias+=n; tramos.push(fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)); }
+    });
+    return {dias:dias,tramos:tramos};
+  }
+  function conVacaciones(f,pisar){
+    if(f.modo==="aguinaldo"||!f.empleado_id)return f;
+    var vm=vacacionesDelMes(f.empleado_id,f.periodo);
+    if(!(vm.dias>0))return f;
+    var ex={...(f.extras||{})}, v=ex.vacaciones||{};
+    if(!pisar&&parseFloat(v.dias)>0)return f;
+    ex.vacaciones={...v,dias:String(vm.dias)};
+    return {...f,extras:ex};
+  }
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
   function adelantosDeEmpleado(empId,periodo){
     return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
@@ -25133,7 +25164,7 @@ function PanelRecibosFC(p){
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
-    return conAdelanto(g,false);
+    return conVacaciones(conAdelanto(g,false),false);
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
@@ -25261,7 +25292,10 @@ function PanelRecibosFC(p){
       RECIBO_CONCEPTOS.forEach(function(cc){
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         if(!(dias>0)&&!(mon>0))return;
-        fila(cc[1],"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
+        var lab=cc[1];
+        if(cc[0]==="vacaciones"&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
+        if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
+        fila(lab,"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
       });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
@@ -25436,6 +25470,12 @@ function PanelRecibosFC(p){
                 );
               })}
               <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones y feriados se suman al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. En el recibo salen solo los que cargues.</div>
+              {(function(){
+                if(!form.empleado_id)return null;
+                var vm=vacacionesDelMes(form.empleado_id,form.periodo);
+                if(!(vm.dias>0))return null;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
+              })()}
             </div>}
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
@@ -26082,7 +26122,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC vacaciones={p.vacaciones||[]} adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

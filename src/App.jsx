@@ -25132,18 +25132,6 @@ function PanelRecibosFC(p){
     ex.vacaciones={...v,dias:String(vm.dias),fechas:vm.fechas};
     return {...f,extras:ex};
   }
-  // Línea informativa del año: cuánto lleva tomado de vacaciones, cuánto le corresponde y cuánto queda. Solo si tomó vacaciones en el mes del recibo.
-  function resumenVacAnio(f){
-    if(!f||f.modo==="aguinaldo"||!f.empleado_id)return "";
-    var dMes=parseFloat(((f.extras||{}).vacaciones||{}).dias)||vacacionesDelMes(f.empleado_id,f.periodo).dias;
-    if(!(dMes>0))return "";
-    var e=empleadosTodos.find(function(x){return x.id===f.empleado_id;}); if(!e)return "";
-    var anio=parseInt(String(f.periodo).substring(0,4),10); if(!anio)return "";
-    var c=vacacionesQueCorresponden(e.fecha_alta,anio); if(!c||!(c.dias>0))return "";
-    var tomo=diasTomadosEnAnio(p.vacaciones||[],e.id,anio)+((VAC_AJUSTES[e.id+"_"+anio]||{}).dias||0);
-    var resta=Math.max(0,c.dias-tomo);
-    return "Vacaciones "+anio+": tomó "+tomo+" días ("+textoSemanas(tomo)+") de "+c.dias+" que le corresponden · quedan "+resta+" días"+(resta>=7?" ("+textoSemanas(resta)+")":"");
-  }
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
   function adelantosDeEmpleado(empId,periodo){
     return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
@@ -25313,9 +25301,7 @@ function PanelRecibosFC(p){
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
       doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR:",X+22,y+4.2);
       doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
-      // Resumen de vacaciones del año (informativo), si tomó vacaciones en este mes.
-      var vTxt=resumenVacAnio(f), yTxt=y+RH+0.6;
-      if(vTxt){ doc.setFont("helvetica","italic"); doc.setFontSize(7); doc.text(vTxt,X+1.5,yTxt+4); doc.setFont("helvetica","normal"); doc.setFontSize(8); yTxt+=5; }
+      var yTxt=y+RH+0.6;
       // Firmas: del empleador y del empleado, en todos los recibos.
       var ys=yTxt+14;
       doc.setDrawColor(90); doc.line(X+8,ys,X+78,ys); doc.line(X+Wd-78,ys,X+Wd-8,ys);
@@ -25489,7 +25475,7 @@ function PanelRecibosFC(p){
                 if(!form.empleado_id)return null;
                 var vm=vacacionesDelMes(form.empleado_id,form.periodo);
                 if(!(vm.dias>0))return null;
-                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. {resumenVacAnio(form)?<span style={{display:"block",color:"#9A9A9A",width:"100%"}}>{resumenVacAnio(form)} (sale en el recibo)</span>:null} <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
               })()}
             </div>}
             <div style={CAJA}>

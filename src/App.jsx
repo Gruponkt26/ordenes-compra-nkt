@@ -24981,7 +24981,7 @@ function reciboCalc(f){
 }
 var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
 // Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
-var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
+var RECIBO_CONCEPTOS=[["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluidas en horas totales trabajadas)",false],["injustificadas","Ausencias injustificadas",false]];
 // 7 días = "1 semana", 14 = "2 semanas", 10 = "1 semana y 3 días": las vacaciones suelen ser por semana.
 function textoSemanas(d){
   var n=Math.round(parseFloat(d)||0); if(n<=0)return "";
@@ -25109,29 +25109,6 @@ function PanelRecibosFC(p){
     var dias={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)dias[String(ref.fecha).substring(0,10)]=1; }); }catch(err){}
     var n=Object.keys(dias).length; return n>0?String(n):"";
   }
-  // Vacaciones cargadas en la app para ese empleado en ese mes (no cuentan las licencias): días corridos que caen dentro del mes.
-  function vacacionesDelMes(empId,periodo){
-    var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10);
-    if(!y||!m)return {dias:0,tramos:[],fechas:""};
-    var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[], cortos=[];
-    (p.vacaciones||[]).forEach(function(v){
-      if(v.empleado_id!==empId||String(v.notas||"").indexOf("[Licencia]")===0||!v.fecha_desde||!v.fecha_hasta)return;
-      var a=new Date(v.fecha_desde+"T12:00:00"), b=new Date(v.fecha_hasta+"T12:00:00");
-      var d0=a>ini?a:ini, d1=b<fin?b:fin;
-      var n=Math.round((d1-d0)/86400000)+1;
-      if(n>0){ dias+=n; tramos.push(fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)); cortos.push(v.fecha_desde.substring(8,10)+"/"+v.fecha_desde.substring(5,7)+" al "+v.fecha_hasta.substring(8,10)+"/"+v.fecha_hasta.substring(5,7)); }
-    });
-    return {dias:dias,tramos:tramos,fechas:cortos.join(" y ")};
-  }
-  function conVacaciones(f,pisar){
-    if(f.modo==="aguinaldo"||!f.empleado_id)return f;
-    var vm=vacacionesDelMes(f.empleado_id,f.periodo);
-    if(!(vm.dias>0))return f;
-    var ex={...(f.extras||{})}, v=ex.vacaciones||{};
-    if(!pisar&&parseFloat(v.dias)>0)return f;
-    ex.vacaciones={...v,dias:String(vm.dias),fechas:vm.fechas};
-    return {...f,extras:ex};
-  }
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
   function adelantosDeEmpleado(empId,periodo){
     return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
@@ -25164,7 +25141,7 @@ function PanelRecibosFC(p){
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
-    return conVacaciones(conAdelanto(g,false),false);
+    return conAdelanto(g,false);
   }
   function nuevoDesdeSueldo(empId,periodo,monto,mixto){
     var f=aplicarEmpleado({...vacio(),periodo:periodo||mesAnteriorDe(hoy)},empId);
@@ -25264,7 +25241,7 @@ function PanelRecibosFC(p){
         doc.setDrawColor(150); doc.rect(X,y,Wd,RH);
         for(var i=1;i<4;i++)doc.line(cols[i],y,cols[i],y+RH);
         doc.setFont("helvetica",neg?"bold":"normal"); doc.setFontSize(8);
-        doc.text(String(concepto),cols[0]+1.2,y+4);
+        if(String(concepto).length>54)doc.setFontSize(7); doc.text(String(concepto),cols[0]+1.2,y+4); doc.setFontSize(8);
         if(fecha){ if(String(fecha).length>16)doc.setFontSize(6.2); doc.text(String(fecha),(cols[1]+cols[2])/2,y+4,{align:"center"}); doc.setFontSize(8); }
         if(cant!=="")doc.text(String(cant),cols[3]-1.5,y+4,{align:"right"});
         if(valor!==""){ doc.setFont("helvetica",neg?"bold":"normal"); doc.text("$",cols[3]+1.5,y+4); doc.text(String(valor),cols[4]-1.5,y+4,{align:"right"}); }
@@ -25292,21 +25269,19 @@ function PanelRecibosFC(p){
       RECIBO_CONCEPTOS.forEach(function(cc){
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         var lab=cc[1];
-        if(cc[0]==="vacaciones"&&(dias>0||mon>0)&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
-        if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
-        fila(lab,cc[0]==="vacaciones"?(ex.fechas||"-"):"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
+        fila(lab,"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
-      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text("TOTAL A COBRAR:",X+22,y+4.2);
+      doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text((f.modo!=="aguinaldo"&&f.modo!=="fijo"&&f.modo!=="jornada"&&c.hc>0)?"TOTAL SIN CONVENIO:":"TOTAL A COBRAR:",X+22,y+4.2);
       doc.text("$",cols[3]+1.5,y+4.2); doc.text(n2(c.total),cols[4]-1.5,y+4.2,{align:"right"});
       var yTxt=y+RH+0.6;
-      // Firmas: del empleador y del empleado, en todos los recibos.
+      // Firma del empleado, en todos los recibos.
       var ys=yTxt+14;
-      doc.setDrawColor(90); doc.line(X+8,ys,X+78,ys); doc.line(X+Wd-78,ys,X+Wd-8,ys);
+      doc.setDrawColor(90); doc.line(X+Wd-78,ys,X+Wd-8,ys);
       doc.setFont("helvetica","normal"); doc.setFontSize(8);
-      doc.text("Firma del empleador",X+43,ys+4,{align:"center"}); doc.text("Firma del empleado",X+Wd-43,ys+4,{align:"center"});
+      doc.text("Firma del empleado",X+Wd-43,ys+4,{align:"center"});
       return ys+5;
     }
     var fin=bloque(18);
@@ -25457,7 +25432,7 @@ function PanelRecibosFC(p){
             </div>
             )}
             {form.modo!=="aguinaldo"&&<div style={CAJA}>
-              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· vacaciones, feriados y ausencias</span></div>
+              <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➕ Otros conceptos <span style={{fontWeight:400,color:"#7E7E7E"}}>· feriados y ausencias</span></div>
               {RECIBO_CONCEPTOS.map(function(cc){
                 var ex=((form.extras||{})[cc[0]])||{};
                 function setEx(campo,v){ setForm(function(f){var e={...(f.extras||{})}; e[cc[0]]={...(e[cc[0]]||{}),[campo]:v}; return {...f,extras:e};}); }
@@ -25466,17 +25441,10 @@ function PanelRecibosFC(p){
                     <div style={{fontSize:12.5,color:"#D8D8D8"}}>{cc[1]}</div>
                     <input type="number" step="0.5" value={ex.dias||""} onChange={function(e){setEx("dias",e.target.value);}} placeholder="Días" style={INP}/>
                     {cc[2]?<input type="number" step="0.01" value={ex.monto||""} onChange={function(e){setEx("monto",e.target.value);}} placeholder="Monto $" style={INP}/>:<div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.3}}>no suma</div>}
-                    {cc[0]==="vacaciones"&&<input value={ex.fechas||""} onChange={function(e){setEx("fechas",e.target.value);}} placeholder="Fechas en que se tomaron (ej: 05/10 al 11/10)" style={{...INP,gridColumn:"1 / -1"}}/>}
                   </div>
                 );
               })}
-              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones y feriados se suman al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. El recibo muestra siempre todos estos renglones: los que no cargues salen con un guion.</div>
-              {(function(){
-                if(!form.empleado_id)return null;
-                var vm=vacacionesDelMes(form.empleado_id,form.periodo);
-                if(!(vm.dias>0))return null;
-                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
-              })()}
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>El monto de feriados se suma al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en las horas totales trabajadas, y las injustificadas no se pagan: solo se anotan los días. El recibo muestra siempre todos estos renglones: los que no cargues salen con un guion.</div>
             </div>}
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
@@ -25514,7 +25482,7 @@ function PanelRecibosFC(p){
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio ({n2(c.hc)} h)</span><b>− {$(c.sueldoConv)}</b></div>
                 <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({n2(c.horasFuera)} h)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 </>)}
-                {c.haberes>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Vacaciones y feriados</span><b>+ {$(c.haberes)}</b></div>}
+                {c.haberes>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Feriados</span><b>+ {$(c.haberes)}</b></div>}
                 {c.desc>0&&<div style={{display:"flex",justifyContent:"space-between"}}><span>Descuentos</span><b>− {$(c.desc)}</b></div>}
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:15,borderTop:"1px solid #1E1E1E",marginTop:4,paddingTop:6}}><span style={{color:"#F0EDE8",fontWeight:800}}>{form.modo==="aguinaldo"?"Total a cobrar":"Total a cobrar fuera de convenio"}</span><b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b></div>
               </div>

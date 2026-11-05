@@ -25300,14 +25300,13 @@ function PanelRecibosFC(p){
         fila("Horas trabajadas / Sueldo","",n2(c.horasFuera),n2(c.sueldoFuera),true);
       }
       }
-      // Otros conceptos (solo los que tienen algo cargado): vacaciones, aguinaldo, feriados y ausencias justificadas.
+      // Otros conceptos: salen siempre, estén completos o no ese mes (en blanco figuran con "-"), así todos los recibos tienen las mismas filas.
       RECIBO_CONCEPTOS.forEach(function(cc){
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
-        if(!(dias>0)&&!(mon>0))return;
         var lab=cc[1];
-        if(cc[0]==="vacaciones"&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
+        if(cc[0]==="vacaciones"&&(dias>0||mon>0)&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
         if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
-        fila(lab,cc[0]==="vacaciones"?(ex.fechas||""):"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
+        fila(lab,cc[0]==="vacaciones"?(ex.fechas||"-"):"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
@@ -25485,7 +25484,7 @@ function PanelRecibosFC(p){
                   </div>
                 );
               })}
-              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones y feriados se suman al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. En el recibo salen solo los que cargues.</div>
+              <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>Los montos de vacaciones y feriados se suman al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en la jornada normal: solo se anotan los días. El recibo muestra siempre todos estos renglones: los que no cargues salen con un guion.</div>
               {(function(){
                 if(!form.empleado_id)return null;
                 var vm=vacacionesDelMes(form.empleado_id,form.periodo);

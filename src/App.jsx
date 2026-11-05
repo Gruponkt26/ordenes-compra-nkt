@@ -25112,16 +25112,16 @@ function PanelRecibosFC(p){
   // Vacaciones cargadas en la app para ese empleado en ese mes (no cuentan las licencias): días corridos que caen dentro del mes.
   function vacacionesDelMes(empId,periodo){
     var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10);
-    if(!y||!m)return {dias:0,tramos:[]};
-    var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[];
+    if(!y||!m)return {dias:0,tramos:[],fechas:""};
+    var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[], cortos=[];
     (p.vacaciones||[]).forEach(function(v){
       if(v.empleado_id!==empId||String(v.notas||"").indexOf("[Licencia]")===0||!v.fecha_desde||!v.fecha_hasta)return;
       var a=new Date(v.fecha_desde+"T12:00:00"), b=new Date(v.fecha_hasta+"T12:00:00");
       var d0=a>ini?a:ini, d1=b<fin?b:fin;
       var n=Math.round((d1-d0)/86400000)+1;
-      if(n>0){ dias+=n; tramos.push(fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)); }
+      if(n>0){ dias+=n; tramos.push(fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)); cortos.push(v.fecha_desde.substring(8,10)+"/"+v.fecha_desde.substring(5,7)+" al "+v.fecha_hasta.substring(8,10)+"/"+v.fecha_hasta.substring(5,7)); }
     });
-    return {dias:dias,tramos:tramos};
+    return {dias:dias,tramos:tramos,fechas:cortos.join(" y ")};
   }
   function conVacaciones(f,pisar){
     if(f.modo==="aguinaldo"||!f.empleado_id)return f;
@@ -25129,7 +25129,7 @@ function PanelRecibosFC(p){
     if(!(vm.dias>0))return f;
     var ex={...(f.extras||{})}, v=ex.vacaciones||{};
     if(!pisar&&parseFloat(v.dias)>0)return f;
-    ex.vacaciones={...v,dias:String(vm.dias)};
+    ex.vacaciones={...v,dias:String(vm.dias),fechas:vm.fechas};
     return {...f,extras:ex};
   }
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
@@ -25265,7 +25265,7 @@ function PanelRecibosFC(p){
         for(var i=1;i<4;i++)doc.line(cols[i],y,cols[i],y+RH);
         doc.setFont("helvetica",neg?"bold":"normal"); doc.setFontSize(8);
         doc.text(String(concepto),cols[0]+1.2,y+4);
-        if(fecha)doc.text(String(fecha),(cols[1]+cols[2])/2,y+4,{align:"center"});
+        if(fecha){ if(String(fecha).length>16)doc.setFontSize(6.2); doc.text(String(fecha),(cols[1]+cols[2])/2,y+4,{align:"center"}); doc.setFontSize(8); }
         if(cant!=="")doc.text(String(cant),cols[3]-1.5,y+4,{align:"right"});
         if(valor!==""){ doc.setFont("helvetica",neg?"bold":"normal"); doc.text("$",cols[3]+1.5,y+4); doc.text(String(valor),cols[4]-1.5,y+4,{align:"right"}); }
         y+=RH;
@@ -25295,7 +25295,7 @@ function PanelRecibosFC(p){
         var lab=cc[1];
         if(cc[0]==="vacaciones"&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
         if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
-        fila(lab,"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
+        fila(lab,cc[0]==="vacaciones"?(ex.fechas||""):"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
       });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
@@ -25466,6 +25466,7 @@ function PanelRecibosFC(p){
                     <div style={{fontSize:12.5,color:"#D8D8D8"}}>{cc[1]}</div>
                     <input type="number" step="0.5" value={ex.dias||""} onChange={function(e){setEx("dias",e.target.value);}} placeholder="Días" style={INP}/>
                     {cc[2]?<input type="number" step="0.01" value={ex.monto||""} onChange={function(e){setEx("monto",e.target.value);}} placeholder="Monto $" style={INP}/>:<div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.3}}>no suma</div>}
+                    {cc[0]==="vacaciones"&&<input value={ex.fechas||""} onChange={function(e){setEx("fechas",e.target.value);}} placeholder="Fechas en que se tomaron (ej: 05/10 al 11/10)" style={{...INP,gridColumn:"1 / -1"}}/>}
                   </div>
                 );
               })}

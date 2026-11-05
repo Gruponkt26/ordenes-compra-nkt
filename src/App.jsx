@@ -24982,6 +24982,14 @@ function reciboCalc(f){
 var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
 // Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
 var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluida jornada normal)",false]];
+// 7 días = "1 semana", 14 = "2 semanas", 10 = "1 semana y 3 días": las vacaciones suelen ser por semana.
+function textoSemanas(d){
+  var n=Math.round(parseFloat(d)||0); if(n<=0)return "";
+  var sem=Math.floor(n/7), res=n%7, t=[];
+  if(sem>0)t.push(sem+(sem===1?" semana":" semanas"));
+  if(res>0)t.push(res+(res===1?" día":" días"));
+  return t.join(" y ");
+}
 function haberesRecibo(f){
   var e=(f&&f.extras)||{};
   return RECIBO_CONCEPTOS.reduce(function(a,c){return c[2]?a+(parseFloat((e[c[0]]||{}).monto)||0):a;},0);
@@ -25286,6 +25294,7 @@ function PanelRecibosFC(p){
         if(!(dias>0)&&!(mon>0))return;
         var lab=cc[1];
         if(cc[0]==="vacaciones"&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
+        if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
         fila(lab,"",dias>0?String(dias):"",cc[2]&&mon>0?n2(mon):"");
       });
       (f.descuentos||[]).forEach(function(d){ var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
@@ -25465,7 +25474,7 @@ function PanelRecibosFC(p){
                 if(!form.empleado_id)return null;
                 var vm=vacacionesDelMes(form.empleado_id,form.periodo);
                 if(!(vm.dias>0))return null;
-                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
               })()}
             </div>}
             <div style={CAJA}>

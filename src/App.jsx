@@ -25118,6 +25118,25 @@ function PanelRecibosFC(p){
     return f.modo!=="fijo"&&f.modo!=="jornada"&&(parseFloat(f.horas_convenio)>0||parseFloat(f.sueldo_convenio)>0);
   }
   var CONCEPTOS_NO_MIXTO=["feriados","injustificadas"];
+  // Feriados en que el empleado fichó en ese mes (según el calendario de feriados de la app): salen solos del fichaje.
+  function feriadosDelFichaje(empId,periodo){
+    var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;}), out=[];
+    try{ jornadasDe(mias).forEach(function(j){
+      var ref=j.entrada||j.salida, d=ref?String(ref.fecha||"").substring(0,10):"";
+      if(d&&d.substring(0,7)===periodo&&FERIADOS_AR[d]&&out.indexOf(d)===-1)out.push(d);
+    }); }catch(err){}
+    return out.sort();
+  }
+  var fechaCorta=function(d){return d.substring(8,10)+"/"+d.substring(5,7);};
+  function conFeriados(f,pisar){
+    if(!f||f.modo==="aguinaldo"||!f.empleado_id||esMixtoRecibo(f))return f;
+    var fd=feriadosDelFichaje(f.empleado_id,f.periodo);
+    if(!fd.length)return f;
+    var ex={...(f.extras||{})}, v=ex.feriados||{};
+    if(!pisar&&String(v.fechas||"").trim())return f;
+    ex.feriados={...v,fechas:fd.map(fechaCorta).join(" y "),dias:(!pisar&&parseFloat(v.dias)>0)?v.dias:String(fd.length)};
+    return {...f,extras:ex};
+  }
   // Adelantos de ese empleado que corresponden al sueldo de ese mes (los marcados "de qué sueldo es" o dados en ese mes, y los ya descontados de ese sueldo).
   function adelantosDeEmpleado(empId,periodo){
     return sumaAdelantos(adelantosDelPeriodo(p.adelantos||[],empId,periodo,p.sueldos||[]));
@@ -25154,6 +25173,10 @@ function PanelRecibosFC(p){
     if(esMixtoRecibo(g)){
       var exM={...(g.extras||{})}; CONCEPTOS_NO_MIXTO.forEach(function(k){delete exM[k];});
       g={...g,extras:exM,descuentos:(g.descuentos||[]).filter(function(d){return !/presentismo/i.test(d.concepto||"");})};
+    } else {
+      // Sin convenio: el descuento por presentismo siempre figura, y los feriados trabajados salen solos del fichaje.
+      if(!(g.descuentos||[]).some(function(d){return /presentismo/i.test(d.concepto||"");}))g={...g,descuentos:(g.descuentos||[]).concat([{concepto:"Descuento por presentismo",monto:""}])};
+      g=conFeriados(g,false);
     }
     return g;
   }
@@ -25285,7 +25308,7 @@ function PanelRecibosFC(p){
         if(mixtoPdf&&CONCEPTOS_NO_MIXTO.indexOf(cc[0])!==-1)return;
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         var lab=cc[1];
-        fila(lab,"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
+        fila(lab,cc[0]==="feriados"?(ex.fechas||"-"):"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
       (f.descuentos||[]).forEach(function(d){ if(mixtoPdf&&/presentismo/i.test(d.concepto||""))return; var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
@@ -25457,10 +25480,16 @@ function PanelRecibosFC(p){
                     <div style={{fontSize:12.5,color:"#D8D8D8"}}>{cc[1]}</div>
                     <input type="number" step="0.5" value={ex.dias||""} onChange={function(e){setEx("dias",e.target.value);}} placeholder="Días" style={INP}/>
                     {cc[2]?<input type="number" step="0.01" value={ex.monto||""} onChange={function(e){setEx("monto",e.target.value);}} placeholder="Monto $" style={INP}/>:<div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.3}}>no suma</div>}
+                    {cc[0]==="feriados"&&<input value={ex.fechas||""} onChange={function(e){setEx("fechas",e.target.value);}} placeholder="Fecha del feriado (ej: 12/10) — a mano si el fichaje no la tiene" style={{...INP,gridColumn:"1 / -1"}}/>}
                   </div>
                 );
               })}
               <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:2,lineHeight:1.5}}>El monto de feriados se suma al total a cobrar. El aguinaldo tiene su propio recibo. Las ausencias justificadas ya están incluidas en las horas totales trabajadas, y las injustificadas no se pagan: solo se anotan los días. El recibo muestra siempre todos estos renglones: los que no cargues salen con un guion.</div>
+              {(function(){
+                if(!form.empleado_id||esMixtoRecibo(form))return null;
+                var fd=feriadosDelFichaje(form.empleado_id,form.periodo);
+                return <div style={{fontSize:11,color:fd.length?"#D4A017":"#7E7E7E",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{fd.length?<span>📅 Feriados trabajados según el fichaje en {periodoEnLetras(form.periodo)}: <b>{fd.map(fechaCorta).join(", ")}</b></span>:<span>El fichaje no tiene feriados trabajados en {periodoEnLetras(form.periodo)}. Si corresponde, escribí la fecha a mano.</span>}{fd.length>0&&<button onClick={function(){setForm(function(f){return conFeriados(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer del fichaje</button>}</div>;
+              })()}
             </div>}
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>

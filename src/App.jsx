@@ -25289,7 +25289,7 @@ function reciboCalc(f){
 }
 var RECIBO_DESCUENTOS=["Descuento por consumo","Descuento adelanto","Descuento por presentismo"];
 // Conceptos que se suman o se anotan en el recibo, para todo tipo de empleado: [clave, nombre, ¿lleva monto que suma?]. Ausencias justificadas va incluida en la jornada normal: solo se anotan los días.
-var RECIBO_CONCEPTOS=[["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluidas en horas totales trabajadas)",false],["injustificadas","Ausencias injustificadas",false]];
+var RECIBO_CONCEPTOS=[["vacaciones","Vacaciones",true],["feriados","Feriados",true],["ausencias","Ausencias justificadas (incluidas en horas totales trabajadas)",false],["injustificadas","Ausencias injustificadas",false]];
 // 7 días = "1 semana", 14 = "2 semanas", 10 = "1 semana y 3 días": las vacaciones suelen ser por semana.
 function textoSemanas(d){
   var n=Math.round(parseFloat(d)||0); if(n<=0)return "";
@@ -25425,7 +25425,30 @@ function PanelRecibosFC(p){
     if(mod==="conv_sin"||mod==="conv_fijo")return true;
     return f.modo!=="fijo"&&f.modo!=="jornada"&&(parseFloat(f.horas_convenio)>0||parseFloat(f.sueldo_convenio)>0);
   }
-  var CONCEPTOS_NO_MIXTO=["feriados","injustificadas"];
+  var CONCEPTOS_NO_MIXTO=["vacaciones","feriados","injustificadas"];
+  // Vacaciones cargadas en la app para ese empleado en ese mes (las licencias no cuentan): días corridos que caen dentro del mes y sus fechas.
+  function vacacionesDelMes(empId,periodo){
+    var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10);
+    if(!y||!m)return {dias:0,tramos:[],fechas:""};
+    var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[], cortos=[];
+    (p.vacaciones||[]).forEach(function(v){
+      if(v.empleado_id!==empId||String(v.notas||"").indexOf("[Licencia]")===0||!v.fecha_desde||!v.fecha_hasta)return;
+      var a=new Date(v.fecha_desde+"T12:00:00"), b=new Date(v.fecha_hasta+"T12:00:00");
+      var d0=a>ini?a:ini, d1=b<fin?b:fin;
+      var n=Math.round((d1-d0)/86400000)+1;
+      if(n>0){ dias+=n; tramos.push(fmtDate(v.fecha_desde)+" al "+fmtDate(v.fecha_hasta)); cortos.push(v.fecha_desde.substring(8,10)+"/"+v.fecha_desde.substring(5,7)+" al "+v.fecha_hasta.substring(8,10)+"/"+v.fecha_hasta.substring(5,7)); }
+    });
+    return {dias:dias,tramos:tramos,fechas:cortos.join(" y ")};
+  }
+  function conVacaciones(f,pisar){
+    if(!f||f.modo==="aguinaldo"||!f.empleado_id||esMixtoRecibo(f))return f;
+    var vm=vacacionesDelMes(f.empleado_id,f.periodo);
+    if(!(vm.dias>0))return f;
+    var ex={...(f.extras||{})}, v=ex.vacaciones||{};
+    if(!pisar&&parseFloat(v.dias)>0)return f;
+    ex.vacaciones={...v,dias:String(vm.dias),fechas:vm.fechas};
+    return {...f,extras:ex};
+  }
   // Feriados en que el empleado fichó en ese mes (según el calendario de feriados de la app): salen solos del fichaje.
   function feriadosDelFichaje(empId,periodo){
     var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;}), out=[];
@@ -25487,7 +25510,7 @@ function PanelRecibosFC(p){
     } else {
       // Sin convenio: el descuento por presentismo siempre figura, y los feriados trabajados salen solos del fichaje.
       if(!(g.descuentos||[]).some(function(d){return /presentismo/i.test(d.concepto||"");}))g={...g,descuentos:(g.descuentos||[]).concat([{concepto:"Descuento por presentismo",monto:""}])};
-      g=conFeriados(g,false);
+      g=conVacaciones(conFeriados(g,false),false);
     }
     return g;
   }
@@ -25619,6 +25642,8 @@ function PanelRecibosFC(p){
         if(mixtoPdf&&CONCEPTOS_NO_MIXTO.indexOf(cc[0])!==-1)return;
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         var lab=cc[1];
+        if(cc[0]==="vacaciones"&&dias>0&&!(mon>0)&&f.modo!=="fijo"&&f.modo!=="jornada")lab="Vacaciones (incluidas en el valor hora)";
+        if(cc[0]==="vacaciones"&&dias>=7)lab+=" · "+textoSemanas(dias);
         fila(lab,ex.fechas||"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
       (f.descuentos||[]).forEach(function(d){ if(mixtoPdf&&/presentismo/i.test(d.concepto||""))return; var m=parseFloat(d.monto)||0; fila(d.concepto,d.fecha||"-",m?"":"-",m?n2(m):"-"); });
@@ -25800,6 +25825,12 @@ function PanelRecibosFC(p){
                 if(!form.empleado_id||esMixtoRecibo(form))return null;
                 var fd=feriadosDelFichaje(form.empleado_id,form.periodo);
                 return <div style={{fontSize:11,color:fd.length?"#D4A017":"#7E7E7E",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{fd.length?<span>📅 Feriados trabajados según el fichaje en {periodoEnLetras(form.periodo)}: <b>{fd.map(fechaCorta).join(", ")}</b></span>:<span>El fichaje no tiene feriados trabajados en {periodoEnLetras(form.periodo)}. Si corresponde, escribí la fecha a mano.</span>}{fd.length>0&&<button onClick={function(){setForm(function(f){return conFeriados(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer del fichaje</button>}</div>;
+              })()}
+              {(function(){
+                if(!form.empleado_id||esMixtoRecibo(form))return null;
+                var vm=vacacionesDelMes(form.empleado_id,form.periodo);
+                if(!(vm.dias>0))return null;
+                return <div style={{fontSize:11,color:"#D4A017",marginTop:7,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>🏖️ En la app figuran <b>{vm.dias} días ({textoSemanas(vm.dias)})</b> de vacaciones en {periodoEnLetras(form.periodo)} ({vm.tramos.join(", ")}). Si dejás Vacaciones sin monto, el recibo aclara que están incluidas en el valor hora. <button onClick={function(){setForm(function(f){return conVacaciones(f,true);});}} style={{...GH,padding:"3px 9px",fontSize:11}}>↻ Traer los días</button></div>;
               })()}
             </div>}
             <div style={CAJA}>

@@ -19542,6 +19542,8 @@ function efectivoTeoricoCaja(lid, hastaFecha, datos){
 
 // ─── MÓDULO INFORMES ──────────────────────────────────────────────────────────
 // Informes por área, con filtros de mes y de local, totales y bajada a Excel. Reutilizan los mismos datos y cálculos de las otras pantallas.
+// Los informes toman datos desde este mes (inclusive): antes no.
+var INFORMES_DESDE="2026-09";
 var INFORMES_DEF=[
   {id:"egresos",area:"⚙️ Administración",emoji:"💸",titulo:"Egresos por área",desc:"En qué se gasta, área por área, comparado con el mes anterior.",usaMes:true,usaLocal:true},
   {id:"resultado",area:"🏪 Dependencias",emoji:"📈",titulo:"Resultado por local, mes a mes",desc:"Ventas, egresos, resultado y margen de cada local en los últimos 6 meses.",usaMes:true,mesLabel:"Hasta"},
@@ -19566,7 +19568,7 @@ function PanelInformes(p){
   var pctTxt=function(a,b){return b>0?(Math.round(a/b*1000)/10).toString().replace(".",",")+" %":"—";};
   var variacion=function(a,b){return b>0?((a>=b?"+":"−")+Math.abs(Math.round((a-b)/b*100))+" %"):"—";};
   var INPs={padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12};
-  var meses=[...new Set([hoyMes].concat(gastos.map(function(g){return String(g.fecha||"").substring(0,7);}),cierres.map(function(c){return String(c.fecha||"").substring(0,7);})))].filter(function(m){return /^\d{4}-\d{2}$/.test(m);}).sort().reverse();
+  var meses=[...new Set([hoyMes].concat(gastos.map(function(g){return String(g.fecha||"").substring(0,7);}),cierres.map(function(c){return String(c.fecha||"").substring(0,7);})))].filter(function(m){return /^\d{4}-\d{2}$/.test(m)&&m>=INFORMES_DESDE;}).sort().reverse();
   var anios=[...new Set([hoyMes.substring(0,4)].concat(retiros.map(function(r){return String(r.fecha||"").substring(0,4);}),aportes.map(function(a){return String(a.fecha||"").substring(0,4);})))].filter(function(a){return /^\d{4}$/.test(a);}).sort().reverse();
   var localesOpc=LOCALES.concat([CONCESION]);
   var nomLocal=function(id){var l=getLocal(id);return l?l.emoji+" "+l.nombre:id;};
@@ -19594,23 +19596,23 @@ function PanelInformes(p){
 
   // ── Cada informe devuelve {jsx, csv} ──
   function infEgresos(){
-    var mp=mesAnteriorDe(mes), act={}, prev={};
+    var mp=mesAnteriorDe(mes), act={}, prev={}, hayPrev=mp>=INFORMES_DESDE;
     gastos.forEach(function(g){
       if(!g.fecha||esAreaSocios(areaDe(g))||!okLocal(g.local))return;
       var a=areaDe(g), m=parseFloat(g.monto)||0;
-      if(delMes(g.fecha,mes))act[a]=(act[a]||0)+m; else if(delMes(g.fecha,mp))prev[a]=(prev[a]||0)+m;
+      if(delMes(g.fecha,mes))act[a]=(act[a]||0)+m; else if(hayPrev&&delMes(g.fecha,mp))prev[a]=(prev[a]||0)+m;
     });
     var areas=[...new Set(Object.keys(act).concat(Object.keys(prev)))].sort(function(a,b){return (act[b]||0)-(act[a]||0);});
     var tA=areas.reduce(function(t,a){return t+(act[a]||0);},0), tP=areas.reduce(function(t,a){return t+(prev[a]||0);},0);
     if(areas.length===0)return {jsx:vacio("No hay egresos cargados en ese mes."),csv:null};
-    var filas=areas.map(function(a){return [a,fmt(act[a]||0),pctTxt(act[a]||0,tA),fmt(prev[a]||0),variacion(act[a]||0,prev[a]||0)];});
+    var filas=areas.map(function(a){return [a,fmt(act[a]||0),pctTxt(act[a]||0,tA),hayPrev?fmt(prev[a]||0):"—",hayPrev?variacion(act[a]||0,prev[a]||0):"—"];});
     return {
-      jsx:<Tabla cols={["Área",mes,"% del total",mp,"Variación"]} filas={filas} pie={["Total",fmt(tA),"100 %",fmt(tP),variacion(tA,tP)]}/>,
+      jsx:<Tabla cols={["Área",mes,"% del total",mp,"Variación"]} filas={filas} pie={["Total",fmt(tA),"100 %",hayPrev?fmt(tP):"—",hayPrev?variacion(tA,tP):"—"]}/>,
       csv:[["Área",mes,"% del total",mp,"Variación"]].concat(areas.map(function(a){return [a,Math.round(act[a]||0),tA>0?Math.round((act[a]||0)/tA*1000)/10:0,Math.round(prev[a]||0),prev[a]>0?Math.round(((act[a]||0)-prev[a])/prev[a]*100):""];}),[["Total",Math.round(tA),100,Math.round(tP),""]])
     };
   }
   function ultimos6(hasta){
-    var out=[], m=hasta; for(var i=0;i<6;i++){out.unshift(m); m=mesAnteriorDe(m);} return out;
+    var out=[], m=hasta; for(var i=0;i<6&&m>=INFORMES_DESDE;i++){out.unshift(m); m=mesAnteriorDe(m);} return out;
   }
   function infResultado(){
     var ms=ultimos6(mes);
@@ -19651,19 +19653,19 @@ function PanelInformes(p){
     };
   }
   function infProveedores(){
-    var mp=mesAnteriorDe(mes), act={}, prev={}, cant={}, conF={};
+    var mp=mesAnteriorDe(mes), act={}, prev={}, cant={}, conF={}, hayPrev=mp>=INFORMES_DESDE;
     gastos.forEach(function(g){
       if(!g.fecha||areaDe(g)!=="Proveedores"||!okLocal(g.local))return;
       var n=String(g.concepto||"Sin nombre").trim(), m=parseFloat(g.monto)||0;
       if(delMes(g.fecha,mes)){ act[n]=(act[n]||0)+m; cant[n]=(cant[n]||0)+1; if(g.facturado)conF[n]=(conF[n]||0)+m; }
-      else if(delMes(g.fecha,mp))prev[n]=(prev[n]||0)+m;
+      else if(hayPrev&&delMes(g.fecha,mp))prev[n]=(prev[n]||0)+m;
     });
     var nombres=Object.keys(act).sort(function(a,b){return act[b]-act[a];});
     if(nombres.length===0)return {jsx:vacio("No hay compras a proveedores cargadas en ese mes."),csv:null};
     var tA=nombres.reduce(function(t,n){return t+act[n];},0), tF=nombres.reduce(function(t,n){return t+(conF[n]||0);},0), tP=nombres.reduce(function(t,n){return t+(prev[n]||0);},0);
     var cols=["Proveedor","Compras","Total","% del total","Mes anterior","Variación","Con factura"];
     return {
-      jsx:<Tabla cols={cols} filas={nombres.map(function(n){return [n,String(cant[n]),fmt(act[n]),pctTxt(act[n],tA),fmt(prev[n]||0),variacion(act[n],prev[n]||0),pctTxt(conF[n]||0,act[n])];})} pie={["Total",String(nombres.reduce(function(t,n){return t+cant[n];},0)),fmt(tA),"100 %",fmt(tP),variacion(tA,tP),pctTxt(tF,tA)]} minWidth={620}/>,
+      jsx:<Tabla cols={cols} filas={nombres.map(function(n){return [n,String(cant[n]),fmt(act[n]),pctTxt(act[n],tA),hayPrev?fmt(prev[n]||0):"—",hayPrev?variacion(act[n],prev[n]||0):"—",pctTxt(conF[n]||0,act[n])];})} pie={["Total",String(nombres.reduce(function(t,n){return t+cant[n];},0)),fmt(tA),"100 %",hayPrev?fmt(tP):"—",hayPrev?variacion(tA,tP):"—",pctTxt(tF,tA)]} minWidth={620}/>,
       csv:[cols].concat(nombres.map(function(n){return [n,cant[n],Math.round(act[n]),tA>0?Math.round(act[n]/tA*1000)/10:0,Math.round(prev[n]||0),prev[n]>0?Math.round((act[n]-prev[n])/prev[n]*100):"",act[n]>0?Math.round((conF[n]||0)/act[n]*1000)/10:0];}))
     };
   }
@@ -19751,7 +19753,7 @@ function PanelInformes(p){
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800}}>📑 Informes</div>
-          <div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>Elegí un informe. Todos se filtran por mes o año, y se bajan a Excel.</div>
+          <div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>Elegí un informe. Todos se filtran por mes o año, y se bajan a Excel. Toman datos desde septiembre 2026, salvo la cuenta corriente de socios, que muestra todos los meses.</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {areas.map(function(d){return(

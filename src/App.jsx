@@ -19559,7 +19559,7 @@ function PanelInformes(p){
   var hoyMes=fechaLocal().substring(0,7);
   var [informe,setInforme]=useState(null);
   var [mes,setMes]=useState(hoyMes);
-  var [anio,setAnio]=useState(hoyMes.substring(0,4));
+  var [anio,setAnio]=useState("todos");   // cuenta corriente de socios: por defecto, todos los años
   var [localF,setLocalF]=useState("all");
   var [metrica,setMetrica]=useState("resultado");
   var [datosMeses,setDatosMeses]=useState({});

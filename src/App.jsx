@@ -25542,6 +25542,7 @@ function PanelRecibosFC(p){
   }
   async function guardar(){
     if(!form.nombre.trim()){ alert("Falta el nombre del empleado."); return; }
+    if(!(reciboCalc(form).sueldoFuera>0)&&!window.confirm("Este recibo no tiene el sueldo cargado (valor hora y horas, monto fijo, jornadas o aguinaldo). Va a quedar en $0, menos los descuentos.\n\n¿Guardarlo igual?"))return;
     setGuardando(true);
     var id=form.id||("recibo_"+Date.now());
     var ahora=new Date().toISOString();
@@ -25577,8 +25578,28 @@ function PanelRecibosFC(p){
   var [pdfPide,setPdfPide]=useState(null);   // {f, fecha}
   var [mesCheck,setMesCheck]=useState(null);   // mes del control "quién tiene recibo"
   function pdf(f){ setPdfPide({f:f,fecha:hoy}); }
+  var [carpetas,setCarpetas]=useState({});   // carpetas de meses abiertas o cerradas
+  // Todos los recibos de una carpeta en un solo PDF (una hoja por recibo, con sus dos copias), con la misma fecha de pago.
+  function pdfCarpeta(recs,titulo,archivo){
+    var inc=recs.filter(function(r){return !(reciboCalc(r).sueldoFuera>0);});
+    if(inc.length>0&&!window.confirm(inc.length+" recibo"+(inc.length===1?"":"s")+" de esta carpeta no tiene"+(inc.length===1?"":"n")+" el sueldo cargado ("+inc.map(function(r){return r.nombre;}).join(", ")+").\n\n¿Bajar el PDF igual?"))return;
+    setPdfPide({lote:{recs:recs,archivo:archivo},f:{nombre:titulo},fecha:hoy});
+  }
   async function confirmarPdf(){
     var pd=pdfPide; if(!pd||!pd.fecha)return;
+    if(pd.lote){
+      setPdfPide(null);
+      var docL=new jsPDF({unit:"mm",format:"a4"});
+      pd.lote.recs.forEach(function(r,i){ if(i>0)docL.addPage(); pdfGenerar({...r,fecha_pago:pd.fecha},docL); });
+      docL.save(pd.lote.archivo);
+      var ahoraL=new Date().toISOString();
+      await Promise.all(pd.lote.recs.filter(function(r){return r.id;}).map(function(r){
+        var datos={...r,fecha_pago:pd.fecha}; delete datos.id; delete datos.created_at;
+        return sbSavePauta({id:r.id,ambito:"recibo_fc",texto:JSON.stringify(datos),usuario:p.usuario||"",created_at:r.created_at||ahoraL,updated_at:ahoraL});
+      }));
+      cargar();
+      return;
+    }
     var f={...pd.f,fecha_pago:pd.fecha};
     setPdfPide(null);
     pdfGenerar(f);
@@ -25590,9 +25611,9 @@ function PanelRecibosFC(p){
       if(!err)cargar();
     }
   }
-  function pdfGenerar(f){
+  function pdfGenerar(f,docExt){
     var c=reciboCalc(f);
-    var doc=new jsPDF({unit:"mm",format:"a4"});
+    var doc=docExt||new jsPDF({unit:"mm",format:"a4"});
     var logo=logos[f.local||"l1"];
     var X=15, Wd=180, cols=[X,X+78,X+115,X+147,X+Wd];   // concepto | fecha | cantidad | valor
     function bloque(y0){
@@ -25669,7 +25690,7 @@ function PanelRecibosFC(p){
     }
     var fin=bloque(18);
     bloque(fin+(fin>135?6:14));
-    doc.save("Recibo_"+String(f.nombre||"empleado").replace(/[^a-z0-9]+/gi,"_")+"_"+(f.periodo||"")+".pdf");
+    if(!docExt)doc.save("Recibo_"+String(f.nombre||"empleado").replace(/[^a-z0-9]+/gi,"_")+"_"+(f.periodo||"")+".pdf");
   }
   var INP={padding:"8px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
   var LB={display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:4};
@@ -25680,7 +25701,7 @@ function PanelRecibosFC(p){
       {pdfPide&&(
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:380,border:"1px solid #4CAF5033"}}>
-            <div style={{fontSize:14,fontWeight:800,color:"#4CAF50",marginBottom:6}}>📄 Recibo de {pdfPide.f.nombre||"empleado"}</div>
+            <div style={{fontSize:14,fontWeight:800,color:"#4CAF50",marginBottom:6}}>{pdfPide.lote?"📄 "+pdfPide.f.nombre:"📄 Recibo de "+(pdfPide.f.nombre||"empleado")}</div>
             <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,marginBottom:12}}>¿Qué día se abona? Es la fecha de pago que va a salir en el recibo.</div>
             <input type="date" value={pdfPide.fecha} onChange={function(e){var v=e.target.value;setPdfPide(function(x){return {...x,fecha:v};});}} style={{...INP,marginBottom:14}}/>
             <div style={{display:"flex",gap:8}}>
@@ -25708,7 +25729,8 @@ function PanelRecibosFC(p){
               var conv=e.convenio||"sin_convenio";
               return modalidadSueldoDe(e,(p.datosEmp||{})[e.id])!=="solo_convenio"&&conv!=="convenio";
             });
-            var tiene=function(e){return (lista||[]).some(function(r){return r.empleado_id===e.id&&r.modo!=="aguinaldo"&&r.periodo===mes;});};
+            var delEmp=function(e){return (lista||[]).filter(function(r){return r.empleado_id===e.id&&r.modo!=="aguinaldo"&&r.periodo===mes;});};
+            var tiene=function(e){return delEmp(e).some(function(r){return reciboCalc(r).sueldoFuera>0;});};
             var faltan=debenTener.filter(function(e){return !tiene(e);});
             var okN=debenTener.length-faltan.length;
             return(
@@ -25719,26 +25741,49 @@ function PanelRecibosFC(p){
                     {opciones.map(function(x){return <option key={x} value={x}>{x}</option>;})}
                   </select>
                 </div>
-                {faltan.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",margin:"4px 0 6px"}}>Todavía no tienen su recibo guardado:</div>}
+                {faltan.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",margin:"4px 0 6px"}}>Todavía no tienen su recibo, o lo tienen sin el sueldo cargado:</div>}
                 {faltan.map(function(e,i){
                   var l=getLocal(e.local);
                   return(
                     <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:i===0?"none":"1px solid #161616",flexWrap:"wrap"}}>
                       <span style={{fontSize:12.5,color:"#E8E8E8"}}><b>{e.nombre}</b> <span style={{color:"#7E7E7E"}}>· {l?l.emoji+" "+l.nombre:e.local} · {etiquetaModalidad(modalidadSueldoDe(e,(p.datosEmp||{})[e.id]))}</span></span>
-                      <button onClick={function(){nuevoDesdeSueldo(e.id,mes,0,false);}} style={{...GH,padding:"5px 11px",fontSize:11.5}}>🧾 Armar recibo</button>
+                      {delEmp(e).length>0
+                        ?<button onClick={function(){setForm(delEmp(e)[0]);window.scrollTo&&window.scrollTo(0,0);}} style={{...GH,padding:"5px 11px",fontSize:11.5,color:"#D4A017"}}>⚠️ Sin sueldo cargado · Abrir</button>
+                        :<button onClick={function(){nuevoDesdeSueldo(e.id,mes,0,false);}} style={{...GH,padding:"5px 11px",fontSize:11.5}}>🧾 Armar recibo</button>}
                     </div>
                   );
                 })}
               </div>
             );
           })()}
-          {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
+          {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:(function(){
+            // Carpetas por mes: "Sueldos de octubre 2026", con todos sus recibos y un botón para bajarlos juntos en un solo PDF.
+            var grupos={};
+            lista.forEach(function(r){ var k=(r.modo==="aguinaldo"?"ag_":"")+r.periodo; (grupos[k]=grupos[k]||[]).push(r); });
+            var claves=Object.keys(grupos).sort(function(x,y){return String(y).replace("ag_","").localeCompare(String(x).replace("ag_",""))||String(x).localeCompare(String(y));});
+            return claves.map(function(k,gi){
+              var recs=grupos[k].slice().sort(function(x,y){return String(x.nombre).localeCompare(String(y.nombre));});
+              var esAg=k.indexOf("ag_")===0, per=esAg?k.substring(3):k;
+              var titulo=esAg?"Aguinaldos "+(per.substring(5)==="06"?"1.er semestre ":"2.º semestre ")+per.substring(0,4):"Sueldos de "+periodoEnLetras(per);
+              var abierta=carpetas[k]!==undefined?carpetas[k]:gi===0;
+              var tot=recs.reduce(function(a,r){return a+reciboCalc(r).total;},0);
+              var inc=recs.filter(function(r){return !(reciboCalc(r).sueldoFuera>0);}).length;
+              return(
+                <div key={k} style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",padding:"9px 12px",background:"#0F140F",border:"1px solid #1E2A1E",borderRadius:10,marginBottom:abierta?8:0}}>
+                    <div onClick={function(){setCarpetas(function(o){var n={...o};n[k]=!abierta;return n;});}} style={{cursor:"pointer",flex:1,minWidth:200}}>
+                      <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{abierta?"▾":"▸"} 📁 {titulo}</div>
+                      <div style={{fontSize:11,color:"#7E7E7E"}}>{recs.length} recibo{recs.length===1?"":"s"} · total a cobrar <b style={{color:tot<0?"#E0714A":"#4CAF50"}}>{$(tot)}</b>{inc>0?<span style={{color:"#D4A017"}}> · ⚠️ {inc} sin sueldo cargado</span>:null}</div>
+                    </div>
+                    <button onClick={function(){pdfCarpeta(recs,titulo+" ("+recs.length+" recibos)","Recibos_"+(esAg?"Aguinaldo_":"Sueldos_")+per+".pdf");}} style={{...GH,padding:"7px 13px",fontSize:12,color:"#4CAF50"}}>🖨️ Descargar todos (un PDF)</button>
+                  </div>
+                  {abierta&&recs.map(function(r){
             var c=reciboCalc(r);
             return(
               <div key={r.id} style={{...CAJA,display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{r.nombre}</div>
-                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.modo==="aguinaldo"?"🎁 Aguinaldo "+(r.ag_tipo==="ag_jul"?"1.er semestre":"2.º semestre")+" "+(r.ag_anio||String(r.periodo).substring(0,4)):periodoEnLetras(r.periodo)} · {r.marca} · {r.modo==="aguinaldo"?"a cobrar":"fuera de convenio"} <b style={{color:"#4CAF50"}}>{$(c.total)}</b></div>
+                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.modo==="aguinaldo"?"🎁 Aguinaldo "+(r.ag_tipo==="ag_jul"?"1.er semestre":"2.º semestre")+" "+(r.ag_anio||String(r.periodo).substring(0,4)):periodoEnLetras(r.periodo)} · {r.marca} · {r.modo==="aguinaldo"?"a cobrar":"fuera de convenio"} {c.sueldoFuera>0?<b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b>:<b style={{color:"#D4A017"}}>⚠️ sin sueldo cargado</b>}</div>
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={function(){setForm(r);window.scrollTo&&window.scrollTo(0,0);}} style={{...GH,padding:"6px 11px",fontSize:11.5}}>✎ Abrir</button>
@@ -25748,7 +25793,11 @@ function PanelRecibosFC(p){
                 </div>
               </div>
             );
-          })}
+                  })}
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
       {form&&(function(){

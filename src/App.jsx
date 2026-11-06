@@ -19617,34 +19617,35 @@ function PanelInformes(p){
     var ids=["l1","l2","l3"];
     var val=function(d,id){
       if(!d)return null;
-      if(id==="dep"){var c=d.conc||{};return {v:c.ing||0,e:c.egr||0,r:c.res||0};}
+      if(id==="dep"){var c=d.conc||{};return {v:c.ing||0,e:c.egr||0,r:c.res||0,a:c.apo||0,t:c.ret||0};}
       var x=(d.locales||{})[id]; if(!x)return null;
-      return {v:x.ventas||0,e:x.gastos||0,r:x.resultado||0};
+      return {v:x.ventas||0,e:x.gastos||0,r:x.resultado||0,a:x.aportes||0,t:x.retiros||0};
     };
     var todos=ids.concat(["dep"]);
-    var cell=function(o){ if(!o)return "…"; return metrica==="ventas"?fmt(o.v):metrica==="egresos"?fmt(o.e):metrica==="margen"?pctTxt(o.r,o.v):fmt(o.r); };
+    var sumar=function(t,o){return o?{v:t.v+o.v,e:t.e+o.e,r:t.r+o.r,a:t.a+o.a,t:t.t+o.t}:t;};
+    var cell=function(o){ if(!o)return "…"; return metrica==="ventas"?fmt(o.v):metrica==="egresos"?fmt(o.e):metrica==="margen"?pctTxt(o.r,o.v):metrica==="aportes"?fmt(o.a):metrica==="retiros"?fmt(o.t):metrica==="despues"?fmt(o.r+o.a-o.t):fmt(o.r); };
     var filas=ms.map(function(m){
       var d=(datosMeses[m]||{}).d;
       var vs=todos.map(function(id){return val(d,id);});
-      var tot=d?vs.reduce(function(t,o){return o?{v:t.v+o.v,e:t.e+o.e,r:t.r+o.r}:t;},{v:0,e:0,r:0}):null;
+      var tot=d?vs.reduce(sumar,{v:0,e:0,r:0,a:0,t:0}):null;
       return [m].concat(vs.map(cell),[cell(tot)]);
     });
     var cols=["Mes"].concat(todos.map(nomLocal),["Grupo"]);
     var csv=[cols].concat(ms.map(function(m){
       var d=(datosMeses[m]||{}).d; var vs=todos.map(function(id){return val(d,id);});
-      var num=function(o){ if(!o)return ""; return metrica==="ventas"?Math.round(o.v):metrica==="egresos"?Math.round(o.e):metrica==="margen"?(o.v>0?Math.round(o.r/o.v*1000)/10:""):Math.round(o.r); };
-      var tot=d?vs.reduce(function(t,o){return o?{v:t.v+o.v,e:t.e+o.e,r:t.r+o.r}:t;},{v:0,e:0,r:0}):null;
+      var num=function(o){ if(!o)return ""; return metrica==="ventas"?Math.round(o.v):metrica==="egresos"?Math.round(o.e):metrica==="margen"?(o.v>0?Math.round(o.r/o.v*1000)/10:""):metrica==="aportes"?Math.round(o.a):metrica==="retiros"?Math.round(o.t):metrica==="despues"?Math.round(o.r+o.a-o.t):Math.round(o.r); };
+      var tot=d?vs.reduce(sumar,{v:0,e:0,r:0,a:0,t:0}):null;
       return [m].concat(vs.map(num),[num(tot)]);
     }));
     var faltan=ms.filter(function(m){return !datosMeses[m];}).length;
     return {
       jsx:<div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-          {[["resultado","Resultado"],["ventas","Ventas"],["egresos","Egresos"],["margen","Margen %"]].map(function(t){var on=metrica===t[0];return <button key={t[0]} onClick={function(){setMetrica(t[0]);}} style={{padding:"6px 12px",borderRadius:20,border:"1px solid "+(on?"#1A8A7B":"#1E1E1E"),background:on?"#1A8A7B22":"#111",color:on?"#1A8A7B":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;})}
+          {[["resultado","Resultado"],["ventas","Ventas"],["egresos","Egresos"],["margen","Margen %"],["aportes","Aportes de socios"],["retiros","Retiros de socios"],["despues","Después de socios"]].map(function(t){var on=metrica===t[0];return <button key={t[0]} onClick={function(){setMetrica(t[0]);}} style={{padding:"6px 12px",borderRadius:20,border:"1px solid "+(on?"#1A8A7B":"#1E1E1E"),background:on?"#1A8A7B22":"#111",color:on?"#1A8A7B":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;})}
         </div>
         {faltan>0&&<div style={{fontSize:11,color:"#D4A017",marginBottom:8}}>Calculando {faltan} mes{faltan===1?"":"es"}…</div>}
         <Tabla cols={cols} filas={filas} minWidth={560}/>
-        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Son los mismos números de Resultados, mes por mes. Cada columna es una dependencia; Grupo es la suma de todas.</div>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Son los mismos números de Resultados, mes por mes. Cada columna es una dependencia; Grupo es la suma de todas. El Resultado no incluye los aportes de socios: son plata puesta, no ventas. «Después de socios» es Resultado + aportes − retiros.</div>
       </div>,
       csv:faltan>0?null:csv
     };

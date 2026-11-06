@@ -25281,7 +25281,9 @@ function reciboCalc(f){
     sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
   } else if(f.modo==="fijo"||f.modo==="jornada"){
     sueldoFuera=f.modo==="fijo"?r2(parseFloat(f.monto_fijo)||0):r2((parseFloat(f.dias_trabajados)||0)*(parseFloat(f.valor_jornada)||0));
-    sueldoTotal=sueldoFuera; sueldoConv=0; horasFuera=0; vh=0; ht=0; hc=0;
+    // Convenio + monto fijo: se carga también lo que cobra por convenio, así el sueldo total es la suma de las dos partes.
+    sueldoConv=f.modo==="fijo"?r2(parseFloat(f.monto_conv)||0):0;
+    sueldoTotal=r2(sueldoFuera+sueldoConv); horasFuera=0; vh=0; ht=0; hc=0;
   }
   var desc=(f.descuentos||[]).reduce(function(a,d){return a+(parseFloat(d.monto)||0);},0);
   var hab=f.modo==="aguinaldo"?0:haberesRecibo(f);
@@ -25384,7 +25386,7 @@ function PanelRecibosFC(p){
     }
     var previo=planDe(f.empleado_id,f.periodo);
     // Con monto fijo o jornada el recibo no calcula la parte de convenio: se deja la que ya tiene la planilla.
-    var conv=(f.modo==="fijo"||f.modo==="jornada")?(previo?(parseFloat(previo.monto_convenio)||0):0):Math.max(0,c.sueldoConv), sinc=neto;
+    var conv=(f.modo==="fijo"&&c.sueldoConv>0)?c.sueldoConv:((f.modo==="fijo"||f.modo==="jornada")?(previo?(parseFloat(previo.monto_convenio)||0):0):Math.max(0,c.sueldoConv)), sinc=neto;
     if(!(sinc>0))return "";
     if(previo&&(Math.abs((parseFloat(previo.monto_sin_convenio)||0)-sinc)>1||Math.abs((parseFloat(previo.monto_convenio)||0)-conv)>1)){
       if(!window.confirm("La planilla anual de "+periodoEnLetras(f.periodo)+" tiene: convenio $"+Math.round(parseFloat(previo.monto_convenio)||0).toLocaleString("es-AR")+" y sin convenio $"+Math.round(parseFloat(previo.monto_sin_convenio)||0).toLocaleString("es-AR")+".\n\nEl recibo da: convenio $"+Math.round(conv).toLocaleString("es-AR")+" y sin convenio $"+Math.round(sinc).toLocaleString("es-AR")+".\n\n¿Actualizo la planilla con los valores del recibo?"))return "La planilla no se tocó.";
@@ -25502,6 +25504,7 @@ function PanelRecibosFC(p){
     g.modo=(mod==="sin_fijo"||mod==="conv_fijo")?"fijo":(mod==="jornada"?"jornada":(mod==="sin_conv"?"horas":""));
     if(g.modo==="horas"){ g.sueldo_convenio=""; g.horas_convenio=""; }
     if(g.modo==="fijo"&&ex.monto_fijo)g.monto_fijo=String(ex.monto_fijo);
+    if(g.modo==="fijo"&&pl&&(parseFloat(pl.monto_convenio)||0)>0&&!g.monto_conv)g.monto_conv=String(pl.monto_convenio);
     if(g.modo==="jornada"){ if(ex.valor_jornada)g.valor_jornada=String(ex.valor_jornada); if(!g.dias_trabajados)g.dias_trabajados=diasDelFichaje(id,g.periodo); }
     g=conAdelanto(g,false);
     if(esMixtoRecibo(g)){
@@ -25623,7 +25626,11 @@ function PanelRecibosFC(p){
         fila("Aguinaldo "+(f.ag_tipo==="ag_jul"?"1.er semestre ":"2.º semestre ")+(f.ag_anio||String(f.periodo).substring(0,4)),"","",n2(c.sueldoFuera),true);
       } else if(f.modo==="fijo"||f.modo==="jornada"){
         if(f.modo==="jornada")fila("Jornadas trabajadas / Valor de la jornada","",String(parseFloat(f.dias_trabajados)||0),n2(parseFloat(f.valor_jornada)||0));
-        fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
+        if(f.modo==="fijo"&&c.sueldoConv>0){
+          fila("Sueldo total "+per,"","",n2(c.sueldoTotal));
+          fila("Sueldo por convenio","","",n2(c.sueldoConv));
+          fila("Sueldo fuera de convenio (monto fijo)","","",n2(c.sueldoFuera),true);
+        } else fila("Sueldo "+per,"","",n2(c.sueldoFuera),true);
       } else {
       // El recibo no dice si es de convenio o fuera de convenio: solo las horas que se pagan y su valor.
       fila("Valor hora "+per,"","",n2(c.vh));
@@ -25760,7 +25767,7 @@ function PanelRecibosFC(p){
               <div style={CAJA}>
                 <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>💵 Sueldo fuera de convenio <span style={{fontWeight:400,color:"#7E7E7E"}}>· {form.modo==="fijo"?"monto fijo":"por jornada diaria"}</span></div>
                 {form.modo==="fijo"?(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{campo("Monto fijo $","monto_fijo","number")}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{esMixtoRecibo(form)&&campo("Por convenio $","monto_conv","number")}{campo("Monto fijo $","monto_fijo","number")}</div>
                 ):(
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                     {campo("Valor de la jornada $","valor_jornada","number")}
@@ -25861,7 +25868,11 @@ function PanelRecibosFC(p){
               <div style={{fontSize:12.5,lineHeight:1.9,color:"#B8B8B8"}}>
                 {form.modo==="aguinaldo"?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Aguinaldo</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
-                ):(form.modo==="fijo"||form.modo==="jornada")?(
+                ):(form.modo==="fijo"&&c.sueldoConv>0)?(<>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo total (convenio + monto fijo)</span><b>{$(c.sueldoTotal)}</b></div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo por convenio</span><b>− {$(c.sueldoConv)}</b></div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio (monto fijo)</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
+                </>):(form.modo==="fijo"||form.modo==="jornada")?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Fuera de convenio ({form.modo==="fijo"?"monto fijo":(form.dias_trabajados||0)+" jornadas × "+$(parseFloat(form.valor_jornada)||0)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>
                 ):form.modo==="horas"?(
                   <div style={{display:"flex",justifyContent:"space-between"}}><span>Sueldo ({n2(c.horasFuera)} h × {n2(c.vh)})</span><b style={{color:"#F0EDE8"}}>{$(c.sueldoFuera)}</b></div>

@@ -25269,6 +25269,8 @@ function completitudFicha(emp,ex){
 // se duplican para el mes siguiente y se bajan en PDF con dos copias por hoja (empleador y empleado), con el logo del local.
 var MESES_LETRAS=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 function periodoEnLetras(per){ var pr=String(per||"").split("-"); var m=parseInt(pr[1],10); return m?MESES_LETRAS[m-1]+" "+pr[0]:String(per||""); }
+// Un recibo tiene sueldo cargado si hay algo en lo fuera de convenio o en el sueldo total (convenio + fuera).
+function reciboConSueldo(f){ var c=reciboCalc(f); return c.sueldoFuera>0||c.sueldoTotal>0||c.sueldoConv>0; }
 function reciboCalc(f){
   var r2=function(n){return Math.round((n||0)*100)/100;};
   var vh=parseFloat(f.valor_hora)||0, ht=parseFloat(f.horas_total)||0, hc=parseFloat(f.horas_convenio)||0;
@@ -25542,7 +25544,7 @@ function PanelRecibosFC(p){
   }
   async function guardar(){
     if(!form.nombre.trim()){ alert("Falta el nombre del empleado."); return; }
-    if(!(reciboCalc(form).sueldoFuera>0)&&!window.confirm("Este recibo no tiene el sueldo cargado (valor hora y horas, monto fijo, jornadas o aguinaldo). Va a quedar en $0, menos los descuentos.\n\n¿Guardarlo igual?"))return;
+    if(!(reciboConSueldo(form))&&!window.confirm("Este recibo no tiene el sueldo cargado (valor hora y horas, monto fijo, jornadas o aguinaldo). Va a quedar en $0, menos los descuentos.\n\n¿Guardarlo igual?"))return;
     setGuardando(true);
     var id=form.id||("recibo_"+Date.now());
     var ahora=new Date().toISOString();
@@ -25581,7 +25583,7 @@ function PanelRecibosFC(p){
   var [carpetas,setCarpetas]=useState({});   // carpetas de meses abiertas o cerradas
   // Todos los recibos de una carpeta en un solo PDF (una hoja por recibo, con sus dos copias), con la misma fecha de pago.
   function pdfCarpeta(recs,titulo,archivo){
-    var inc=recs.filter(function(r){return !(reciboCalc(r).sueldoFuera>0);});
+    var inc=recs.filter(function(r){return !(reciboConSueldo(r));});
     if(inc.length>0&&!window.confirm(inc.length+" recibo"+(inc.length===1?"":"s")+" de esta carpeta no tiene"+(inc.length===1?"":"n")+" el sueldo cargado ("+inc.map(function(r){return r.nombre;}).join(", ")+").\n\n¿Bajar el PDF igual?"))return;
     setPdfPide({lote:{recs:recs,archivo:archivo},f:{nombre:titulo},fecha:hoy});
   }
@@ -25731,7 +25733,7 @@ function PanelRecibosFC(p){
               return modalidadSueldoDe(e,(p.datosEmp||{})[e.id])!=="solo_convenio"&&conv!=="convenio";
             });
             var delEmp=function(e){return (lista||[]).filter(function(r){return r.empleado_id===e.id&&r.modo!=="aguinaldo"&&r.periodo===mes;});};
-            var tiene=function(e){return delEmp(e).some(function(r){return reciboCalc(r).sueldoFuera>0;});};
+            var tiene=function(e){return delEmp(e).some(function(r){return reciboConSueldo(r);});};
             var faltan=debenTener.filter(function(e){return !tiene(e);});
             var okN=debenTener.length-faltan.length;
             return(
@@ -25768,7 +25770,7 @@ function PanelRecibosFC(p){
               var titulo=esAg?"Aguinaldos "+(per.substring(5)==="06"?"1.er semestre ":"2.º semestre ")+per.substring(0,4):"Sueldos de "+periodoEnLetras(per);
               var abierta=carpetas[k]!==undefined?carpetas[k]:gi===0;
               var tot=recs.reduce(function(a,r){return a+reciboCalc(r).total;},0);
-              var inc=recs.filter(function(r){return !(reciboCalc(r).sueldoFuera>0);}).length;
+              var inc=recs.filter(function(r){return !(reciboConSueldo(r));}).length;
               return(
                 <div key={k} style={{marginBottom:10}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",padding:"9px 12px",background:"#0F140F",border:"1px solid #1E2A1E",borderRadius:10,marginBottom:abierta?8:0}}>
@@ -25784,7 +25786,7 @@ function PanelRecibosFC(p){
               <div key={r.id} style={{...CAJA,display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:13.5,fontWeight:800,color:"#F0EDE8"}}>{r.nombre}</div>
-                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.modo==="aguinaldo"?"🎁 Aguinaldo "+(r.ag_tipo==="ag_jul"?"1.er semestre":"2.º semestre")+" "+(r.ag_anio||String(r.periodo).substring(0,4)):periodoEnLetras(r.periodo)} · {r.marca} · {r.modo==="aguinaldo"?"a cobrar":"fuera de convenio"} {c.sueldoFuera>0?<b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b>:<b style={{color:"#D4A017"}}>⚠️ sin sueldo cargado</b>}</div>
+                  <div style={{fontSize:11,color:"#7E7E7E"}}>{r.modo==="aguinaldo"?"🎁 Aguinaldo "+(r.ag_tipo==="ag_jul"?"1.er semestre":"2.º semestre")+" "+(r.ag_anio||String(r.periodo).substring(0,4)):periodoEnLetras(r.periodo)} · {r.marca} · {r.modo==="aguinaldo"?"a cobrar":"fuera de convenio"} {reciboConSueldo(r)?<b style={{color:c.total<0?"#E0714A":"#4CAF50"}}>{$(c.total)}</b>:<b style={{color:"#D4A017"}}>⚠️ sin sueldo cargado</b>}</div>
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={function(){setForm(r);window.scrollTo&&window.scrollTo(0,0);}} style={{...GH,padding:"6px 11px",fontSize:11.5}}>✎ Abrir</button>

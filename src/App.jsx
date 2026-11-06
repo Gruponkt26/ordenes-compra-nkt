@@ -25723,7 +25723,8 @@ function PanelRecibosFC(p){
           {lista!==null&&(function(){
             // Control del mes: todos los empleados activos y cuáles ya tienen su recibo guardado.
             var mes=mesCheck||mesAnteriorDe(hoy), opciones=[], m=mesAnteriorDe(hoy);
-            for(var i=0;i<6;i++){ opciones.push(m); m=mesAnteriorDe(m); }
+            for(var i=0;i<6&&m>="2026-10";i++){ opciones.push(m); m=mesAnteriorDe(m); }
+            if(mes<"2026-10")mes="2026-10";
             if(opciones.indexOf(mes)===-1)opciones.unshift(mes);
             var debenTener=empleados.filter(function(e){
               var conv=e.convenio||"sin_convenio";
@@ -25759,7 +25760,7 @@ function PanelRecibosFC(p){
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:(function(){
             // Carpetas por mes: "Sueldos de octubre 2026", con todos sus recibos y un botón para bajarlos juntos en un solo PDF.
             var grupos={};
-            lista.forEach(function(r){ var k=(r.modo==="aguinaldo"?"ag_":"")+r.periodo; (grupos[k]=grupos[k]||[]).push(r); });
+            lista.forEach(function(r){ if(String(r.periodo)<"2026-10")return; var k=(r.modo==="aguinaldo"?"ag_":"")+r.periodo; (grupos[k]=grupos[k]||[]).push(r); });
             var claves=Object.keys(grupos).sort(function(x,y){return String(y).replace("ag_","").localeCompare(String(x).replace("ag_",""))||String(x).localeCompare(String(y));});
             return claves.map(function(k,gi){
               var recs=grupos[k].slice().sort(function(x,y){return String(x.nombre).localeCompare(String(y.nombre));});

@@ -19540,6 +19540,276 @@ function efectivoTeoricoCaja(lid, hastaFecha, datos){
   return saldo;
 }
 
+// ─── MÓDULO INFORMES ──────────────────────────────────────────────────────────
+// Informes por área, con filtros de mes y de local, totales y bajada a Excel. Reutilizan los mismos datos y cálculos de las otras pantallas.
+var INFORMES_DEF=[
+  {id:"egresos",area:"⚙️ Administración",emoji:"💸",titulo:"Egresos por área",desc:"En qué se gasta, área por área, comparado con el mes anterior.",usaMes:true,usaLocal:true},
+  {id:"resultado",area:"🏪 Dependencias",emoji:"📈",titulo:"Resultado por local, mes a mes",desc:"Ventas, egresos, resultado y margen de cada local en los últimos 6 meses.",usaMes:true,mesLabel:"Hasta"},
+  {id:"proveedores",area:"🛒 Compras",emoji:"🏭",titulo:"Gasto por proveedor",desc:"Cuánto se compró a cada proveedor, con su variación y cuánto fue con factura.",usaMes:true,usaLocal:true},
+  {id:"personal",area:"👥 Colaboradores",emoji:"👥",titulo:"Costo de personal por local",desc:"Sueldos, adelantos y cargas sociales de cada local, y qué porcentaje son de sus ventas.",usaMes:true},
+  {id:"horas",area:"🕐 Fichajes",emoji:"⏱️",titulo:"Horas trabajadas por empleado",desc:"Horas del mes, horas fuera de jornada, llegadas tarde y faltas de cada empleado.",usaMes:true,usaLocal:true},
+  {id:"socios",area:"🤝 Socios",emoji:"💼",titulo:"Cuenta corriente de socios",desc:"Aportes y retiros de cada socio, en pesos y en dólares.",usaAnio:true,usaLocal:true},
+  {id:"competencia",area:"🏆 Competencia",emoji:"🏆",titulo:"Ranking de competencia",desc:"Cómo va cada local y por qué tiene su puntaje."}
+];
+function PanelInformes(p){
+  var gastos=p.gastos||[], cierres=p.cierres||[], empleados=p.empleados||[], fichajes=p.fichajes||[], adelantos=p.adelantos||[];
+  var retiros=p.retiros||[], aportes=p.aportes||[], vacaciones=p.vacaciones||[], justificativos=p.justificativos||[];
+  var hoyMes=fechaLocal().substring(0,7);
+  var [informe,setInforme]=useState(null);
+  var [mes,setMes]=useState(hoyMes);
+  var [anio,setAnio]=useState(hoyMes.substring(0,4));
+  var [localF,setLocalF]=useState("all");
+  var [metrica,setMetrica]=useState("resultado");
+  var [datosMeses,setDatosMeses]=useState({});
+  var fmt=function(n){return (n<0?"−":"")+"$"+Math.abs(Math.round(n||0)).toLocaleString("es-AR");};
+  var fmtUsd=function(n){return "US$ "+(Math.round((n||0)*100)/100).toLocaleString("es-AR");};
+  var pctTxt=function(a,b){return b>0?(Math.round(a/b*1000)/10).toString().replace(".",",")+" %":"—";};
+  var variacion=function(a,b){return b>0?((a>=b?"+":"−")+Math.abs(Math.round((a-b)/b*100))+" %"):"—";};
+  var INPs={padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12};
+  var meses=[...new Set([hoyMes].concat(gastos.map(function(g){return String(g.fecha||"").substring(0,7);}),cierres.map(function(c){return String(c.fecha||"").substring(0,7);})))].filter(function(m){return /^\d{4}-\d{2}$/.test(m);}).sort().reverse();
+  var anios=[...new Set([hoyMes.substring(0,4)].concat(retiros.map(function(r){return String(r.fecha||"").substring(0,4);}),aportes.map(function(a){return String(a.fecha||"").substring(0,4);})))].filter(function(a){return /^\d{4}$/.test(a);}).sort().reverse();
+  var localesOpc=LOCALES.concat([CONCESION]);
+  var nomLocal=function(id){var l=getLocal(id);return l?l.emoji+" "+l.nombre:id;};
+  var areaDe=function(g){return String(g.area||g.categoria||"Sin área");};
+  var delMes=function(f,m){return String(f||"").substring(0,7)===m;};
+  var okLocal=function(l){return localF==="all"||l===localF;};
+
+  // Tabla genérica: cols = títulos, filas = arrays de textos, pie = array opcional (fila de totales).
+  function Tabla(q){
+    var th={fontSize:9.5,color:"#7E7E7E",textTransform:"uppercase",fontWeight:600,padding:"6px 8px",whiteSpace:"nowrap"};
+    var td={fontSize:12,padding:"7px 8px",borderTop:"1px solid #161616",whiteSpace:"nowrap"};
+    return(
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:q.minWidth||420}}>
+          <thead><tr>{q.cols.map(function(c,i){return <th key={i} style={{...th,textAlign:i===0?"left":"right"}}>{c}</th>;})}</tr></thead>
+          <tbody>
+            {q.filas.map(function(f,i){return <tr key={i}>{f.map(function(v,j){return <td key={j} style={{...td,textAlign:j===0?"left":"right",color:j===0?"#F0EDE8":"#C8C8C8",whiteSpace:j===0?"normal":"nowrap"}}>{v}</td>;})}</tr>;})}
+            {q.pie&&<tr>{q.pie.map(function(v,j){return <td key={j} style={{...td,textAlign:j===0?"left":"right",fontWeight:800,color:"#F0EDE8",borderTop:"2px solid #2A2A2A"}}>{v}</td>;})}</tr>}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  var vacio=function(t){return <div style={{padding:"26px 0",textAlign:"center",color:"#7E7E7E",fontSize:13}}>{t}</div>;};
+
+  // ── Cada informe devuelve {jsx, csv} ──
+  function infEgresos(){
+    var mp=mesAnteriorDe(mes), act={}, prev={};
+    gastos.forEach(function(g){
+      if(!g.fecha||esAreaSocios(areaDe(g))||!okLocal(g.local))return;
+      var a=areaDe(g), m=parseFloat(g.monto)||0;
+      if(delMes(g.fecha,mes))act[a]=(act[a]||0)+m; else if(delMes(g.fecha,mp))prev[a]=(prev[a]||0)+m;
+    });
+    var areas=[...new Set(Object.keys(act).concat(Object.keys(prev)))].sort(function(a,b){return (act[b]||0)-(act[a]||0);});
+    var tA=areas.reduce(function(t,a){return t+(act[a]||0);},0), tP=areas.reduce(function(t,a){return t+(prev[a]||0);},0);
+    if(areas.length===0)return {jsx:vacio("No hay egresos cargados en ese mes."),csv:null};
+    var filas=areas.map(function(a){return [a,fmt(act[a]||0),pctTxt(act[a]||0,tA),fmt(prev[a]||0),variacion(act[a]||0,prev[a]||0)];});
+    return {
+      jsx:<Tabla cols={["Área",mes,"% del total",mp,"Variación"]} filas={filas} pie={["Total",fmt(tA),"100 %",fmt(tP),variacion(tA,tP)]}/>,
+      csv:[["Área",mes,"% del total",mp,"Variación"]].concat(areas.map(function(a){return [a,Math.round(act[a]||0),tA>0?Math.round((act[a]||0)/tA*1000)/10:0,Math.round(prev[a]||0),prev[a]>0?Math.round(((act[a]||0)-prev[a])/prev[a]*100):""];}),[["Total",Math.round(tA),100,Math.round(tP),""]])
+    };
+  }
+  function ultimos6(hasta){
+    var out=[], m=hasta; for(var i=0;i<6;i++){out.unshift(m); m=mesAnteriorDe(m);} return out;
+  }
+  function infResultado(){
+    var ms=ultimos6(mes);
+    var ids=["l1","l2","l3"];
+    var val=function(d,id){
+      if(!d)return null;
+      if(id==="dep"){var c=d.conc||{};return {v:c.ing||0,e:c.egr||0,r:c.res||0};}
+      var x=(d.locales||{})[id]; if(!x)return null;
+      return {v:x.ventas||0,e:x.gastos||0,r:x.resultado||0};
+    };
+    var todos=ids.concat(["dep"]);
+    var cell=function(o){ if(!o)return "…"; return metrica==="ventas"?fmt(o.v):metrica==="egresos"?fmt(o.e):metrica==="margen"?pctTxt(o.r,o.v):fmt(o.r); };
+    var filas=ms.map(function(m){
+      var d=(datosMeses[m]||{}).d;
+      var vs=todos.map(function(id){return val(d,id);});
+      var tot=d?vs.reduce(function(t,o){return o?{v:t.v+o.v,e:t.e+o.e,r:t.r+o.r}:t;},{v:0,e:0,r:0}):null;
+      return [m].concat(vs.map(cell),[cell(tot)]);
+    });
+    var cols=["Mes"].concat(todos.map(nomLocal),["Grupo"]);
+    var csv=[cols].concat(ms.map(function(m){
+      var d=(datosMeses[m]||{}).d; var vs=todos.map(function(id){return val(d,id);});
+      var num=function(o){ if(!o)return ""; return metrica==="ventas"?Math.round(o.v):metrica==="egresos"?Math.round(o.e):metrica==="margen"?(o.v>0?Math.round(o.r/o.v*1000)/10:""):Math.round(o.r); };
+      var tot=d?vs.reduce(function(t,o){return o?{v:t.v+o.v,e:t.e+o.e,r:t.r+o.r}:t;},{v:0,e:0,r:0}):null;
+      return [m].concat(vs.map(num),[num(tot)]);
+    }));
+    var faltan=ms.filter(function(m){return !datosMeses[m];}).length;
+    return {
+      jsx:<div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          {[["resultado","Resultado"],["ventas","Ventas"],["egresos","Egresos"],["margen","Margen %"]].map(function(t){var on=metrica===t[0];return <button key={t[0]} onClick={function(){setMetrica(t[0]);}} style={{padding:"6px 12px",borderRadius:20,border:"1px solid "+(on?"#1A8A7B":"#1E1E1E"),background:on?"#1A8A7B22":"#111",color:on?"#1A8A7B":"#8C8C8C",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;})}
+        </div>
+        {faltan>0&&<div style={{fontSize:11,color:"#D4A017",marginBottom:8}}>Calculando {faltan} mes{faltan===1?"":"es"}…</div>}
+        <Tabla cols={cols} filas={filas} minWidth={560}/>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Son los mismos números de Resultados, mes por mes. Cada columna es una dependencia; Grupo es la suma de todas.</div>
+      </div>,
+      csv:faltan>0?null:csv
+    };
+  }
+  function infProveedores(){
+    var mp=mesAnteriorDe(mes), act={}, prev={}, cant={}, conF={};
+    gastos.forEach(function(g){
+      if(!g.fecha||areaDe(g)!=="Proveedores"||!okLocal(g.local))return;
+      var n=String(g.concepto||"Sin nombre").trim(), m=parseFloat(g.monto)||0;
+      if(delMes(g.fecha,mes)){ act[n]=(act[n]||0)+m; cant[n]=(cant[n]||0)+1; if(g.facturado)conF[n]=(conF[n]||0)+m; }
+      else if(delMes(g.fecha,mp))prev[n]=(prev[n]||0)+m;
+    });
+    var nombres=Object.keys(act).sort(function(a,b){return act[b]-act[a];});
+    if(nombres.length===0)return {jsx:vacio("No hay compras a proveedores cargadas en ese mes."),csv:null};
+    var tA=nombres.reduce(function(t,n){return t+act[n];},0), tF=nombres.reduce(function(t,n){return t+(conF[n]||0);},0), tP=nombres.reduce(function(t,n){return t+(prev[n]||0);},0);
+    var cols=["Proveedor","Compras","Total","% del total","Mes anterior","Variación","Con factura"];
+    return {
+      jsx:<Tabla cols={cols} filas={nombres.map(function(n){return [n,String(cant[n]),fmt(act[n]),pctTxt(act[n],tA),fmt(prev[n]||0),variacion(act[n],prev[n]||0),pctTxt(conF[n]||0,act[n])];})} pie={["Total",String(nombres.reduce(function(t,n){return t+cant[n];},0)),fmt(tA),"100 %",fmt(tP),variacion(tA,tP),pctTxt(tF,tA)]} minWidth={620}/>,
+      csv:[cols].concat(nombres.map(function(n){return [n,cant[n],Math.round(act[n]),tA>0?Math.round(act[n]/tA*1000)/10:0,Math.round(prev[n]||0),prev[n]>0?Math.round((act[n]-prev[n])/prev[n]*100):"",act[n]>0?Math.round((conF[n]||0)/act[n]*1000)/10:0];}))
+    };
+  }
+  function infPersonal(){
+    var ids=["l1","l2","l3","l4","dep"], filas=[], csv=[["Local","Sueldos","Adelantos","Cargas sociales (F.931)","Total","Ventas","% de las ventas"]];
+    var tot={s:0,a:0,f:0,v:0};
+    ids.forEach(function(id){
+      var s=0,f=0;
+      gastos.forEach(function(g){
+        if(g.local!==id||!delMes(g.fecha,mes))return;
+        var m=parseFloat(g.monto)||0;
+        if(String(g.id).indexOf("f931_")===0)f+=m; else if(areaDe(g)==="Sueldos")s+=m;
+      });
+      var a=adelantos.reduce(function(t,x){return (x.local===id&&delMes(x.fecha,mes))?t+(parseFloat(x.monto)||0):t;},0);
+      var v=(id==="l1"||id==="l2"||id==="l3")?cierres.reduce(function(t,c){return (c.local===id&&delMes(c.fecha,mes))?t+(p.ventasDeCierre?p.ventasDeCierre(c):0):t;},0):0;
+      if(s+a+f===0&&!v)return;
+      var total=s+a+f;
+      tot.s+=s;tot.a+=a;tot.f+=f;tot.v+=v;
+      filas.push([nomLocal(id),fmt(s),fmt(a),fmt(f),fmt(total),v>0?fmt(v):"—",v>0?pctTxt(total,v):"—"]);
+      csv.push([(getLocal(id)||{}).nombre||id,Math.round(s),Math.round(a),Math.round(f),Math.round(total),Math.round(v),v>0?Math.round(total/v*1000)/10:""]);
+    });
+    if(filas.length===0)return {jsx:vacio("No hay sueldos, adelantos ni cargas sociales cargados en ese mes."),csv:null};
+    var T=tot.s+tot.a+tot.f;
+    return {
+      jsx:<div>
+        <Tabla cols={["Local","Sueldos","Adelantos","Cargas sociales","Total","Ventas","% de las ventas"]} filas={filas} pie={["Total",fmt(tot.s),fmt(tot.a),fmt(tot.f),fmt(T),tot.v>0?fmt(tot.v):"—",tot.v>0?pctTxt(T,tot.v):"—"]} minWidth={620}/>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Sueldos y cargas sociales cuentan por la fecha en que se pagaron. Los adelantos, por la fecha en que se dieron. La Oficina y la Concesión no tienen ventas propias.</div>
+      </div>,
+      csv:csv.concat([["Total",Math.round(tot.s),Math.round(tot.a),Math.round(tot.f),Math.round(T),Math.round(tot.v),tot.v>0?Math.round(T/tot.v*1000)/10:""]])
+    };
+  }
+  function infHoras(){
+    var cols=["Empleado","Local","Días","Horas","Fuera de jornada","Llegadas tarde","Faltas"];
+    var rows=[];
+    empleados.filter(function(e){return okLocal(e.local);}).forEach(function(e){
+      var mias=fichajes.filter(function(f){return f.empleado_id===e.id;});
+      if(mias.length===0&&e.activo===false)return;
+      var r; try{ r=resumenAsistencia(e,fichajes,mes,vacaciones,justificativos); }catch(err){ return; }
+      if(!r||(r.dias===0&&r.faltas.length===0))return;
+      var porDia={};
+      try{ jornadasDe(mias).forEach(function(j){
+        if(!j.entrada||!j.salida)return;
+        var f=String(j.entrada.fecha).substring(0,10); if(f.substring(0,7)!==mes)return;
+        porDia[f]=(porDia[f]||0)+minutosFueraDeJornada(j,e);
+      }); }catch(err2){}
+      var fuera=0; Object.keys(porDia).forEach(function(f){ var t=jornadaDe(e)?turnoDe(e,f):null; if(porDia[f]>=30||(t&&t.franco&&porDia[f]>0))fuera+=porDia[f]; });
+      var faltas=r.faltas.filter(function(x){return !(x.just&&x.estado==="aprobado");}).length;
+      rows.push({e:e,dias:r.dias,min:r.minutos,fuera:fuera,tarde:r.tarde.length,faltas:faltas});
+    });
+    if(rows.length===0)return {jsx:vacio("No hay marcas de fichaje en ese mes."),csv:null};
+    rows.sort(function(a,b){return b.min-a.min;});
+    var T={dias:0,min:0,fuera:0,tarde:0,faltas:0}; rows.forEach(function(x){T.dias+=x.dias;T.min+=x.min;T.fuera+=x.fuera;T.tarde+=x.tarde;T.faltas+=x.faltas;});
+    return {
+      jsx:<div>
+        <Tabla cols={cols} filas={rows.map(function(x){return [x.e.nombre,nomLocal(x.e.local),String(x.dias),fmtHs(x.min),x.fuera>0?fmtHs(x.fuera):"—",String(x.tarde),String(x.faltas)];})} pie={["Total","",String(T.dias),fmtHs(T.min),T.fuera>0?fmtHs(T.fuera):"—",String(T.tarde),String(T.faltas)]} minWidth={560}/>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Las horas cuentan desde el horario de la jornada si marcó antes. «Fuera de jornada» suma solo los días con 30 minutos o más, o los francos trabajados. Las faltas con justificativo aprobado no se cuentan.</div>
+      </div>,
+      csv:[cols].concat(rows.map(function(x){return [x.e.nombre,(getLocal(x.e.local)||{}).nombre||x.e.local,x.dias,Math.round(x.min/60*100)/100,Math.round(x.fuera/60*100)/100,x.tarde,x.faltas];}))
+    };
+  }
+  function infSocios(){
+    var porSocio={};
+    var en=function(f){return anio==="todos"||String(f||"").substring(0,4)===anio;};
+    var get=function(n){var k=String(n||"Sin nombre").trim(); return porSocio[k]||(porSocio[k]={ap:0,apU:0,re:0,reU:0,bien:0});};
+    aportes.forEach(function(a){ if(!en(a.fecha)||!okLocal(a.local_cuenta||a.local))return; var s=get(a.socio), m=parseFloat(a.monto)||0; if(esMovDinero(a)){s.ap+=m;s.apU+=parseFloat(a.usd)||0;} });
+    retiros.forEach(function(r){ if(!en(r.fecha)||!okLocal(r.local_cuenta||r.local))return; var s=get(r.socio), m=parseFloat(r.monto)||0; if(esMovDinero(r)){s.re+=m;s.reU+=parseFloat(r.usd)||0;} else s.bien+=m; });
+    var nombres=Object.keys(porSocio).sort(function(a,b){return (porSocio[b].re+porSocio[b].ap)-(porSocio[a].re+porSocio[a].ap);});
+    if(nombres.length===0)return {jsx:vacio("No hay aportes ni retiros en ese período."),csv:null};
+    var cols=["Socio","Aportes $","Aportes US$","Retiros $","Retiros US$","Bienes retirados","Neto (aportes − retiros)"];
+    var T={ap:0,apU:0,re:0,reU:0,bien:0}; nombres.forEach(function(n){var s=porSocio[n];T.ap+=s.ap;T.apU+=s.apU;T.re+=s.re;T.reU+=s.reU;T.bien+=s.bien;});
+    return {
+      jsx:<div>
+        <Tabla cols={cols} filas={nombres.map(function(n){var s=porSocio[n];return [n,fmt(s.ap),s.apU>0?fmtUsd(s.apU):"—",fmt(s.re),s.reU>0?fmtUsd(s.reU):"—",s.bien>0?fmt(s.bien):"—",fmt(s.ap-s.re)];})} pie={["Total",fmt(T.ap),T.apU>0?fmtUsd(T.apU):"—",fmt(T.re),T.reU>0?fmtUsd(T.reU):"—",T.bien>0?fmt(T.bien):"—",fmt(T.ap-T.re)]} minWidth={640}/>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Los dólares son los que quedaron congelados al cargar cada movimiento con el dólar blue del día. Los bienes muebles se muestran aparte: no son plata.</div>
+      </div>,
+      csv:[cols].concat(nombres.map(function(n){var s=porSocio[n];return [n,Math.round(s.ap),Math.round(s.apU*100)/100,Math.round(s.re),Math.round(s.reU*100)/100,Math.round(s.bien),Math.round(s.ap-s.re)];}))
+    };
+  }
+
+  // ── Pantalla principal ──
+  if(!informe){
+    var areas=INFORMES_DEF;
+    return(
+      <div style={{fontFamily:"'Inter',sans-serif"}}>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800}}>📑 Informes</div>
+          <div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>Elegí un informe. Todos se filtran por mes o año, y se bajan a Excel.</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {areas.map(function(d){return(
+            <button key={d.id} onClick={function(){setInforme(d.id);}} style={{textAlign:"left",background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:14,padding:"14px 16px",cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+              <div style={{fontSize:10,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1.2}}>{d.area}</div>
+              <div style={{fontSize:15,fontWeight:800,color:"#F0EDE8",marginTop:3}}>{d.emoji} {d.titulo}</div>
+              <div style={{fontSize:12,color:"#8C8C8C",marginTop:3,lineHeight:1.5}}>{d.desc}</div>
+            </button>
+          );})}
+        </div>
+      </div>
+    );
+  }
+  var def=INFORMES_DEF.find(function(d){return d.id===informe;})||INFORMES_DEF[0];
+  var res=null;
+  if(informe==="egresos")res=infEgresos();
+  else if(informe==="resultado")res=infResultado();
+  else if(informe==="proveedores")res=infProveedores();
+  else if(informe==="personal")res=infPersonal();
+  else if(informe==="horas")res=infHoras();
+  else if(informe==="socios")res=infSocios();
+  var periodoTxt=def.usaAnio?(anio==="todos"?"todos":anio):mes;
+  return(
+    <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <button onClick={function(){setInforme(null);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:8,padding:"6px 12px",color:"#888",cursor:"pointer",fontSize:12}}>← Informes</button>
+        <div>
+          <div style={{fontSize:10,color:"#7E7E7E",textTransform:"uppercase",letterSpacing:1.2}}>{def.area}</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800}}>{def.emoji} {def.titulo}</div>
+        </div>
+      </div>
+      {(def.usaMes||def.usaAnio||def.usaLocal)&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+          {def.usaMes&&<span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C"}}>{def.mesLabel||"Mes"}<select value={mes} onChange={function(e){setMes(e.target.value);}} style={INPs}>{meses.map(function(m){return <option key={m} value={m}>{m}</option>;})}</select></span>}
+          {def.usaAnio&&<span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C"}}>Año<select value={anio} onChange={function(e){setAnio(e.target.value);}} style={INPs}><option value="todos">Todos</option>{anios.map(function(a){return <option key={a} value={a}>{a}</option>;})}</select></span>}
+          {def.usaLocal&&<span style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8C8C8C"}}>Local<select value={localF} onChange={function(e){setLocalF(e.target.value);}} style={INPs}><option value="all">Todos</option>{localesOpc.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}</select></span>}
+          {res&&res.csv&&<button onClick={function(){descargarCSV("Informe_"+def.id+"_"+periodoTxt+".csv",res.csv);}} style={{marginLeft:"auto",padding:"7px 13px",borderRadius:8,border:"1px solid #3A7D4466",background:"#3A7D4422",color:"#4C9A5A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>📥 Bajar a Excel</button>}
+        </div>
+      )}
+      <div style={{background:"#0C0C0C",border:"1px solid #1A1A1A",borderRadius:14,padding:"12px 14px"}}>
+        {informe==="competencia"?(p.renderCompetencia?p.renderCompetencia():null):(res?res.jsx:null)}
+      </div>
+      {informe==="resultado"&&p.crearResultados&&(
+        <div style={{display:"none"}}>
+          {ultimos6(mes).map(function(m){
+            return <div key={m}>{p.crearResultados(m,function(d){
+              setDatosMeses(function(prev){
+                var j=JSON.stringify(d);
+                if(prev[m]&&prev[m].j===j)return prev;
+                var n={...prev}; n[m]={d:d,j:j}; return n;
+              });
+            })}</div>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelCruzados(p){
   var gastos=p.gastos;
   var [mesFiltro,setMesFiltro]=useState(new Date().toISOString().slice(0,7));
@@ -30547,6 +30817,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
               {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
+              {id:"informes",emoji:"📑",label:"Informes",color:"#1A8A7B",action:function(){abrirModulo("informes","informes_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
@@ -30636,6 +30907,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                   {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
+              {id:"informes",emoji:"📑",label:"Informes",color:"#1A8A7B",action:function(){abrirModulo("informes","informes_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
@@ -31071,6 +31343,17 @@ export default function App() {
           {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
           {esSofia&&modulo==="competencia"&&(
             <PanelCompetencia ventasDeCierre={ventasDeCierre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+          )}
+
+          {/* MÓDULO INFORMES — informes por área con filtros y bajada a Excel */}
+          {esSofia&&modulo==="informes"&&(
+            <PanelInformes gastos={gastos} cierres={cierres} empleados={empleados} fichajes={fichajes} adelantos={adelantos} retiros={retiros} aportes={aportes}
+              vacaciones={vacaciones} justificativos={justificativos} ventasDeCierre={ventasDeCierre}
+              renderCompetencia={function(){return <PanelCompetencia ventasDeCierre={ventasDeCierre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>;}}
+              crearResultados={function(m,onDatos){return <PanelResultados traspPend={traspPend} mesInicial={m} onDatos={onDatos} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+                sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
+                transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
+                onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>;}}/>
           )}
 
           {/* MÓDULO ASISTENTE IA — chat con los números del negocio */}

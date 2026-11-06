@@ -19569,7 +19569,7 @@ function PanelInformes(p){
   var variacion=function(a,b){return b>0?((a>=b?"+":"−")+Math.abs(Math.round((a-b)/b*100))+" %"):"—";};
   var INPs={padding:"7px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12};
   var meses=[...new Set([hoyMes].concat(gastos.map(function(g){return String(g.fecha||"").substring(0,7);}),cierres.map(function(c){return String(c.fecha||"").substring(0,7);})))].filter(function(m){return /^\d{4}-\d{2}$/.test(m)&&m>=INFORMES_DESDE;}).sort().reverse();
-  var anios=[...new Set([hoyMes.substring(0,4)].concat(retiros.map(function(r){return String(r.fecha||"").substring(0,4);}),aportes.map(function(a){return String(a.fecha||"").substring(0,4);})))].filter(function(a){return /^\d{4}$/.test(a)&&a>=INFORMES_DESDE.substring(0,4);}).sort().reverse();
+  var anios=[...new Set([hoyMes.substring(0,4)].concat(retiros.map(function(r){return String(r.fecha||"").substring(0,4);}),aportes.map(function(a){return String(a.fecha||"").substring(0,4);})))].filter(function(a){return /^\d{4}$/.test(a);}).sort().reverse();
   var localesOpc=LOCALES.concat([CONCESION]);
   var nomLocal=function(id){var l=getLocal(id);return l?l.emoji+" "+l.nombre:id;};
   var areaDe=function(g){return String(g.area||g.categoria||"Sin área");};
@@ -19728,7 +19728,7 @@ function PanelInformes(p){
   }
   function infSocios(){
     var porSocio={};
-    var en=function(f){return String(f||"").substring(0,7)>=INFORMES_DESDE&&(anio==="todos"||String(f||"").substring(0,4)===anio);};
+    var en=function(f){return anio==="todos"||String(f||"").substring(0,4)===anio;};
     var get=function(n){var k=String(n||"Sin nombre").trim(); return porSocio[k]||(porSocio[k]={ap:0,apU:0,re:0,reU:0,bien:0});};
     aportes.forEach(function(a){ if(!en(a.fecha)||!okLocal(a.local_cuenta||a.local))return; var s=get(a.socio), m=parseFloat(a.monto)||0; if(esMovDinero(a)){s.ap+=m;s.apU+=parseFloat(a.usd)||0;} });
     retiros.forEach(function(r){ if(!en(r.fecha)||!okLocal(r.local_cuenta||r.local))return; var s=get(r.socio), m=parseFloat(r.monto)||0; if(esMovDinero(r)){s.re+=m;s.reU+=parseFloat(r.usd)||0;} else s.bien+=m; });
@@ -19739,7 +19739,7 @@ function PanelInformes(p){
     return {
       jsx:<div>
         <Tabla cols={cols} filas={nombres.map(function(n){var s=porSocio[n];return [n,fmt(s.ap),s.apU>0?fmtUsd(s.apU):"—",fmt(s.re),s.reU>0?fmtUsd(s.reU):"—",s.bien>0?fmt(s.bien):"—",fmt(s.ap-s.re)];})} pie={["Total",fmt(T.ap),T.apU>0?fmtUsd(T.apU):"—",fmt(T.re),T.reU>0?fmtUsd(T.reU):"—",T.bien>0?fmt(T.bien):"—",fmt(T.ap-T.re)]} minWidth={640}/>
-        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Se cuenta desde septiembre 2026. Los dólares son los que quedaron congelados al cargar cada movimiento con el dólar blue del día. Los bienes muebles se muestran aparte: no son plata.</div>
+        <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:8,lineHeight:1.5}}>Los dólares son los que quedaron congelados al cargar cada movimiento con el dólar blue del día. Los bienes muebles se muestran aparte: no son plata.</div>
       </div>,
       csv:[cols].concat(nombres.map(function(n){var s=porSocio[n];return [n,Math.round(s.ap),Math.round(s.apU*100)/100,Math.round(s.re),Math.round(s.reU*100)/100,Math.round(s.bien),Math.round(s.ap-s.re)];}))
     };
@@ -19753,7 +19753,7 @@ function PanelInformes(p){
         <div style={{marginBottom:14}}>
           <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:800}}>📑 Informes</div>
-          <div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>Elegí un informe. Todos se filtran por mes o año, y se bajan a Excel. Toman datos desde septiembre 2026.</div>
+          <div style={{fontSize:12,color:"#8C8C8C",marginTop:4}}>Elegí un informe. Todos se filtran por mes o año, y se bajan a Excel. Toman datos desde septiembre 2026, salvo la cuenta corriente de socios, que muestra todos los meses.</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {areas.map(function(d){return(

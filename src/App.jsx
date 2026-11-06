@@ -25575,6 +25575,7 @@ function PanelRecibosFC(p){
   }
   // El PDF se arma en el momento de abonar: antes de bajarlo se pregunta qué día se paga, así la fecha del recibo es la justa.
   var [pdfPide,setPdfPide]=useState(null);   // {f, fecha}
+  var [mesCheck,setMesCheck]=useState(null);   // mes del control "quién tiene recibo"
   function pdf(f){ setPdfPide({f:f,fecha:hoy}); }
   async function confirmarPdf(){
     var pd=pdfPide; if(!pd||!pd.fecha)return;
@@ -25698,6 +25699,39 @@ function PanelRecibosFC(p){
             <button onClick={function(){setForm(vacioAguinaldo());}} style={{padding:"9px 16px",borderRadius:9,border:"1px solid #8B2FC9",background:"#8B2FC922",color:"#B07CE0",fontWeight:800,fontSize:13,cursor:"pointer"}}>🎁 Recibo de aguinaldo</button>
             </div>
           </div>
+          {lista!==null&&(function(){
+            // Control del mes: todos los empleados activos y cuáles ya tienen su recibo guardado.
+            var mes=mesCheck||mesAnteriorDe(hoy), opciones=[], m=mesAnteriorDe(hoy);
+            for(var i=0;i<6;i++){ opciones.push(m); m=mesAnteriorDe(m); }
+            if(opciones.indexOf(mes)===-1)opciones.unshift(mes);
+            var debenTener=empleados.filter(function(e){
+              var conv=e.convenio||"sin_convenio";
+              return modalidadSueldoDe(e,(p.datosEmp||{})[e.id])!=="solo_convenio"&&conv!=="convenio";
+            });
+            var tiene=function(e){return (lista||[]).some(function(r){return r.empleado_id===e.id&&r.modo!=="aguinaldo"&&r.periodo===mes;});};
+            var faltan=debenTener.filter(function(e){return !tiene(e);});
+            var okN=debenTener.length-faltan.length;
+            return(
+              <div style={{background:"#0A0F0A",border:"1px solid "+(faltan.length?"#D4A01755":"#3A7D4455"),borderRadius:12,padding:"11px 14px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:faltan.length?"#D4A017":"#4C9A5A"}}>📋 {periodoEnLetras(mes)}: {okN} de {debenTener.length} con recibo{faltan.length===0?" ✓":""}</div>
+                  <select value={mes} onChange={function(e){setMesCheck(e.target.value);}} style={{padding:"5px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:11}}>
+                    {opciones.map(function(x){return <option key={x} value={x}>{x}</option>;})}
+                  </select>
+                </div>
+                {faltan.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",margin:"4px 0 6px"}}>Todavía no tienen su recibo guardado:</div>}
+                {faltan.map(function(e,i){
+                  var l=getLocal(e.local);
+                  return(
+                    <div key={e.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:i===0?"none":"1px solid #161616",flexWrap:"wrap"}}>
+                      <span style={{fontSize:12.5,color:"#E8E8E8"}}><b>{e.nombre}</b> <span style={{color:"#7E7E7E"}}>· {l?l.emoji+" "+l.nombre:e.local} · {etiquetaModalidad(modalidadSueldoDe(e,(p.datosEmp||{})[e.id]))}</span></span>
+                      <button onClick={function(){nuevoDesdeSueldo(e.id,mes,0,false);}} style={{...GH,padding:"5px 11px",fontSize:11.5}}>🧾 Armar recibo</button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
           {lista===null?<div style={{fontSize:12,color:"#6E6E6E"}}>Cargando…</div>:lista.length===0?<div style={{...CAJA,textAlign:"center",color:"#6E6E6E",fontSize:13}}>Todavía no hay recibos guardados.</div>:lista.map(function(r){
             var c=reciboCalc(r);
             return(

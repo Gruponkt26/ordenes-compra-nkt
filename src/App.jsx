@@ -15286,6 +15286,33 @@ function PanelNovedades(p){
     tardes.sort(function(x,y){return y.n-x.n;});
     return {pend:pend,abiertas:abiertas,tardes:tardes,total:pend.length+abiertas.length+tardes.length};
   })();
+  // Una falta con justificativo por revisar: "Marcar falta" la deja sin justificar; "No marcar falta" la aprueba y, si se quiere,
+  // completa la jornada de ese día como figura en la ficha del empleado (una entrada y una salida cargadas a mano).
+  async function resolverFalta(j,marcar){
+    var base={...j,resuelto_por:p.usuario||"",resuelto_at:new Date().toISOString()};
+    if(!p.onSaveJustif)return;
+    var emp=(p.empleados||[]).find(function(e){return e.id===j.empleado_id;});
+    if(marcar){
+      if(!window.confirm("¿Marcar la falta de "+j.empleado_nombre+" del "+fmtDate(j.fecha)+"?\n\nQueda como falta sin justificar."))return;
+      p.onSaveJustif({...base,estado:"rechazado"});
+      return;
+    }
+    var t=emp?turnoDe(emp,j.fecha):null;
+    var puede=!!(t&&!t.franco&&t.desde&&t.hasta&&p.onFichar);
+    var ya=(p.fichajes||[]).some(function(f){return f.empleado_id===j.empleado_id&&String(f.fecha||"").substring(0,10)===j.fecha;});
+    var completar=false;
+    if(puede&&!ya)completar=window.confirm("No se marca la falta de "+j.empleado_nombre+" del "+fmtDate(j.fecha)+".\n\n¿Completo su jornada de ese día como figura en su ficha ("+t.desde+" a "+t.hasta+")?\n\nSe cargan una entrada y una salida a mano, y esas horas cuentan. Si tocás Cancelar, la falta queda justificada pero sin horas.");
+    p.onSaveJustif({...base,estado:"aprobado",jornada_completada:completar});
+    if(completar){
+      var pr=j.fecha.split("-"), a=t.desde.split(":"), b=t.hasta.split(":");
+      var ini=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10),parseInt(a[0],10),parseInt(a[1],10),0);
+      var fin=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10),parseInt(b[0],10),parseInt(b[1],10),0);
+      if(fin<=ini)fin=new Date(fin.getTime()+86400000);
+      var mk=function(tipo,d){return {id:"f"+d.getTime()+"_"+Math.random().toString(36).slice(2,7),empleado_id:emp.id,empleado_nombre:emp.nombre,local:emp.local,fecha:fechaLocal(d),hora:horaLocal(d),tipo:tipo,momento:d.toISOString(),foto_url:null,cara:null,lat:null,lng:null,aparato:"manual",usuario:p.usuario||"",manual:true,notas:"Falta justificada: jornada completada por administración según su ficha"};};
+      await p.onFichar(mk("entrada",ini));
+      await p.onFichar(mk("salida",fin));
+    }
+  }
   var [rango,setRango]=useState("hoy"); // hoy | ayer | semana
   var [diaVentas,setDiaVentas]=useState("auto");   // auto | hoy | ayer: qué día compara la tarjeta de ventas
   var [fechaPlan,setFechaPlan]=useState("");          // saldar entre dependencias: la fecha elegida
@@ -15809,7 +15836,10 @@ function PanelNovedades(p){
           });
         })();
         if(reclamosPend.length>0)avisos.push({rojo:false,txt:reclamosPend.length+" factura"+(reclamosPend.length===1?"":"s")+" por reclamar a proveedores ("+reclamosPend.slice(0,3).map(function(x){return x.concepto;}).join(", ")+(reclamosPend.length>3?"…":"")+")",ir:function(){setTabNov("deudas");setExpandido(function(e){return {...e,sec_reclamos:true};});}});
-        if(asist.pend.length>0)avisos.push({rojo:false,txt:asist.pend.length+" justificativo"+(asist.pend.length===1?"":"s")+" de faltas para revisar ("+asist.pend.map(function(j){return j.empleado_nombre;}).filter(function(v,i,a2){return a2.indexOf(v)===i;}).join(", ")+")",ir:function(){setTabNov("personal");}});
+        asist.pend.forEach(function(j){
+          avisos.push({rojo:false,txt:j.empleado_nombre+" faltó el "+fmtDate(j.fecha)+(j.motivo?": “"+j.motivo+"”":"")+" ("+(j.foto_url?"con certificado":"sin certificado")+")",
+            acciones:[{t:"✅ No marcar falta",f:function(){resolverFalta(j,false);}},{t:"❌ Marcar falta",f:function(){resolverFalta(j,true);}}]});
+        });
         if(asist.abiertas.length>0)avisos.push({rojo:false,txt:"Sin salida marcada: "+asist.abiertas.map(function(x){return x.e.nombre+" ("+fmtDate(String(x.f.fecha).substring(0,10))+")";}).join(", "),ir:function(){setTabNov("personal");}});
         asist.tardes.filter(function(x){return x.n>=3;}).forEach(function(x){ avisos.push({rojo:true,txt:x.e.nombre+" llegó tarde "+x.n+" veces en el mes: pierde el presentismo",ir:function(){setTabNov("personal");}}); });
         // Control semanal contra ARCA: aparece desde el lunes y sigue hasta que se controla cada CUIT.
@@ -15932,6 +15962,11 @@ function PanelNovedades(p){
                   <span style={{display:"flex",gap:7,alignItems:"flex-start"}}><input type="checkbox" checked={hecho} onChange={function(){tildar(a);}} style={{marginTop:2,cursor:"pointer",flexShrink:0}}/><span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span></span>
                   {a.cargarEg&&(
                     <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
+                  )}
+                  {a.acciones&&(
+                    <span style={{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}}>
+                      {a.acciones.map(function(ac,k){return <button key={k} onClick={ac.f} style={{background:"none",border:"1px solid #D4A01744",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",fontFamily:"'Inter',sans-serif"}}>{ac.t}</button>;})}
+                    </span>
                   )}
                   {a.ir&&(
                     <button onClick={function(){a.ir();setTimeout(function(){var el=document.getElementById("nov_tabs");if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"start"});},60);}} style={{background:"none",border:"1px solid #D4A01744",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"2px 8px",flexShrink:0}}>Ver</button>
@@ -31424,7 +31459,7 @@ export default function App() {
           )}
           {esSofia&&modulo==="novedades"&&(
             <ErrorSeguro nombre="Novedades">
-            <PanelNovedades controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades onSaveJustif={guardarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

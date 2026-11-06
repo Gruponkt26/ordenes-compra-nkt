@@ -275,8 +275,10 @@ async function cargarEntradas() {
 }
 function calcPuntualidad(localId, dias, p, datos) {
   var entradas = datos.entradas, justif = datos.justif || {};
-  var res = { previstas: 0, aTiempo: 0, tarde: 0, faltas: 0, sinJornada: 0, puntaje: null };
+  var res = { previstas: 0, aTiempo: 0, tarde: 0, faltas: 0, sinJornada: 0, puntaje: null, detalle: [] };
   var vacs = (p.vacaciones || []);
+  var porEmp = {};   // quién generó los atrasos y las faltas
+  function filaDe(e) { return porEmp[e.id] || (porEmp[e.id] = { nombre: e.nombre, tardes: [], faltas: [] }); }
   (p.empleados || []).filter(function (e) { return e.local === localId && e.activo !== false; }).forEach(function (e) {
     var tiene = false;
     dias.forEach(function (f) {
@@ -292,12 +294,13 @@ function calcPuntualidad(localId, dias, p, datos) {
       var est = justif[e.id + "|" + f];
       if (!h && est && est !== "rechazado") return;   // falta justificada: no cuenta
       res.previstas++;
-      if (!h) { res.faltas++; return; }
-      if (horaMin(h) <= horaMin(t.desde) + TOLERANCIA_MIN) res.aTiempo++; else res.tarde++;
+      if (!h) { res.faltas++; filaDe(e).faltas.push(f); return; }
+      if (horaMin(h) <= horaMin(t.desde) + TOLERANCIA_MIN) res.aTiempo++; else { res.tarde++; filaDe(e).tardes.push({ f: f, min: horaMin(h) - horaMin(t.desde) }); }
     });
     if (!tiene) res.sinJornada++;
   });
   if (res.previstas > 0) res.puntaje = (res.aTiempo / res.previstas) * 100;
+  res.detalle = Object.keys(porEmp).map(function (k) { return porEmp[k]; }).sort(function (a, b) { return (b.tardes.length + b.faltas.length) - (a.tardes.length + a.faltas.length); });
   return res;
 }
 function calcCaja(localId, dias, p) {
@@ -539,6 +542,21 @@ export function PanelCompetencia(props) {
                     {entradas === null ? "cargando fichajes…" : (pu.previstas === 0
                       ? "sin turnos para comparar en este período" + (pu.sinJornada ? " (" + pu.sinJornada + " empleado" + (pu.sinJornada === 1 ? "" : "s") + " sin jornada cargada)" : "")
                       : pu.aTiempo + " de " + pu.previstas + " turnos a tiempo · " + pu.tarde + " con atraso · " + pu.faltas + " sin marca" + (pu.sinJornada ? " · " + pu.sinJornada + " sin jornada cargada (no cuentan)" : ""))}
+                    {!props.soloLectura && pu && pu.detalle && pu.detalle.length > 0 && (
+                      <div style={{ margin: "5px 0 2px", padding: "6px 9px", background: "#0A0A0A", border: "1px solid #1E1E1E", borderRadius: 8 }}>
+                        <div style={{ fontSize: 10, color: "#7E7E7E", textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Quiénes bajaron la puntualidad (solo lo ves vos)</div>
+                        {pu.detalle.map(function (d) {
+                          var dd = function (f) { return String(f).substring(8, 10) + "/" + String(f).substring(5, 7); };
+                          return (
+                            <div key={d.nombre} style={{ fontSize: 11.5, lineHeight: 1.6, color: "#C8C8C8" }}>
+                              <b style={{ color: "#F0EDE8" }}>{d.nombre}</b>
+                              {d.tardes.length > 0 ? " · " + d.tardes.length + " atraso" + (d.tardes.length === 1 ? "" : "s") + " (" + d.tardes.map(function (t) { return dd(t.f) + " +" + t.min + " min"; }).join(", ") + ")" : ""}
+                              {d.faltas.length > 0 ? " · " + d.faltas.length + " sin marca (" + d.faltas.map(dd).join(", ") + ")" : ""}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <br />
                     <b style={{ color: "#E8E8E8" }}>Caja:</b>{" "}
                     {ca.esperados === 0 ? "todavía no hay días para comparar" : ca.buenos + " de " + ca.esperados + " días con cierre y sin diferencias · " + ca.conDiferencia + " con diferencia · " + ca.sinCierre + " sin cierre"}

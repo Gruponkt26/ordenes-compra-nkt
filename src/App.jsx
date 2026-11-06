@@ -25452,11 +25452,14 @@ function PanelRecibosFC(p){
   // Pone el total de adelantos en el renglón "Descuento adelanto" (si no tiene monto cargado o si se pide pisarlo).
   function conAdelanto(f,pisar){
     if(f.modo==="aguinaldo"&&!pisar)return f;
-    var tot=f.empleado_id?adelantosDeEmpleado(f.empleado_id,f.periodo):0;
+    var lista=f.empleado_id?adelantosDelPeriodo(p.adelantos||[],f.empleado_id,f.periodo,p.sueldos||[]):[];
+    var tot=sumaAdelantos(lista);
     if(!(tot>0))return f;
+    // Las fechas en que se dieron los adelantos salen en el renglón, junto con el monto.
+    var fechasAd=lista.map(function(a){return String(a.fecha||"").substring(0,10);}).filter(Boolean).sort().map(function(d){return d.substring(8,10)+"/"+d.substring(5,7);}).join(" y ");
     var ds=(f.descuentos||[]).slice(), i=ds.findIndex(function(d){return /adelanto/i.test(d.concepto||"");});
-    if(i===-1)ds.push({concepto:"Descuento adelanto",monto:String(Math.round(tot*100)/100)});
-    else if(pisar||!(parseFloat(ds[i].monto)>0))ds[i]={...ds[i],monto:String(Math.round(tot*100)/100)};
+    if(i===-1)ds.push({concepto:"Descuento adelanto",monto:String(Math.round(tot*100)/100),fecha:fechasAd});
+    else if(pisar||!(parseFloat(ds[i].monto)>0))ds[i]={...ds[i],monto:String(Math.round(tot*100)/100),fecha:fechasAd};
     else return f;
     return {...f,descuentos:ds};
   }
@@ -25616,9 +25619,9 @@ function PanelRecibosFC(p){
         if(mixtoPdf&&CONCEPTOS_NO_MIXTO.indexOf(cc[0])!==-1)return;
         var ex=((f.extras||{})[cc[0]])||{}, dias=parseFloat(ex.dias)||0, mon=parseFloat(ex.monto)||0;
         var lab=cc[1];
-        fila(lab,cc[0]==="feriados"?(ex.fechas||"-"):"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
+        fila(lab,ex.fechas||"-",dias>0?String(dias):"-",cc[2]?(mon>0?n2(mon):"-"):"");
       });
-      (f.descuentos||[]).forEach(function(d){ if(mixtoPdf&&/presentismo/i.test(d.concepto||""))return; var m=parseFloat(d.monto)||0; fila(d.concepto,"-",m?"":"-",m?n2(m):"-"); });
+      (f.descuentos||[]).forEach(function(d){ if(mixtoPdf&&/presentismo/i.test(d.concepto||""))return; var m=parseFloat(d.monto)||0; fila(d.concepto,d.fecha||"-",m?"":"-",m?n2(m):"-"); });
       doc.setFillColor(166,166,166); doc.rect(X,y,Wd,RH,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH); y+=RH;
       doc.setFillColor(200,200,200); doc.rect(X,y,Wd,RH+0.6,"F"); doc.setDrawColor(150); doc.rect(X,y,Wd,RH+0.6);
       doc.setFont("helvetica","bold"); doc.setFontSize(8.5); doc.text(mixtoPdf?"TOTAL SIN CONVENIO:":"TOTAL A COBRAR:",X+22,y+4.2);
@@ -25788,7 +25791,7 @@ function PanelRecibosFC(p){
                     <div style={{fontSize:12.5,color:"#D8D8D8"}}>{cc[1]}</div>
                     <input type="number" step="0.5" value={ex.dias||""} onChange={function(e){setEx("dias",e.target.value);}} placeholder="Días" style={INP}/>
                     {cc[2]?<input type="number" step="0.01" value={ex.monto||""} onChange={function(e){setEx("monto",e.target.value);}} placeholder="Monto $" style={INP}/>:<div style={{fontSize:10,color:"#7E7E7E",lineHeight:1.3}}>no suma</div>}
-                    {cc[0]==="feriados"&&<input value={ex.fechas||""} onChange={function(e){setEx("fechas",e.target.value);}} placeholder="Fecha del feriado (ej: 12/10) — a mano si el fichaje no la tiene" style={{...INP,gridColumn:"1 / -1"}}/>}
+                    <input value={ex.fechas||""} onChange={function(e){setEx("fechas",e.target.value);}} placeholder={cc[0]==="feriados"?"Fecha del feriado (ej: 12/10) — a mano si el fichaje no la tiene":"Fechas (ej: 05/10 y 12/10)"} style={{...INP,gridColumn:"1 / -1"}}/>
                   </div>
                 );
               })}
@@ -25802,8 +25805,9 @@ function PanelRecibosFC(p){
             <div style={CAJA}>
               <div style={{fontSize:12,fontWeight:800,color:"#4CAF50",marginBottom:8}}>➖ Descuentos <span style={{fontWeight:400,color:"#7E7E7E"}}>· agregá o borrá los que necesites</span></div>
               {(form.descuentos||[]).map(function(d,i){return(
-                <div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 110px 26px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <div key={i} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 96px 110px 26px",gap:6,marginBottom:6,alignItems:"center"}}>
                   <input value={d.concepto} onChange={function(e){var v=e.target.value;setForm(function(f){var l=f.descuentos.slice(); l[i]={...l[i],concepto:v}; return {...f,descuentos:l};});}} placeholder="Concepto" style={INP}/>
+                  <input value={d.fecha||""} onChange={function(e){var v=e.target.value;setForm(function(f){var l=f.descuentos.slice(); l[i]={...l[i],fecha:v}; return {...f,descuentos:l};});}} placeholder="Fecha" style={INP}/>
                   <input type="number" step="0.01" value={d.monto} onChange={function(e){var v=e.target.value;setForm(function(f){var l=f.descuentos.slice(); l[i]={...l[i],monto:v}; return {...f,descuentos:l};});}} placeholder="Monto" style={INP}/>
                   <button onClick={function(){setForm(function(f){return {...f,descuentos:f.descuentos.filter(function(_,k){return k!==i;})};});}} title="Borrar" style={{background:"none",border:"none",color:"#C1440E",cursor:"pointer",fontSize:14}}>✕</button>
                 </div>

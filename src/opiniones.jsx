@@ -365,6 +365,18 @@ export function PanelCompetencia(props) {
     });
   }
 
+  // En el mes de prueba se pueden borrar todas las opiniones juntas (las que tienen comentario se borran también de a una, abajo).
+  function borrarPrueba() {
+    var ids = lista.map(function (o) { return o.id; });
+    if (ids.length === 0) return;
+    if (!window.confirm("¿Borrar las " + ids.length + " opiniones de " + nombrePeriodo(MES_PRUEBA) + "?\n\nNo se puede deshacer. Las de diciembre, enero y febrero no se tocan.")) return;
+    var trozos = [];
+    for (var i = 0; i < ids.length; i += 40) trozos.push(ids.slice(i, i + 40));
+    Promise.all(trozos.map(function (t) {
+      return fetch(SURL + "/rest/v1/pautas?ambito=eq.opinion&id=in.(" + t.map(function (x) { return encodeURIComponent(x); }).join(",") + ")", { method: "DELETE", headers: SH });
+    })).then(function () { recargar(); });
+  }
+
   var salon = LOCALES_COMPETENCIA.map(function (id) { return { local: localDe(id), r: resumen(id, "salon") }; });
   var ranking = salon.slice().sort(function (a, b) { return (b.r.general === null ? -1 : b.r.general) - (a.r.general === null ? -1 : a.r.general); });
 
@@ -543,6 +555,12 @@ export function PanelCompetencia(props) {
 
       {tab === "opiniones" && (
         <div>
+          {!props.soloLectura && periodo === MES_PRUEBA && lista.length > 0 && (
+            <div style={{ background: "#14100A", border: "1px solid #D4A01755", borderRadius: 12, padding: "10px 13px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "#D8D8D8", lineHeight: 1.5 }}>Noviembre es el mes de prueba: estas {lista.length} opiniones no suman a la temporada.</div>
+              <button onClick={borrarPrueba} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #C1440E66", background: "#C1440E22", color: "#E0714A", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Borrar las {lista.length} de prueba</button>
+            </div>
+          )}
 
           <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>En el local · ranking por promedio</div>
           {ranking.map(function (x, i) {

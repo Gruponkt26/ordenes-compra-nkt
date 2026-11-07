@@ -25360,10 +25360,25 @@ function PanelRecibosFC(p){
     }).catch(function(){ setLista([]); });
     fetch(SURL+"/rest/v1/pautas?ambito=eq.recibo_logo&limit=20",{headers:SH}).then(function(r){return r.json();}).then(function(d){
       var o={}; if(Array.isArray(d))d.forEach(function(f){ try{ var x=JSON.parse(f.texto); if(x&&x.url)o[String(f.id).replace(/^recibologo_/,"")]=x; }catch(e){} });
-      setLogos(o);
+      setLogos(function(prev){ var m={...prev}; Object.keys(o).forEach(function(k){m[k]=o[k];}); return m; });
     }).catch(function(){});
   }
   useEffect(function(){ cargar(); },[]);
+  // Si un local no tiene logo subido, se usa su logo original (public/logos), pasado a imagen para el PDF.
+  useEffect(function(){
+    [["l1","/logos/bodegon.png"],["l2","/logos/kusama.png"],["l3","/logos/colantonio.png"]].forEach(function(x){
+      var img=new Image();
+      img.onload=function(){
+        try{
+          var cv=document.createElement("canvas"); cv.width=img.naturalWidth; cv.height=img.naturalHeight;
+          var cx=cv.getContext("2d"); cx.fillStyle="#fff"; cx.fillRect(0,0,cv.width,cv.height); cx.drawImage(img,0,0);
+          var l={url:cv.toDataURL("image/jpeg",0.92),w:cv.width,h:cv.height};
+          setLogos(function(prev){ if(prev[x[0]]&&prev[x[0]].url&&!prev[x[0]].original)return prev; var o={...prev}; o[x[0]]={...l,original:true}; return o; });
+        }catch(e){}
+      };
+      img.src=x[1];
+    });
+  },[]);
   // ── Conexión con la planilla anual (Sueldos > Planilla anual) ──
   function planDe(empId,periodo){
     var q=String(periodo||"").split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10)-1;
@@ -25828,7 +25843,7 @@ function PanelRecibosFC(p){
               {form.modo!=="aguinaldo"&&<div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>{campo("Período (mes)","periodo","month")}</div>}
               <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:6}}>La fecha de pago se pone al bajar el PDF, el día que se abona.</div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,flexWrap:"wrap"}}>
-                {logo&&logo.url?<img src={logo.url} alt="logo" style={{height:42,borderRadius:6,background:"#fff"}}/>:<span style={{fontSize:11,color:"#7E7E7E"}}>Sin logo cargado para este local.</span>}
+                {logo&&logo.url?<img src={logo.url} alt="logo" style={{height:42,borderRadius:6,background:"#fff"}}/>:<span style={{fontSize:11,color:"#7E7E7E"}}>Sin logo para este local.</span>}
                 <label style={{...GH,padding:"6px 12px",fontSize:11.5,cursor:"pointer"}}>🖼️ {logo&&logo.url?"Cambiar logo":"Subir logo"}<input type="file" accept="image/*" style={{display:"none"}} onChange={function(e){subirLogo(e.target.files&&e.target.files[0]);e.target.value="";}}/></label>
               </div>
             </div>

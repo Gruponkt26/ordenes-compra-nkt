@@ -22,6 +22,16 @@ var PREGUNTAS = {
 var NOMBRE_PREGUNTA = {};
 Object.keys(PREGUNTAS).forEach(function (c) { PREGUNTAS[c].forEach(function (q) { NOMBRE_PREGUNTA[c + "_" + q[0]] = q[1]; }); });
 
+// Logos originales de cada local (public/logos). Son negros sobre blanco, por eso van dentro de un recuadro blanco.
+var LOGOS = { l1: "/logos/bodegon.png", l2: "/logos/kusama.png", l3: "/logos/colantonio.png" };
+function LogoLocal(props) {
+  var src = LOGOS[props.id];
+  if (!src) return null;
+  return <div style={{ background: "#fff", borderRadius: 12, padding: props.chico ? "6px 8px" : "12px 16px", display: "inline-block", maxWidth: "100%" }}>
+    <img src={src} alt="" style={{ display: "block", height: props.alto, maxWidth: "100%", width: "auto", margin: "0 auto" }} />
+  </div>;
+}
+
 function localDe(id) { return LOCALES.find(function (l) { return l.id === id; }); }
 
 export function urlOpinion(local, canal, zona) {
@@ -99,8 +109,10 @@ export function Opinar() {
   return (
     <div style={fondo}><div style={caja}>
       <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <div style={{ fontSize: 34 }}>{local.emoji}</div>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, fontWeight: 800, color: local.color }}>{local.nombre}</div>
+        {LOGOS[localId]
+          ? <LogoLocal id={localId} alto={localId === "l1" ? 34 : 70} />
+          : <div><div style={{ fontSize: 34 }}>{local.emoji}</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, fontWeight: 800, color: local.color }}>{local.nombre}</div></div>}
         <div style={{ fontSize: 14, color: "#C8C8C8", marginTop: 8, lineHeight: 1.5 }}>
           {canal === "delivery" ? "Contanos cómo fue tu pedido." : "Contanos cómo te atendimos hoy."} Son 20 segundos.
         </div>
@@ -716,8 +728,10 @@ function QRParaImprimir() {
           var url = urlOpinion(it.local, it.canal, it.zona);
           return (
             <div key={url} style={{ background: "#fff", color: "#111", borderRadius: 14, padding: "14px 12px", textAlign: "center", breakInside: "avoid", border: "3px solid " + l.color }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: l.color }}>{l.emoji} {l.nombre}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#444", marginBottom: 6 }}>{it.titulo}</div>
+              {LOGOS[it.local]
+                ? <div style={{ marginBottom: 6 }}><LogoLocal id={it.local} alto={it.local === "l1" ? 22 : 42} chico /></div>
+                : <div style={{ fontSize: 15, fontWeight: 800, color: l.color }}>{l.emoji} {l.nombre}</div>}
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#444", marginBottom: 6 }}>{LOGOS[it.local] ? l.nombre + " · " : ""}{it.titulo}</div>
               {imgs[url] ? <img src={imgs[url]} alt={"QR " + l.nombre + " " + it.titulo} style={{ width: "100%", maxWidth: 180, display: "block", margin: "0 auto" }} /> : <div style={{ height: 150, color: "#888", fontSize: 12 }}>Generando…</div>}
               <div style={{ fontSize: 13, fontWeight: 800, marginTop: 6 }}>¿Cómo te atendimos?</div>
               <div style={{ fontSize: 11, color: "#555" }}>Escaneá y opiná en 20 segundos</div>

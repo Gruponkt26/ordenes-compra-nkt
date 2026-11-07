@@ -53,7 +53,7 @@ export function Opinar() {
   });
 
   useEffect(function () {
-    if (valido) document.title = "Tu opinión · " + local.nombre;
+    document.title = "GrupoNkt";
   }, []);
 
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", padding: "22px 16px 40px", boxSizing: "border-box" };

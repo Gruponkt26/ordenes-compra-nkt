@@ -13143,7 +13143,8 @@ function PanelFichar(p){
         if(pos2&&(!posChk.acc||pos2.acc<=posChk.acc||distanciaEfectiva(coordsLocal,pos2)<distanciaEfectiva(coordsLocal,posChk)))posChk=pos2;
         dChk=distanciaMetros(coordsLocal,posChk);
       }
-      if(dChk!=null&&muyLejos(coordsLocal,posChk)){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" (error del GPS: ±"+(posChk.acc||"?")+" m) y tenés que estar a "+RADIO_LOCAL+" m o menos."); setFase("camara"); return; }
+      if(dChk!=null&&lecturaImprecisa(posChk)&&distanciaEfectiva(coordsLocal,posChk)>RADIO_LOCAL){ alert("🔢 Tu GPS no es preciso (±"+(posChk.acc||"?")+" m) y figurás lejos del local.\n\nMarcá con el código del local: lo muestra la pantalla del local (6 números o QR)."); setFase("camara"); return; }
+      if(dChk!=null&&muyLejos(coordsLocal,posChk)){ alert("🚫 Estás muy lejos del local para marcar.\n\nEstás a "+fmtDistancia(dChk)+" (error del GPS: ±"+(posChk.acc||"?")+" m) y tenés que estar a "+RADIO_LOCAL+" m o menos.\n\nSi estás en el local y el GPS no te toma bien, marcá con el código del local."); setFase("camara"); return; }
     }
     // Marca la salida sin haber marcado la entrada: el sistema sabe que está trabajando, así que se carga la
     // entrada con la hora que dice el empleado, como marca manual para que administración la pueda revisar.
@@ -13293,7 +13294,7 @@ function PanelFichar(p){
     var distEf=(cercaReq&&posAct)?distanciaEfectiva(coordsLocal,posAct):null;
     var fueraLocal=cercaReq&&(ubic==="no"||(distEf!=null&&muyLejos(coordsLocal,posAct)));
     var imprecisa=cercaReq&&lecturaImprecisa(posAct)&&distEf!=null&&distEf>RADIO_LOCAL;
-    var puede=!fueraLocal;
+    var puede=!fueraLocal&&!imprecisa;
     var tempranoAhora=!est.adentro?entradaMuyTemprano(elegido,new Date()):null;
     var francoAhora=!est.adentro&&francoHoy(elegido,new Date());
     var francoFalta=francoAhora&&!francoValido(elegido);
@@ -13336,11 +13337,11 @@ function PanelFichar(p){
           {codigoVerif&&<div style={{padding:"8px 10px",borderRadius:10,border:"1px solid #3A7D44",background:"#0A1A0A",color:"#3A7D44",fontSize:12,fontWeight:700,marginBottom:10}}>✅ Código del local verificado: estás en el local</div>}
           <div style={{padding:"14px 10px",borderRadius:12,border:"1px solid "+(fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#222"),background:"#0F0F0F",
             fontSize:13,fontWeight:700,color:fueraLocal?"#C1440E":ubic==="ok"?"#3A7D44":ubic==="no"?"#D4A017":"#8C8C8C"}}>
-            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(imprecisa?"⚠️ Tu ubicación es imprecisa (GPS ±"+posAct.acc+" m): podés marcar y queda avisado":distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
+            {fase==="guardando"?"Guardando…":ubic==="ok"?(distAct!=null?(imprecisa?"⚠️ Tu GPS no es preciso (±"+posAct.acc+" m) y figurás lejos del local: marcá con el código del local":distEf>RADIO_LOCAL?"🚫 Estás muy lejos del local para marcar · a "+fmtDistancia(distAct)+(posAct&&posAct.acc?" (GPS ±"+posAct.acc+" m)":""):"📍 Estás en el local · a "+fmtDistancia(distAct)):"📍 Ubicación lista"):ubic==="no"?"⚠️ No pude tomar tu ubicación":"📍 Buscando tu ubicación…"}
           </div>
           {cercaReq&&!codigoVerif&&fase!=="guardando"&&(fueraLocal||imprecisa||ubic==="no")&&(
             <div style={{marginTop:10,textAlign:"left",background:"#0A1014",border:"1px solid #1A6B8A66",borderRadius:12,padding:"10px 12px"}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:3}}>🔢 ¿El GPS no te toma bien?</div>
+              <div style={{fontSize:12,fontWeight:800,color:"#1A6B8A",marginBottom:3}}>🔢 {fueraLocal||imprecisa||ubic==="no"?"El GPS no alcanza para marcar: usá el código del local":"¿El GPS no te toma bien?"}</div>
               <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.5,marginBottom:6}}>Escribí el código de 6 números que muestra la pantalla del local y marcás sin usar el GPS.</div>
               <div style={{display:"flex",gap:8}}>
                 <input value={codigoTxt} onChange={function(e){setCodigoTxt(e.target.value.replace(/\D/g,"").slice(0,6));}} inputMode="numeric" placeholder="Código" style={{flex:1,padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:15,letterSpacing:3}}/>

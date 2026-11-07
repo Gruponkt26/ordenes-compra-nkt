@@ -14350,6 +14350,7 @@ function PanelFichajes(p){
         return(
           <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:800,color:"#D4A017",marginBottom:6}}>📎 Justificativos de faltas</div>
+            {pend.length>0&&<div style={{background:"#C1440E22",border:"1px solid #C1440E",borderRadius:8,padding:"7px 10px",marginBottom:6,fontSize:12.5,fontWeight:800,color:"#FF8A5C"}}>🔴 {pend.length} justificativo{pend.length===1?"":"s"} esperando que lo{pend.length===1?"":"s"} apruebes o rechaces</div>}
             {pend.length>0&&<div style={{fontSize:10.5,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,margin:"4px 0"}}>Para revisar · {pend.length}</div>}
             {pend.map(function(j){
               var l=getLocal(j.local)||{};
@@ -30978,7 +30979,7 @@ export default function App() {
               {id:"admin",emoji:"⚙️",label:"Admin",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
               {id:"locales",emoji:"🏪",label:"Dependencias",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
               {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
-              {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
+              {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",pend:(justificativos||[]).filter(function(j){return j.estado==="pendiente";}).length,action:function(){abrirModulo("fichaje","fichajes_registro");}},
               {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
               {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
               {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -30992,7 +30993,7 @@ export default function App() {
             ].map(function(m){return(
               <button key={m.id} onClick={m.action}
                 style={{padding:"8px 12px",borderRadius:10,border:"none",background:modulo===m.id?m.color:"#111",color:modulo===m.id?"#fff":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}>
-                {m.emoji} {m.label}
+                {m.emoji} {m.label}{m.pend>0&&<span style={{marginLeft:6,background:"#C1440E",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10.5,fontWeight:800}}>{m.pend}</span>}
               </button>
             );})}
           </div>
@@ -31068,7 +31069,7 @@ export default function App() {
                   {id:"admin",emoji:"⚙️",label:"Administración",color:"#1A6B8A",action:function(){abrirModulo("admin","dashboard");}},
                   {id:"locales",emoji:"🏪",label:"Dependencias",color:"#3A7D44",action:function(){abrirModulo("locales","loc_inicio");}},
                   {id:"personal",emoji:"👥",label:"Colaboradores",color:"#4CAF50",action:function(){abrirModulo("personal","personal_inicio");}},
-                  {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",action:function(){abrirModulo("fichaje","fichajes_registro");}},
+                  {id:"fichaje",emoji:"🕐",label:"Fichaje",color:"#1A8A7B",pend:(justificativos||[]).filter(function(j){return j.estado==="pendiente";}).length,action:function(){abrirModulo("fichaje","fichajes_registro");}},
                   {id:"socios",emoji:"🤝",label:"Socios",color:"#3A7D44",action:function(){abrirModulo("socios","socios_aportes");}},
                   {id:"razon",emoji:"🏛️",label:"Razón social",color:"#8B2FC9",action:function(){abrirModulo("razon","razon_inicio");}},
                   {id:"ideas",emoji:"💡",label:"Ideas",color:"#E07B00",action:function(){abrirModulo("ideas","ideas_inicio");}},
@@ -31082,7 +31083,7 @@ export default function App() {
                 ].map(function(m){return(
                   <button key={m.id} onClick={m.action} style={{padding:"22px 16px",borderRadius:16,border:"2px solid "+m.color+"33",background:m.color+"11",color:m.color,fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:800,cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
                     <div style={{fontSize:28,marginBottom:8}}>{m.emoji}</div>
-                    <div>{m.label}</div>
+                    <div>{m.label}{m.pend>0&&<span style={{marginLeft:6,background:"#C1440E",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:11,fontWeight:800}}>{m.pend}</span>}</div>
                   </button>
                 );})}
               </div>

@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon } from "./grupo.jsx";
+import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -103,7 +103,7 @@ export function Opinar() {
   var [aceptaCom, setAceptaCom] = useState(false);
   var [sumando, setSumando] = useState(false);
   var [cuponNuevo, setCuponNuevo] = useState(null);
-  var yaEsParte = (function () { try { return !!localStorage.getItem("nkt_comunidad"); } catch (e) { return false; } })();
+  var [yaEsParte, setYaEsParte] = useState(false);   // se confirma en la base con el WhatsApp que dejó, no con lo que recuerda el celular
   useEffect(function () { cargarConfigOpiniones().then(setCfg); cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); setCfgGrupo(c); }); }, []);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
@@ -191,6 +191,8 @@ export function Opinar() {
         try { localStorage.setItem(claveLS, String(Date.now())); } catch (e) {}
         var vs = Object.keys(notas).map(function (k) { return notas[k]; }).filter(function (v) { return v > 0; });
         setNotaFinal(vs.length ? vs.reduce(function (a, b) { return a + b; }, 0) / vs.length : 0);
+        var wd = wsp.replace(/\D/g, "");
+        if (wd.length >= 8) leerPauta("com_" + wd).then(function (m) { if (m) setYaEsParte(true); });
         setHecho("ok");
       })
       .catch(function () { setError("No pudimos enviar tu opinión. Revisá tu conexión y probá de nuevo."); setEnviando(false); });

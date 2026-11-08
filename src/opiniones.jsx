@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad } from "./grupo.jsx";
+import { PanelComunidad, cargarConfigGrupo } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -98,7 +98,9 @@ export function Opinar() {
   var [wsp, setWsp] = useState("");
   var [cfg, setCfg] = useState({ google: {}, premio: "" });
   var [notaFinal, setNotaFinal] = useState(0);
-  useEffect(function () { cargarConfigOpiniones().then(setCfg); }, []);
+  var [gancho, setGancho] = useState("");
+  var yaEsParte = (function () { try { return !!localStorage.getItem("nkt_comunidad"); } catch (e) { return false; } })();
+  useEffect(function () { cargarConfigOpiniones().then(setCfg); cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); }); }, []);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
@@ -130,6 +132,13 @@ export function Opinar() {
           <div style={{ marginTop: 20 }}>
             <div style={{ fontSize: 13.5, color: "#C8C8C8", lineHeight: 1.5, marginBottom: 10 }}>¡Qué bueno que la pasaste bien! ¿Nos ayudás dejando tu opinión también en Google? Nos suma muchísimo.</div>
             <a href={cfg.google[localId]} target="_blank" rel="noreferrer" style={{ display: "block", padding: "14px", borderRadius: 12, background: "#fff", color: "#222", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>⭐ Dejar mi reseña en Google</a>
+          </div>
+        )}
+        {!yaEsParte && (
+          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>Sumate a la comunidad Grupo Nkt</div>
+            <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "6px 0 12px" }}>{gancho || "Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios."}</div>
+            <a href="/?grupo" style={{ display: "block", padding: "13px", borderRadius: 12, background: "#C1440E", color: "#fff", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>Quiero sumarme</a>
           </div>
         )}
         <div style={{ fontSize: 13, color: local.color, marginTop: 18, fontWeight: 700 }}>{local.emoji} {local.nombre}</div>

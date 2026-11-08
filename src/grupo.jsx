@@ -39,7 +39,7 @@ async function guardarFila(id, ambito, obj) {
 var LETRAS_CUPON = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function codigoNuevo() { var c = "NKT-"; for (var i = 0; i < 4; i++) c += LETRAS_CUPON[Math.floor(Math.random() * LETRAS_CUPON.length)]; return c; }
 function normCodigo(s) { var t = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (t.indexOf("NKT") === 0) t = t.slice(3); return t.length ? "NKT-" + t : ""; }
-async function leerPauta(id) {
+export async function leerPauta(id) {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id) + "&limit=1", { headers: SH });
     var d = await r.json();
@@ -113,7 +113,13 @@ export function GrupoNkt() {
     document.title = "GrupoNkt";
     cargarConfigGrupo().then(setCfg);
     var cg = ""; try { cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
-    if (cg) leerPauta("cupon_" + cg).then(function (c) { if (c) setCupon(c); });
+    if (cg) leerPauta("cupon_" + cg).then(function (c) {
+      // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
+      if (!c) { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); return; }
+      leerPauta("com_" + c.wsp).then(function (m) {
+        if (m) setCupon(c); else { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); }
+      });
+    });
     function antes(e) { e.preventDefault(); setInstalar(e); }
     window.addEventListener("beforeinstallprompt", antes);
     return function () { window.removeEventListener("beforeinstallprompt", antes); };

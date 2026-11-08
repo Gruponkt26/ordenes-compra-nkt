@@ -66,7 +66,18 @@ async function emitirCupon(socio, cfg) {
   return cupon;
 }
 
-function TarjetaCupon(props) {
+// Anota a una persona en la comunidad (conserva su alta y su cupón si ya estaba) y devuelve su cupón.
+export async function sumarSocio(socio, cfg) {
+  var previo = await leerPauta("com_" + socio.wsp);
+  var ok = await guardarFila("com_" + socio.wsp, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
+  if (!ok) return null;
+  try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {}
+  var c = await emitirCupon(socio, cfg);
+  if (c) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
+  return c || { sinCupon: true };
+}
+
+export function TarjetaCupon(props) {
   var c = props.cupon, est = estadoCupon(c);
   var col = est === "activo" ? "#4C9A5A" : "#8C8C8C";
   return (

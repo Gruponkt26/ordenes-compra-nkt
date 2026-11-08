@@ -7753,7 +7753,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       if(!parte||parte.monto<=0)return;
       if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
         subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · "+(completo?"último pago":"pago parcial")+" · Oficina "+t[2]+"%",
-        detalle:"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
+        detalle:notaSueldoAtrasado(mesFiltro,modalForm.fecha_pago,esAguinaldo)+"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
         monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
         notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
     });
@@ -7799,7 +7799,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     if(onSaveSueldo)onSaveSueldo(s);
     if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+modalPl.local,local:modalPl.local,concepto:modalPl.empleado_nombre,
       subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+(completo?"":" · pago parcial"),
-      detalle:(completo?"Último pago":"Pago parcial")+" · abonado "+fmt(nuevoAbonado)+" de "+fmt(res.monto)+" del sueldo"+(res.adelantos>0?" (más "+fmt(res.adelantos)+" en adelantos ya dados)":""),
+      detalle:notaSueldoAtrasado(mesFiltro,modalForm.fecha_pago,esAguinaldo)+(completo?"Último pago":"Pago parcial")+" · abonado "+fmt(nuevoAbonado)+" de "+fmt(res.monto)+" del sueldo"+(res.adelantos>0?" (más "+fmt(res.adelantos)+" en adelantos ya dados)":""),
       monto:T,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
       notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos});
     // Los adelantos pendientes pasan a descontarse de este sueldo (ya figuran en lo que falta).
@@ -22409,6 +22409,14 @@ function ventasDeCierre(c){
 }
 
 // Mes anterior a un "YYYY-MM".
+// Un sueldo del período P se paga normalmente en el mes siguiente. Si se paga después, el egreso lleva la aclaración de a qué mes corresponde.
+function notaSueldoAtrasado(periodo,fechaPago,esAguinaldo){
+  if(esAguinaldo||!periodo||!fechaPago)return "";
+  var q=String(periodo).split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10); if(!y||!m)return "";
+  m++; if(m>12){m=1;y++;}
+  var normal=y+"-"+(m<10?"0"+m:m), pago=String(fechaPago).slice(0,7);
+  return pago>normal?"PAGO DE SUELDO ATRASADO: corresponde a "+periodoEnLetras(periodo)+" (se pagó en "+periodoEnLetras(pago)+"). ":"";
+}
 function mesAnteriorDe(mes){
   var pr=String(mes||"").split("-");var y=parseInt(pr[0]);var m=parseInt(pr[1])-1;
   if(m===0){m=12;y--;}

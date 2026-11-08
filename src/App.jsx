@@ -7753,7 +7753,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
       if(!parte||parte.monto<=0)return;
       if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+t[0],local:t[0],concepto:modalPl.empleado_nombre,
         subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+" · "+(completo?"último pago":"pago parcial")+" · Oficina "+t[2]+"%",
-        detalle:"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
+        detalle:notaSueldoAtrasado(mesFiltro,modalForm.fecha_pago,esAguinaldo)+"Parte de la Oficina ("+t[2]+"% de referencia) · puso "+fmt(parte.monto)+" de "+fmt(res.monto)+" del sueldo",
         monto:parte.monto,forma_pago:(parte.pagos[0]||{}).medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
         notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:parte.pagos});
     });
@@ -7799,7 +7799,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     if(onSaveSueldo)onSaveSueldo(s);
     if(onSaveEgresoSueldo)onSaveEgresoSueldo({id:"egr_sueldo_"+sid+"_"+payId+"_"+modalPl.local,local:modalPl.local,concepto:modalPl.empleado_nombre,
       subramo:(esAguinaldo?"Aguinaldo ":"Sueldo ")+mesFiltro+(completo?"":" · pago parcial"),
-      detalle:(completo?"Último pago":"Pago parcial")+" · abonado "+fmt(nuevoAbonado)+" de "+fmt(res.monto)+" del sueldo"+(res.adelantos>0?" (más "+fmt(res.adelantos)+" en adelantos ya dados)":""),
+      detalle:notaSueldoAtrasado(mesFiltro,modalForm.fecha_pago,esAguinaldo)+(completo?"Último pago":"Pago parcial")+" · abonado "+fmt(nuevoAbonado)+" de "+fmt(res.monto)+" del sueldo"+(res.adelantos>0?" (más "+fmt(res.adelantos)+" en adelantos ya dados)":""),
       monto:T,forma_pago:pagosValidos[0].medio||"",facturado:false,facturacion:"",categoria:"Sueldos",area:"Sueldos",
       notas:modalForm.notas||"",fecha:modalForm.fecha_pago,usuario:usuario||"",created_at:new Date().toISOString(),pagos:pagosValidos});
     // Los adelantos pendientes pasan a descontarse de este sueldo (ya figuran en lo que falta).
@@ -9449,7 +9449,7 @@ function PanelDeportes(p){
           {extrasMes.map(function(e){
             var mp=e.medios.map(function(pg){var m=DEP_MEDIOS_PAGO.find(function(x){return x[0]===(DEP_MEDIO_TEXTO[pg.medio]||pg.medio);});return m?m[1]:(pg.medio||"sin medio");}).join(" + ");
             return <div key={e.id} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"6px 0",borderTop:"1px solid #161616"}}>
-              <div style={{minWidth:0}}><div style={{fontSize:12,color:"#F0EDE8"}}>{e.label}</div><div style={{fontSize:10,color:"#7E7E7E"}}>{e.mes} · {mp}</div></div>
+              <div style={{minWidth:0}}><div style={{fontSize:12,color:"#F0EDE8"}}>{e.label}</div><div style={{fontSize:10,color:"#7E7E7E"}}>{e.fecha?"Pagado el "+fmtDate(e.fecha)+(e.at&&!isNaN(new Date(e.at))?" · cargado "+new Date(e.at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""):e.mes} · {mp}</div></div>
               <b style={{fontSize:13,color:"#F0EDE8",whiteSpace:"nowrap"}}>${Math.round(e.monto).toLocaleString("es-AR")}</b>
             </div>;
           })}
@@ -22409,6 +22409,14 @@ function ventasDeCierre(c){
 }
 
 // Mes anterior a un "YYYY-MM".
+// Un sueldo del período P se paga normalmente en el mes siguiente. Si se paga después, el egreso lleva la aclaración de a qué mes corresponde.
+function notaSueldoAtrasado(periodo,fechaPago,esAguinaldo){
+  if(esAguinaldo||!periodo||!fechaPago)return "";
+  var q=String(periodo).split("-"), y=parseInt(q[0],10), m=parseInt(q[1],10); if(!y||!m)return "";
+  m++; if(m>12){m=1;y++;}
+  var normal=y+"-"+(m<10?"0"+m:m), pago=String(fechaPago).slice(0,7);
+  return pago>normal?"PAGO DE SUELDO ATRASADO: corresponde a "+periodoEnLetras(periodo)+" (se pagó en "+periodoEnLetras(pago)+"). ":"";
+}
 function mesAnteriorDe(mes){
   var pr=String(mes||"").split("-");var y=parseInt(pr[0]);var m=parseInt(pr[1])-1;
   if(m===0){m=12;y--;}
@@ -30763,13 +30771,13 @@ export default function App() {
       var monto=s.estado==="parcial"?(parseFloat(s.monto_parcial)||0):(parseFloat(s.monto)||0);
       if(monto<=0)return;
       var medios=(Array.isArray(s.pagos)&&s.pagos.length>0)?s.pagos.map(function(pg){return {medio:pg.medio||"",monto:parseFloat(pg.monto)||0};}):[{medio:s.medio_pago||"",monto:monto}];
-      out.push({id:"sue_"+s.id,label:"💼 "+((emp&&emp.nombre)||s.empleado_nombre||"Sueldo")+" · "+(s.concepto_extra&&s.concepto_extra!=="null"?"aguinaldo ":"sueldo ")+s.periodo+(s.estado==="parcial"?" · pago parcial":""),mes:sigMes(s.periodo),monto:monto,medios:medios});
+      out.push({id:"sue_"+s.id,label:"💼 "+((emp&&emp.nombre)||s.empleado_nombre||"Sueldo")+" · "+(s.concepto_extra&&s.concepto_extra!=="null"?"aguinaldo ":"sueldo ")+s.periodo+(s.estado==="parcial"?" · pago parcial":""),mes:sigMes(s.periodo),fecha:s.fecha_pago||"",at:s.updated_at||s.created_at||"",monto:monto,medios:medios});
     });
     (gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0;}).forEach(function(g){
       var monto=parseFloat(g.monto)||0;
       if(monto<=0)return;
       var medios=(Array.isArray(g.pagos)&&g.pagos.length>0)?g.pagos.map(function(pg){return {medio:pg.medio||pg.tipo||"",monto:parseFloat(pg.monto)||0};}):[{medio:g.forma_pago||"",monto:monto}];
-      out.push({id:"gas_"+g.id,label:(g.area?g.area+" · ":"")+(g.concepto||"Egreso")+(g.subramo?" · "+g.subramo:""),mes:String(g.fecha||"").slice(0,7),monto:monto,medios:medios});
+      out.push({id:"gas_"+g.id,label:(g.area?g.area+" · ":"")+(g.concepto||"Egreso")+(g.subramo?" · "+g.subramo:""),mes:String(g.fecha||"").slice(0,7),fecha:g.fecha||"",at:g.created_at||"",monto:monto,medios:medios});
     });
     return out;
   }

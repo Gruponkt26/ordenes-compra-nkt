@@ -32,6 +32,15 @@ function LogoLocal(props) {
   </div>;
 }
 
+// Identifica este celular (el mismo ID que usa el fichaje): sirve para detectar opiniones repetidas o del personal.
+function idDispositivo() {
+  try {
+    var d = window.localStorage.getItem("nkt_dispositivo");
+    if (!d) { d = Math.random().toString(36).slice(2, 8); window.localStorage.setItem("nkt_dispositivo", d); }
+    return d;
+  } catch (e) { return ""; }
+}
+
 function localDe(id) { return LOCALES.find(function (l) { return l.id === id; }); }
 
 export function urlOpinion(local, canal, zona) {
@@ -53,6 +62,8 @@ export function Opinar() {
 
   var [notas, setNotas] = useState({});
   var [comentario, setComentario] = useState("");
+  var [nombre, setNombre] = useState("");
+  var [wsp, setWsp] = useState("");
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
@@ -94,7 +105,7 @@ export function Opinar() {
     var fila = {
       id: "op_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       ambito: "opinion",
-      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600) }),
+      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600), nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/[^\d+]/g, "").slice(0, 20), disp: idDispositivo() }),
       usuario: "cliente", created_at: ahora, updated_at: ahora,
     };
     fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "return=minimal" }, body: JSON.stringify(fila) })
@@ -139,6 +150,15 @@ export function Opinar() {
         placeholder="¿Algo más que quieras contarnos? (opcional)"
         style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 12, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, resize: "vertical", outline: "none", marginTop: 4 }} />
 
+      <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Tus datos <span style={{ color: "#6E6E6E", fontWeight: 400 }}>(opcional)</span></div>
+        <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Si querés, dejanos tu nombre y tu WhatsApp. Los usamos solo para contactarte por esta opinión.</div>
+        <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre"
+          style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 8 }} />
+        <input value={wsp} onChange={function (e) { setWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)"
+          style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14 }} />
+      </div>
+
       {error && <div style={{ color: "#E0714A", fontSize: 13, marginTop: 10 }}>{error}</div>}
       <button onClick={enviar} disabled={!completas || enviando}
         style={{ width: "100%", marginTop: 14, padding: "15px", borderRadius: 12, border: "none", background: completas ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: completas ? "pointer" : "default" }}>
@@ -165,7 +185,7 @@ async function cargarOpiniones() {
     var x = null;
     try { x = JSON.parse(f.texto); } catch (e) {}
     if (!x || !x.local || !x.notas) return null;
-    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "" };
+    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "", nombre: x.nombre || "", wsp: x.wsp || "", disp: x.disp || "" };
   }).filter(Boolean);
 }
 
@@ -356,12 +376,30 @@ export function PanelCompetencia(props) {
   var [periodo, setPeriodo] = useState(function () { var m = ayerStr().substring(0, 7); return PERIODOS.indexOf(m) !== -1 && TEMPORADA_MESES.indexOf(m) === -1 ? m : (TEMPORADA_MESES.indexOf(m) !== -1 ? "temporada" : MES_PRUEBA); });
   var [filtroLocal, setFiltroLocal] = useState("todos");
 
+  var [celusPersonal, setCelusPersonal] = useState({});   // ID de celular → nombres de quienes lo usan para fichar
   function recargar() { cargarOpiniones().then(setOpiniones); }
-  useEffect(function () { recargar(); cargarEntradas().then(setEntradas); }, []);
+  useEffect(function () {
+    recargar(); cargarEntradas().then(setEntradas);
+    fetch(SURL + "/rest/v1/fichajes?select=empleado_nombre,notas&notas=ilike.*Disp:*&order=momento.desc&limit=5000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      var m = {};
+      if (Array.isArray(d)) d.forEach(function (f) {
+        var x = /Disp:(\w+)/.exec(f.notas || "");
+        if (x && x[1] !== "sinid" && f.empleado_nombre) { var a = m[x[1]] = m[x[1]] || []; if (a.indexOf(f.empleado_nombre) === -1) a.push(f.empleado_nombre); }
+      });
+      setCelusPersonal(m);
+    }).catch(function () {});
+  }, []);
+  function delPersonal(o) { return o.disp ? (celusPersonal[o.disp] || null) : null; }
 
-  var lista = (opiniones || []).filter(function (o) {
+  var listaTodas = (opiniones || []).filter(function (o) {
     return periodo === "temporada" ? TEMPORADA_MESES.indexOf(String(o.fecha).substring(0, 7)) !== -1 : String(o.fecha).substring(0, 7) === periodo;
   });
+  // Las opiniones que salen de un celular que ficha un empleado no cuentan en el ranking.
+  var lista = listaTodas.filter(function (o) { return !delPersonal(o); });
+  var delPersonalN = listaTodas.length - lista.length;
+  // Varias opiniones del mismo celular al mismo local: se avisan para que decidas si se descartan.
+  var repetidas = {};
+  lista.forEach(function (o) { if (o.disp) { var k = o.disp + "|" + o.local; repetidas[k] = (repetidas[k] || 0) + 1; } });
 
   function resumen(localId, canal) {
     var delLocal = lista.filter(function (o) { return o.local === localId && o.canal === canal; });
@@ -395,7 +433,7 @@ export function PanelCompetencia(props) {
   var salon = LOCALES_COMPETENCIA.map(function (id) { return { local: localDe(id), r: resumen(id, "salon") }; });
   var ranking = salon.slice().sort(function (a, b) { return (b.r.general === null ? -1 : b.r.general) - (a.r.general === null ? -1 : a.r.general); });
 
-  var comentarios = lista.filter(function (o) { return (o.comentario || "").trim() && (filtroLocal === "todos" || o.local === filtroLocal); }).slice(0, 40);
+  var comentarios = listaTodas.filter(function (o) { return filtroLocal === "todos" || o.local === filtroLocal; }).slice(0, 80);
 
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
   var sel = { padding: "7px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12 };
@@ -656,13 +694,14 @@ export function PanelCompetencia(props) {
           <div style={{ fontSize: 10.5, color: "#6E6E6E", marginTop: -4 }}>Por ahora el delivery se ve aparte y no entra en el ranking de arriba.</div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0 6px", flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>Comentarios</div>
+            <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>Quién opinó</div>
             <select value={filtroLocal} onChange={function (e) { setFiltroLocal(e.target.value); }} style={sel}>
               <option value="todos">Todos los locales</option>
               {LOCALES_COMPETENCIA.map(function (id) { return <option key={id} value={id}>{localDe(id).nombre}</option>; })}
             </select>
           </div>
-          {comentarios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "8px 0" }}>Todavía no hay comentarios en este período.</div>}
+          {delPersonalN > 0 && <div style={{ fontSize: 11, color: "#B07AE0", marginBottom: 6 }}>👤 {delPersonalN} opinion{delPersonalN === 1 ? "" : "es"} de celulares del personal no cuenta{delPersonalN === 1 ? "" : "n"} en el ranking.</div>}
+          {comentarios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "8px 0" }}>Todavía no hay opiniones en este período.</div>}
           {comentarios.map(function (o) {
             var l = localDe(o.local);
             var prom = promedio(Object.keys(o.notas).map(function (k) { return o.notas[k]; }).filter(function (v) { return v > 0; }));
@@ -678,7 +717,13 @@ export function PanelCompetencia(props) {
                     <button onClick={function () { borrar(o.id); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>
                   </div>
                 </div>
-                <div style={{ fontSize: 13, color: "#E8E8E8", lineHeight: 1.45, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                  <b style={{ fontSize: 13, color: "#F0EDE8" }}>{o.nombre || "Anónimo"}</b>
+                  {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
+                  {delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
+                  {!delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
+                </div>
+                {o.comentario && <div style={{ fontSize: 13, color: "#E8E8E8", lineHeight: 1.45, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
               </div>
             );
           })}

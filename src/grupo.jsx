@@ -11,7 +11,7 @@ var LOCALES_GRUPO = [
   { id: "l2", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", locales: {} };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", locales: {} };
 
 export function urlGrupo() { return URL_PUBLICA + "/?grupo"; }
 function soloDigitos(s) { return String(s || "").replace(/\D/g, ""); }
@@ -20,12 +20,12 @@ function linkWsp(w, texto) {
   return "https://wa.me/" + (n.length <= 10 ? "54" + n : n) + (texto ? "?text=" + encodeURIComponent(texto) : "");
 }
 
-async function cargarConfigGrupo() {
+export async function cargarConfigGrupo() {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", locales: (x && x.locales) || {} };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", locales: (x && x.locales) || {} };
   } catch (e) { return CONFIG_VACIA; }
 }
 async function guardarFila(id, ambito, obj) {
@@ -245,6 +245,8 @@ export function PanelComunidad() {
           <div style={{ marginTop: 10 }}>
             <div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Frase de presentación</div>
             <input value={cfg.frase} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, frase: v }; }); }} placeholder="Tres lugares de Punta Alta, una misma comunidad." style={sel} />
+            <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Invitación que ve quien termina de opinar (qué se lleva si se suma)</div>
+            <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Mensaje al sumarse (ej: un beneficio de bienvenida)</div>
             <input value={cfg.bienvenida} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, bienvenida: v }; }); }} placeholder="Mostrá este mensaje en caja y te regalamos un café." style={sel} />
             {LOCALES_GRUPO.map(function (l) {

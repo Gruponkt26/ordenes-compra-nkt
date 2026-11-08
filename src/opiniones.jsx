@@ -375,6 +375,9 @@ export function PanelCompetencia(props) {
   var [opiniones, setOpiniones] = useState(null);
   var [periodo, setPeriodo] = useState(function () { var m = ayerStr().substring(0, 7); return PERIODOS.indexOf(m) !== -1 && TEMPORADA_MESES.indexOf(m) === -1 ? m : (TEMPORADA_MESES.indexOf(m) !== -1 ? "temporada" : MES_PRUEBA); });
   var [filtroLocal, setFiltroLocal] = useState("todos");
+  var [vistaMes, setVistaMes] = useState(false);   // pantalla aparte: opiniones por mes, como Egresos del mes
+  var [mesVista, setMesVista] = useState(function () { return new Date().toISOString().substring(0, 7); });
+  var [localVista, setLocalVista] = useState("l1");
 
   var [celusPersonal, setCelusPersonal] = useState({});   // ID de celular → nombres de quienes lo usan para fichar
   function recargar() { cargarOpiniones().then(setOpiniones); }
@@ -623,6 +626,7 @@ export function PanelCompetencia(props) {
 
       {tab === "opiniones" && (
         <div>
+          <button onClick={function () { setVistaMes(true); }} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1px solid #D4A01755", background: "#D4A01711", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer", marginBottom: 12 }}>📊 Ver las opiniones mes por mes</button>
           {!props.soloLectura && periodo === MES_PRUEBA && lista.length > 0 && (
             <div style={{ background: "#14100A", border: "1px solid #D4A01755", borderRadius: 12, padding: "10px 13px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12, color: "#D8D8D8", lineHeight: 1.5 }}>Noviembre es el mes de prueba: estas {lista.length} opiniones no suman a la temporada.</div>
@@ -729,6 +733,86 @@ export function PanelCompetencia(props) {
           })}
         </div>
       )}
+
+      {vistaMes && (function () {
+        // Meses con opiniones (más el actual), del más nuevo al más viejo.
+        var meses = {}; meses[new Date().toISOString().substring(0, 7)] = true;
+        (opiniones || []).forEach(function (o) { meses[String(o.fecha).substring(0, 7)] = true; });
+        var listaMeses = Object.keys(meses).sort().reverse();
+        var delMes = (opiniones || []).filter(function (o) { return String(o.fecha).substring(0, 7) === mesVista; });
+        var validas = delMes.filter(function (o) { return !delPersonal(o); });
+        function prom(l) { return promedio(l.map(function (o) { return promedio(Object.keys(o.notas).map(function (k) { return o.notas[k]; }).filter(function (v) { return v > 0; })); }).filter(function (v) { return v !== null; })); }
+        var nomMes = function (m) { var q = m.split("-"); return MESES[parseInt(q[1], 10) - 1] + " " + q[0]; };
+        var delLocalV = delMes.filter(function (o) { return o.local === localVista; }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+        var lv = localDe(localVista) || {};
+        return (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#0A0A0A", zIndex: 999, overflowY: "auto", padding: 16, fontFamily: "'Inter',sans-serif", color: "#F0EDE8" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>⭐ Opiniones del mes</div>
+                <select value={mesVista} onChange={function (e) { setMesVista(e.target.value); }} style={sel}>
+                  {listaMeses.map(function (m) { return <option key={m} value={m}>{nomMes(m)}</option>; })}
+                </select>
+              </div>
+              <button onClick={function () { setVistaMes(false); }} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #333", background: "#111", color: "#F0EDE8", fontSize: 12, cursor: "pointer", fontFamily: "'Inter',sans-serif" }}>✕ Cerrar</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 12 }}>
+              {LOCALES_COMPETENCIA.map(function (id) {
+                var l = localDe(id), v = validas.filter(function (o) { return o.local === id; });
+                var sal = v.filter(function (o) { return o.canal === "salon"; }), del = v.filter(function (o) { return o.canal === "delivery"; });
+                var activo = localVista === id, pr = prom(v);
+                return (
+                  <div key={id} onClick={function () { setLocalVista(id); }} style={{ background: activo ? l.color + "22" : "#111", border: "2px solid " + (activo ? l.color : l.color + "55"), borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}>
+                    <div style={{ fontSize: 12, color: l.color, fontWeight: 700, marginBottom: 3 }}>{l.emoji} {l.nombre}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: l.color, fontFamily: "'Playfair Display',serif" }}>{fmtNota(pr)}</div>
+                    <Estrellas valor={pr} chico />
+                    <div style={{ fontSize: 9.5, color: "#7E7E7E", marginTop: 4, lineHeight: 1.5 }}>{v.length} opinion{v.length === 1 ? "" : "es"} · salón {sal.length}{del.length > 0 ? " · delivery " + del.length : ""}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ maxWidth: 640, margin: "0 auto" }}>
+              <div style={{ background: "#0F0F0F", border: "1px solid " + (lv.color || "#333") + "33", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: lv.color, marginBottom: 8, borderBottom: "1px solid " + (lv.color || "#333") + "22", paddingBottom: 5 }}>{lv.emoji} {lv.nombre} · {nomMes(mesVista)} · {delLocalV.length} opinion{delLocalV.length === 1 ? "" : "es"}</div>
+                {PREGUNTAS.salon.map(function (q) {
+                  var vals = validas.filter(function (o) { return o.local === localVista && o.canal === "salon"; }).map(function (o) { return o.notas[q[0]]; }).filter(function (x) { return x > 0; });
+                  var pq = promedio(vals);
+                  return (
+                    <div key={q[0]} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <div style={{ width: 118, fontSize: 11.5, color: "#B8B8B8" }}>{q[1]}</div>
+                      <div style={{ flex: 1, height: 6, background: "#1A1A1A", borderRadius: 3, overflow: "hidden" }}><div style={{ width: (pq === null ? 0 : (pq / 5) * 100) + "%", height: "100%", background: lv.color }} /></div>
+                      <div style={{ width: 34, textAlign: "right", fontSize: 12, fontWeight: 700 }}>{fmtNota(pq)}</div>
+                    </div>
+                  );
+                })}
+                <div style={{ height: 8 }} />
+                {delLocalV.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "8px 0" }}>No hay opiniones de este local en el mes.</div>}
+                {delLocalV.map(function (o) {
+                  var pm = promedio(Object.keys(o.notas).map(function (k) { return o.notas[k]; }).filter(function (v) { return v > 0; }));
+                  var per = delPersonal(o);
+                  return (
+                    <div key={o.id} style={{ padding: "7px 0", borderTop: "1px solid #161616" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                          <b style={{ fontSize: 12.5 }}>{o.nombre || "Anónimo"}</b>
+                          {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
+                          <span style={{ fontSize: 10, color: "#6E6E6E" }}>{o.canal === "delivery" ? "delivery" : (o.zona === "barra" ? "barra" : o.zona === "mesa" ? "mesa" : "salón")}</span>
+                          {per && <span style={{ fontSize: 10, color: "#B07AE0" }}>👤 personal · no cuenta</span>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                          <Estrellas valor={pm} chico />
+                          <span style={{ fontSize: 10, color: "#6E6E6E" }}>{new Date(o.fecha).toLocaleDateString("es-AR")}</span>
+                        </div>
+                      </div>
+                      {o.comentario && <div style={{ fontSize: 12.5, color: "#E0E0E0", lineHeight: 1.45, marginTop: 3, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {tab === "qr" && <QRParaImprimir />}
     </div>

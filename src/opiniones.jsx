@@ -41,6 +41,21 @@ function idDispositivo() {
   } catch (e) { return ""; }
 }
 
+// Lo que votó en cada pregunta, en chips: "Servicio 5 · Ambiente 4 · …" (rojo si puso 1 o 2).
+function DetalleVotos(props) {
+  var o = props.o;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
+      {PREGUNTAS[o.canal === "delivery" ? "delivery" : "salon"].map(function (q) {
+        var n = o.notas[q[0]];
+        if (!(n > 0)) return null;
+        var col = n <= 2 ? "#E0714A" : n === 3 ? "#D4A017" : "#4C9A5A";
+        return <span key={q[0]} style={{ fontSize: 10.5, color: "#B8B8B8", background: "#161616", border: "1px solid #222", borderRadius: 6, padding: "1px 7px" }}>{q[1]} <b style={{ color: col }}>{n}</b></span>;
+      })}
+    </div>
+  );
+}
+
 function localDe(id) { return LOCALES.find(function (l) { return l.id === id; }); }
 
 export function urlOpinion(local, canal, zona) {
@@ -727,7 +742,8 @@ export function PanelCompetencia(props) {
                   {delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
                   {!delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
                 </div>
-                {o.comentario && <div style={{ fontSize: 13, color: "#E8E8E8", lineHeight: 1.45, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
+                <DetalleVotos o={o} />
+                {o.comentario && <div style={{ fontSize: 13, color: "#E8E8E8", lineHeight: 1.45, marginTop: 5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
               </div>
             );
           })}
@@ -804,7 +820,8 @@ export function PanelCompetencia(props) {
                           <span style={{ fontSize: 10, color: "#6E6E6E" }}>{new Date(o.fecha).toLocaleDateString("es-AR")}</span>
                         </div>
                       </div>
-                      {o.comentario && <div style={{ fontSize: 12.5, color: "#E0E0E0", lineHeight: 1.45, marginTop: 3, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
+                      <DetalleVotos o={o} />
+                      {o.comentario && <div style={{ fontSize: 12.5, color: "#E0E0E0", lineHeight: 1.45, marginTop: 5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
                     </div>
                   );
                 })}

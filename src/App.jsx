@@ -14091,7 +14091,7 @@ function PanelFichajes(p){
   var [mapaDe,setMapaDe]=useState(null);   // la marca cuyo mapa se está viendo
   var [vistaReg,setVistaReg]=useState("movimientos");   // movimientos (entradas | salidas) o detalle por empleado
   var [showManual,setShowManual]=useState(false);
-  var [manual,setManual]=useState({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
+  var [manual,setManual]=useState({empleado_id:"",local:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
   var [showUbic,setShowUbic]=useState(false);
   var [tomando,setTomando]=useState("");
   var localesDatos=p.localesDatos||{};
@@ -14176,14 +14176,14 @@ function PanelFichajes(p){
     var pr=manual.fecha.split("-"), hm=manual.hora.split(":");
     var cuando=new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10),parseInt(hm[0],10),parseInt(hm[1],10),0);
     var fila={id:"f"+cuando.getTime()+"_"+Math.random().toString(36).slice(2,7),
-      empleado_id:emp.id, empleado_nombre:emp.nombre, local:emp.local,
+      empleado_id:emp.id, empleado_nombre:emp.nombre, local:manual.local||emp.local,
       fecha:manual.fecha, hora:manual.hora, tipo:manual.tipo, momento:cuando.toISOString(),
       foto_url:null, cara:null, lat:null, lng:null, aparato:"manual",
-      usuario:p.usuario||"", manual:true, notas:manual.notas||""};
+      usuario:p.usuario||"", manual:true, notas:((manual.local&&manual.local!==emp.local)?"Marcó en "+((getLocal(manual.local)||{}).nombre||manual.local)+" (su local es "+((getLocal(emp.local)||{}).nombre||emp.local)+"). ":"")+(manual.notas||"")};
     var r=await p.onFichar(fila);
     if(!r||!r.ok){ alert((r&&r.error)||"No se pudo guardar la marca."); return; }
     setShowManual(false);
-    setManual({empleado_id:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
+    setManual({empleado_id:"",local:"",tipo:"entrada",fecha:fechaLocal(),hora:horaLocal(),notas:""});
   }
 
   var CAJA={background:"#0A0A0A",border:"1px solid #161616",borderRadius:14,padding:14};
@@ -14609,10 +14609,19 @@ function PanelFichajes(p){
           <div style={{background:"#0C0C0C",border:"1px solid #1E1E1E",borderRadius:16,padding:18,width:"100%",maxWidth:360}}>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>✎ Marca manual</div>
             <div style={{fontSize:11,color:"#8C8C8C",marginBottom:14,lineHeight:1.5}}>Para corregir cuando no anduvo la cámara o alguien se olvidó de marcar. Queda anotada como manual.</div>
-            <select value={manual.empleado_id} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,empleado_id:v};});}} style={{...INP,marginBottom:8}}>
+            <select value={manual.empleado_id} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,empleado_id:v,local:""};});}} style={{...INP,marginBottom:8}}>
               <option value="">— Quién —</option>
               {empleados.filter(function(e){return e.activo!==false;}).map(function(e){return <option key={e.id} value={e.id}>{e.nombre}</option>;})}
             </select>
+            {manual.empleado_id&&(function(){
+              var emp=empleados.find(function(e){return e.id===manual.empleado_id;})||{};
+              return <div style={{marginBottom:8}}>
+                <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>¿En qué local?</div>
+                <select value={manual.local||emp.local||""} onChange={function(e){var v=e.target.value;setManual(function(m){return{...m,local:v};});}} style={INP}>
+                  {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}{l.id===emp.local?" (su local)":""}</option>;})}
+                </select>
+              </div>;
+            })()}
             <div style={{display:"flex",gap:8,marginBottom:8}}>
               {["entrada","salida"].map(function(t){
                 var act=manual.tipo===t, col=t==="entrada"?"#3A7D44":"#C1440E";

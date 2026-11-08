@@ -56,6 +56,22 @@ function DetalleVotos(props) {
   );
 }
 
+// Configuración de las opiniones (link de reseñas de Google por local y premio del sorteo) y sorteos hechos, guardados en la tabla de pautas.
+async function cargarConfigOpiniones() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?id=eq.opinion_config&limit=1", { headers: SH });
+    var d = await r.json();
+    var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
+    return { google: (x && x.google) || {}, premio: (x && x.premio) || "" };
+  } catch (e) { return { google: {}, premio: "" }; }
+}
+async function guardarFilaPauta(id, ambito, obj) {
+  var ahora = new Date().toISOString();
+  var r = await fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: id, ambito: ambito, texto: JSON.stringify(obj), usuario: "opiniones", created_at: ahora, updated_at: ahora }) });
+  return r.ok;
+}
+function linkWsp(w) { var n = String(w || "").replace(/\D/g, ""); return "https://wa.me/" + (n.length <= 10 ? "54" + n : n); }
+
 function localDe(id) { return LOCALES.find(function (l) { return l.id === id; }); }
 
 export function urlOpinion(local, canal, zona) {
@@ -79,6 +95,9 @@ export function Opinar() {
   var [comentario, setComentario] = useState("");
   var [nombre, setNombre] = useState("");
   var [wsp, setWsp] = useState("");
+  var [cfg, setCfg] = useState({ google: {}, premio: "" });
+  var [notaFinal, setNotaFinal] = useState(0);
+  useEffect(function () { cargarConfigOpiniones().then(setCfg); }, []);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
@@ -106,6 +125,12 @@ export function Opinar() {
         <div style={{ fontSize: 14, color: "#9A9A9A", marginTop: 10, lineHeight: 1.6 }}>
           {hecho === "ya" ? "Ya recibimos tu opinión. Podés volver a opinar más tarde." : "Recibimos tu opinión. Nos ayuda a mejorar todos los días."}
         </div>
+        {hecho === "ok" && notaFinal >= 4 && cfg.google[localId] && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13.5, color: "#C8C8C8", lineHeight: 1.5, marginBottom: 10 }}>¡Qué bueno que la pasaste bien! ¿Nos ayudás dejando tu opinión también en Google? Nos suma muchísimo.</div>
+            <a href={cfg.google[localId]} target="_blank" rel="noreferrer" style={{ display: "block", padding: "14px", borderRadius: 12, background: "#fff", color: "#222", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>⭐ Dejar mi reseña en Google</a>
+          </div>
+        )}
         <div style={{ fontSize: 13, color: local.color, marginTop: 18, fontWeight: 700 }}>{local.emoji} {local.nombre}</div>
       </div></div>
     );
@@ -127,6 +152,8 @@ export function Opinar() {
       .then(function (r) {
         if (!r.ok) throw new Error("No se pudo enviar (" + r.status + ")");
         try { localStorage.setItem(claveLS, String(Date.now())); } catch (e) {}
+        var vs = Object.keys(notas).map(function (k) { return notas[k]; }).filter(function (v) { return v > 0; });
+        setNotaFinal(vs.length ? vs.reduce(function (a, b) { return a + b; }, 0) / vs.length : 0);
         setHecho("ok");
       })
       .catch(function () { setError("No pudimos enviar tu opinión. Revisá tu conexión y probá de nuevo."); setEnviando(false); });
@@ -167,7 +194,7 @@ export function Opinar() {
 
       <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Tus datos <span style={{ color: "#6E6E6E", fontWeight: 400 }}>(opcional)</span></div>
-        <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Si querés, dejanos tu nombre y tu WhatsApp. Los usamos solo para contactarte por esta opinión.</div>
+        <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Si querés, dejanos tu nombre y tu WhatsApp. Los usamos solo para contactarte por esta opinión.{cfg.premio ? " 🎁 Si los dejás, participás del sorteo del mes: " + cfg.premio + "." : ""}</div>
         <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre"
           style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 8 }} />
         <input value={wsp} onChange={function (e) { setWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)"
@@ -393,7 +420,28 @@ export function PanelCompetencia(props) {
   var [vistaMes, setVistaMes] = useState(false);   // pantalla aparte: opiniones por mes, como Egresos del mes
   var [mesVista, setMesVista] = useState(function () { return new Date().toISOString().substring(0, 7); });
   var [localVista, setLocalVista] = useState("l1");
+  var [cfgPanel, setCfgPanel] = useState({ google: {}, premio: "" });
+  var [verCfg, setVerCfg] = useState(false);
+  var [sorteos, setSorteos] = useState({});   // mes → ganador
+  var [msgCfg, setMsgCfg] = useState("");
 
+  useEffect(function () {
+    cargarConfigOpiniones().then(setCfgPanel);
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.opinion_sorteo&limit=100", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      var m = {}; if (Array.isArray(d)) d.forEach(function (f) { try { var x = JSON.parse(f.texto); if (x && x.mes) m[x.mes] = x; } catch (e) {} });
+      setSorteos(m);
+    }).catch(function () {});
+  }, []);
+  function guardarCfg() {
+    guardarFilaPauta("opinion_config", "opinion_config", cfgPanel).then(function (ok) { setMsgCfg(ok ? "✓ Guardado" : "No se pudo guardar"); setTimeout(function () { setMsgCfg(""); }, 2500); });
+  }
+  function sortear(mes, participantes) {
+    if (participantes.length === 0) return;
+    if (sorteos[mes] && !window.confirm("Ya hay un ganador de este mes (" + sorteos[mes].nombre + "). ¿Sortear de nuevo?")) return;
+    var g = participantes[Math.floor(Math.random() * participantes.length)];
+    var obj = { mes: mes, id: g.id, nombre: g.nombre, wsp: g.wsp, local: g.local, premio: cfgPanel.premio || "", fecha: new Date().toISOString(), participantes: participantes.length };
+    guardarFilaPauta("opinion_sorteo_" + mes, "opinion_sorteo", obj).then(function (ok) { if (ok) setSorteos(function (p) { var n = { ...p }; n[mes] = obj; return n; }); else window.alert("No se pudo guardar el sorteo."); });
+  }
   var [celusPersonal, setCelusPersonal] = useState({});   // ID de celular → nombres de quienes lo usan para fichar
   function recargar() { cargarOpiniones().then(setOpiniones); }
   useEffect(function () {
@@ -641,6 +689,24 @@ export function PanelCompetencia(props) {
 
       {tab === "opiniones" && (
         <div>
+          {!props.soloLectura && (
+            <div style={{ background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 12, padding: "10px 13px", marginBottom: 12 }}>
+              <div onClick={function () { setVerCfg(!verCfg); }} style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 800, color: "#D8D8D8" }}>{verCfg ? "▾" : "▸"} ⚙️ Reseñas de Google y sorteo</div>
+              {verCfg && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Pegá el enlace de reseñas de Google de cada local. Se le ofrece al cliente que puso 4 o 5 estrellas. Si lo dejás vacío, no se muestra.</div>
+                  {LOCALES_COMPETENCIA.map(function (id) {
+                    var l = localDe(id);
+                    return <input key={id} value={cfgPanel.google[id] || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { var g = { ...c.google }; g[id] = v.trim(); return { ...c, google: g }; }); }} placeholder={"Enlace de Google de " + l.nombre} style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 6 }} />;
+                  })}
+                  <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, margin: "6px 0" }}>Premio del sorteo mensual (se muestra a quien deja nombre y WhatsApp). Vacío = sin sorteo.</div>
+                  <input value={cfgPanel.premio || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { return { ...c, premio: v }; }); }} placeholder="Ej: una cena para dos" style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+                  <button onClick={guardarCfg} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Guardar</button>
+                  {msgCfg && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgCfg}</span>}
+                </div>
+              )}
+            </div>
+          )}
           <button onClick={function () { setVistaMes(true); }} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1px solid #D4A01755", background: "#D4A01711", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer", marginBottom: 12 }}>📊 Ver las opiniones mes por mes</button>
           {!props.soloLectura && periodo === MES_PRUEBA && lista.length > 0 && (
             <div style={{ background: "#14100A", border: "1px solid #D4A01755", borderRadius: 12, padding: "10px 13px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -787,6 +853,19 @@ export function PanelCompetencia(props) {
                 );
               })}
             </div>
+            {(function () {
+              var vistos = {};
+              var part = validas.filter(function (o) { var w = String(o.wsp || "").replace(/\D/g, ""); if (!o.nombre || w.length < 8 || vistos[w]) return false; vistos[w] = true; return true; });
+              var gan = sorteos[mesVista];
+              return (
+                <div style={{ maxWidth: 640, margin: "0 auto 12px", background: "#14100A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: "#D4A017" }}>🎁 Sorteo de {nomMes(mesVista)}{cfgPanel.premio ? " · " + cfgPanel.premio : ""}</div>
+                  <div style={{ fontSize: 11, color: "#9A9A9A", margin: "3px 0 8px", lineHeight: 1.5 }}>Participan quienes dejaron nombre y WhatsApp en el mes (una vez por número; no cuentan las del personal). Hay {part.length} participante{part.length === 1 ? "" : "s"}.</div>
+                  {gan && <div style={{ fontSize: 13, marginBottom: 8 }}>🏆 Ganó <b>{gan.nombre}</b> · <a href={linkWsp(gan.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none" }}>💬 {gan.wsp}</a> <span style={{ color: "#6E6E6E", fontSize: 10.5 }}>({(localDe(gan.local) || {}).nombre} · sorteado el {new Date(gan.fecha).toLocaleDateString("es-AR")})</span></div>}
+                  {!props.soloLectura && <button onClick={function () { sortear(mesVista, part); }} disabled={part.length === 0} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: part.length ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: part.length ? "pointer" : "default" }}>{gan ? "🎲 Sortear de nuevo" : "🎲 Sortear ahora"}</button>}
+                </div>
+              );
+            })()}
             <div style={{ maxWidth: 640, margin: "0 auto" }}>
               <div style={{ background: "#0F0F0F", border: "1px solid " + (lv.color || "#333") + "33", borderRadius: 10, padding: "10px 12px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: lv.color, marginBottom: 8, borderBottom: "1px solid " + (lv.color || "#333") + "22", paddingBottom: 5 }}>{lv.emoji} {lv.nombre} · {nomMes(mesVista)} · {delLocalV.length} opinion{delLocalV.length === 1 ? "" : "es"}</div>

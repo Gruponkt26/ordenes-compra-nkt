@@ -10345,6 +10345,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [form,setForm]=useState({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
   var [pagosEgreso,setPagosEgreso]=useState([{medio:"",monto:""}]);
   var [esDeuda,setEsDeuda]=useState(false);
+  var [mesSueldoF,setMesSueldoF]=useState("");   // en un egreso de Sueldos: de qué mes es el sueldo que se está pagando
   var admiteDeuda=AREAS_CON_DEUDA.indexOf(area)!==-1;
   // Cargos del banco en un solo paso: comisión con su IVA, percepción de IVA e IIBB.
   var [banco,setBanco]=useState(null);
@@ -10512,7 +10513,14 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     // La marca de deuda va en cada pago; si no corresponde, se saca.
     pagosValidos=pagosValidos.map(function(p){var q={...p};if(admiteDeuda&&esDeuda)q.deuda=true;else delete q.deuda;return q;});
     var fpLegacy=pagosValidos[0]?pagosValidos[0].medio:form.forma_pago;
-    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:form.subramo||"",detalle:form.detalle||"",monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
+    // Egreso de Sueldos con el mes al que corresponde: si se paga después del mes normal, lleva la aclaración de pago atrasado.
+    var subramoG=form.subramo||"", detalleG=form.detalle||"";
+    if(area==="Sueldos"&&mesSueldoF){
+      detalleG=detalleG.replace(/PAGO DE SUELDO ATRASADO:[^)]*\)\.\s*/g,"");
+      detalleG=notaSueldoAtrasado(mesSueldoF,form.fecha,/aguinaldo/i.test(subramoG))+detalleG;
+      if(!subramoG)subramoG="Sueldo "+mesSueldoF;
+    }
+    var g={id:editId||String(Date.now()),local:form.local,concepto:form.concepto.trim(),subramo:subramoG,detalle:detalleG,monto:parseFloat(form.monto),forma_pago:fpLegacy,facturado:form.facturado,facturacion:form.facturado?form.facturacion:"",categoria:area,area:area,notas:form.notas,fecha:form.fecha,usuario:usuario,created_at:new Date().toISOString(),pagos:pagosValidos};
     onSave(g);
     var pi=parseFloat(String(percIvaF).replace(",",".")), pb=parseFloat(String(percIibbF).replace(",","."));
     if(g.facturado){
@@ -10536,10 +10544,11 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
     setPercIvaF(""); setPercIibbF("");
     setForm({local:"l1",concepto:"",subramo:"",detalle:"",monto:"",forma_pago:"Caja Mayor - Bodegón",notas:"",fecha:hoy,facturado:false,facturacion:""});
     setPagosEgreso([{medio:"",monto:""}]);
-    setEsDeuda(false);
+    setEsDeuda(false); setMesSueldoF("");
     setEditId(null);setShowForm(false);
   }
   function abrirEditar(g){
+    var mS=/(?:Sueldo|sueldo)\s+(\d{4}-\d{2})/.exec(String(g.subramo||"")); setMesSueldoF(mS?mS[1]:"");
     setOcNum(OC_EGRESOS[g.id]||"");
     setFechaFactF(FECHAS_FACTURA[g.id]||"");
     setTipoFact("auto");
@@ -10762,6 +10771,14 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
               <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Orden de compra número (opcional)</label>
               <input value={ocNum} onChange={function(e){setOcNum(e.target.value);}} placeholder="Ej: 1234" style={INP}/>
             </div>
+
+            {area==="Sueldos"&&(
+              <div style={{marginBottom:10,background:"#0A0F0A",border:"1px solid #4CAF5033",borderRadius:9,padding:"9px 11px"}}>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Sueldo del mes de… (opcional)</label>
+                <input type="month" value={mesSueldoF} onChange={function(e){setMesSueldoF(e.target.value);}} style={INP}/>
+                <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Si lo pagás después del mes siguiente (por ejemplo, el sueldo de octubre pagado en diciembre), el egreso queda aclarado como «pago de sueldo atrasado» con el mes al que corresponde.</div>
+              </div>
+            )}
 
             {/* Detalle de productos */}
             <div style={{marginBottom:10}}>

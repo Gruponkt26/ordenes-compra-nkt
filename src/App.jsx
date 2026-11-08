@@ -11131,6 +11131,25 @@ function PanelEgresos(p){
                               </div>
                             );
                           })}
+                          {gl.filter(function(g){
+                            if(!((g.area==="Sueldos"||g.categoria==="Sueldos")&&!esEgresoDeVenc(g)))return false;
+                            if(g.subramo&&g.subramo.startsWith("Aguinaldo"))return false;
+                            if(String(g.subramo||"").indexOf("Oficina")!==-1)return false;
+                            // Los que vienen de un sueldo de la lista de abajo ya figuran ahí.
+                            var idg=String(g.id);
+                            return !(p.sueldos||[]).some(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(idg==="egr_sueldo_"+s.id||idg.indexOf("egr_sueldo_"+s.id+"_")===0);});
+                          }).map(function(g){
+                            var medioG=(Array.isArray(g.pagos)&&g.pagos.length>0)?g.pagos.map(function(pg){return pg.medio||pg.tipo||"";}).filter(Boolean).join(" + "):(g.forma_pago||"");
+                            return(
+                              <div key={g.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
+                                <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                                  <span style={{color:"#888"}}>👥 {g.concepto}{g.subramo?" · "+g.subramo:""} <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}{medioG?" · "+medioG:""}</span></span>
+                                  <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
+                                </div>
+                                {g.detalle&&<div style={{fontSize:9,color:"#6E6E6E",paddingLeft:14}}>{g.detalle}</div>}
+                              </div>
+                            );
+                          })}
                           {(p.sueldos||[]).filter(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(!s.concepto_extra||s.concepto_extra==="null"||s.concepto_extra==="")&&!sueldoRepartidoEnLocales(s,gastos);}).map(function(s){
                             var est=s.estado==="pagado"?"✅":s.estado==="parcial"?"🔸":"⏳";
                             var esMixto=s.convenio==="mixto"&&(s.monto_convenio>0||s.monto_sin_convenio>0);

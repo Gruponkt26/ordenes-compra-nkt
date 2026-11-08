@@ -11163,7 +11163,13 @@ function PanelEgresos(p){
                                   <span style={{color:"#888"}}>👥 {g.concepto}{g.subramo?" · "+g.subramo:""} <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}{medioG?" · "+medioG:""}</span></span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
                                 </div>
-                                {g.detalle&&<div style={{fontSize:9,color:"#6E6E6E",paddingLeft:14}}>{g.detalle}</div>}
+                                {(function(){
+                                  // Si el pago es posterior al mes normal y el detalle todavía no lo aclara, se calcula acá (sirve para lo ya cargado).
+                                  var mS=/(?:Sueldo|sueldo)\s+(\d{4}-\d{2})/.exec(String(g.subramo||""));
+                                  var nota=(mS&&!/PAGO DE SUELDO ATRASADO/.test(g.detalle||""))?notaSueldoAtrasado(mS[1],g.fecha,false):"";
+                                  var txt=(nota+(g.detalle||"")).trim();
+                                  return txt?<div style={{fontSize:9,color:nota||/PAGO DE SUELDO ATRASADO/.test(txt)?"#E07B00":"#6E6E6E",paddingLeft:14}}>{txt}</div>:null;
+                                })()}
                               </div>
                             );
                           })}

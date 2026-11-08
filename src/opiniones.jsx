@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, cargarConfigGrupo } from "./grupo.jsx";
+import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -99,8 +99,12 @@ export function Opinar() {
   var [cfg, setCfg] = useState({ google: {}, premio: "" });
   var [notaFinal, setNotaFinal] = useState(0);
   var [gancho, setGancho] = useState("");
+  var [cfgGrupo, setCfgGrupo] = useState(null);
+  var [aceptaCom, setAceptaCom] = useState(false);
+  var [sumando, setSumando] = useState(false);
+  var [cuponNuevo, setCuponNuevo] = useState(null);
   var yaEsParte = (function () { try { return !!localStorage.getItem("nkt_comunidad"); } catch (e) { return false; } })();
-  useEffect(function () { cargarConfigOpiniones().then(setCfg); cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); }); }, []);
+  useEffect(function () { cargarConfigOpiniones().then(setCfg); cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); setCfgGrupo(c); }); }, []);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
@@ -134,7 +138,30 @@ export function Opinar() {
             <a href={cfg.google[localId]} target="_blank" rel="noreferrer" style={{ display: "block", padding: "14px", borderRadius: 12, background: "#fff", color: "#222", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>⭐ Dejar mi reseña en Google</a>
           </div>
         )}
-        {!yaEsParte && (
+        {hecho === "ok" && cuponNuevo && (
+          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>🎉 ¡Ya sos parte de la comunidad Grupo Nkt!</div>
+            {!cuponNuevo.sinCupon && <TarjetaCupon cupon={cuponNuevo} />}
+          </div>
+        )}
+        {hecho === "ok" && !cuponNuevo && !yaEsParte && nombre.trim() && wsp.replace(/\D/g, "").length >= 8 && cfgGrupo && (
+          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px", textAlign: "left" }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad Grupo Nkt</div>
+            <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "6px 0 10px", textAlign: "center" }}>{gancho || "Recibí un cupón de " + (cfgGrupo.cuponPct || 10) + "% de descuento y enterate primero de las novedades."}</div>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "#9A9A9A", lineHeight: 1.5, marginBottom: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={aceptaCom} onChange={function (e) { setAceptaCom(e.target.checked); }} style={{ marginTop: 2 }} />
+              <span>Acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</span>
+            </label>
+            <button disabled={!aceptaCom || sumando} onClick={function () {
+              setSumando(true);
+              sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/\D/g, "").slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString() }, cfgGrupo).then(function (c) {
+                setSumando(false);
+                if (c) setCuponNuevo(c); else window.alert("No pudimos sumarte. Probá de nuevo.");
+              });
+            }} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: aceptaCom ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{sumando ? "Sumándote…" : "Sumarme con estos datos"}</button>
+          </div>
+        )}
+        {!yaEsParte && !cuponNuevo && !(hecho === "ok" && nombre.trim() && wsp.replace(/\D/g, "").length >= 8) && (
           <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" }}>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>Sumate a la comunidad Grupo Nkt</div>
             <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "6px 0 12px" }}>{gancho || "Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios."}</div>

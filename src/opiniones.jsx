@@ -91,6 +91,7 @@ export function Opinar() {
   var valido = !!local && LOCALES_COMPETENCIA.indexOf(localId) !== -1;
   var preguntas = PREGUNTAS[canal];
   var claveLS = "opinion_" + localId + "_" + canal;
+  var modoPrueba = params.has("prueba");   // enlace de prueba: sin el límite de 6 horas y la opinión no cuenta en el ranking
 
   var [notas, setNotas] = useState({});
   var [comentario, setComentario] = useState("");
@@ -108,6 +109,7 @@ export function Opinar() {
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
+    if (modoPrueba) return "";
     try {
       var t = parseInt(localStorage.getItem(claveLS) || "0", 10);
       return t > 0 && Date.now() - t < HORAS_ENTRE_OPINIONES * 3600 * 1000 ? "ya" : "";
@@ -182,7 +184,7 @@ export function Opinar() {
     var fila = {
       id: "op_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       ambito: "opinion",
-      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600), nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/[^\d+]/g, "").slice(0, 20), disp: idDispositivo() }),
+      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600), nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/[^\d+]/g, "").slice(0, 20), disp: idDispositivo(), prueba: modoPrueba ? 1 : 0 }),
       usuario: "cliente", created_at: ahora, updated_at: ahora,
     };
     fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "return=minimal" }, body: JSON.stringify(fila) })
@@ -266,7 +268,7 @@ async function cargarOpiniones() {
     var x = null;
     try { x = JSON.parse(f.texto); } catch (e) {}
     if (!x || !x.local || !x.notas) return null;
-    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "", nombre: x.nombre || "", wsp: x.wsp || "", disp: x.disp || "" };
+    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "", nombre: x.nombre || "", wsp: x.wsp || "", disp: x.disp || "", prueba: !!x.prueba };
   }).filter(Boolean);
 }
 
@@ -500,7 +502,7 @@ export function PanelCompetencia(props) {
     return periodo === "temporada" ? TEMPORADA_MESES.indexOf(String(o.fecha).substring(0, 7)) !== -1 : String(o.fecha).substring(0, 7) === periodo;
   });
   // Las opiniones que salen de un celular que ficha un empleado no cuentan en el ranking.
-  var lista = listaTodas.filter(function (o) { return !delPersonal(o); });
+  var lista = listaTodas.filter(function (o) { return !delPersonal(o) && !o.prueba; });
   var delPersonalN = listaTodas.length - lista.length;
   // Varias opiniones del mismo celular al mismo local: se avisan para que decidas si se descartan.
   var repetidas = {};
@@ -844,6 +846,7 @@ export function PanelCompetencia(props) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                   <b style={{ fontSize: 13, color: "#F0EDE8" }}>{o.nombre || "Anónimo"}</b>
                   {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
+                  {o.prueba && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>🧪 de prueba · no cuenta</span>}
                   {delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
                   {!delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
                 </div>
@@ -861,7 +864,7 @@ export function PanelCompetencia(props) {
         (opiniones || []).forEach(function (o) { meses[String(o.fecha).substring(0, 7)] = true; });
         var listaMeses = Object.keys(meses).sort().reverse();
         var delMes = (opiniones || []).filter(function (o) { return String(o.fecha).substring(0, 7) === mesVista; });
-        var validas = delMes.filter(function (o) { return !delPersonal(o); });
+        var validas = delMes.filter(function (o) { return !delPersonal(o) && !o.prueba; });
         function prom(l) { return promedio(l.map(function (o) { return promedio(Object.keys(o.notas).map(function (k) { return o.notas[k]; }).filter(function (v) { return v > 0; })); }).filter(function (v) { return v !== null; })); }
         var nomMes = function (m) { var q = m.split("-"); return MESES[parseInt(q[1], 10) - 1] + " " + q[0]; };
         var delLocalV = delMes.filter(function (o) { return o.local === localVista; }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
@@ -932,6 +935,7 @@ export function PanelCompetencia(props) {
                           {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
                           <span style={{ fontSize: 10, color: "#6E6E6E" }}>{o.canal === "delivery" ? "delivery" : (o.zona === "barra" ? "barra" : o.zona === "mesa" ? "mesa" : "salón")}</span>
                           {per && <span style={{ fontSize: 10, color: "#B07AE0" }}>👤 personal · no cuenta</span>}
+                          {o.prueba && <span style={{ fontSize: 10, color: "#E0914A" }}>🧪 de prueba · no cuenta</span>}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
                           <Estrellas valor={pm} chico />

@@ -111,6 +111,11 @@ export function GrupoNkt() {
 
   useEffect(function () {
     document.title = "GrupoNkt";
+    // Al agregarla al inicio, el celular instala "Grupo Nkt" (no la app de gestión) y la abre siempre en esta página.
+    try {
+      var lm = document.querySelector('link[rel="manifest"]'); if (lm) lm.setAttribute("href", "/manifest-grupo.json");
+      var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (mt) mt.setAttribute("content", "Grupo Nkt");
+    } catch (e) {}
     cargarConfigGrupo().then(setCfg);
     var cg = ""; try { cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
@@ -152,7 +157,7 @@ export function GrupoNkt() {
   return (
     <div style={fondo}><div style={caja}>
       <div style={{ textAlign: "center", marginBottom: 22 }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 34, fontWeight: 800, letterSpacing: 0.5 }}>Grupo Nkt</div>
+        <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
       </div>
 
@@ -225,7 +230,9 @@ export function GrupoNkt() {
       <div style={{ textAlign: "center", marginTop: 18 }}>
         {instalar
           ? <button onClick={function () { instalar.prompt(); }} style={{ ...boton, display: "inline-block", padding: "11px 18px" }}>📲 Agregar Grupo Nkt a mi inicio</button>
-          : <div style={{ fontSize: 11.5, color: "#6E6E6E", lineHeight: 1.6 }}>Para tenerla a mano: en el menú del navegador tocá «Agregar a pantalla de inicio».</div>}
+          : (/iPhone|iPad|iPod/i.test(navigator.userAgent)
+            ? <div style={{ fontSize: 12, color: "#9A9A9A", lineHeight: 1.7, background: "#111", border: "1px solid #222", borderRadius: 12, padding: "10px 12px" }}>📲 Para tenerla como app en tu iPhone: tocá <b>Compartir</b> (el cuadrado con la flecha) y después <b>«Agregar a pantalla de inicio»</b>.</div>
+            : <div style={{ fontSize: 11.5, color: "#6E6E6E", lineHeight: 1.6 }}>Para tenerla a mano: en el menú del navegador tocá «Agregar a pantalla de inicio».</div>)}
       </div>
     </div></div>
   );

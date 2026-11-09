@@ -102,6 +102,7 @@ export function Opinar() {
   var [gancho, setGancho] = useState("");
   var [cfgGrupo, setCfgGrupo] = useState(null);
   var [aceptaCom, setAceptaCom] = useState(false);
+  var [quieroCom, setQuieroCom] = useState(false);   // casilla del formulario: sumarse a la comunidad al enviar
   var [sumando, setSumando] = useState(false);
   var [cuponNuevo, setCuponNuevo] = useState(null);
   var [yaEsParte, setYaEsParte] = useState(false);   // se confirma en la base con el WhatsApp que dejó, no con lo que recuerda el celular
@@ -179,6 +180,7 @@ export function Opinar() {
 
   function enviar() {
     if (!completas || enviando) return;
+    if (quieroCom && (!nombre.trim() || wsp.replace(/\D/g, "").length < 8)) { setError("Para sumarte a la comunidad escribí tu nombre y tu WhatsApp."); return; }
     setEnviando(true); setError("");
     var ahora = new Date().toISOString();
     var fila = {
@@ -194,6 +196,13 @@ export function Opinar() {
         var vs = Object.keys(notas).map(function (k) { return notas[k]; }).filter(function (v) { return v > 0; });
         setNotaFinal(vs.length ? vs.reduce(function (a, b) { return a + b; }, 0) / vs.length : 0);
         var wd = wsp.replace(/\D/g, "");
+        if (quieroCom && wd.length >= 8 && nombre.trim()) {
+          // Aceptó en el formulario: queda anotado en la comunidad y ve su cupón en la pantalla de gracias.
+          (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) {
+            return sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wd.slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString() }, cg);
+          }).then(function (c) { if (c) setCuponNuevo(c); setHecho("ok"); });
+          return;
+        }
         if (wd.length >= 8) leerPauta("com_" + wd).then(function (m) { if (m) setYaEsParte(true); });
         setHecho("ok");
       })
@@ -240,6 +249,10 @@ export function Opinar() {
           style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 8 }} />
         <input value={wsp} onChange={function (e) { setWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)"
           style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14 }} />
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, marginTop: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={quieroCom} onChange={function (e) { setQuieroCom(e.target.checked); }} style={{ marginTop: 2 }} />
+          <span>Quiero sumarme a la comunidad <b>Grupo Nkt</b> y recibir mi <b>cupón de descuento</b>. Acepto que me escriban por WhatsApp con novedades y beneficios; puedo pedir que me saquen cuando quiera.</span>
+        </label>
       </div>
 
       {error && <div style={{ color: "#E0714A", fontSize: 13, marginTop: 10 }}>{error}</div>}

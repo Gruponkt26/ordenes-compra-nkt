@@ -7569,7 +7569,7 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     setModalPl(pl);
     // Cada pago es nuevo (los anteriores se ven en la lista y no se pisan), en la Oficina y en todos los locales.
     if(pl.local==="l4"){
-      setModalForm({estado:"parcial",monto_parcial:"",pagos:[{medio:"",monto:""}],notas:"",fecha_pago:hoy,ahoraOf:{},mediosOf:{},pagaOf:{}});
+      setModalForm({estado:"parcial",monto_parcial:"",pagos:[{medio:"",monto:""}],notas:"",fecha_pago:hoy,ahoraOf:{},mediosOf:{},pagaOf:{},extraOf:{}});
       setShowModal(true);
       return;
     }
@@ -7633,15 +7633,27 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     // seguían poniendo su parte y la suma nunca daba, aunque el local "no hubiese puesto nada").
     var algunoEscrito=["l1","l3","l2"].some(function(k){return pagaOf[k]!==undefined&&pagaOf[k]!=="";});
     function paga(lid,share){ var v=pagaOf[lid]; if(v===undefined||v==="")return algunoEscrito?0:share; return parseFloat(v)||0; }
+    // Cada local puede pagar su parte con varios medios: el principal se queda con lo que no cubren los demás.
+    var extraOf=modalForm.extraOf||{};
+    function extrasDe(lid){ return (extraOf[lid]||[]); }
+    function sumaExtras(lid){ return extrasDe(lid).reduce(function(a,e){return a+(parseFloat(e.monto)||0);},0); }
     return [
-      {local:"l1",nombre:"Bodegón",pct:50,monto:bod,paga:paga("l1",bod),medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1},
-      {local:"l3",nombre:"Colantonio's",pct:30,monto:col,paga:paga("l3",col),medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3},
-      {local:"l2",nombre:"Kusama",pct:20,monto:kus,paga:paga("l2",kus),medio:medios.l2||CAJA_MAYOR_POR_LOCAL.l2}
+      {local:"l1",nombre:"Bodegón",pct:50,monto:bod,paga:paga("l1",bod),medio:medios.l1||CAJA_MAYOR_POR_LOCAL.l1,extras:extrasDe("l1"),sumaExtras:sumaExtras("l1")},
+      {local:"l3",nombre:"Colantonio's",pct:30,monto:col,paga:paga("l3",col),medio:medios.l3||CAJA_MAYOR_POR_LOCAL.l3,extras:extrasDe("l3"),sumaExtras:sumaExtras("l3")},
+      {local:"l2",nombre:"Kusama",pct:20,monto:kus,paga:paga("l2",kus),medio:medios.l2||CAJA_MAYOR_POR_LOCAL.l2,extras:extrasDe("l2"),sumaExtras:sumaExtras("l2")}
     ];
   }
   function sumaPagaOficina(){ return partesOficinaModal().reduce(function(a,x){return a+x.paga;},0); }
   function pagosModal(){
-    if(esOficinaModal())return partesOficinaModal().filter(function(x){return x.paga>0;}).map(function(x){return {medio:x.medio,monto:x.paga};});
+    if(esOficinaModal()){
+      var out=[];
+      partesOficinaModal().filter(function(x){return x.paga>0;}).forEach(function(x){
+        var princ=Math.max(0,x.paga-x.sumaExtras);
+        if(princ>0)out.push({medio:x.medio,monto:princ});
+        x.extras.forEach(function(e){ var m=parseFloat(e.monto)||0; if(e.medio&&m>0)out.push({medio:e.medio,monto:m}); });
+      });
+      return out;
+    }
     var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
     // Con un solo medio, todo el pago sale de ese medio (el monto escrito en el medio no cuenta).
     if(filas.length===1)return [{medio:filas[0].medio,monto:netoModal()}];
@@ -8169,6 +8181,20 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
                           <select value={x.medio} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.mediosOf||{})};m[x.local]=v;return{...f,mediosOf:m};});}} style={{...INP,marginTop:4,fontSize:11}}>
                             {opcionesMedios(x.local)}
                           </select>
+                          {x.extras.length>0&&<div style={{fontSize:10,color:"#8C8C8C",margin:"3px 0 2px"}}>El medio de arriba paga {fmt(Math.max(0,x.paga-x.sumaExtras))}{x.sumaExtras>x.paga+0.5?" · ⚠️ los otros medios suman más que lo que pone este local":""}</div>}
+                          {x.extras.map(function(ex,ei){
+                            return(
+                              <div key={ei} style={{display:"flex",gap:6,marginTop:4,alignItems:"center"}}>
+                                <select value={ex.medio||""} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.extraOf||{})};m[x.local]=(m[x.local]||[]).map(function(q,j){return j===ei?{...q,medio:v}:q;});return{...f,extraOf:m};});}} style={{...INP,fontSize:11}}>
+                                  <option value="">-- Otro medio --</option>
+                                  {opcionesMedios(x.local)}
+                                </select>
+                                <input type="number" placeholder="Monto" value={ex.monto||""} onChange={function(e){var v=e.target.value;setModalForm(function(f){var m={...(f.extraOf||{})};m[x.local]=(m[x.local]||[]).map(function(q,j){return j===ei?{...q,monto:v}:q;});return{...f,extraOf:m};});}} style={{...INP,width:90,flex:"none"}}/>
+                                <button onClick={function(){setModalForm(function(f){var m={...(f.extraOf||{})};m[x.local]=(m[x.local]||[]).filter(function(_,j){return j!==ei;});return{...f,extraOf:m};});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>
+                              </div>
+                            );
+                          })}
+                          <button onClick={function(){setModalForm(function(f){var m={...(f.extraOf||{})};m[x.local]=(m[x.local]||[]).concat([{medio:"",monto:""}]);return{...f,extraOf:m};});}} style={{fontSize:10.5,color:"#4CAF50",background:"none",border:"1px solid #4CAF5044",borderRadius:6,padding:"3px 9px",cursor:"pointer",marginTop:5}}>+ Otro medio para {x.nombre}</button>
                         </div>
                       );
                     })}

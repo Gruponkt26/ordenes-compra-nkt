@@ -7644,14 +7644,21 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     ];
   }
   function sumaPagaOficina(){ return partesOficinaModal().reduce(function(a,x){return a+x.paga;},0); }
+  // Los medios de cada local tal como se cargaron: el principal (lo que no cubren los extras) y los extras.
+  function pagosOficinaPorLocal(){
+    var r={l1:[],l3:[],l2:[]};
+    partesOficinaModal().filter(function(x){return x.paga>0;}).forEach(function(x){
+      var princ=Math.max(0,x.paga-x.sumaExtras);
+      if(princ>0)r[x.local].push({medio:x.medio,monto:princ});
+      x.extras.forEach(function(e){ var m=parseFloat(e.monto)||0; if(e.medio&&m>0)r[x.local].push({medio:e.medio,monto:m}); });
+    });
+    return r;
+  }
+  function hayMediosExtraOficina(){ return partesOficinaModal().some(function(x){return x.extras.some(function(e){return e.medio&&(parseFloat(e.monto)||0)>0;});}); }
   function pagosModal(){
     if(esOficinaModal()){
-      var out=[];
-      partesOficinaModal().filter(function(x){return x.paga>0;}).forEach(function(x){
-        var princ=Math.max(0,x.paga-x.sumaExtras);
-        if(princ>0)out.push({medio:x.medio,monto:princ});
-        x.extras.forEach(function(e){ var m=parseFloat(e.monto)||0; if(e.medio&&m>0)out.push({medio:e.medio,monto:m}); });
-      });
+      var porL=pagosOficinaPorLocal(), out=[];
+      ["l1","l3","l2"].forEach(function(k){ out=out.concat(porL[k]); });
       return out;
     }
     var filas=(modalForm.pagos||[]).filter(function(pg){return pg.medio;});
@@ -7736,6 +7743,14 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     var res=resumenSueldoOf(modalPl), rec=res.rec;
     var T=mpModal();
     if(T<=0){alert("Escribí cuánto pone cada local en este pago.");return;}
+    // Los "otros medios" tienen que estar completos y no pasar de lo que pone el local: si no, se perdería parte del pago sin avisar.
+    var partesCh=partesOficinaModal();
+    for(var ci=0;ci<partesCh.length;ci++){
+      var pc=partesCh[ci];
+      var inc=pc.extras.filter(function(e){var m=parseFloat(e.monto)||0; return (e.medio&&!(m>0))||(!e.medio&&m>0)||(!e.medio&&!(m>0));});
+      if(inc.length>0){alert("En "+pc.nombre+" hay un «otro medio» incompleto: poné el medio y el monto, o quitalo con la ✕.");return;}
+      if(pc.sumaExtras>pc.paga+0.5){alert("En "+pc.nombre+" los otros medios ("+fmt(pc.sumaExtras)+") suman más que lo que pone ese local ("+fmt(pc.paga)+").");return;}
+    }
     var pagosValidos=pagosModal();
     if(pagosValidos.length===0){alert("Elegí el medio de pago de cada local.");return;}
     if(T>res.falta+0.5&&!window.confirm("Este pago ("+fmt(T)+") es más de lo que falta pagar ("+fmt(res.falta)+").\n\n¿Lo cargo igual?"))return;
@@ -7761,6 +7776,12 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
     };
     if(onSaveSueldo)onSaveSueldo(s);
     var rep=repartirSueldoOficina(pagosValidos,{l1:ahoraDe("l1"),l3:ahoraDe("l3"),l2:ahoraDe("l2")});
+    // Con varios medios por local, cada egreso lleva exactamente los medios que se cargaron en ese local (sin reasignarlos entre locales).
+    if(hayMediosExtraOficina()){
+      var porL=pagosOficinaPorLocal();
+      rep={};
+      ["l1","l3","l2"].forEach(function(k){ rep[k]={monto:porL[k].reduce(function(a,x){return a+x.monto;},0),pagos:porL[k]}; });
+    }
     PCT_OF.forEach(function(t){
       var parte=rep[t[0]];
       if(!parte||parte.monto<=0)return;

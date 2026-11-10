@@ -13372,6 +13372,10 @@ function PanelFichar(p){
           })()}
           {tempranoAhora&&<div style={{textAlign:"left",background:"#0A1014",border:"1px solid #1A6B8A88",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#9FC8D8",lineHeight:1.5}}>
             ⏳ Todavía es temprano: tu turno empieza a las <b>{tempranoAhora.turno}</b>. Podés marcar la entrada desde las <b>{tempranoAhora.desde}</b> (faltan {tempranoAhora.faltan} min).
+            {p.onTurnoDia&&soyYo&&elegido&&soyYo.id===elegido.id&&<div style={{marginTop:8}}>
+              <div style={{marginBottom:5}}>¿Hoy entrás antes de tu horario? Cambialo por hoy y marcá enseguida.</div>
+              <button onClick={function(){ var t1=turnoDe(elegido,fechaLocal()); volver(); setFormHor({desde:horaLocal(),hasta:(t1&&t1.hasta)||""}); }} style={{...GH,padding:"8px 12px",fontSize:12,width:"100%"}}>🕐 Hoy entro en otro horario</button>
+            </div>}
           </div>}
           {!est.adentro&&(function(){ var inf=llegadaTardeInfo(elegido,new Date()); return inf?(
             <div style={{textAlign:"left",background:"#1A0F0A",border:"1px solid #E07B0088",borderRadius:10,padding:"8px 11px",marginBottom:10,fontSize:11.5,color:"#E8B58A",lineHeight:1.5}}>

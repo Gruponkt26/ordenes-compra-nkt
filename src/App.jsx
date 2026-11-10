@@ -11183,6 +11183,7 @@ function PanelEgresos(p){
                                   <span style={{color:"#888"}}>📅 {g.concepto}{g.subramo&&g.subramo!=="Vencimiento"?" · "+g.subramo:""} <span style={{color:"#00BCD4",fontWeight:700}}>· vencimiento</span> <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}</span></span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
                                 </div>
+                                <div style={{fontSize:9,color:"#7E7E7E",paddingLeft:14}}>💳 {textoMediosPago(g.pagos,g.forma_pago,g.monto)}</div>
                               </div>
                             );
                           })}
@@ -11193,6 +11194,7 @@ function PanelEgresos(p){
                                   <span style={{color:"#888"}}>🏢 {g.concepto} <span style={{color:"#1A6B8A",fontWeight:700}}>· Oficina{String(g.subramo).indexOf("parcial")!==-1?" · pago parcial":""}</span> <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}</span></span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
                                 </div>
+                                <div style={{fontSize:9,color:"#7E7E7E",paddingLeft:14}}>💳 {textoMediosPago(g.pagos,g.forma_pago,g.monto)}</div>
                               </div>
                             );
                           })}
@@ -11204,13 +11206,13 @@ function PanelEgresos(p){
                             var idg=String(g.id);
                             return !(p.sueldos||[]).some(function(s){return s.local===l.id&&s.periodo===periodoAnterior&&(idg==="egr_sueldo_"+s.id||idg.indexOf("egr_sueldo_"+s.id+"_")===0);});
                           }).map(function(g){
-                            var medioG=(Array.isArray(g.pagos)&&g.pagos.length>0)?g.pagos.map(function(pg){return pg.medio||pg.tipo||"";}).filter(Boolean).join(" + "):(g.forma_pago||"");
                             return(
                               <div key={g.id} style={{padding:"4px 0",borderBottom:"1px solid #111",fontSize:10}}>
                                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                                  <span style={{color:"#888"}}>👥 {g.concepto}{g.subramo?" · "+g.subramo:""} <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}{medioG?" · "+medioG:""}</span></span>
+                                  <span style={{color:"#888"}}>👥 {g.concepto}{g.subramo?" · "+g.subramo:""} <span style={{color:"#6E6E6E"}}>· {g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""}</span></span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(g.monto)}</span>
                                 </div>
+                                <div style={{fontSize:9,color:"#7E7E7E",paddingLeft:14}}>💳 {textoMediosPago(g.pagos,g.forma_pago,g.monto)}</div>
                                 {(function(){
                                   // Si el pago es posterior al mes normal y el detalle todavía no lo aclara, se calcula acá (sirve para lo ya cargado).
                                   var mS=/(?:Sueldo|sueldo)\s+(\d{4}-\d{2})/.exec(String(g.subramo||""));
@@ -11230,6 +11232,7 @@ function PanelEgresos(p){
                                   <span style={{color:"#888"}}>{est} {s.empleado_nombre}{s.estado==="parcial"&&<span style={{color:"#E07B00",fontWeight:700}}> · pago parcial</span>}</span>
                                   <span style={{color:"#F0EDE8",fontWeight:600}}>{fmt(s.estado==="parcial"?s.monto_parcial:s.monto)}</span>
                                 </div>
+                                <div style={{fontSize:9,color:"#7E7E7E",paddingLeft:14}}>💳 {textoMediosPago(s.pagos,s.medio_pago,s.estado==="parcial"?s.monto_parcial:s.monto)}</div>
                                 {esMixto&&(
                                   <div style={{display:"flex",gap:8,marginTop:2,paddingLeft:14}}>
                                     {s.monto_convenio>0&&<span style={{color:"#4CAF50",fontSize:9}}>📋 Conv: {fmt(s.monto_convenio)}</span>}
@@ -22515,6 +22518,13 @@ function notaSueldoAtrasado(periodo,fechaPago,esAguinaldo){
   m++; if(m>12){m=1;y++;}
   var normal=y+"-"+(m<10?"0"+m:m), pago=String(fechaPago).slice(0,7);
   return pago>normal?"PAGO DE SUELDO ATRASADO: corresponde a "+periodoEnLetras(periodo)+" (se pagó en "+periodoEnLetras(pago)+"). ":"";
+}
+// "Caja Mayor - Kusama $300.000 + Transferencia - Belo Nicolás $100.000": con qué se pagó. Con un solo medio, solo su nombre.
+function textoMediosPago(pagos, formaPago, monto){
+  var l=(Array.isArray(pagos)&&pagos.length>0)?pagos.map(function(pg){return {medio:pg.medio||pg.tipo||"",monto:parseFloat(pg.monto)||0};}).filter(function(x){return x.medio;}):(formaPago?[{medio:formaPago,monto:parseFloat(monto)||0}]:[]);
+  if(l.length===0)return "sin medio de pago cargado";
+  if(l.length===1)return l[0].medio;
+  return l.map(function(x){return x.medio+" $"+Math.round(x.monto).toLocaleString("es-AR");}).join(" + ");
 }
 function mesAnteriorDe(mes){
   var pr=String(mes||"").split("-");var y=parseInt(pr[0]);var m=parseInt(pr[1])-1;

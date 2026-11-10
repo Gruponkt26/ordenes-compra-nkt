@@ -25809,7 +25809,9 @@ function PanelRecibosFC(p){
               var conv=e.convenio||"sin_convenio";
               return modalidadSueldoDe(e,(p.datosEmp||{})[e.id])!=="solo_convenio"&&conv!=="convenio";
             });
-            var delEmp=function(e){return (lista||[]).filter(function(r){return r.empleado_id===e.id&&r.modo!=="aguinaldo"&&r.periodo===mes;});};
+            var normNom=function(t){return String(t||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();};
+            // Un recibo es de este empleado por su ficha o, si se armó escribiendo el nombre sin elegir la ficha, por el nombre.
+            var delEmp=function(e){return (lista||[]).filter(function(r){return r.modo!=="aguinaldo"&&r.periodo===mes&&(r.empleado_id===e.id||(!r.empleado_id&&normNom(r.nombre)===normNom(e.nombre)));});};
             var tiene=function(e){return delEmp(e).some(function(r){return reciboConSueldo(r);});};
             var faltan=debenTener.filter(function(e){return !tiene(e);});
             var okN=debenTener.length-faltan.length;

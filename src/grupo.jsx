@@ -195,6 +195,7 @@ export function GrupoNkt() {
   var modoPrueba = esModoPrueba();   // /?grupo&prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
+  var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
   var [cupon, setCupon] = useState(null);
   var [novedades, setNovedades] = useState([]);
   var [historial, setHistorial] = useState([]);   // todos los cupones de este cliente
@@ -289,6 +290,30 @@ export function GrupoNkt() {
         <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
       </div>
+
+      {(function () {
+        // Ya está instalada (se abrió desde el ícono): no hace falta mostrar nada.
+        var instalada = false;
+        try { instalada = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true; } catch (e) {}
+        if (instalada) return null;
+        var ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        return (
+          <div style={{ background: "#14100A", border: "1px solid #D4A01766", borderRadius: 16, padding: "14px", marginBottom: 14, textAlign: "center" }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>📲 Descargá la app Grupo Nkt</div>
+            <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, margin: "6px 0 10px" }}>Tené tu cupón, las novedades, el delivery y las reservas siempre a mano, como una app más de tu celular. Es gratis y no ocupa espacio.</div>
+            <button onClick={function () { if (instalar) { instalar.prompt(); } else { setVerPasos(!verPasos); } }} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Descargar la app</button>
+            {!instalar && verPasos && (
+              <div style={{ textAlign: "left", fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.8, background: "#0D0D0D", border: "1px solid #2A2A2A", borderRadius: 12, padding: "10px 12px", marginTop: 10 }}>
+                {ios ? (
+                  <div><b>En iPhone (con Safari):</b><br />1. Tocá el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).<br />2. Elegí <b>«Agregar a pantalla de inicio»</b>.<br />3. Tocá <b>Agregar</b>. ¡Listo! Te queda el ícono de Grupo Nkt.</div>
+                ) : (
+                  <div><b>En Android (con Chrome):</b><br />1. Tocá los <b>tres puntos</b> de arriba a la derecha.<br />2. Elegí <b>«Instalar app»</b> o <b>«Agregar a la pantalla de inicio»</b>.<br />3. Confirmá. ¡Listo! Te queda el ícono de Grupo Nkt.</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {!cupon && hecho !== "ok" && (
         <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
@@ -406,13 +431,6 @@ export function GrupoNkt() {
         )}
       </div>
 
-      <div style={{ textAlign: "center", marginTop: 18 }}>
-        {instalar
-          ? <button onClick={function () { instalar.prompt(); }} style={{ ...boton, display: "inline-block", padding: "11px 18px" }}>📲 Agregar Grupo Nkt a mi inicio</button>
-          : (/iPhone|iPad|iPod/i.test(navigator.userAgent)
-            ? <div style={{ fontSize: 12, color: "#9A9A9A", lineHeight: 1.7, background: "#111", border: "1px solid #222", borderRadius: 12, padding: "10px 12px" }}>📲 Para tenerla como app en tu iPhone: tocá <b>Compartir</b> (el cuadrado con la flecha) y después <b>«Agregar a pantalla de inicio»</b>.</div>
-            : <div style={{ fontSize: 11.5, color: "#6E6E6E", lineHeight: 1.6 }}>Para tenerla a mano: en el menú del navegador tocá «Agregar a pantalla de inicio».</div>)}
-      </div>
     </div></div>
   );
 }
@@ -485,6 +503,7 @@ export function PanelComunidad() {
   var [msgPrueba, setMsgPrueba] = useState("");
   var [filtroCup, setFiltroCup] = useState("todos");
   var [msgCup, setMsgCup] = useState("");
+  var [msgDesc, setMsgDesc] = useState("");
   var [novAdm, setNovAdm] = useState([]);
   var [formNov, setFormNov] = useState({ titulo: "", texto: "", local: "todos", hasta: "" });
   var [msgNov, setMsgNov] = useState("");
@@ -613,7 +632,10 @@ export function PanelComunidad() {
           <div style={{ flex: 1, minWidth: 190 }}>
             <div style={{ fontSize: 11.5, color: "#C8C8C8", wordBreak: "break-all", marginBottom: 8 }}>{urlGrupo()}</div>
             <button onClick={copiar} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, cursor: "pointer", marginRight: 8 }}>{copiado ? "✓ Copiado" : "Copiar enlace"}</button>
+            <button onClick={function () { try { navigator.clipboard.writeText(urlGrupo() + "&instalar"); setMsgDesc("✓ Enlace de descarga copiado"); setTimeout(function () { setMsgDesc(""); }, 2500); } catch (e) {} }} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #D4A01766", background: "#D4A01722", color: "#D4A017", fontSize: 12, cursor: "pointer", marginRight: 8 }}>📲 Copiar enlace de descarga</button>
             <a href={urlGrupo()} target="_blank" rel="noreferrer" style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, textDecoration: "none" }}>Verla</a>
+            {msgDesc && <div style={{ fontSize: 11.5, color: "#8FD19A", marginTop: 8 }}>{msgDesc}</div>}
+            <div style={{ fontSize: 11, color: "#7E7E7E", lineHeight: 1.5, marginTop: 8 }}>El enlace de descarga abre la página con las instrucciones para instalar la app. Sirve para mandarlo por WhatsApp o ponerlo en Instagram.</div>
           </div>
         </div>
       </div>

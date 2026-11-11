@@ -208,6 +208,7 @@ export function Opinar() {
     var irPortal = (
       <div style={{ marginTop: 14 }}>
         <a href={"/?grupo" + (modoPrueba ? "&prueba" : "")} style={{ display: "block", padding: "14px", borderRadius: 12, background: "#1F4D2A", border: "1px solid #3A7D44", color: "#fff", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>Entrar a mi Grupo Nkt</a>
+        <a href={"/?grupo&instalar" + (modoPrueba ? "&prueba" : "")} style={{ display: "block", marginTop: 8, padding: "12px", borderRadius: 12, background: "#14100A", border: "1px solid #D4A01766", color: "#D4A017", fontWeight: 800, fontSize: 14, textDecoration: "none" }}>📲 Descargar la app</a>
         <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginTop: 6 }}>Ahí tenés tu cupón, las novedades, delivery y reservas. Agregalo a tu inicio para tenerlo siempre a mano.</div>
       </div>
     );

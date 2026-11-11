@@ -1,10 +1,10 @@
 {
-  "id": "/?grupo",
+  "id": "/grupo/",
   "name": "Grupo Nkt",
   "short_name": "Grupo Nkt",
   "description": "La comunidad de Grupo Nkt: El Bodegón, Kusama y Colantonio's",
-  "start_url": "/?grupo",
-  "scope": "/",
+  "start_url": "/grupo/",
+  "scope": "/grupo/",
   "display": "standalone",
   "background_color": "#0D0D0D",
   "theme_color": "#C1440E",

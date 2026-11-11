@@ -54,5 +54,15 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/grupo",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/grupo/:path*",
+      "destination": "/index.html"
+    }
   ]
 }

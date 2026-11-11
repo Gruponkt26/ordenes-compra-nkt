@@ -7,7 +7,7 @@ import { GrupoNkt } from "./grupo.jsx";
 // El QR de las mesas abre una pantalla pública (sin usuario ni clave) para dejar una opinión.
 var esOpinion = new URLSearchParams(window.location.search).has("opinar");
 // La página pública de Grupo Nkt (locales, pedidos por WhatsApp y comunidad) también se abre sin usuario ni clave.
-var esGrupo = new URLSearchParams(window.location.search).has("grupo");
+var esGrupo = /^\/grupo(\/|$)/.test(window.location.pathname) || new URLSearchParams(window.location.search).has("grupo");
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

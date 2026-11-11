@@ -6,11 +6,17 @@
     <title>Gestión Grupo NKT</title>
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <!-- La página pública de Grupo Nkt (?grupo) se instala como su propia app: el manifest correcto tiene que estar desde la carga, antes de que el navegador decida qué ofrecer instalar. -->
+    <script>
+      (function () {
+        var grupo = /[?&]grupo(&|=|$)/.test(location.search);
+        document.write('<link rel="manifest" href="' + (grupo ? "/manifest-grupo.json" : "/manifest.json") + '" />');
+        document.write('<meta name="apple-mobile-web-app-title" content="' + (grupo ? "Grupo Nkt" : "Gestión Grupo NKT") + '" />');
+      })();
+    </script>
     <meta name="theme-color" content="#C1440E" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Gestión Grupo NKT" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   </head>
   <body>

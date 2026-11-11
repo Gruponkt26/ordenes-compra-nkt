@@ -301,7 +301,10 @@ export function GrupoNkt() {
           <div style={{ background: "#14100A", border: "1px solid #D4A01766", borderRadius: 16, padding: "14px", marginBottom: 14, textAlign: "center" }}>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>📲 Descargá la app Grupo Nkt</div>
             <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, margin: "6px 0 10px" }}>Tené tu cupón, las novedades, el delivery y las reservas siempre a mano, como una app más de tu celular. Es gratis y no ocupa espacio.</div>
-            <button onClick={function () { if (instalar) { instalar.prompt(); } else { setVerPasos(!verPasos); } }} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Descargar la app</button>
+            <button onClick={function () {
+              // Si el navegador deja instalar con un toque, se lo ofrece; los pasos quedan a la vista por si no aparece el cartel.
+              if (instalar) { try { instalar.prompt(); } catch (e) {} setTimeout(function () { setVerPasos(true); }, 1200); } else { setVerPasos(!verPasos); }
+            }} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Descargar la app</button>
             {!instalar && verPasos && (
               <div style={{ textAlign: "left", fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.8, background: "#0D0D0D", border: "1px solid #2A2A2A", borderRadius: 12, padding: "10px 12px", marginTop: 10 }}>
                 {ios ? (

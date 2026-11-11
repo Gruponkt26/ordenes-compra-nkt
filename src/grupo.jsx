@@ -717,7 +717,7 @@ export function PanelComunidad() {
             {lista.slice(0, 100).map(function (c) {
               var e = estadoCupon(c), col = e === "activo" ? "#4C9A5A" : e === "usado" ? "#8C8C8C" : "#E0714A";
               var primer = String(c.nombre || "").split(" ")[0];
-              var txt = "Hola " + primer + "! Te recordamos que tenés un cupón de Grupo Nkt de " + c.pct + "% de descuento (" + c.codigo + "), válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR") + " en cualquiera de nuestros locales. ¡Te esperamos!";
+              var txt = "Hola " + primer + "! Te recordamos que tenés un cupón de Grupo Nkt de " + c.pct + "% de descuento (" + c.codigo + "), válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR") + " en cualquiera de nuestros locales. Tu portal con novedades, delivery y reservas: " + urlGrupo() + " ¡Te esperamos!";
               return (
                 <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -752,7 +752,7 @@ export function PanelComunidad() {
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";
-                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja." : ".");
+                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
                       var rc = resumenCup(m.wsp);
                       return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} cupón{rc.total === 1 ? "" : "es"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}

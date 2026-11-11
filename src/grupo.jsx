@@ -95,8 +95,9 @@ function cuponComoImagen(c) {
       x.fillStyle = "#C8C8C8"; x.font = "32px sans-serif";
       x.fillText("Válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR"), 450, 810);
       x.fillText("Se usa una sola vez", 450, 860);
-      x.fillText("En El Bodegón, Kusama y Colantonio's", 450, 930);
-      x.fillStyle = "#8C8C8C"; x.font = "26px sans-serif"; x.fillText("Mostralo en caja · Grupo Nkt", 450, 1000);
+      x.fillStyle = "#8FD19A"; x.font = "bold 34px sans-serif"; x.fillText("Válido en cualquiera de los 3 locales", 450, 925);
+      x.fillStyle = "#C8C8C8"; x.font = "30px sans-serif"; x.fillText("El Bodegón · Kusama · Colantonio's", 450, 970);
+      x.fillStyle = "#8C8C8C"; x.font = "26px sans-serif"; x.fillText("Mostralo en caja · Grupo Nkt", 450, 1025);
       cv.toBlob(function (b) { res(b); }, "image/png");
     }
     img.onload = function () { dibujar(true); };
@@ -125,7 +126,7 @@ export function TarjetaCupon(props) {
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{c.pct}% OFF</div>
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
-        {est === "activo" && <span>Mostralo en caja en El Bodegón, Kusama o Colantonio's. Válido hasta el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez.</span>}
+        {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez.</span>}
         {est === "usado" && <span>✅ Este cupón ya fue usado.</span>}
         {est === "vencido" && <span>⌛ Este cupón venció el {new Date(c.vence).toLocaleDateString("es-AR")}.</span>}
       </div>
@@ -478,7 +479,7 @@ export function PanelComunidad() {
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";
-                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Mostralo en caja en El Bodegón, Kusama o Colantonio's." : ".");
+                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja." : ".");
                       return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>

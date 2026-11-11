@@ -41,6 +41,20 @@ async function guardarFila(id, ambito, obj) {
   return r.ok;
 }
 
+// ─── NOVEDADES ───
+// Las publica administración (Competencia → Comunidad) y las ve el miembro al entrar a su portal.
+export async function cargarNovedades() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_novedad&order=created_at.desc&limit=60", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+function novedadVisible(n) {
+  var hoy = new Date().toISOString().substring(0, 10);
+  return n.activa !== false && (!n.hasta || n.hasta >= hoy);
+}
+
 // ─── CUPONES ─────────────────────────────────────────────────────────────────
 // Un cupón por persona (por su WhatsApp): código único, vencimiento y un solo canje. Se guarda en pautas con id "cupon_<CÓDIGO>".
 var LETRAS_CUPON = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -182,11 +196,22 @@ export function GrupoNkt() {
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
   var [cupon, setCupon] = useState(null);
+  var [novedades, setNovedades] = useState([]);
+  var [historial, setHistorial] = useState([]);   // todos los cupones de este cliente
   var [verMi, setVerMi] = useState(false);   // "Ya soy parte: ver mi cupón"
   var [wspVer, setWspVer] = useState("");
   var [msgVer, setMsgVer] = useState("");
   var [buscando, setBuscando] = useState(false);
 
+  useEffect(function () { cargarNovedades().then(function (l) { setNovedades(l.filter(novedadVisible).slice(0, 8)); }); }, []);
+  // Con el cupón a la vista, se trae el historial del cliente (cuántos lleva y dónde los usó).
+  useEffect(function () {
+    if (!cupon || !cupon.wsp) return;
+    var patron = encodeURIComponent('*"wsp":"' + cupon.wsp + '"*');
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&texto=like." + patron + "&limit=200", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setHistorial(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(function (c) { return c && !c.prueba === !cupon.prueba; }) : []);
+    }).catch(function () {});
+  }, [cupon && cupon.codigo]);
   useEffect(function () {
     document.title = "GrupoNkt";
     // Al agregarla al inicio, el celular instala "Grupo Nkt" (no la app de gestión) y la abre siempre en esta página.
@@ -258,9 +283,45 @@ export function GrupoNkt() {
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
       </div>
 
+      {cupon && (function () {
+        var usados = historial.filter(function (c) { return c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
+        return (
+          <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 11.5, color: "#D4A017", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5, textAlign: "center" }}>Mi cupón</div>
+            <TarjetaCupon cupon={cupon} />
+            {historial.length > 0 && <div style={{ textAlign: "center", fontSize: 12.5, color: "#C8C8C8", marginTop: 12 }}>🎟️ Llevás <b>{usados.length}</b> cupón{usados.length === 1 ? "" : "es"} canjeado{usados.length === 1 ? "" : "s"}</div>}
+            {usados.length > 0 && (
+              <details style={{ marginTop: 8, fontSize: 12, color: "#9A9A9A" }}>
+                <summary style={{ cursor: "pointer", textAlign: "center" }}>Ver mi historial</summary>
+                {usados.map(function (c) {
+                  return <div key={c.codigo} style={{ padding: "5px 0", borderTop: "1px solid #1E2A1E" }}>{c.codigo} · {c.pct}% · usado el {c.usado_at ? new Date(c.usado_at).toLocaleDateString("es-AR") : "—"}{c.usado_local ? " en " + c.usado_local : ""}</div>;
+                })}
+              </details>
+            )}
+          </div>
+        );
+      })()}
+
+      {novedades.length > 0 && (
+        <div style={{ background: "#111", border: "1px solid #D4A01744", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017", marginBottom: 8 }}>📣 Novedades</div>
+          {novedades.map(function (n, i) {
+            var l = LOCALES_GRUPO.find(function (x) { return x.id === n.local; });
+            return (
+              <div key={n.id} style={{ padding: "9px 0", borderTop: i === 0 ? "none" : "1px solid #1E1E1E" }}>
+                <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8" }}>{n.titulo}</div>
+                <div style={{ fontSize: 10.5, color: l ? l.color : "#7E7E7E", margin: "2px 0 4px" }}>{l ? l.nombre : "Todos los locales"}{n.creado ? " · " + new Date(n.creado).toLocaleDateString("es-AR") : ""}{n.hasta ? " · hasta el " + n.hasta.split("-").reverse().join("/") : ""}</div>
+                <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{n.texto}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {LOCALES_GRUPO.map(function (l) {
         var d = cfg.locales[l.id] || {};
-        var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido.");
+        var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
+        var reserva = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero reservar una mesa. Día: ___ · Hora: ___ · Personas: ___ · A nombre de: ___");
         return (
           <div key={l.id} style={{ background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
             <div style={{ textAlign: "center" }}>
@@ -276,7 +337,8 @@ export function GrupoNkt() {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-              {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...boton, background: "#1F4D2A", borderColor: "#3A7D44" }}>💬 Pedir por WhatsApp</a>}
+              {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...boton, background: "#1F4D2A", borderColor: "#3A7D44" }}>🛵 Pedir delivery</a>}
+              {reserva && <a href={reserva} target="_blank" rel="noreferrer" style={{ ...boton, background: "#1F4D2A", borderColor: "#3A7D44" }}>📅 Reservar mesa</a>}
               {d.direccion && <a href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta")} target="_blank" rel="noreferrer" style={boton}>📍 Cómo llegar</a>}
               {d.carta && <a href={d.carta} target="_blank" rel="noreferrer" style={boton}>🍽️ Ver la carta</a>}
               {d.instagram && <a href={d.instagram} target="_blank" rel="noreferrer" style={boton}>📸 Instagram</a>}
@@ -292,12 +354,10 @@ export function GrupoNkt() {
             <div style={{ fontSize: 40 }}>🎉</div>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, marginTop: 6 }}>¡Ya sos parte!</div>
             <div style={{ fontSize: 14, color: "#C8C8C8", marginTop: 8, lineHeight: 1.6 }}>{cfg.bienvenida || "Te vamos a avisar de las novedades, los platos nuevos y los beneficios de la comunidad."}</div>
-            {cupon && <TarjetaCupon cupon={cupon} />}
           </div>
         ) : hecho === "ya" ? (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 14, color: "#C8C8C8", lineHeight: 1.6 }}>✅ Ya sos parte de la comunidad Grupo Nkt. ¡Gracias por acompañarnos!</div>
-            {cupon && <TarjetaCupon cupon={cupon} />}
           </div>
         ) : (
           <div>
@@ -414,17 +474,36 @@ export function PanelComunidad() {
   var [msgPrueba, setMsgPrueba] = useState("");
   var [filtroCup, setFiltroCup] = useState("todos");
   var [msgCup, setMsgCup] = useState("");
+  var [novAdm, setNovAdm] = useState([]);
+  var [formNov, setFormNov] = useState({ titulo: "", texto: "", local: "todos", hasta: "" });
+  var [msgNov, setMsgNov] = useState("");
 
   useEffect(function () {
     cargarConfigGrupo().then(setCfg);
     cargarMiembros();
     cargarCupones();
+    cargarNovedades().then(setNovAdm);
     QRCode.toDataURL(urlGrupo(), { margin: 1, width: 360, errorCorrectionLevel: "M" }).then(setQr).catch(function () {});
   }, []);
 
   var sel = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12, width: "100%", boxSizing: "border-box", marginBottom: 6 };
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
 
+  function publicarNovedad() {
+    if (!formNov.titulo.trim() || !formNov.texto.trim()) { setMsgNov("Poné el título y el texto."); setTimeout(function () { setMsgNov(""); }, 3000); return; }
+    guardarFila("nov_" + Date.now(), "grupo_novedad", { titulo: formNov.titulo.trim(), texto: formNov.texto.trim(), local: formNov.local, hasta: formNov.hasta || "", creado: new Date().toISOString(), activa: true }).then(function (ok) {
+      if (ok) { setFormNov({ titulo: "", texto: "", local: "todos", hasta: "" }); cargarNovedades().then(setNovAdm); setMsgNov("✓ Publicada: ya la ven los miembros."); } else setMsgNov("No se pudo publicar.");
+      setTimeout(function () { setMsgNov(""); }, 3500);
+    });
+  }
+  function ocultarNovedad(n, activa) {
+    var o = { ...n }; delete o.id; o.activa = activa;
+    guardarFila(n.id, "grupo_novedad", o).then(function () { cargarNovedades().then(setNovAdm); });
+  }
+  function borrarNovedad(n) {
+    if (!window.confirm("¿Borrar la novedad «" + n.titulo + "»?")) return;
+    fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(n.id), { method: "DELETE", headers: SH }).then(function () { setNovAdm(function (p) { return p.filter(function (x) { return x.id !== n.id; }); }); });
+  }
   function guardarValores() {
     guardarFila("grupo_config", "grupo_config", cfg).then(function (ok) { setMsgCup(ok ? "✓ Guardado: vale para los cupones nuevos y los que se generen al canjear." : "No se pudo guardar"); setTimeout(function () { setMsgCup(""); }, 4000); });
   }
@@ -547,6 +626,44 @@ export function PanelComunidad() {
         var emit = cr.length, us = cr.filter(function (c) { return c.estado === "usado"; }).length, ven = cr.filter(function (c) { return estadoCupon(c) === "vencido"; }).length;
         return <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>🎟️ Cupones: <b>{emit}</b> emitidos · <b style={{ color: "#4C9A5A" }}>{us}</b> canjeados ({Math.round(us / emit * 100)}%) · <b>{ven}</b> vencidos sin usar · <b>{emit - us - ven}</b> vigentes</div>;
       })()}
+
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>📣 Novedades para los miembros</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>Lo que publiques acá lo ven los clientes al entrar a «Grupo Nkt»: promociones, platos nuevos, eventos, cambios de horario.</div>
+        <input value={formNov.titulo} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, titulo: v }; }); }} maxLength={80} placeholder="Título (ej: Noche de pizzas 2x1)" style={sel} />
+        <textarea value={formNov.texto} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, texto: v }; }); }} rows={3} placeholder="Texto de la novedad" style={{ ...sel, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ flex: "1 1 140px" }}><div style={{ fontSize: 10.5, color: "#8C8C8C", marginBottom: 3 }}>Para</div>
+            <select value={formNov.local} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, local: v }; }); }} style={sel}>
+              <option value="todos">Todos los locales</option>
+              {LOCALES_GRUPO.map(function (l) { return <option key={l.id} value={l.id}>{l.nombre}</option>; })}
+            </select></div>
+          <div style={{ flex: "1 1 140px" }}><div style={{ fontSize: 10.5, color: "#8C8C8C", marginBottom: 3 }}>Se muestra hasta (opcional)</div>
+            <input type="date" value={formNov.hasta} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, hasta: v }; }); }} style={sel} /></div>
+        </div>
+        <button onClick={publicarNovedad} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Publicar novedad</button>
+        {msgNov && <span style={{ fontSize: 12, color: "#8FD19A", marginLeft: 10 }}>{msgNov}</span>}
+        {novAdm.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            {novAdm.map(function (n) {
+              var l = LOCALES_GRUPO.find(function (x) { return x.id === n.local; });
+              var vis = novedadVisible(n);
+              return (
+                <div key={n.id} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5, opacity: vis ? 1 : 0.55 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                    <div><b>{n.titulo}</b> <span style={{ fontSize: 10.5, color: l ? l.color : "#7E7E7E" }}>· {l ? l.nombre : "todos"}{n.hasta ? " · hasta " + n.hasta.split("-").reverse().join("/") : ""}{!vis ? " · oculta" : ""}</span></div>
+                    <div style={{ display: "flex", gap: 8, whiteSpace: "nowrap" }}>
+                      <button onClick={function () { ocultarNovedad(n, n.activa === false); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", padding: 0 }}>{n.activa === false ? "Mostrar" : "Ocultar"}</button>
+                      <button onClick={function () { borrarNovedad(n); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12, padding: 0 }}>🗑️</button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#9A9A9A", marginTop: 2, whiteSpace: "pre-wrap" }}>{n.texto}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>⚙️ Valor de los cupones</div>

@@ -239,6 +239,13 @@ export function GrupoNkt() {
   var boton = { display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontSize: 13, fontWeight: 700, textDecoration: "none" };
 
   // Quien ya es parte ve su cupón con solo su WhatsApp, sin volver a llenar el formulario.
+  // "Cerrar sesión": este celular se olvida de quién es (no se borra nada de la comunidad ni del cupón).
+  function cerrarSesion() {
+    if (!window.confirm("¿Cerrar sesión en este celular? Tu cupón y tu lugar en la comunidad siguen guardados: para volver a entrar escribís tu WhatsApp.")) return;
+    try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {}
+    setCupon(null); setHistorial([]); setHecho(""); setVerMi(false); setWspVer(""); setMsgVer("");
+    try { window.scrollTo(0, 0); } catch (e) {}
+  }
   function verMiCupon() {
     var w = soloDigitos(wspVer);
     if (w.length < 8) { setMsgVer("Escribí tu WhatsApp completo."); return; }
@@ -298,6 +305,9 @@ export function GrupoNkt() {
                 })}
               </details>
             )}
+            <div style={{ textAlign: "center", marginTop: 10 }}>
+              <button onClick={cerrarSesion} style={{ background: "none", border: "none", color: "#8C8C8C", fontFamily: "'Inter',sans-serif", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>Cerrar sesión</button>
+            </div>
           </div>
         );
       })()}

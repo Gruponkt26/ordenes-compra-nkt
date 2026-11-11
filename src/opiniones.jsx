@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta } from "./grupo.jsx";
+import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -95,18 +95,33 @@ export function Opinar() {
 
   var [notas, setNotas] = useState({});
   var [comentario, setComentario] = useState("");
-  var [nombre, setNombre] = useState("");
-  var [wsp, setWsp] = useState("");
   var [cfg, setCfg] = useState({ google: {}, premio: "" });
   var [notaFinal, setNotaFinal] = useState(0);
   var [gancho, setGancho] = useState("");
   var [cfgGrupo, setCfgGrupo] = useState(null);
-  var [aceptaCom, setAceptaCom] = useState(false);
-  var [quieroCom, setQuieroCom] = useState(false);   // casilla del formulario: sumarse a la comunidad al enviar
+  // Invitación a la comunidad al terminar de opinar.
+  var [abrirForm, setAbrirForm] = useState(false);
+  var [fNombre, setFNombre] = useState("");
+  var [fApellido, setFApellido] = useState("");
+  var [fWsp, setFWsp] = useState("");
+  var [fDia, setFDia] = useState("");
+  var [fMes, setFMes] = useState("");
+  var [fAcepta, setFAcepta] = useState(false);
+  var [errCom, setErrCom] = useState("");
   var [sumando, setSumando] = useState(false);
-  var [cuponNuevo, setCuponNuevo] = useState(null);
-  var [yaEsParte, setYaEsParte] = useState(false);   // se confirma en la base con el WhatsApp que dejó, no con lo que recuerda el celular
-  useEffect(function () { cargarConfigOpiniones().then(setCfg); cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); setCfgGrupo(c); }); }, []);
+  var [cuponNuevo, setCuponNuevo] = useState(null);   // cupón recién obtenido
+  var [cuponYa, setCuponYa] = useState(null);         // cupón de quien ya era parte (confirmado en la base)
+  var [yaEsParte, setYaEsParte] = useState(false);
+  useEffect(function () {
+    cargarConfigOpiniones().then(setCfg);
+    cargarConfigGrupo().then(function (c) { setGancho(c.gancho || ""); setCfgGrupo(c); });
+    // Si este celular ya se anotó, se confirma en la base (no alcanza con lo que recuerda el celular).
+    var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
+    if (cg) leerPauta("cupon_" + cg).then(function (c) {
+      if (!c) return;
+      leerPauta("com_" + c.wsp).then(function (m) { if (m) { setYaEsParte(true); setCuponYa(c); } });
+    });
+  }, []);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
   var [hecho, setHecho] = useState(function () {
@@ -123,6 +138,66 @@ export function Opinar() {
 
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", padding: "22px 16px 40px", boxSizing: "border-box" };
   var caja = { maxWidth: 440, margin: "0 auto" };
+
+  function unirseDesdeOpinion() {
+    var w = fWsp.replace(/\D/g, "");
+    if (!fNombre.trim() || !fApellido.trim() || w.length < 8) { setErrCom("Escribí tu nombre, tu apellido y tu WhatsApp."); return; }
+    if (!fAcepta) { setErrCom("Tildá la casilla para sumarte."); return; }
+    setErrCom(""); setSumando(true);
+    (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) {
+      return sumarSocio({ nombre: fNombre.trim().slice(0, 60), apellido: fApellido.trim().slice(0, 60), wsp: w.slice(0, 20), dia: parseInt(fDia, 10) || 0, mes: parseInt(fMes, 10) || 0, fav: localId, disp: idDispositivo(), fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cg);
+    }).then(function (c) {
+      setSumando(false);
+      if (c) setCuponNuevo(c); else setErrCom("No pudimos sumarte. Probá de nuevo.");
+    });
+  }
+  // Invitación a la comunidad que aparece al terminar de opinar.
+  function invitacionComunidad() {
+    var tarjeta = { marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" };
+    var tit = { fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" };
+    var inpS = { width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 15, marginBottom: 8 };
+    var beneficios = <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.6, marginTop: 12 }}>Cada compra en cualquiera de nuestros locales va a tener beneficios si sos parte de la comunidad. ¡Mostrá tu cupón en caja!</div>;
+    if (cuponNuevo) return (
+      <div style={tarjeta}>
+        <div style={tit}>🎉 ¡Ya sos parte de la comunidad Grupo Nkt!</div>
+        {!cuponNuevo.sinCupon && <TarjetaCupon cupon={cuponNuevo} />}
+        {beneficios}
+      </div>
+    );
+    if (yaEsParte) return (
+      <div style={tarjeta}>
+        <div style={tit}>✅ Ya sos parte de la comunidad Grupo Nkt</div>
+        {cuponYa && <TarjetaCupon cupon={cuponYa} />}
+        {beneficios}
+      </div>
+    );
+    return (
+      <div style={{ ...tarjeta, textAlign: "left" }}>
+        <div style={{ ...tit, textAlign: "center" }}>Sumate a nuestra comunidad de beneficios, descuentos, regalos y más</div>
+        <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "8px 0 12px", textAlign: "center" }}>{gancho || "Recibí un cupón de descuento y enterate primero de las novedades."}{cfg.premio ? " 🎁 Sorteo mensual: " + cfg.premio + "." : ""}</div>
+        {!abrirForm ? (
+          <button onClick={function () { setAbrirForm(true); }} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>Quiero sumarme</button>
+        ) : (
+          <div>
+            <input value={fNombre} onChange={function (e) { setFNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inpS} />
+            <input value={fApellido} onChange={function (e) { setFApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inpS} />
+            <input value={fWsp} onChange={function (e) { setFWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)" style={inpS} />
+            <div style={{ fontSize: 11.5, color: "#8C8C8C", margin: "2px 0 4px" }}>Tu cumpleaños (opcional, para saludarte)</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={fDia} onChange={function (e) { setFDia(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Día" style={{ ...inpS, flex: 1 }} />
+              <input value={fMes} onChange={function (e) { setFMes(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Mes" style={{ ...inpS, flex: 1 }} />
+            </div>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "#9A9A9A", lineHeight: 1.5, margin: "4px 0 10px", cursor: "pointer" }}>
+              <input type="checkbox" checked={fAcepta} onChange={function (e) { setFAcepta(e.target.checked); }} style={{ marginTop: 2 }} />
+              <span>Acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</span>
+            </label>
+            {errCom && <div style={{ color: "#E0714A", fontSize: 13, marginBottom: 8 }}>{errCom}</div>}
+            <button onClick={unirseDesdeOpinion} disabled={sumando} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{sumando ? "Sumándote…" : "Unirme y recibir mi cupón"}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (!valido) {
     return <div style={fondo}><div style={caja}><div style={{ fontSize: 15, marginTop: 40, textAlign: "center" }}>Este enlace no es válido. Escaneá de nuevo el código QR.</div></div></div>;
@@ -141,36 +216,7 @@ export function Opinar() {
             <a href={cfg.google[localId]} target="_blank" rel="noreferrer" style={{ display: "block", padding: "14px", borderRadius: 12, background: "#fff", color: "#222", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>⭐ Dejar mi reseña en Google</a>
           </div>
         )}
-        {hecho === "ok" && cuponNuevo && (
-          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>🎉 ¡Ya sos parte de la comunidad Grupo Nkt!</div>
-            {!cuponNuevo.sinCupon && <TarjetaCupon cupon={cuponNuevo} />}
-          </div>
-        )}
-        {hecho === "ok" && !cuponNuevo && !yaEsParte && nombre.trim() && wsp.replace(/\D/g, "").length >= 8 && cfgGrupo && (
-          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px", textAlign: "left" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad Grupo Nkt</div>
-            <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "6px 0 10px", textAlign: "center" }}>{gancho || "Recibí un cupón de " + (cfgGrupo.cuponPct || 10) + "% de descuento y enterate primero de las novedades."}</div>
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "#9A9A9A", lineHeight: 1.5, marginBottom: 10, cursor: "pointer" }}>
-              <input type="checkbox" checked={aceptaCom} onChange={function (e) { setAceptaCom(e.target.checked); }} style={{ marginTop: 2 }} />
-              <span>Acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</span>
-            </label>
-            <button disabled={!aceptaCom || sumando} onClick={function () {
-              setSumando(true);
-              sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/\D/g, "").slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cfgGrupo).then(function (c) {
-                setSumando(false);
-                if (c) setCuponNuevo(c); else window.alert("No pudimos sumarte. Probá de nuevo.");
-              });
-            }} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: aceptaCom ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{sumando ? "Sumándote…" : "Sumarme con estos datos"}</button>
-          </div>
-        )}
-        {!yaEsParte && !cuponNuevo && !(hecho === "ok" && nombre.trim() && wsp.replace(/\D/g, "").length >= 8) && (
-          <div style={{ marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>Sumate a la comunidad Grupo Nkt</div>
-            <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "6px 0 12px" }}>{gancho || "Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios."}</div>
-            <a href="/?grupo" style={{ display: "block", padding: "13px", borderRadius: 12, background: "#C1440E", color: "#fff", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>Quiero sumarme</a>
-          </div>
-        )}
+        {invitacionComunidad()}
         <div style={{ fontSize: 13, color: local.color, marginTop: 18, fontWeight: 700 }}>{local.emoji} {local.nombre}</div>
       </div></div>
     );
@@ -180,13 +226,12 @@ export function Opinar() {
 
   function enviar() {
     if (!completas || enviando) return;
-    if (quieroCom && (!nombre.trim() || wsp.replace(/\D/g, "").length < 8)) { setError("Para sumarte a la comunidad escribí tu nombre y tu WhatsApp."); return; }
     setEnviando(true); setError("");
     var ahora = new Date().toISOString();
     var fila = {
       id: "op_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       ambito: "opinion",
-      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600), nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/[^\d+]/g, "").slice(0, 20), disp: idDispositivo(), prueba: modoPrueba ? 1 : 0 }),
+      texto: JSON.stringify({ local: localId, canal: canal, zona: zona, notas: notas, comentario: comentario.trim().slice(0, 600), disp: idDispositivo(), prueba: modoPrueba ? 1 : 0 }),
       usuario: "cliente", created_at: ahora, updated_at: ahora,
     };
     fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "return=minimal" }, body: JSON.stringify(fila) })
@@ -195,15 +240,6 @@ export function Opinar() {
         try { localStorage.setItem(claveLS, String(Date.now())); } catch (e) {}
         var vs = Object.keys(notas).map(function (k) { return notas[k]; }).filter(function (v) { return v > 0; });
         setNotaFinal(vs.length ? vs.reduce(function (a, b) { return a + b; }, 0) / vs.length : 0);
-        var wd = wsp.replace(/\D/g, "");
-        if (quieroCom && wd.length >= 8 && nombre.trim()) {
-          // Aceptó en el formulario: queda anotado en la comunidad y ve su cupón en la pantalla de gracias.
-          (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) {
-            return sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wd.slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cg);
-          }).then(function (c) { if (c) setCuponNuevo(c); setHecho("ok"); });
-          return;
-        }
-        if (wd.length >= 8) leerPauta("com_" + wd).then(function (m) { if (m) setYaEsParte(true); });
         setHecho("ok");
       })
       .catch(function () { setError("No pudimos enviar tu opinión. Revisá tu conexión y probá de nuevo."); setEnviando(false); });
@@ -241,19 +277,6 @@ export function Opinar() {
       <textarea value={comentario} onChange={function (e) { setComentario(e.target.value); }} maxLength={600} rows={3}
         placeholder="¿Algo más que quieras contarnos? (opcional)"
         style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 12, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, resize: "vertical", outline: "none", marginTop: 4 }} />
-
-      <div style={{ background: "#111", border: "1px solid #1E1E1E", borderRadius: 12, padding: "12px 14px", marginTop: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Tus datos <span style={{ color: "#6E6E6E", fontWeight: 400 }}>(opcional)</span></div>
-        <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Si querés, dejanos tu nombre y tu WhatsApp. Los usamos solo para contactarte por esta opinión.{cfg.premio ? " 🎁 Si los dejás, participás del sorteo del mes: " + cfg.premio + "." : ""}</div>
-        <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre"
-          style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 8 }} />
-        <input value={wsp} onChange={function (e) { setWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)"
-          style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 14 }} />
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, marginTop: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={quieroCom} onChange={function (e) { setQuieroCom(e.target.checked); }} style={{ marginTop: 2 }} />
-          <span>Quiero sumarme a la comunidad <b>Grupo Nkt</b> y recibir mi <b>cupón de descuento</b>. Acepto que me escriban por WhatsApp con novedades y beneficios; puedo pedir que me saquen cuando quiera.</span>
-        </label>
-      </div>
 
       {error && <div style={{ color: "#E0714A", fontSize: 13, marginTop: 10 }}>{error}</div>}
       <button onClick={enviar} disabled={!completas || enviando}
@@ -476,6 +499,7 @@ export function PanelCompetencia(props) {
   var [localVista, setLocalVista] = useState("l1");
   var [cfgPanel, setCfgPanel] = useState({ google: {}, premio: "" });
   var [verCfg, setVerCfg] = useState(false);
+  var [miembrosCom, setMiembrosCom] = useState([]);   // miembros de la comunidad: ponen nombre a las opiniones y participan del sorteo
   var [sorteos, setSorteos] = useState({});   // mes → ganador
   var [msgCfg, setMsgCfg] = useState("");
 
@@ -486,6 +510,14 @@ export function PanelCompetencia(props) {
       setSorteos(m);
     }).catch(function () {});
   }, []);
+  useEffect(function () {
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setMiembrosCom(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
+    }).catch(function () {});
+  }, []);
+  var porDisp = {}; miembrosCom.forEach(function (m) { if (m.disp) porDisp[m.disp] = m; });
+  function nombreDe(o) { var m = o.disp ? porDisp[o.disp] : null; return o.nombre || (m ? nombreCompleto(m) : "") || "Anónimo"; }
+  function wspDe(o) { var m = o.disp ? porDisp[o.disp] : null; return o.wsp || (m ? m.wsp : "") || ""; }
   function guardarCfg() {
     guardarFilaPauta("opinion_config", "opinion_config", cfgPanel).then(function (ok) { setMsgCfg(ok ? "✓ Guardado" : "No se pudo guardar"); setTimeout(function () { setMsgCfg(""); }, 2500); });
   }
@@ -753,7 +785,7 @@ export function PanelCompetencia(props) {
                     var l = localDe(id);
                     return <input key={id} value={cfgPanel.google[id] || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { var g = { ...c.google }; g[id] = v.trim(); return { ...c, google: g }; }); }} placeholder={"Enlace de Google de " + l.nombre} style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 6 }} />;
                   })}
-                  <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, margin: "6px 0" }}>Premio del sorteo mensual (se muestra a quien deja nombre y WhatsApp). Vacío = sin sorteo.</div>
+                  <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, margin: "6px 0" }}>Premio del sorteo mensual entre los miembros de la comunidad (se muestra en la invitación). Vacío = sin sorteo.</div>
                   <input value={cfgPanel.premio || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { return { ...c, premio: v }; }); }} placeholder="Ej: una cena para dos" style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
                   <button onClick={guardarCfg} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Guardar</button>
                   {msgCfg && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgCfg}</span>}
@@ -857,8 +889,8 @@ export function PanelCompetencia(props) {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                  <b style={{ fontSize: 13, color: "#F0EDE8" }}>{o.nombre || "Anónimo"}</b>
-                  {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
+                  <b style={{ fontSize: 13, color: "#F0EDE8" }}>{nombreDe(o)}</b>
+                  {wspDe(o) && <a href={"https://wa.me/" + (wspDe(o).replace(/\D/g, "").length <= 10 ? "54" + wspDe(o).replace(/\D/g, "") : wspDe(o).replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {wspDe(o)}</a>}
                   {o.prueba && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>🧪 de prueba · no cuenta</span>}
                   {delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
                   {!delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
@@ -910,12 +942,14 @@ export function PanelCompetencia(props) {
             </div>
             {(function () {
               var vistos = {};
-              var part = validas.filter(function (o) { var w = String(o.wsp || "").replace(/\D/g, ""); if (!o.nombre || w.length < 8 || vistos[w]) return false; vistos[w] = true; return true; });
+              var finMes = mesVista + "-31T23:59:59";
+              var part = miembrosCom.filter(function (m) { var w = String(m.wsp || "").replace(/\D/g, ""); if (m.prueba || !m.nombre || w.length < 8 || vistos[w] || (m.fecha && m.fecha > finMes)) return false; vistos[w] = true; return true; })
+                .map(function (m) { return { id: "com_" + m.wsp, nombre: nombreCompleto(m), wsp: m.wsp, local: m.fav || "" }; });
               var gan = sorteos[mesVista];
               return (
                 <div style={{ maxWidth: 640, margin: "0 auto 12px", background: "#14100A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: "#D4A017" }}>🎁 Sorteo de {nomMes(mesVista)}{cfgPanel.premio ? " · " + cfgPanel.premio : ""}</div>
-                  <div style={{ fontSize: 11, color: "#9A9A9A", margin: "3px 0 8px", lineHeight: 1.5 }}>Participan quienes dejaron nombre y WhatsApp en el mes (una vez por número; no cuentan las del personal). Hay {part.length} participante{part.length === 1 ? "" : "s"}.</div>
+                  <div style={{ fontSize: 11, color: "#9A9A9A", margin: "3px 0 8px", lineHeight: 1.5 }}>Participan los miembros de la comunidad que se sumaron hasta fin de mes (uno por WhatsApp). Hay {part.length} participante{part.length === 1 ? "" : "s"}.</div>
                   {gan && <div style={{ fontSize: 13, marginBottom: 8 }}>🏆 Ganó <b>{gan.nombre}</b> · <a href={linkWsp(gan.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none" }}>💬 {gan.wsp}</a> <span style={{ color: "#6E6E6E", fontSize: 10.5 }}>({(localDe(gan.local) || {}).nombre} · sorteado el {new Date(gan.fecha).toLocaleDateString("es-AR")})</span></div>}
                   {!props.soloLectura && <button onClick={function () { sortear(mesVista, part); }} disabled={part.length === 0} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: part.length ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: part.length ? "pointer" : "default" }}>{gan ? "🎲 Sortear de nuevo" : "🎲 Sortear ahora"}</button>}
                 </div>
@@ -944,8 +978,8 @@ export function PanelCompetencia(props) {
                     <div key={o.id} style={{ padding: "7px 0", borderTop: "1px solid #161616" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                          <b style={{ fontSize: 12.5 }}>{o.nombre || "Anónimo"}</b>
-                          {o.wsp && <a href={"https://wa.me/" + (o.wsp.replace(/\D/g, "").length <= 10 ? "54" + o.wsp.replace(/\D/g, "") : o.wsp.replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#4C9A5A", textDecoration: "none" }}>💬 {o.wsp}</a>}
+                          <b style={{ fontSize: 12.5 }}>{nombreDe(o)}</b>
+                          {wspDe(o) && <a href={"https://wa.me/" + (wspDe(o).replace(/\D/g, "").length <= 10 ? "54" + wspDe(o).replace(/\D/g, "") : wspDe(o).replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#4C9A5A", textDecoration: "none" }}>💬 {wspDe(o)}</a>}
                           <span style={{ fontSize: 10, color: "#6E6E6E" }}>{o.canal === "delivery" ? "delivery" : (o.zona === "barra" ? "barra" : o.zona === "mesa" ? "mesa" : "salón")}</span>
                           {per && <span style={{ fontSize: 10, color: "#B07AE0" }}>👤 personal · no cuenta</span>}
                           {o.prueba && <span style={{ fontSize: 10, color: "#E0914A" }}>🧪 de prueba · no cuenta</span>}

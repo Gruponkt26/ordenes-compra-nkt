@@ -15,6 +15,10 @@ var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponD
 
 export function urlGrupo() { return URL_PUBLICA + "/?grupo"; }
 function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
+export function nombreCompleto(m) { return ((m && m.nombre) || "") + (m && m.apellido ? " " + m.apellido : ""); }
+export function idDispositivo() {
+  try { var d = window.localStorage.getItem("nkt_dispositivo"); if (!d) { d = Math.random().toString(36).slice(2, 8); window.localStorage.setItem("nkt_dispositivo", d); } return d; } catch (e) { return ""; }
+}
 function soloDigitos(s) { return String(s || "").replace(/\D/g, ""); }
 function linkWsp(w, texto) {
   var n = soloDigitos(w); if (!n) return "";
@@ -61,7 +65,7 @@ async function emitirCupon(socio, cfg) {
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
   var ahora = new Date();
-  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: socio.nombre, pct: cfg.cuponPct || 10, creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
+  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: nombreCompleto(socio), pct: cfg.cuponPct || 10, creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
   if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
   await guardarFila("com_" + w, "comunidad", { ...socio, cupon: codigo });
   return cupon;
@@ -143,6 +147,7 @@ export function TarjetaCupon(props) {
 export function GrupoNkt() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [nombre, setNombre] = useState("");
+  var [apellido, setApellido] = useState("");
   var [wsp, setWsp] = useState("");
   var [dia, setDia] = useState("");
   var [mes, setMes] = useState("");
@@ -202,10 +207,10 @@ export function GrupoNkt() {
   }
   function unirse() {
     var w = soloDigitos(wsp);
-    if (!nombre.trim() || w.length < 8) { setError("Escribí tu nombre y tu WhatsApp."); return; }
+    if (!nombre.trim() || !apellido.trim() || w.length < 8) { setError("Escribí tu nombre, tu apellido y tu WhatsApp."); return; }
     if (!acepta) { setError("Tildá la casilla para sumarte."); return; }
     setEnviando(true); setError("");
-    var socio = { nombre: nombre.trim().slice(0, 60), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
+    var socio = { nombre: nombre.trim().slice(0, 60), apellido: apellido.trim().slice(0, 60), disp: idDispositivo(), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
     leerPauta("com_" + w).then(function (previo) {
       // Si ya estaba, se conserva su cupón y su fecha de alta.
       return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
@@ -273,6 +278,7 @@ export function GrupoNkt() {
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad</div>
             <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.55, margin: "6px 0 12px", textAlign: "center" }}>Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios de Grupo Nkt.</div>
             <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inp} />
+            <input value={apellido} onChange={function (e) { setApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inp} />
             <input value={wsp} onChange={function (e) { setWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)" style={inp} />
             <div style={{ fontSize: 11.5, color: "#8C8C8C", margin: "2px 0 4px" }}>Tu cumpleaños (opcional, para saludarte)</div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -398,7 +404,7 @@ export function PanelComunidad() {
   function csv() {
     var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón"]].concat(reales.map(function (m) {
       var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
-      return [m.nombre, m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || ""];
+      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || ""];
     }));
     var txt = "﻿" + filas.map(function (f) { return f.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "comunidad_grupo_nkt.csv"; a.click();
@@ -475,7 +481,7 @@ export function PanelComunidad() {
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ minWidth: 0 }}>
-                    <b>{m.nombre}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
+                    <b>{nombreCompleto(m)}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";

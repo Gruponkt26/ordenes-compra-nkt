@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto } from "./grupo.jsx";
+import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -123,7 +123,7 @@ export function Opinar() {
     var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       if (!c) return;
-      leerPauta("com_" + c.wsp).then(function (m) { if (m) { setYaEsParte(true); setCuponYa(c); } });
+      leerPauta("com_" + c.wsp).then(function (m) { if (m) { setYaEsParte(true); setCuponYa(c); cuponActual(c).then(function (a) { if (a) setCuponYa(a); }); } });
     });
   }, []);
   var [enviando, setEnviando] = useState(false);

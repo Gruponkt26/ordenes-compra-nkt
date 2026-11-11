@@ -11,10 +11,12 @@ var LOCALES_GRUPO = [
   { id: "l2", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, locales: {} };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, locales: {} };
 
 export function urlGrupo() { return URL_PUBLICA + "/?grupo"; }
 function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
+// Descuento del cupón: el del local donde la persona se sumó, si se cargó uno; si no, el general.
+export function pctPara(cfg, local) { return ((cfg && cfg.cuponPctLocal) || {})[local] || (cfg && cfg.cuponPct) || 10; }
 export function nombreCompleto(m) { return ((m && m.nombre) || "") + (m && m.apellido ? " " + m.apellido : ""); }
 export function idDispositivo() {
   try { var d = window.localStorage.getItem("nkt_dispositivo"); if (!d) { d = Math.random().toString(36).slice(2, 8); window.localStorage.setItem("nkt_dispositivo", d); } return d; } catch (e) { return ""; }
@@ -30,7 +32,7 @@ export async function cargarConfigGrupo() {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, locales: (x && x.locales) || {} };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, locales: (x && x.locales) || {} };
   } catch (e) { return CONFIG_VACIA; }
 }
 async function guardarFila(id, ambito, obj) {
@@ -57,6 +59,27 @@ function estadoCupon(c) {
   if (c.vence && new Date(c.vence).getTime() < Date.now()) return "vencido";
   return "activo";
 }
+// Cupón siguiente: apenas se usa (o vence) el anterior, la persona recibe uno nuevo para su próxima compra. Siempre hay uno solo vigente por persona.
+export async function renovarCupon(wsp, cfg) {
+  var m = await leerPauta("com_" + wsp);
+  if (!m) return null;
+  var codigo = "";
+  for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
+  if (!codigo) return null;
+  var ahora = new Date();
+  var cupon = { prueba: m.prueba ? 1 : 0, codigo: codigo, wsp: wsp, nombre: nombreCompleto(m), pct: pctPara(cfg, m.fav), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + ((cfg && cfg.cuponDias) || 30) * 86400000).toISOString(), estado: "activo", renovado: 1 };
+  if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
+  await guardarFila("com_" + wsp, "comunidad", { ...m, cupon: codigo });
+  return cupon;
+}
+// El cupón vigente de esa persona: si el que tenía ya se usó o venció, se le genera el siguiente.
+export async function cuponActual(c, cfg) {
+  var m = await leerPauta("com_" + c.wsp);
+  if (!m) return null;
+  var act = m.cupon && m.cupon !== c.codigo ? await leerPauta("cupon_" + m.cupon) : c;
+  if (act && estadoCupon(act) === "activo") return act;
+  return await renovarCupon(c.wsp, cfg || await cargarConfigGrupo());
+}
 // Crea el cupón de quien se suma (o devuelve el que ya tenía) y lo asocia a su ficha de la comunidad.
 async function emitirCupon(socio, cfg) {
   var w = socio.wsp, previo = await leerPauta("com_" + w);
@@ -65,7 +88,7 @@ async function emitirCupon(socio, cfg) {
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
   var ahora = new Date();
-  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: nombreCompleto(socio), pct: cfg.cuponPct || 10, creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
+  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: nombreCompleto(socio), pct: pctPara(cfg, socio.fav), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
   if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
   await guardarFila("com_" + w, "comunidad", { ...socio, cupon: codigo });
   return cupon;
@@ -130,7 +153,7 @@ export function TarjetaCupon(props) {
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{c.pct}% OFF</div>
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
-        {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez.</span>}
+        {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez; cuando lo uses, tu próximo cupón ya queda listo para tu siguiente compra.</span>}
         {est === "usado" && <span>✅ Este cupón ya fue usado.</span>}
         {est === "vencido" && <span>⌛ Este cupón venció el {new Date(c.vence).toLocaleDateString("es-AR")}.</span>}
       </div>
@@ -177,7 +200,7 @@ export function GrupoNkt() {
       // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
       if (!c) { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); return; }
       leerPauta("com_" + c.wsp).then(function (m) {
-        if (m) setCupon(c); else { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); }
+        if (m) cuponActual(c).then(function (a) { if (a) { setCupon(a); if (!modoPrueba) { try { localStorage.setItem("nkt_cupon", a.codigo); } catch (e) {} } } else setCupon(c); }); else { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); }
       });
     });
     function antes(e) { e.preventDefault(); setInstalar(e); }
@@ -200,8 +223,11 @@ export function GrupoNkt() {
       return leerPauta("cupon_" + m.cupon).then(function (c) {
         setBuscando(false);
         if (!c) { setMsgVer("No encontramos tu cupón. Escribinos y lo revisamos."); return; }
-        setCupon(c); setHecho("ya");
-        if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
+        return cuponActual(c).then(function (a) {
+          var v = a || c;
+          setCupon(v); setHecho("ya");
+          if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); localStorage.setItem("nkt_cupon", v.codigo); } catch (e) {} }
+        });
       });
     });
   }
@@ -338,7 +364,14 @@ export function PanelCanje(props) {
     // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
     leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
       if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
-      guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) { setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento."); if (props.onCanje) props.onCanje(); } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
+      guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) {
+        setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento.");
+        // Se le deja listo el siguiente cupón para su próxima compra.
+        cargarConfigGrupo().then(function (cfgG) { return renovarCupon(cupon.wsp, cfgG); }).then(function (sig) {
+          if (sig) setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento. Su próximo cupón ya quedó listo: " + sig.codigo + ".");
+          if (props.onCanje) props.onCanje();
+        });
+      } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
     });
   }
   var est = estadoCupon(cupon);
@@ -380,12 +413,11 @@ export function PanelComunidad() {
   var [cupones, setCupones] = useState([]);
   var [msgPrueba, setMsgPrueba] = useState("");
   var [filtroCup, setFiltroCup] = useState("todos");
+  var [msgCup, setMsgCup] = useState("");
 
   useEffect(function () {
     cargarConfigGrupo().then(setCfg);
-    fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
-      setMiembros(Array.isArray(d) ? d.map(function (f) { try { var x = JSON.parse(f.texto); return { id: f.id, ...x }; } catch (e) { return null; } }).filter(Boolean) : []);
-    }).catch(function () { setMiembros([]); });
+    cargarMiembros();
     cargarCupones();
     QRCode.toDataURL(urlGrupo(), { margin: 1, width: 360, errorCorrectionLevel: "M" }).then(setQr).catch(function () {});
   }, []);
@@ -393,6 +425,31 @@ export function PanelComunidad() {
   var sel = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12, width: "100%", boxSizing: "border-box", marginBottom: 6 };
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
 
+  function guardarValores() {
+    guardarFila("grupo_config", "grupo_config", cfg).then(function (ok) { setMsgCup(ok ? "✓ Guardado: vale para los cupones nuevos y los que se generen al canjear." : "No se pudo guardar"); setTimeout(function () { setMsgCup(""); }, 4000); });
+  }
+  // Pasa los cupones vigentes sin usar al descuento que figura ahora (el de su local, o el general).
+  function aplicarAVigentes() {
+    var vig = cupones.filter(function (c) { return !c.prueba && estadoCupon(c) === "activo"; });
+    if (vig.length === 0) { setMsgCup("No hay cupones vigentes para actualizar."); setTimeout(function () { setMsgCup(""); }, 3000); return; }
+    if (!window.confirm("¿Cambiar el descuento de los " + vig.length + " cupones vigentes sin usar al valor actual? Los ya usados no se tocan.")) return;
+    Promise.all(vig.map(function (c) {
+      var m = (miembros || []).find(function (x) { return x.wsp === c.wsp; });
+      return guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: pctPara(cfg, m ? m.fav : "") });
+    })).then(function () { cargarCupones(); setMsgCup("✓ Se actualizaron " + vig.length + " cupones vigentes."); setTimeout(function () { setMsgCup(""); }, 4000); });
+  }
+  function cambiarPctCupon(c) {
+    var v = window.prompt("Descuento para el cupón " + c.codigo + " de " + c.nombre + " (%):", String(c.pct));
+    if (v === null) return;
+    var n = parseInt(String(v).replace(/\D/g, ""), 10);
+    if (!(n >= 1 && n <= 100)) { window.alert("Poné un número entre 1 y 100."); return; }
+    guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: n }).then(function () { cargarCupones(); });
+  }
+  function cargarMiembros() {
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setMiembros(Array.isArray(d) ? d.map(function (f) { try { var x = JSON.parse(f.texto); return { id: f.id, ...x }; } catch (e) { return null; } }).filter(Boolean) : []);
+    }).catch(function () { setMiembros([]); });
+  }
   function cargarCupones() {
     fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
       setCupones(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
@@ -474,12 +531,39 @@ export function PanelComunidad() {
         {msgPrueba && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgPrueba}</span>}
       </div>
 
-      <PanelCanje local="Oficina" usuario="Administración" onCanje={cargarCupones} />
+      <PanelCanje local="Oficina" usuario="Administración" onCanje={function () { cargarCupones(); cargarMiembros(); }} />
       {cupones.filter(function (c) { return !c.prueba; }).length > 0 && (function () {
         var cr = cupones.filter(function (c) { return !c.prueba; });
         var emit = cr.length, us = cr.filter(function (c) { return c.estado === "usado"; }).length, ven = cr.filter(function (c) { return estadoCupon(c) === "vencido"; }).length;
         return <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>🎟️ Cupones: <b>{emit}</b> emitidos · <b style={{ color: "#4C9A5A" }}>{us}</b> canjeados ({Math.round(us / emit * 100)}%) · <b>{ven}</b> vencidos sin usar · <b>{emit - us - ven}</b> vigentes</div>;
       })()}
+
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>⚙️ Valor de los cupones</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>El descuento que se cambia acá vale para los cupones nuevos y para el siguiente que reciba cada persona al canjear. Podés poner un valor distinto según el local donde se sumó el cliente; el cupón se usa igual en cualquiera de los 3.</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Descuento general (%)</div>
+            <input value={cfg.cuponPct} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponPct: Math.min(v, 100) }; }); }} inputMode="numeric" style={sel} /></div>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Días de validez</div>
+            <input value={cfg.cuponDias} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponDias: v }; }); }} inputMode="numeric" style={sel} /></div>
+        </div>
+        <div style={{ fontSize: 11, color: "#8C8C8C", margin: "4px 0" }}>Según el local donde se sumó (vacío = el general)</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          {LOCALES_GRUPO.map(function (l) {
+            return (
+              <div key={l.id} style={{ flex: "1 1 120px" }}>
+                <div style={{ fontSize: 10.5, color: l.color, fontWeight: 700, marginBottom: 3 }}>{l.nombre}</div>
+                <input value={(cfg.cuponPctLocal || {})[l.id] || ""} placeholder={String(cfg.cuponPct)} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { var o = { ...(c.cuponPctLocal || {}) }; if (v > 0) o[l.id] = Math.min(v, 100); else delete o[l.id]; return { ...c, cuponPctLocal: o }; }); }} inputMode="numeric" style={sel} />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={guardarValores} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Guardar valores</button>
+          <button onClick={aplicarAVigentes} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #D4A01766", background: "#D4A01722", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Aplicar también a los cupones vigentes</button>
+        </div>
+        {msgCup && <div style={{ fontSize: 12, color: "#8FD19A", marginTop: 8 }}>{msgCup}</div>}
+      </div>
 
       {(function () {
         var todos = cupones.filter(function (c) { return !c.prueba; }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
@@ -515,6 +599,7 @@ export function PanelComunidad() {
                   </div>
                   <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
                   {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}{c.usado_por ? " · por " + c.usado_por : ""}</div>}
+                  {e === "activo" && <button onClick={function () { cambiarPctCupon(c); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", marginRight: 12, padding: 0, marginTop: 4 }}>✏️ Cambiar descuento</button>}
                   {e === "activo" && <a href={linkWsp(c.wsp, txt)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 4, fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 Recordarle que lo use</a>}
                 </div>
               );
@@ -562,12 +647,6 @@ export function PanelComunidad() {
             <input value={cfg.frase} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, frase: v }; }); }} placeholder="Tres lugares de Punta Alta, una misma comunidad." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Invitación que ve quien termina de opinar (qué se lleva si se suma)</div>
             <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
-            <div style={{ display: "flex", gap: 8, margin: "6px 0 4px" }}>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Descuento del cupón (%)</div>
-                <input value={cfg.cuponPct} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponPct: Math.min(v, 100) }; }); }} inputMode="numeric" style={sel} /></div>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Días de validez</div>
-                <input value={cfg.cuponDias} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponDias: v }; }); }} inputMode="numeric" style={sel} /></div>
-            </div>
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Mensaje al sumarse (ej: un beneficio de bienvenida)</div>
             <input value={cfg.bienvenida} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, bienvenida: v }; }); }} placeholder="Mostrá este mensaje en caja y te regalamos un café." style={sel} />
             {LOCALES_GRUPO.map(function (l) {

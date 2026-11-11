@@ -241,7 +241,7 @@ export function GrupoNkt() {
   // Quien ya es parte ve su cupón con solo su WhatsApp, sin volver a llenar el formulario.
   // "Cerrar sesión": este celular se olvida de quién es (no se borra nada de la comunidad ni del cupón).
   function cerrarSesion() {
-    if (!window.confirm("¿Cerrar sesión en este celular? Tu cupón y tu lugar en la comunidad siguen guardados: para volver a entrar escribís tu WhatsApp.")) return;
+    if (!window.confirm("¿Cerrar sesión en este celular? Tu cupón y tu lugar en la comunidad siguen guardados: para volver a entrar usás «Ingresar» con tu WhatsApp.")) return;
     try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {}
     setCupon(null); setHistorial([]); setHecho(""); setVerMi(false); setWspVer(""); setMsgVer("");
     try { window.scrollTo(0, 0); } catch (e) {}
@@ -251,7 +251,7 @@ export function GrupoNkt() {
     if (w.length < 8) { setMsgVer("Escribí tu WhatsApp completo."); return; }
     setBuscando(true); setMsgVer("");
     leerPauta("com_" + w).then(function (m) {
-      if (!m || !m.cupon) { setBuscando(false); setMsgVer("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, completá el formulario."); return null; }
+      if (!m || !m.cupon) { setBuscando(false); setMsgVer("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, hacelo en el formulario de más abajo."); return null; }
       return leerPauta("cupon_" + m.cupon).then(function (c) {
         setBuscando(false);
         if (!c) { setMsgVer("No encontramos tu cupón. Escribinos y lo revisamos."); return; }
@@ -289,6 +289,17 @@ export function GrupoNkt() {
         <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
       </div>
+
+      {!cupon && hecho !== "ok" && (
+        <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#8FD19A", textAlign: "center" }}>Ingresar</div>
+          <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.5, margin: "6px 0 10px", textAlign: "center" }}>Si ya sos parte de la comunidad, entrá con tu WhatsApp para ver tu cupón y tus novedades.</div>
+          <input value={wspVer} onChange={function (e) { setWspVer(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter") verMiCupon(); }} inputMode="tel" placeholder="Tu WhatsApp" style={inp} />
+          {msgVer && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{msgVer}</div>}
+          <button onClick={verMiCupon} disabled={buscando} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{buscando ? "Ingresando…" : "Ingresar"}</button>
+          <div style={{ fontSize: 11.5, color: "#8C8C8C", textAlign: "center", marginTop: 8 }}>¿Todavía no sos parte? Sumate más abajo.</div>
+        </div>
+      )}
 
       {cupon && (function () {
         var usados = historial.filter(function (c) { return c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
@@ -371,7 +382,7 @@ export function GrupoNkt() {
           </div>
         ) : (
           <div>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>¿Todavía no sos parte? Sumate a la comunidad</div>
             <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.55, margin: "6px 0 12px", textAlign: "center" }}>Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios de Grupo Nkt.</div>
             <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inp} />
             <input value={apellido} onChange={function (e) { setApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inp} />
@@ -391,16 +402,6 @@ export function GrupoNkt() {
             </label>
             {error && <div style={{ color: "#E0714A", fontSize: 13, marginBottom: 8 }}>{error}</div>}
             <button onClick={unirse} disabled={enviando} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Sumándote…" : "Sumarme"}</button>
-            <div style={{ marginTop: 14, borderTop: "1px solid #2A2208", paddingTop: 12, textAlign: "center" }}>
-              {!verMi
-                ? <button onClick={function () { setVerMi(true); }} style={{ background: "none", border: "none", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>¿Ya sos parte? Ver mi cupón</button>
-                : <div style={{ textAlign: "left" }}>
-                    <div style={{ fontSize: 12.5, color: "#B8B8B8", marginBottom: 6 }}>Escribí el WhatsApp con el que te sumaste:</div>
-                    <input value={wspVer} onChange={function (e) { setWspVer(e.target.value); }} inputMode="tel" placeholder="Tu WhatsApp" style={inp} />
-                    {msgVer && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{msgVer}</div>}
-                    <button onClick={verMiCupon} disabled={buscando} style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{buscando ? "Buscando…" : "Ver mi cupón"}</button>
-                  </div>}
-            </div>
           </div>
         )}
       </div>

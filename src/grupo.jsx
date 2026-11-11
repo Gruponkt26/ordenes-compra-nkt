@@ -338,7 +338,7 @@ export function PanelCanje(props) {
     // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
     leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
       if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
-      guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) { setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento."); } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
+      guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) { setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento."); if (props.onCanje) props.onCanje(); } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
     });
   }
   var est = estadoCupon(cupon);
@@ -379,21 +379,33 @@ export function PanelComunidad() {
   var [verDatos, setVerDatos] = useState(false);
   var [cupones, setCupones] = useState([]);
   var [msgPrueba, setMsgPrueba] = useState("");
+  var [filtroCup, setFiltroCup] = useState("todos");
 
   useEffect(function () {
     cargarConfigGrupo().then(setCfg);
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
       setMiembros(Array.isArray(d) ? d.map(function (f) { try { var x = JSON.parse(f.texto); return { id: f.id, ...x }; } catch (e) { return null; } }).filter(Boolean) : []);
     }).catch(function () { setMiembros([]); });
-    fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
-      setCupones(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
-    }).catch(function () {});
+    cargarCupones();
     QRCode.toDataURL(urlGrupo(), { margin: 1, width: 360, errorCorrectionLevel: "M" }).then(setQr).catch(function () {});
   }, []);
 
   var sel = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12, width: "100%", boxSizing: "border-box", marginBottom: 6 };
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
 
+  function cargarCupones() {
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setCupones(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
+    }).catch(function () {});
+  }
+  function csvCupones() {
+    var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por"]].concat(cupones.filter(function (c) { return !c.prueba; }).map(function (c) {
+      var e = estadoCupon(c);
+      return [c.codigo, c.nombre, c.wsp, c.pct + "%", c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || ""];
+    }));
+    var txt = "\ufeff" + filas.map(function (f) { return f.map(function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_grupo_nkt.csv"; a.click();
+  }
   function setLocal(id, k, v) { setCfg(function (c) { var l = { ...c.locales }; l[id] = { ...(l[id] || {}), [k]: v }; return { ...c, locales: l }; }); }
   function guardar() {
     guardarFila("grupo_config", "grupo_config", cfg).then(function (ok) { setMsg(ok ? "✓ Guardado" : "No se pudo guardar"); setTimeout(function () { setMsg(""); }, 2500); });
@@ -462,11 +474,54 @@ export function PanelComunidad() {
         {msgPrueba && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgPrueba}</span>}
       </div>
 
-      <PanelCanje local="Oficina" usuario="Administración" />
+      <PanelCanje local="Oficina" usuario="Administración" onCanje={cargarCupones} />
       {cupones.filter(function (c) { return !c.prueba; }).length > 0 && (function () {
         var cr = cupones.filter(function (c) { return !c.prueba; });
         var emit = cr.length, us = cr.filter(function (c) { return c.estado === "usado"; }).length, ven = cr.filter(function (c) { return estadoCupon(c) === "vencido"; }).length;
         return <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>🎟️ Cupones: <b>{emit}</b> emitidos · <b style={{ color: "#4C9A5A" }}>{us}</b> canjeados ({Math.round(us / emit * 100)}%) · <b>{ven}</b> vencidos sin usar · <b>{emit - us - ven}</b> vigentes</div>;
+      })()}
+
+      {(function () {
+        var todos = cupones.filter(function (c) { return !c.prueba; }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
+        var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
+        var cuenta = { todos: todos.length, vigentes: 0, usados: 0, vencidos: 0 };
+        todos.forEach(function (c) { cuenta[est(c)]++; });
+        var lista = todos.filter(function (c) { return filtroCup === "todos" || est(c) === filtroCup; });
+        return (
+          <div style={tarjeta}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017" }}>🎟️ Cupones otorgados · {todos.length}</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={cargarCupones} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 11.5, cursor: "pointer" }}>↻ Actualizar</button>
+                {todos.length > 0 && <button onClick={csvCupones} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 11.5, cursor: "pointer" }}>⬇️ Excel</button>}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {[["todos", "Todos"], ["vigentes", "Vigentes"], ["usados", "Usados"], ["vencidos", "Vencidos"]].map(function (t) {
+                var act = filtroCup === t[0];
+                return <button key={t[0]} onClick={function () { setFiltroCup(t[0]); }} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "#111", color: act ? "#D4A017" : "#8C8C8C", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{t[1]} · {cuenta[t[0]]}</button>;
+              })}
+            </div>
+            {lista.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>No hay cupones en esta vista.</div>}
+            {lista.slice(0, 100).map(function (c) {
+              var e = estadoCupon(c), col = e === "activo" ? "#4C9A5A" : e === "usado" ? "#8C8C8C" : "#E0714A";
+              var primer = String(c.nombre || "").split(" ")[0];
+              var txt = "Hola " + primer + "! Te recordamos que tenés un cupón de Grupo Nkt de " + c.pct + "% de descuento (" + c.codigo + "), válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR") + " en cualquiera de nuestros locales. ¡Te esperamos!";
+              return (
+                <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <div><b>{c.nombre}</b> <a href={linkWsp(c.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {c.wsp}</a></div>
+                    <span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
+                  {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}{c.usado_por ? " · por " + c.usado_por : ""}</div>}
+                  {e === "activo" && <a href={linkWsp(c.wsp, txt)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 4, fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 Recordarle que lo use</a>}
+                </div>
+              );
+            })}
+            {lista.length > 100 && <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6 }}>Se muestran los últimos 100. Bajá el Excel para verlos a todos.</div>}
+          </div>
+        );
       })()}
 
       <div style={tarjeta}>

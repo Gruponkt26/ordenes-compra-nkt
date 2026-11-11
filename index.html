@@ -20,7 +20,21 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="cargando" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0D0D0D;color:#B8B8B8;font-family:sans-serif;font-size:15px;text-align:center;padding:20px;box-sizing:border-box">Cargando…</div></div>
+    <script>
+      // Si la app no llega a arrancar, que se vea un mensaje con el motivo y no una pantalla vacía.
+      (function () {
+        var ultimo = "";
+        window.addEventListener("error", function (e) { ultimo = (e && e.message) || ultimo; });
+        window.addEventListener("unhandledrejection", function (e) { ultimo = String((e && e.reason && e.reason.message) || (e && e.reason) || ultimo); });
+        setTimeout(function () {
+          var c = document.getElementById("cargando");
+          if (!c) return;
+          c.style.flexDirection = "column";
+          c.innerHTML = "<div style='font-size:18px;color:#F0EDE8;margin-bottom:10px'>La app no pudo cargar</div><div style='max-width:340px;line-height:1.5'>Probá recargar la página. Si sigue igual, mandá una captura de esta pantalla.</div><div style='margin-top:14px;font-size:11px;color:#777;max-width:340px;word-break:break-word'>" + (ultimo ? "Detalle: " + String(ultimo).replace(/</g, "&lt;") : "Detalle: no se descargaron los archivos de la app (puede ser la conexión o un bloqueo de la red).") + "</div>";
+        }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

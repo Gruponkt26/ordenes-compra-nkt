@@ -106,8 +106,12 @@ export function Opinar() {
   var [fWsp, setFWsp] = useState("");
   var [fDia, setFDia] = useState("");
   var [fMes, setFMes] = useState("");
-  var [fAcepta, setFAcepta] = useState(false);
+  var [opReg, setOpReg] = useState(null);   // la opinión recién enviada {id, texto}: se le agrega el nombre si el cliente se identifica
+  var [identificado, setIdentificado] = useState(false);
+  var [socioAct, setSocioAct] = useState(null);   // el socio recién anotado, para agregarle el cumpleaños
+  var [cumpleOk, setCumpleOk] = useState(false);
   var [errCom, setErrCom] = useState("");
+  var [errId, setErrId] = useState("");
   var [sumando, setSumando] = useState(false);
   var [cuponNuevo, setCuponNuevo] = useState(null);   // cupón recién obtenido
   var [cuponYa, setCuponYa] = useState(null);         // cupón de quien ya era parte (confirmado en la base)
@@ -139,29 +143,65 @@ export function Opinar() {
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", padding: "22px 16px 40px", boxSizing: "border-box" };
   var caja = { maxWidth: 440, margin: "0 auto" };
 
-  function unirseDesdeOpinion() {
-    var w = fWsp.replace(/\D/g, "");
-    if (!fNombre.trim() || !fApellido.trim() || w.length < 8) { setErrCom("Escribí tu nombre, tu apellido y tu WhatsApp."); return; }
-    if (!fAcepta) { setErrCom("Tildá la casilla para sumarte."); return; }
+  var wDig = fWsp.replace(/\D/g, "");
+  // Paso 1 (opcional): el cliente se identifica y su nombre queda en la opinión.
+  function identificarse() {
+    if (!fNombre.trim() || !fApellido.trim()) { setErrId("Escribí tu nombre y tu apellido."); return; }
+    setErrId("");
+    if (opReg) guardarFilaPauta(opReg.id, "opinion", { ...opReg.texto, nombre: fNombre.trim().slice(0, 60), apellido: fApellido.trim().slice(0, 60), wsp: wDig.slice(0, 20) });
+    setIdentificado(true);
+  }
+  // Paso 2: unirse a la comunidad con los datos que ya dio (si falta alguno, se piden antes).
+  function hacerUnirse() {
+    if (!fNombre.trim() || !fApellido.trim() || wDig.length < 8) {
+      var arriba = opReg && !identificado;   // si el recuadro de arriba sigue visible, los datos se completan ahí
+      setErrCom(arriba ? "Para unirte completá arriba tu nombre, tu apellido y tu WhatsApp." : "Para unirte escribí tu nombre, tu apellido y tu WhatsApp.");
+      if (!arriba) setAbrirForm(true);
+      return;
+    }
     setErrCom(""); setSumando(true);
-    (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) {
-      return sumarSocio({ nombre: fNombre.trim().slice(0, 60), apellido: fApellido.trim().slice(0, 60), wsp: w.slice(0, 20), dia: parseInt(fDia, 10) || 0, mes: parseInt(fMes, 10) || 0, fav: localId, disp: idDispositivo(), fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cg);
-    }).then(function (c) {
+    var socio = { nombre: fNombre.trim().slice(0, 60), apellido: fApellido.trim().slice(0, 60), wsp: wDig.slice(0, 20), dia: 0, mes: 0, fav: localId, disp: idDispositivo(), fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
+    (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) { return sumarSocio(socio, cg); }).then(function (c) {
       setSumando(false);
-      if (c) setCuponNuevo(c); else setErrCom("No pudimos sumarte. Probá de nuevo.");
+      if (!c) { setErrCom("No pudimos sumarte. Probá de nuevo."); return; }
+      setCuponNuevo(c); setSocioAct({ ...socio, cupon: c.codigo });
+      // Si todavía no se había identificado, el nombre también queda en su opinión.
+      if (opReg && !identificado) guardarFilaPauta(opReg.id, "opinion", { ...opReg.texto, nombre: socio.nombre, apellido: socio.apellido, wsp: socio.wsp });
     });
   }
-  // Invitación a la comunidad que aparece al terminar de opinar.
+  // Paso 3: ya con el cupón, el cumpleaños (opcional).
+  function guardarCumple() {
+    var d = parseInt(fDia, 10) || 0, m = parseInt(fMes, 10) || 0;
+    if (!(d >= 1 && d <= 31 && m >= 1 && m <= 12)) { setErrCom("Poné el día y el mes de tu cumpleaños."); return; }
+    setErrCom("");
+    guardarFilaPauta("com_" + socioAct.wsp, "comunidad", { ...socioAct, dia: d, mes: m }).then(function () { setCumpleOk(true); });
+  }
+  // Lo que aparece debajo del "¡Gracias!": identificarse, unirse a la comunidad y, ya dentro, el cumpleaños.
   function invitacionComunidad() {
     var tarjeta = { marginTop: 22, background: "#14100A", border: "1px solid #D4A01766", borderRadius: 14, padding: "14px" };
     var tit = { fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" };
     var inpS = { width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 15, marginBottom: 8 };
+    var btn = { width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" };
     var beneficios = <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.6, marginTop: 12 }}>Cada compra en cualquiera de nuestros locales va a tener beneficios si sos parte de la comunidad. ¡Mostrá tu cupón en caja!</div>;
+    var consentimiento = <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, marginTop: 8 }}>Al unirme acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</div>;
     if (cuponNuevo) return (
       <div style={tarjeta}>
         <div style={tit}>🎉 ¡Ya sos parte de la comunidad Grupo Nkt!</div>
         {!cuponNuevo.sinCupon && <TarjetaCupon cupon={cuponNuevo} />}
         {beneficios}
+        {socioAct && !(socioAct.dia && socioAct.mes) && !cumpleOk && (
+          <div style={{ marginTop: 14, borderTop: "1px solid #2A2208", paddingTop: 12, textAlign: "left" }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: "#F0EDE8" }}>🎂 ¿Cuándo es tu cumpleaños?</div>
+            <div style={{ fontSize: 12, color: "#9A9A9A", margin: "3px 0 8px" }}>Dejanos tu fecha y te saludamos con un regalo (opcional).</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={fDia} onChange={function (e) { setFDia(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Día" style={{ ...inpS, flex: 1 }} />
+              <input value={fMes} onChange={function (e) { setFMes(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Mes" style={{ ...inpS, flex: 1 }} />
+            </div>
+            {errCom && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{errCom}</div>}
+            <button onClick={guardarCumple} style={{ ...btn, background: "#1A6B8A" }}>Guardar mi cumpleaños</button>
+          </div>
+        )}
+        {cumpleOk && <div style={{ fontSize: 13, color: "#8FD19A", marginTop: 12 }}>🎂 ¡Listo! Te vamos a saludar en tu cumpleaños.</div>}
       </div>
     );
     if (yaEsParte) return (
@@ -172,29 +212,33 @@ export function Opinar() {
       </div>
     );
     return (
-      <div style={{ ...tarjeta, textAlign: "left" }}>
-        <div style={{ ...tit, textAlign: "center" }}>Sumate a nuestra comunidad de beneficios, descuentos, regalos y más</div>
-        <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "8px 0 12px", textAlign: "center" }}>{gancho || "Recibí un cupón de descuento y enterate primero de las novedades."}{cfg.premio ? " 🎁 Sorteo mensual: " + cfg.premio + "." : ""}</div>
-        {!abrirForm ? (
-          <button onClick={function () { setAbrirForm(true); }} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>Quiero sumarme</button>
-        ) : (
-          <div>
+      <div>
+        {opReg && !identificado && (
+          <div style={{ ...tarjeta, textAlign: "left" }}>
+            <div style={{ ...tit, fontSize: 16 }}>¿Querés dejar tu nombre?</div>
+            <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, margin: "6px 0 10px" }}>Tu opinión va a figurar con tu nombre. Si lo dejás vacío, queda como anónima.</div>
             <input value={fNombre} onChange={function (e) { setFNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inpS} />
             <input value={fApellido} onChange={function (e) { setFApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inpS} />
-            <input value={fWsp} onChange={function (e) { setFWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)" style={inpS} />
-            <div style={{ fontSize: 11.5, color: "#8C8C8C", margin: "2px 0 4px" }}>Tu cumpleaños (opcional, para saludarte)</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={fDia} onChange={function (e) { setFDia(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Día" style={{ ...inpS, flex: 1 }} />
-              <input value={fMes} onChange={function (e) { setFMes(e.target.value.replace(/\D/g, "").slice(0, 2)); }} inputMode="numeric" placeholder="Mes" style={{ ...inpS, flex: 1 }} />
-            </div>
-            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "#9A9A9A", lineHeight: 1.5, margin: "4px 0 10px", cursor: "pointer" }}>
-              <input type="checkbox" checked={fAcepta} onChange={function (e) { setFAcepta(e.target.checked); }} style={{ marginTop: 2 }} />
-              <span>Acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</span>
-            </label>
-            {errCom && <div style={{ color: "#E0714A", fontSize: 13, marginBottom: 8 }}>{errCom}</div>}
-            <button onClick={unirseDesdeOpinion} disabled={sumando} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{sumando ? "Sumándote…" : "Unirme y recibir mi cupón"}</button>
+            <input value={fWsp} onChange={function (e) { setFWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (opcional)" style={inpS} />
+            {errId && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{errId}</div>}
+            <button onClick={identificarse} style={{ ...btn, background: "#1A6B8A" }}>Guardar mi nombre</button>
           </div>
         )}
+        {opReg && identificado && <div style={{ fontSize: 13, color: "#8FD19A", marginTop: 16 }}>✅ Tu opinión quedó con tu nombre, {fNombre.trim()}.</div>}
+        <div style={{ ...tarjeta, textAlign: "left" }}>
+          <div style={{ ...tit, textAlign: "center" }}>Sumate a nuestra comunidad de beneficios, descuentos, regalos y más</div>
+          <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "8px 0 12px", textAlign: "center" }}>{gancho || "Recibí un cupón de descuento y enterate primero de las novedades."}{cfg.premio ? " 🎁 Sorteo mensual: " + cfg.premio + "." : ""}</div>
+          {abrirForm && !(opReg && !identificado) && (
+            <div>
+              <input value={fNombre} onChange={function (e) { setFNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inpS} />
+              <input value={fApellido} onChange={function (e) { setFApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inpS} />
+              <input value={fWsp} onChange={function (e) { setFWsp(e.target.value); }} maxLength={20} inputMode="tel" placeholder="Tu WhatsApp (ej: 2914123456)" style={inpS} />
+            </div>
+          )}
+          {errCom && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{errCom}</div>}
+          <button onClick={hacerUnirse} disabled={sumando} style={btn}>{sumando ? "Sumándote…" : "Unirme a la comunidad de beneficios Grupo Nkt"}</button>
+          {consentimiento}
+        </div>
       </div>
     );
   }
@@ -238,6 +282,7 @@ export function Opinar() {
       .then(function (r) {
         if (!r.ok) throw new Error("No se pudo enviar (" + r.status + ")");
         try { localStorage.setItem(claveLS, String(Date.now())); } catch (e) {}
+        setOpReg({ id: fila.id, texto: JSON.parse(fila.texto) });
         var vs = Object.keys(notas).map(function (k) { return notas[k]; }).filter(function (v) { return v > 0; });
         setNotaFinal(vs.length ? vs.reduce(function (a, b) { return a + b; }, 0) / vs.length : 0);
         setHecho("ok");
@@ -304,7 +349,7 @@ async function cargarOpiniones() {
     var x = null;
     try { x = JSON.parse(f.texto); } catch (e) {}
     if (!x || !x.local || !x.notas) return null;
-    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "", nombre: x.nombre || "", wsp: x.wsp || "", disp: x.disp || "", prueba: !!x.prueba };
+    return { id: f.id, fecha: f.created_at, local: x.local, canal: x.canal === "delivery" ? "delivery" : "salon", zona: x.zona || "", notas: x.notas, comentario: x.comentario || "", nombre: x.nombre || "", wsp: x.wsp || "", apellido: x.apellido || "", disp: x.disp || "", prueba: !!x.prueba };
   }).filter(Boolean);
 }
 
@@ -516,7 +561,7 @@ export function PanelCompetencia(props) {
     }).catch(function () {});
   }, []);
   var porDisp = {}; miembrosCom.forEach(function (m) { if (m.disp) porDisp[m.disp] = m; });
-  function nombreDe(o) { var m = o.disp ? porDisp[o.disp] : null; return o.nombre || (m ? nombreCompleto(m) : "") || "Anónimo"; }
+  function nombreDe(o) { var m = o.disp ? porDisp[o.disp] : null; var propio = ((o.nombre || "") + (o.apellido ? " " + o.apellido : "")).trim(); return propio || (m ? nombreCompleto(m) : "") || "Anónimo"; }
   function wspDe(o) { var m = o.disp ? porDisp[o.disp] : null; return o.wsp || (m ? m.wsp : "") || ""; }
   function guardarCfg() {
     guardarFilaPauta("opinion_config", "opinion_config", cfgPanel).then(function (ok) { setMsgCfg(ok ? "✓ Guardado" : "No se pudo guardar"); setTimeout(function () { setMsgCfg(""); }, 2500); });

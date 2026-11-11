@@ -445,6 +445,16 @@ export function PanelComunidad() {
     if (!(n >= 1 && n <= 100)) { window.alert("Poné un número entre 1 y 100."); return; }
     guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: n }).then(function () { cargarCupones(); });
   }
+  // Cuántos cupones lleva cada cliente (emitidos y canjeados), sin contar los de prueba.
+  function resumenCup(wsp) {
+    var mios = cupones.filter(function (c) { return !c.prueba && c.wsp === wsp; });
+    return { total: mios.length, usados: mios.filter(function (c) { return c.estado === "usado"; }).length };
+  }
+  // Número de orden de un cupón dentro de los de ese cliente: el 1.º, el 2.º…
+  function ordenCupon(c) {
+    var mios = cupones.filter(function (x) { return !x.prueba && x.wsp === c.wsp; }).sort(function (a, b) { return String(a.creado || "").localeCompare(String(b.creado || "")); });
+    return mios.findIndex(function (x) { return x.codigo === c.codigo; }) + 1;
+  }
   function cargarMiembros() {
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
       setMiembros(Array.isArray(d) ? d.map(function (f) { try { var x = JSON.parse(f.texto); return { id: f.id, ...x }; } catch (e) { return null; } }).filter(Boolean) : []);
@@ -456,9 +466,9 @@ export function PanelComunidad() {
     }).catch(function () {});
   }
   function csvCupones() {
-    var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por"]].concat(cupones.filter(function (c) { return !c.prueba; }).map(function (c) {
+    var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por", "Nº de cupón del cliente"]].concat(cupones.filter(function (c) { return !c.prueba; }).map(function (c) {
       var e = estadoCupon(c);
-      return [c.codigo, c.nombre, c.wsp, c.pct + "%", c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || ""];
+      return [c.codigo, c.nombre, c.wsp, c.pct + "%", c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || "", ordenCupon(c)];
     }));
     var txt = "\ufeff" + filas.map(function (f) { return f.map(function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_grupo_nkt.csv"; a.click();
@@ -471,9 +481,9 @@ export function PanelComunidad() {
     try { navigator.clipboard.writeText(urlGrupo()); setCopiado(true); setTimeout(function () { setCopiado(false); }, 1800); } catch (e) {}
   }
   function csv() {
-    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón"]].concat(reales.map(function (m) {
+    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón actual", "Cupones emitidos", "Cupones canjeados"]].concat(reales.map(function (m) {
       var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
-      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || ""];
+      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || "", resumenCup(m.wsp).total, resumenCup(m.wsp).usados];
     }));
     var txt = "﻿" + filas.map(function (f) { return f.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "comunidad_grupo_nkt.csv"; a.click();
@@ -597,7 +607,7 @@ export function PanelComunidad() {
                     <div><b>{c.nombre}</b> <a href={linkWsp(c.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {c.wsp}</a></div>
                     <span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · cupón {ordenCupon(c)} de {resumenCup(c.wsp).total} del cliente · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
                   {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}{c.usado_por ? " · por " + c.usado_por : ""}</div>}
                   {e === "activo" && <button onClick={function () { cambiarPctCupon(c); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", marginRight: 12, padding: 0, marginTop: 4 }}>✏️ Cambiar descuento</button>}
                   {e === "activo" && <a href={linkWsp(c.wsp, txt)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 4, fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 Recordarle que lo use</a>}
@@ -626,7 +636,8 @@ export function PanelComunidad() {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";
                       var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja." : ".");
-                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
+                      var rc = resumenCup(m.wsp);
+                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} cupón{rc.total === 1 ? "" : "es"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>

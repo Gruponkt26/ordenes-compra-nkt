@@ -184,6 +184,12 @@ export function Opinar() {
     var btn = { width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" };
     var beneficios = <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.6, marginTop: 12 }}>Cada compra en cualquiera de nuestros locales va a tener beneficios si sos parte de la comunidad. ¡Mostrá tu cupón en caja!</div>;
     var consentimiento = <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, marginTop: 8 }}>Al unirme acepto que Grupo Nkt me escriba por WhatsApp con novedades y beneficios. Puedo pedir que me saquen de la lista cuando quiera.</div>;
+    var irPortal = (
+      <div style={{ marginTop: 14 }}>
+        <a href={"/?grupo" + (modoPrueba ? "&prueba" : "")} style={{ display: "block", padding: "14px", borderRadius: 12, background: "#1F4D2A", border: "1px solid #3A7D44", color: "#fff", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>Entrar a mi Grupo Nkt</a>
+        <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginTop: 6 }}>Ahí tenés tu cupón, las novedades, delivery y reservas. Agregalo a tu inicio para tenerlo siempre a mano.</div>
+      </div>
+    );
     if (cuponNuevo) return (
       <div style={tarjeta}>
         <div style={tit}>🎉 ¡Ya sos parte de la comunidad Grupo Nkt!</div>
@@ -202,6 +208,7 @@ export function Opinar() {
           </div>
         )}
         {cumpleOk && <div style={{ fontSize: 13, color: "#8FD19A", marginTop: 12 }}>🎂 ¡Listo! Te vamos a saludar en tu cumpleaños.</div>}
+        {irPortal}
       </div>
     );
     if (yaEsParte) return (
@@ -209,6 +216,7 @@ export function Opinar() {
         <div style={tit}>✅ Ya sos parte de la comunidad Grupo Nkt</div>
         {cuponYa && <TarjetaCupon cupon={cuponYa} />}
         {beneficios}
+        {irPortal}
       </div>
     );
     return (

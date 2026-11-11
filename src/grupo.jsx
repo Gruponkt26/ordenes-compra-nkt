@@ -78,6 +78,44 @@ export async function sumarSocio(socio, cfg) {
   return c || { sinCupon: true };
 }
 
+// Dibuja el cupón como imagen para guardarla en la galería del celular (o compartirla): sirve para mostrarlo en caja sin internet.
+function cuponComoImagen(c) {
+  return new Promise(function (res) {
+    var img = new Image();
+    function dibujar(logo) {
+      var cv = document.createElement("canvas"); cv.width = 900; cv.height = 1100;
+      var x = cv.getContext("2d");
+      x.fillStyle = "#0D0D0D"; x.fillRect(0, 0, 900, 1100);
+      x.strokeStyle = "#4C9A5A"; x.lineWidth = 6; x.setLineDash([22, 14]); x.strokeRect(40, 40, 820, 1020); x.setLineDash([]);
+      if (logo) x.drawImage(img, 330, 90, 240, 240);
+      x.textAlign = "center";
+      x.fillStyle = "#9A9A9A"; x.font = "28px sans-serif"; x.fillText("TU CUPÓN DE DESCUENTO", 450, 400);
+      x.fillStyle = "#4C9A5A"; x.font = "bold 150px serif"; x.fillText(c.pct + "% OFF", 450, 560);
+      x.fillStyle = "#F0EDE8"; x.font = "bold 110px sans-serif"; x.fillText(c.codigo, 450, 720);
+      x.fillStyle = "#C8C8C8"; x.font = "32px sans-serif";
+      x.fillText("Válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR"), 450, 810);
+      x.fillText("Se usa una sola vez", 450, 860);
+      x.fillText("En El Bodegón, Kusama y Colantonio's", 450, 930);
+      x.fillStyle = "#8C8C8C"; x.font = "26px sans-serif"; x.fillText("Mostralo en caja · Grupo Nkt", 450, 1000);
+      cv.toBlob(function (b) { res(b); }, "image/png");
+    }
+    img.onload = function () { dibujar(true); };
+    img.onerror = function () { dibujar(false); };
+    img.src = "/icon-192.png";
+  });
+}
+async function guardarCuponImagen(c) {
+  var blob = await cuponComoImagen(c);
+  if (!blob) return;
+  var archivo = null;
+  try { archivo = new File([blob], "Cupon_GrupoNkt_" + c.codigo + ".png", { type: "image/png" }); } catch (e) {}
+  // En el celular se abre el menú de compartir (ahí aparece "Guardar imagen" y WhatsApp); si no se puede, se descarga.
+  if (archivo && navigator.canShare && navigator.canShare({ files: [archivo] })) {
+    try { await navigator.share({ files: [archivo], title: "Mi cupón Grupo Nkt" }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Cupon_GrupoNkt_" + c.codigo + ".png"; a.click();
+}
+
 export function TarjetaCupon(props) {
   var c = props.cupon, est = estadoCupon(c);
   var col = est === "activo" ? "#4C9A5A" : "#8C8C8C";
@@ -91,6 +129,11 @@ export function TarjetaCupon(props) {
         {est === "usado" && <span>✅ Este cupón ya fue usado.</span>}
         {est === "vencido" && <span>⌛ Este cupón venció el {new Date(c.vence).toLocaleDateString("es-AR")}.</span>}
       </div>
+      {est === "activo" && (
+        <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+          <button onClick={function () { guardarCuponImagen(c); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #4C9A5A", background: "#14301A", color: "#8FD19A", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>📥 Guardar mi cupón en el celular</button>
+        </div>
+      )}
     </div>
   );
 }

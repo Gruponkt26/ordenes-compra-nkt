@@ -110,6 +110,10 @@ export function GrupoNkt() {
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
   var [cupon, setCupon] = useState(null);
+  var [verMi, setVerMi] = useState(false);   // "Ya soy parte: ver mi cupón"
+  var [wspVer, setWspVer] = useState("");
+  var [msgVer, setMsgVer] = useState("");
+  var [buscando, setBuscando] = useState(false);
 
   useEffect(function () {
     document.title = "GrupoNkt";
@@ -137,6 +141,21 @@ export function GrupoNkt() {
   var inp = { width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 15, marginBottom: 8 };
   var boton = { display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontSize: 13, fontWeight: 700, textDecoration: "none" };
 
+  // Quien ya es parte ve su cupón con solo su WhatsApp, sin volver a llenar el formulario.
+  function verMiCupon() {
+    var w = soloDigitos(wspVer);
+    if (w.length < 8) { setMsgVer("Escribí tu WhatsApp completo."); return; }
+    setBuscando(true); setMsgVer("");
+    leerPauta("com_" + w).then(function (m) {
+      if (!m || !m.cupon) { setBuscando(false); setMsgVer("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, completá el formulario."); return null; }
+      return leerPauta("cupon_" + m.cupon).then(function (c) {
+        setBuscando(false);
+        if (!c) { setMsgVer("No encontramos tu cupón. Escribinos y lo revisamos."); return; }
+        setCupon(c); setHecho("ya");
+        if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
+      });
+    });
+  }
   function unirse() {
     var w = soloDigitos(wsp);
     if (!nombre.trim() || w.length < 8) { setError("Escribí tu nombre y tu WhatsApp."); return; }
@@ -226,6 +245,16 @@ export function GrupoNkt() {
             </label>
             {error && <div style={{ color: "#E0714A", fontSize: 13, marginBottom: 8 }}>{error}</div>}
             <button onClick={unirse} disabled={enviando} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Sumándote…" : "Sumarme"}</button>
+            <div style={{ marginTop: 14, borderTop: "1px solid #2A2208", paddingTop: 12, textAlign: "center" }}>
+              {!verMi
+                ? <button onClick={function () { setVerMi(true); }} style={{ background: "none", border: "none", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>¿Ya sos parte? Ver mi cupón</button>
+                : <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 12.5, color: "#B8B8B8", marginBottom: 6 }}>Escribí el WhatsApp con el que te sumaste:</div>
+                    <input value={wspVer} onChange={function (e) { setWspVer(e.target.value); }} inputMode="tel" placeholder="Tu WhatsApp" style={inp} />
+                    {msgVer && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{msgVer}</div>}
+                    <button onClick={verMiCupon} disabled={buscando} style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{buscando ? "Buscando…" : "Ver mi cupón"}</button>
+                  </div>}
+            </div>
           </div>
         )}
       </div>
@@ -403,6 +432,12 @@ export function PanelComunidad() {
                 <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ minWidth: 0 }}>
                     <b>{m.nombre}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
+                    {m.cupon && (function () {
+                      var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
+                      var est = cp ? estadoCupon(cp) : "";
+                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Mostralo en caja en El Bodegón, Kusama o Colantonio's." : ".");
+                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
+                    })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>
                   <button onClick={function () { quitar(m.id); }} title="Sacar de la lista" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>

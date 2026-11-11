@@ -112,6 +112,9 @@ export function Opinar() {
   var [cumpleOk, setCumpleOk] = useState(false);
   var [errCom, setErrCom] = useState("");
   var [errId, setErrId] = useState("");
+  var [ingWsp, setIngWsp] = useState("");
+  var [ingMsg, setIngMsg] = useState("");
+  var [ingBusy, setIngBusy] = useState(false);
   var [sumando, setSumando] = useState(false);
   var [cuponNuevo, setCuponNuevo] = useState(null);   // cupón recién obtenido
   var [cuponYa, setCuponYa] = useState(null);         // cupón de quien ya era parte (confirmado en la base)
@@ -144,6 +147,24 @@ export function Opinar() {
   var caja = { maxWidth: 440, margin: "0 auto" };
 
   var wDig = fWsp.replace(/\D/g, "");
+  // "Ya soy parte": entra con su WhatsApp, sin volver a cargar sus datos. La opinión queda con su nombre.
+  function ingresarMiembro() {
+    var w = ingWsp.replace(/\D/g, "");
+    if (w.length < 8) { setIngMsg("Escribí tu WhatsApp completo."); return; }
+    setIngBusy(true); setIngMsg("");
+    leerPauta("com_" + w).then(function (m) {
+      if (!m || !m.cupon) { setIngBusy(false); setIngMsg("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, hacelo más abajo."); return null; }
+      return leerPauta("cupon_" + m.cupon).then(function (c) {
+        if (!c) { setIngBusy(false); setIngMsg("No encontramos tu cupón. Escribinos y lo revisamos."); return; }
+        return cuponActual(c).then(function (a) {
+          var v = a || c;
+          setIngBusy(false); setYaEsParte(true); setCuponYa(v); setIdentificado(true);
+          if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); localStorage.setItem("nkt_cupon", v.codigo); } catch (e) {} }
+          if (opReg) guardarFilaPauta(opReg.id, "opinion", { ...opReg.texto, nombre: m.nombre || "", apellido: m.apellido || "", wsp: w });
+        });
+      });
+    });
+  }
   // Paso 1 (opcional): el cliente se identifica y su nombre queda en la opinión.
   function identificarse() {
     if (!fNombre.trim() || !fApellido.trim()) { setErrId("Escribí tu nombre y tu apellido."); return; }
@@ -221,6 +242,13 @@ export function Opinar() {
     );
     return (
       <div>
+        <div style={{ ...tarjeta, textAlign: "left", borderColor: "#3A7D4466", background: "#0F1A10" }}>
+          <div style={{ ...tit, fontSize: 16, color: "#8FD19A" }}>¿Ya sos parte de la comunidad?</div>
+          <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, margin: "6px 0 10px" }}>Ingresá con tu WhatsApp y listo: no hace falta cargar tus datos de nuevo.</div>
+          <input value={ingWsp} onChange={function (e) { setIngWsp(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter") ingresarMiembro(); }} inputMode="tel" placeholder="Tu WhatsApp" style={inpS} />
+          {ingMsg && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{ingMsg}</div>}
+          <button onClick={ingresarMiembro} disabled={ingBusy} style={{ ...btn, background: "#1A6B8A" }}>{ingBusy ? "Ingresando…" : "Ingresar"}</button>
+        </div>
         {opReg && !identificado && (
           <div style={{ ...tarjeta, textAlign: "left" }}>
             <div style={{ ...tit, fontSize: 16 }}>¿Querés dejar tu nombre?</div>

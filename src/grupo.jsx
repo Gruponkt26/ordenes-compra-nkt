@@ -13,7 +13,8 @@ var LOCALES_GRUPO = [
 ];
 var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, locales: {} };
 
-export function urlGrupo() { return URL_PUBLICA + "/?grupo"; }
+// La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
+export function urlGrupo() { return URL_PUBLICA + "/grupo/"; }
 function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
 // Descuento del cupón: el del local donde la persona se sumó, si se cargó uno; si no, el general.
 export function pctPara(cfg, local) { return ((cfg && cfg.cuponPctLocal) || {})[local] || (cfg && cfg.cuponPct) || 10; }
@@ -192,7 +193,7 @@ export function GrupoNkt() {
   var [acepta, setAcepta] = useState(false);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
-  var modoPrueba = esModoPrueba();   // /?grupo&prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
+  var modoPrueba = esModoPrueba();   // /grupo/?prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
   var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
@@ -635,7 +636,7 @@ export function PanelComunidad() {
           <div style={{ flex: 1, minWidth: 190 }}>
             <div style={{ fontSize: 11.5, color: "#C8C8C8", wordBreak: "break-all", marginBottom: 8 }}>{urlGrupo()}</div>
             <button onClick={copiar} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, cursor: "pointer", marginRight: 8 }}>{copiado ? "✓ Copiado" : "Copiar enlace"}</button>
-            <button onClick={function () { try { navigator.clipboard.writeText(urlGrupo() + "&instalar"); setMsgDesc("✓ Enlace de descarga copiado"); setTimeout(function () { setMsgDesc(""); }, 2500); } catch (e) {} }} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #D4A01766", background: "#D4A01722", color: "#D4A017", fontSize: 12, cursor: "pointer", marginRight: 8 }}>📲 Copiar enlace de descarga</button>
+            <button onClick={function () { try { navigator.clipboard.writeText(urlGrupo() + "?instalar"); setMsgDesc("✓ Enlace de descarga copiado"); setTimeout(function () { setMsgDesc(""); }, 2500); } catch (e) {} }} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #D4A01766", background: "#D4A01722", color: "#D4A017", fontSize: 12, cursor: "pointer", marginRight: 8 }}>📲 Copiar enlace de descarga</button>
             <a href={urlGrupo()} target="_blank" rel="noreferrer" style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, textDecoration: "none" }}>Verla</a>
             {msgDesc && <div style={{ fontSize: 11.5, color: "#8FD19A", marginTop: 8 }}>{msgDesc}</div>}
             <div style={{ fontSize: 11, color: "#7E7E7E", lineHeight: 1.5, marginTop: 8 }}>El enlace de descarga abre la página con las instrucciones para instalar la app. Sirve para mandarlo por WhatsApp o ponerlo en Instagram.</div>
@@ -647,7 +648,7 @@ export function PanelComunidad() {
         <div style={{ fontSize: 13, fontWeight: 800, color: "#E0914A", marginBottom: 4 }}>🧪 Probar como cliente</div>
         <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>Estos enlaces se abren en modo prueba: podés registrarte y opinar todas las veces que quieras, y nada cuenta en el ranking, ni en el sorteo ni en las estadísticas. Después, para ver el canje, usá el cupón que te dé acá abajo en «Canjear cupón».</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <a href={urlGrupo() + "&prueba"} target="_blank" rel="noreferrer" style={{ padding: "8px 13px", borderRadius: 8, border: "1px solid #E0914A66", background: "#E0914A18", color: "#E0914A", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🌐 Página de la comunidad</a>
+          <a href={urlGrupo() + "?prueba"} target="_blank" rel="noreferrer" style={{ padding: "8px 13px", borderRadius: 8, border: "1px solid #E0914A66", background: "#E0914A18", color: "#E0914A", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🌐 Página de la comunidad</a>
           {LOCALES_GRUPO.map(function (l) {
             return <a key={l.id} href={URL_PUBLICA + "/?opinar=" + l.id + "&c=salon&prueba"} target="_blank" rel="noreferrer" style={{ padding: "8px 13px", borderRadius: 8, border: "1px solid " + l.color + "66", background: l.color + "18", color: l.color, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>⭐ Opinar en {l.nombre}</a>;
           })}

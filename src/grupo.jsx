@@ -14,6 +14,7 @@ var LOCALES_GRUPO = [
 var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, locales: {} };
 
 export function urlGrupo() { return URL_PUBLICA + "/?grupo"; }
+function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
 function soloDigitos(s) { return String(s || "").replace(/\D/g, ""); }
 function linkWsp(w, texto) {
   var n = soloDigitos(w); if (!n) return "";
@@ -60,7 +61,7 @@ async function emitirCupon(socio, cfg) {
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
   var ahora = new Date();
-  var cupon = { codigo: codigo, wsp: w, nombre: socio.nombre, pct: cfg.cuponPct || 10, creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
+  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: socio.nombre, pct: cfg.cuponPct || 10, creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
   if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
   await guardarFila("com_" + w, "comunidad", { ...socio, cupon: codigo });
   return cupon;
@@ -71,9 +72,9 @@ export async function sumarSocio(socio, cfg) {
   var previo = await leerPauta("com_" + socio.wsp);
   var ok = await guardarFila("com_" + socio.wsp, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
   if (!ok) return null;
-  try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {}
+  if (!socio.prueba) { try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {} }
   var c = await emitirCupon(socio, cfg);
-  if (c) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
+  if (c && !socio.prueba) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
   return c || { sinCupon: true };
 }
 
@@ -82,7 +83,7 @@ export function TarjetaCupon(props) {
   var col = est === "activo" ? "#4C9A5A" : "#8C8C8C";
   return (
     <div style={{ background: "#0F1A10", border: "2px dashed " + col, borderRadius: 14, padding: "14px", marginTop: 14, textAlign: "center" }}>
-      <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento</div>
+      <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento{c.prueba ? " · 🧪 PRUEBA" : ""}</div>
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{c.pct}% OFF</div>
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
@@ -105,7 +106,8 @@ export function GrupoNkt() {
   var [acepta, setAcepta] = useState(false);
   var [enviando, setEnviando] = useState(false);
   var [error, setError] = useState("");
-  var [hecho, setHecho] = useState(function () { try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
+  var modoPrueba = esModoPrueba();   // /?grupo&prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
+  var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
   var [cupon, setCupon] = useState(null);
 
@@ -117,7 +119,7 @@ export function GrupoNkt() {
       var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (mt) mt.setAttribute("content", "Grupo Nkt");
     } catch (e) {}
     cargarConfigGrupo().then(setCfg);
-    var cg = ""; try { cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
+    var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
       if (!c) { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); return; }
@@ -140,15 +142,15 @@ export function GrupoNkt() {
     if (!nombre.trim() || w.length < 8) { setError("Escribí tu nombre y tu WhatsApp."); return; }
     if (!acepta) { setError("Tildá la casilla para sumarte."); return; }
     setEnviando(true); setError("");
-    var socio = { nombre: nombre.trim().slice(0, 60), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString() };
+    var socio = { nombre: nombre.trim().slice(0, 60), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
     leerPauta("com_" + w).then(function (previo) {
       // Si ya estaba, se conserva su cupón y su fecha de alta.
       return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
     }).then(function (ok) {
       if (!ok) { setError("No pudimos sumarte. Probá de nuevo."); setEnviando(false); return; }
-      try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {}
+      if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {} }
       return emitirCupon(socio, cfg).then(function (c) {
-        if (c) { setCupon(c); try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} }
+        if (c) { setCupon(c); if (!modoPrueba) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} } }
         setHecho("ok");
       });
     });
@@ -156,6 +158,7 @@ export function GrupoNkt() {
 
   return (
     <div style={fondo}><div style={caja}>
+      {modoPrueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, textAlign: "center", marginBottom: 14 }}>🧪 Modo prueba: lo que cargues acá no cuenta y lo podés borrar desde el panel.</div>}
       <div style={{ textAlign: "center", marginBottom: 22 }}>
         <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
@@ -183,7 +186,7 @@ export function GrupoNkt() {
               {d.direccion && <a href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta")} target="_blank" rel="noreferrer" style={boton}>📍 Cómo llegar</a>}
               {d.carta && <a href={d.carta} target="_blank" rel="noreferrer" style={boton}>🍽️ Ver la carta</a>}
               {d.instagram && <a href={d.instagram} target="_blank" rel="noreferrer" style={boton}>📸 Instagram</a>}
-              <a href={"/?opinar=" + l.id + "&c=salon"} style={boton}>⭐ Dejar mi opinión</a>
+              <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
           </div>
         );
@@ -296,6 +299,7 @@ export function PanelComunidad() {
   var [copiado, setCopiado] = useState(false);
   var [verDatos, setVerDatos] = useState(false);
   var [cupones, setCupones] = useState([]);
+  var [msgPrueba, setMsgPrueba] = useState("");
 
   useEffect(function () {
     cargarConfigGrupo().then(setCfg);
@@ -319,12 +323,25 @@ export function PanelComunidad() {
     try { navigator.clipboard.writeText(urlGrupo()); setCopiado(true); setTimeout(function () { setCopiado(false); }, 1800); } catch (e) {}
   }
   function csv() {
-    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón"]].concat((miembros || []).map(function (m) {
+    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón"]].concat(reales.map(function (m) {
       var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
       return [m.nombre, m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || ""];
     }));
     var txt = "﻿" + filas.map(function (f) { return f.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "comunidad_grupo_nkt.csv"; a.click();
+  }
+  // Borra lo cargado en modo prueba: miembros, cupones y opiniones marcados como de prueba.
+  function borrarPruebas() {
+    if (!window.confirm("¿Borrar todos los miembros, cupones y opiniones de prueba? No toca nada de los clientes reales.")) return;
+    var patron = encodeURIComponent('*"prueba":1*');
+    Promise.all(["comunidad", "cupon", "opinion"].map(function (a) {
+      return fetch(SURL + "/rest/v1/pautas?ambito=eq." + a + "&texto=like." + patron, { method: "DELETE", headers: SH });
+    })).then(function () {
+      setMiembros(function (p) { return (p || []).filter(function (m) { return !m.prueba; }); });
+      setCupones(function (p) { return (p || []).filter(function (c) { return !c.prueba; }); });
+      setMsgPrueba("✓ Pruebas borradas");
+      setTimeout(function () { setMsgPrueba(""); }, 2500);
+    });
   }
   function quitar(id) {
     if (!window.confirm("¿Sacar a esta persona de la comunidad?")) return;
@@ -333,8 +350,10 @@ export function PanelComunidad() {
     });
   }
 
-  var hoy = new Date(), cumples = (miembros || []).filter(function (m) { return m.dia === hoy.getDate() && m.mes === hoy.getMonth() + 1; });
-  var conCumple = (miembros || []).filter(function (m) { return m.dia && m.mes; }).length;
+  var pruebas = (miembros || []).filter(function (m) { return m.prueba; });
+  var reales = (miembros || []).filter(function (m) { return !m.prueba; });
+  var hoy = new Date(), cumples = reales.filter(function (m) { return m.dia === hoy.getDate() && m.mes === hoy.getMonth() + 1; });
+  var conCumple = reales.filter(function (m) { return m.dia && m.mes; }).length;
 
   return (
     <div>
@@ -351,14 +370,28 @@ export function PanelComunidad() {
         </div>
       </div>
 
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#E0914A", marginBottom: 4 }}>🧪 Probar como cliente</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>Estos enlaces se abren en modo prueba: podés registrarte y opinar todas las veces que quieras, y nada cuenta en el ranking, ni en el sorteo ni en las estadísticas. Después, para ver el canje, usá el cupón que te dé acá abajo en «Canjear cupón».</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <a href={urlGrupo() + "&prueba"} target="_blank" rel="noreferrer" style={{ padding: "8px 13px", borderRadius: 8, border: "1px solid #E0914A66", background: "#E0914A18", color: "#E0914A", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>🌐 Página de la comunidad</a>
+          {LOCALES_GRUPO.map(function (l) {
+            return <a key={l.id} href={URL_PUBLICA + "/?opinar=" + l.id + "&c=salon&prueba"} target="_blank" rel="noreferrer" style={{ padding: "8px 13px", borderRadius: 8, border: "1px solid " + l.color + "66", background: l.color + "18", color: l.color, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>⭐ Opinar en {l.nombre}</a>;
+          })}
+        </div>
+        <button onClick={borrarPruebas} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #C1440E66", background: "#C1440E18", color: "#E0714A", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Borrar todo lo de prueba</button>
+        {msgPrueba && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgPrueba}</span>}
+      </div>
+
       <PanelCanje local="Oficina" usuario="Administración" />
-      {cupones.length > 0 && (function () {
-        var emit = cupones.length, us = cupones.filter(function (c) { return c.estado === "usado"; }).length, ven = cupones.filter(function (c) { return estadoCupon(c) === "vencido"; }).length;
+      {cupones.filter(function (c) { return !c.prueba; }).length > 0 && (function () {
+        var cr = cupones.filter(function (c) { return !c.prueba; });
+        var emit = cr.length, us = cr.filter(function (c) { return c.estado === "usado"; }).length, ven = cr.filter(function (c) { return estadoCupon(c) === "vencido"; }).length;
         return <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>🎟️ Cupones: <b>{emit}</b> emitidos · <b style={{ color: "#4C9A5A" }}>{us}</b> canjeados ({Math.round(us / emit * 100)}%) · <b>{ven}</b> vencidos sin usar · <b>{emit - us - ven}</b> vigentes</div>;
       })()}
 
       <div style={tarjeta}>
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 La comunidad · {miembros === null ? "…" : miembros.length + " miembro" + (miembros.length === 1 ? "" : "s")}</div>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 La comunidad · {miembros === null ? "…" : reales.length + " miembro" + (reales.length === 1 ? "" : "s")}{pruebas.length > 0 ? " (+ " + pruebas.length + " de prueba)" : ""}</div>
         {miembros && miembros.length > 0 && <div style={{ fontSize: 11.5, color: "#9A9A9A", marginBottom: 8 }}>{conCumple} dejaron su cumpleaños.{cumples.length > 0 ? " 🎂 Hoy cumple: " + cumples.map(function (m) { return m.nombre; }).join(", ") + "." : ""}</div>}
         {miembros && miembros.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
         {miembros && miembros.length > 0 && (
@@ -369,7 +402,7 @@ export function PanelComunidad() {
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ minWidth: 0 }}>
-                    <b>{m.nombre}</b> <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
+                    <b>{m.nombre}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>
                   <button onClick={function () { quitar(m.id); }} title="Sacar de la lista" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>

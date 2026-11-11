@@ -157,7 +157,7 @@ export function Opinar() {
             </label>
             <button disabled={!aceptaCom || sumando} onClick={function () {
               setSumando(true);
-              sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/\D/g, "").slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString() }, cfgGrupo).then(function (c) {
+              sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wsp.replace(/\D/g, "").slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cfgGrupo).then(function (c) {
                 setSumando(false);
                 if (c) setCuponNuevo(c); else window.alert("No pudimos sumarte. Probá de nuevo.");
               });
@@ -199,7 +199,7 @@ export function Opinar() {
         if (quieroCom && wd.length >= 8 && nombre.trim()) {
           // Aceptó en el formulario: queda anotado en la comunidad y ve su cupón en la pantalla de gracias.
           (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) {
-            return sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wd.slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString() }, cg);
+            return sumarSocio({ nombre: nombre.trim().slice(0, 60), wsp: wd.slice(0, 20), dia: 0, mes: 0, fav: localId, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 }, cg);
           }).then(function (c) { if (c) setCuponNuevo(c); setHecho("ok"); });
           return;
         }

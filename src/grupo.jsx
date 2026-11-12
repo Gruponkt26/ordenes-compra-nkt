@@ -493,6 +493,82 @@ export function PanelCanje(props) {
   );
 }
 
+// ─── VISTA DEL CAJERO ────────────────────────────────────────────────────────
+// Lo de la comunidad que ve el cajero: solo lo de su local, en lectura, sin WhatsApp ni cumpleaños de los clientes. Puede canjear cupones.
+export function PanelComunidadCajero(props) {
+  var local = props.local || "";
+  var nomLocal = (LOCALES_GRUPO.find(function (l) { return l.id === local; }) || {}).nombre || "";
+  var [miembros, setMiembros] = useState(null);
+  var [cupones, setCupones] = useState([]);
+  var [filtro, setFiltro] = useState("todos");
+  function cargar() {
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setMiembros(Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : []);
+    }).catch(function () { setMiembros([]); });
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      setCupones(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
+    }).catch(function () {});
+  }
+  useEffect(function () { cargar(); }, []);
+  var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
+  var mios = (miembros || []).filter(function (m) { return !m.prueba && (!local || m.fav === local); });
+  var wsps = {}; mios.forEach(function (m) { wsps[m.wsp] = true; });
+  // Los cupones de los clientes de este local, más los que se canjearon acá aunque el cliente se haya sumado en otro.
+  var cups = cupones.filter(function (c) { return !c.prueba && (wsps[c.wsp] || (nomLocal && c.usado_local === nomLocal)); }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
+  var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
+  var cuenta = { todos: cups.length, vigentes: 0, usados: 0, vencidos: 0 };
+  cups.forEach(function (c) { cuenta[est(c)]++; });
+  var lista = cups.filter(function (c) { return filtro === "todos" || est(c) === filtro; });
+  function resumenCup(wsp) {
+    var m = cupones.filter(function (c) { return !c.prueba && c.wsp === wsp; });
+    return { total: m.length, usados: m.filter(function (c) { return c.estado === "usado"; }).length };
+  }
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 10 }}>🌐 Comunidad Grupo Nkt{nomLocal ? " · " + nomLocal : ""}</div>
+      <PanelCanje local={nomLocal} usuario={props.usuario} onCanje={cargar} />
+      <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>
+        👥 <b>{mios.length}</b> miembro{mios.length === 1 ? " se sumó" : "s se sumaron"} desde {nomLocal || "los locales"} · 🎟️ <b>{cuenta.todos}</b> cupones: <b style={{ color: "#4C9A5A" }}>{cuenta.vigentes}</b> vigentes · <b>{cuenta.usados}</b> usados · <b>{cuenta.vencidos}</b> vencidos
+      </div>
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 8 }}>🎟️ Cupones</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {[["todos", "Todos"], ["vigentes", "Vigentes"], ["usados", "Usados"], ["vencidos", "Vencidos"]].map(function (t) {
+            var act = filtro === t[0];
+            return <button key={t[0]} onClick={function () { setFiltro(t[0]); }} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "#111", color: act ? "#D4A017" : "#8C8C8C", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{t[1]} · {cuenta[t[0]]}</button>;
+          })}
+        </div>
+        {lista.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>No hay cupones en esta vista.</div>}
+        {lista.slice(0, 80).map(function (c) {
+          var e = estadoCupon(c), col = e === "activo" ? "#4C9A5A" : e === "usado" ? "#8C8C8C" : "#E0714A";
+          return (
+            <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{c.nombre}</b><span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span></div>
+              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {c.pct}% · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
+              {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}</div>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 Miembros de {nomLocal || "la comunidad"}</div>
+        {miembros === null && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Cargando…</div>}
+        {miembros && mios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie desde acá.</div>}
+        {mios.slice(0, 100).map(function (m) {
+          var rc = resumenCup(m.wsp), cp = cupones.find(function (x) { return x.codigo === m.cupon; });
+          var e = cp ? estadoCupon(cp) : "";
+          return (
+            <div key={m.id} style={{ padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
+              <b>{nombreCompleto(m)}</b>
+              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>{m.cupon ? "🎟️ " + m.cupon + (e ? " · " + (e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido") : "") + " · " : ""}<b style={{ color: "#D4A017" }}>{rc.total} cupón{rc.total === 1 ? "" : "es"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b>{m.fecha ? " · desde " + new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── PANEL DE ADMINISTRACIÓN ─────────────────────────────────────────────────
 function mesNombre(m) { return ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][m] || ""; }
 

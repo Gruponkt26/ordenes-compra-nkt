@@ -32201,7 +32201,7 @@ export default function App() {
           {/* Fichar: la misma pantalla que usa la tablet del local, servida en el celular de cada uno */}
           {/* Mi ficha: lo laboral del propio empleado, sin sueldos ni observaciones */}
           {!esSofia&&subCompras==="competencia"&&(
-            <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+            <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} vistaCajero={esCajero} cajeroLocal={esCajero?(cu.local||""):""} usuarioCajero={cu.nombre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
           {subCompras==="cupones"&&esCajero&&<PanelCanje local={(getLocal(cu.local)||{}).nombre||cu.local||""} usuario={cu.nombre}/>}

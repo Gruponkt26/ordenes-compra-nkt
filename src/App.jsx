@@ -12733,8 +12733,12 @@ async function sbSaveJustificativo(j){
 }
 // Los días (hasta ayer, de los últimos 10) en que le tocaba trabajar, no marcó nada, no estaba de vacaciones y
 // todavía no justificó.
-function faltasSinJustificar(emp, fichajes, vacaciones, justificativos){
+export function faltasSinJustificar(emp, fichajes, vacaciones, justificativos){
   var out=[];
+  // Los días con marcas se cuentan por jornada (el día en que empezó el turno), como en el Registro y la ficha: la salida de
+  // madrugada de un turno que empezó el día anterior no cuenta como "vino ese día".
+  var conMarcas={};
+  jornadasDe((fichajes||[]).filter(function(x){return x.empleado_id===emp.id;})).forEach(function(j){ var ref=j.entrada||j.salida; if(ref)conMarcas[String(ref.fecha).substring(0,10)]=true; });
   for(var i=1;i<=10;i++){
     var d=new Date(); d.setDate(d.getDate()-i);
     var f=fechaLocal(d);
@@ -12742,7 +12746,7 @@ function faltasSinJustificar(emp, fichajes, vacaciones, justificativos){
     if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
     var t=turnoDe(emp,f);
     if(!t||t.franco)continue;
-    if((fichajes||[]).some(function(x){return x.empleado_id===emp.id&&String(x.fecha).substring(0,10)===f;}))continue;
+    if(conMarcas[f])continue;
     if((vacaciones||[]).some(function(v){return v.empleado_id===emp.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);}))continue;
     if((justificativos||[]).some(function(j){return j.empleado_id===emp.id&&j.fecha===f;}))continue;
     out.push(f);

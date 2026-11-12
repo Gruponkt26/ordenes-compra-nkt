@@ -22931,6 +22931,7 @@ function PanelResultados(p){
   var gastos=p.gastos, cierres=p.cierres, corrResultados=p.corrResultados||{}, onSaveCorr=p.onSaveCorr;
   var traspasos=p.traspasos||{}, onSaveTraspaso=p.onSaveTraspaso;
   var traspPend=p.traspPend||{};
+  var cambiosDisp=p.cambiosDisp||{};
   // Sólo los movimientos en plata: un bien mueble aportado o retirado no mueve ninguna caja
   // ni cambia el resultado; sólo pesa en la cuenta corriente del socio, en el módulo Socios.
   var retirosSocios=(p.retiros||[]).filter(esMovDinero);
@@ -22943,6 +22944,7 @@ function PanelResultados(p){
   var [vistaComparativa,setVistaComparativa]=useState(false);
   var [traspLocal,setTraspLocal]=useState({});
   var [formTr,setFormTr]=useState(null); // transferencia propia que se está escribiendo: {local,desde,hasta,monto,fecha,detalle}
+  var [formCambio,setFormCambio]=useState(null); // cambio efectivo ↔ electrónico que se está escribiendo: {local,sentido,fecha,monto,nota}
   var [formImp,setFormImp]=useState(null); // impuesto cargado a mano que se está escribiendo: {local,tipo,fecha,monto,detalle}
   var [vistaLocal,setVistaLocal]=useState(null); // null | "l1" | "l2" | "l3"
   var [expandidoLocal,setExpandidoLocal]=useState(null);
@@ -23432,8 +23434,14 @@ function PanelResultados(p){
     // Caja Mayor tiene el efectivo que ya salió del cajón (retiros de caja menor), no el que
     // todavía está en la caja física de cada local.
     var scz=saldoCruzadoDe(lid,mesFiltro);
-    var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo;
-    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0);
+    // Plata que se pasó de efectivo (Caja mayor) a electrónico, o al revés: el total disponible no cambia, solo el medio.
+    var cambioDisp=(cambiosDisp[lid+"_"+mesFiltro]||[]).reduce(function(a,c){
+      var m=parseFloat(c.monto)||0;
+      if(c.sentido==="el_ef"){ a.efectivo+=m; a.electronico-=m; } else { a.efectivo-=m; a.electronico+=m; }
+      return a;
+    },{efectivo:0,electronico:0});
+    var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo+cambioDisp.efectivo;
+    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0)+cambioDisp.electronico;
     // Cobrado con tarjeta el mes pasado que se acredita este mes, cargado con su fecha: cuenta en el total desde ya,
     // pero entra a lo disponible recién el día (y la hora) en que se acredita, como cualquier otro débito o crédito.
     var heredItems=(traspPend[lid+"_"+mesFiltro]||[]).map(function(i){return {fecha:i.fecha,monto:parseFloat(i.monto)||0};});
@@ -23567,7 +23575,7 @@ function PanelResultados(p){
     // Sigue entrando entero a la disponibilidad, que es donde corresponde (ver más arriba).
     var ventasCorregidas=ventas+corrMonto;
     var resultado=ventasCorregidas-totalGastos;
-    return{porCatDeuda,debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,arrastrePendienteBruto:arrastreBruto,arrastrePendienteNeto:arrastreNeto,arrastrePendientePorFecha,arrastreMesLista,heredItems,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
+    return{cambioDisp,porCatDeuda,debitoPendientePorFecha,debitoPendienteNeto:pendienteNeto,factorDebitoPend:1,arrastrePendienteBruto:arrastreBruto,arrastrePendienteNeto:arrastreNeto,arrastrePendientePorFecha,arrastreMesLista,heredItems,creditoPendiente,creditoPendienteNeto,retirosCajaMenor,ventas,ventasCorregidas,ventasPorMedio,totalGastos,porCat,resultado,diasCierre:cl.length,cantGastos:gl.length,retiros,retirosModMonto,retirosTotales,aportesModMonto,aportesModLocal,movSocios,resultadoDespuesSocios:resultado+movSocios,aporteEfectivo,aporteElectronico,egresos,traspaso,corrMonto,corrNota:corr.nota||"",corrDetalle:corr,dispEfectivo,dispElectronico,iibbTransferencia,iibbDebito,iibbCredito,iibbOtros,iibbElectronico,iibbManual:eg.iibbManual,iibbEgreso:eg.iibbEgreso,tasaIIBB:tasaIIBB,comisionElectronico:comisionElectronico,impCreditoElectronico:impCreditoElectronico,impDebitoElectronico:impDebitoElectronico,idTransferencia:idTransferencia,idDebito:idDebito,idCredito:idCredito,idOtros:idOtros,idMp:idMp,impDebEgreso:eg.impDebEgreso,icTransferencia:icTransferencia,icDebito:icDebito,icCredito:icCredito,icOtros:icOtros,icMp:icMp,impCredManual:eg.impCredManual,impCredEgreso:eg.impCredEgreso,ventaMp:ventaMp,ingrMp:ingrMp,comMp:comMp,iibbMp:iibbMp,gastoMp:gastoMp,dispMp:dispMp,comisionManual:eg.comisionManual,comisionEgreso:eg.comisionEgreso,comTransferencia:comTransferencia,comDebito:comDebito,comCredito:comCredito,comOtros:comOtros,ventaEfectivo,ventaElectronico,gastoEfectivo,gastoElectronico,dispTransferencia,dispDebito,dispCredito,dispOtros,ventaTransferencia,ventaDebito,ventaCredito,ventaOtros,gastoTransferencia,gastoDebito,gastoCredito,gastoOtros,corrEfectivo,corrTransferencia,corrDebito,corrCredito,corrOtros,ingrEfectivo,ingrTransferencia,ingrDebito,ingrCredito,ingrOtros,debitoAcreditadoHoy,debitoPendiente:pendienteBruto,debitoPendienteSoloDebito:debitoPendiente,proximaAcreditacionDebito,dispDebitoHoy,dispCreditoHoy,dispElectronicoHoy,detGastos,detIngresos};
   }
 
   var datos=localesFiltro.reduce(function(acc,l){acc[l.id]=calcLocal(l.id);return acc;},{});
@@ -24194,6 +24202,7 @@ function PanelResultados(p){
                     {(d.retirosCajaMenor||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>💼 Retirado de caja menor</span><span style={{color:"#3A7D44"}}>+{fmt(d.retirosCajaMenor)}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
+                    {d.cambioDisp&&d.cambioDisp.efectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#1A8A7B",marginBottom:2}}><span>🔄 Pasado {d.cambioDisp.efectivo>0?"desde":"a"} electrónico</span><span>{d.cambioDisp.efectivo>0?"+":"−"}{fmt(Math.abs(d.cambioDisp.efectivo))}</span></div>}
                     <div style={{marginTop:4,paddingTop:5,borderTop:"1px solid #1A1A1A"}}>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8C8C8C",marginBottom:2}}><span>🧾 Sigue en el cajón (caja menor) · no incluido</span><span style={{color:(d.efectivoCajon||0)<0?"#C1440E":"#C8C8C8"}}>{fmt(d.efectivoCajon||0)}</span></div>
                     </div>
@@ -24335,6 +24344,48 @@ function PanelResultados(p){
                 </div>
                 <input placeholder="Nota..." value={(traspLocal[l.id]&&traspLocal[l.id].nota)||(traspasos[l.id+"_"+mesFiltro]&&traspasos[l.id+"_"+mesFiltro].nota)||""} onChange={function(e){var v=e.target.value;setTraspLocal(function(prev){var c=prev[l.id]||getTraspaso(l.id)||{};var n={...prev};n[l.id]={...c,nota:v};return n;});}} style={{padding:"6px 9px",borderRadius:7,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:12,width:"100%",boxSizing:"border-box",marginBottom:6}}/>
                 <button onClick={function(){saveTraspaso(l.id);}} style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#D4A01799",color:"#000",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:4}}>💾 Guardar traspaso</button>
+              </div>
+
+              {/* Mover plata entre efectivo (Caja mayor) y electrónico del local: no es ingreso ni gasto, solo cambia el medio */}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:8}}>
+                  <div style={{fontSize:9,color:"#1A8A7B",textTransform:"uppercase",letterSpacing:1}}>🔄 Pasar plata entre efectivo y electrónico</div>
+                  {!(formCambio&&formCambio.local===l.id)&&p.onSaveCambioDisp&&<button onClick={function(){setFormCambio({local:l.id,sentido:"ef_el",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",nota:""});}} style={{padding:"4px 10px",borderRadius:7,border:"1px solid #1A8A7B88",background:"#1A8A7B22",color:"#1A8A7B",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Mover plata</button>}
+                </div>
+                <div style={{fontSize:9.5,color:"#7E7E7E",lineHeight:1.4,marginBottom:6}}>Por ejemplo, sacás $100.000 de la Caja mayor y los depositás en el banco: el efectivo baja y el electrónico sube lo mismo. No es ingreso ni gasto: la plata total disponible no cambia.</div>
+                {formCambio&&formCambio.local===l.id&&(
+                  <div style={{background:"#0A1210",border:"1px solid #1A8A7B55",borderRadius:9,padding:"10px",marginBottom:8}}>
+                    <select value={formCambio.sentido} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,sentido:v};});}} style={{...INP,marginBottom:6}}>
+                      <option value="ef_el">💵 Efectivo (Caja mayor) → 📲 Electrónico · depósito en el banco</option>
+                      <option value="el_ef">📲 Electrónico → 💵 Efectivo (Caja mayor) · extracción del banco</option>
+                    </select>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
+                      <input type="date" value={formCambio.fecha} min={mesFiltro+"-01"} max={mesFiltro+"-31"} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,fecha:v};});}} style={INP}/>
+                      <input type="number" inputMode="decimal" placeholder="Monto $" value={formCambio.monto} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,monto:v};});}} style={INP}/>
+                    </div>
+                    <input placeholder="Nota (opcional)" value={formCambio.nota} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,nota:v};});}} style={{...INP,marginBottom:6}}/>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={function(){
+                        var m=parseFloat(formCambio.monto)||0;
+                        if(!(m>0)){alert("Poné el monto.");return;}
+                        if(!formCambio.fecha||String(formCambio.fecha).slice(0,7)!==mesFiltro){alert("La fecha tiene que ser de "+mesFiltro+" (el mes que estás mirando).");return;}
+                        var origen=formCambio.sentido==="ef_el"?(d.dispEfectivo||0):(d.dispElectronicoHoy||0);
+                        if(m>origen+0.5&&!window.confirm("Estás pasando "+fmt(m)+" pero "+(formCambio.sentido==="ef_el"?"la Caja mayor":"el electrónico disponible")+" tiene "+fmt(origen)+". Va a quedar en negativo.\n\n¿Lo cargo igual?"))return;
+                        p.onSaveCambioDisp({id:"cdisp_"+Date.now(),local:l.id,fecha:formCambio.fecha,monto:m,sentido:formCambio.sentido,nota:String(formCambio.nota||"").trim(),usuario:p.usuario||""});
+                        setFormCambio(null);
+                      }} style={{flex:2,padding:"8px",borderRadius:7,border:"none",background:"#1A8A7B",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Guardar</button>
+                      <button onClick={function(){setFormCambio(null);}} style={{flex:1,padding:"8px",borderRadius:7,border:"1px solid #333",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {(cambiosDisp[l.id+"_"+mesFiltro]||[]).slice().sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));}).map(function(c){
+                  return(
+                    <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11,color:"#B8B8B8",padding:"3px 0",borderTop:"1px solid #141414"}}>
+                      <span style={{minWidth:0}}>{new Date(c.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"})} · {c.sentido==="el_ef"?"📲 → 💵 sacó del banco":"💵 → 📲 depositó"}{c.nota?" · "+c.nota:""}</span>
+                      <span style={{display:"flex",gap:8,alignItems:"center",whiteSpace:"nowrap"}}><b style={{color:"#F0EDE8"}}>{fmt(parseFloat(c.monto)||0)}</b>{p.onDeleteCambioDisp&&<button onClick={function(){if(window.confirm("¿Borrar este cambio de "+fmt(parseFloat(c.monto)||0)+"? La disponibilidad vuelve a como estaba."))p.onDeleteCambioDisp(c.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12,padding:0}}>🗑️</button>}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Impuesto al débito / crédito por afuera del cálculo automático */}
@@ -30450,6 +30501,12 @@ export default function App() {
     if(x.ambito!=="traspaso_pend")return;
     try{ var dp=JSON.parse(x.texto||"{}"); if(dp.local&&dp.mes)traspPend[dp.local+"_"+dp.mes]=(dp.items||[]).filter(function(i){return i&&i.fecha&&(parseFloat(i.monto)||0)>0;}); }catch(e){}
   });
+  // Plata que se pasó de efectivo a electrónico (o al revés) en un local: {"l1_2026-11":[{id,local,fecha,monto,sentido,nota}]}.
+  var cambiosDisp={};
+  pautas.forEach(function(x){
+    if(x.ambito!=="cambio_disp")return;
+    try{ var dc=JSON.parse(x.texto||"{}"); if(dc.local&&dc.fecha&&(parseFloat(dc.monto)||0)>0){ var kc=dc.local+"_"+String(dc.fecha).slice(0,7); (cambiosDisp[kc]=cambiosDisp[kc]||[]).push({...dc,id:x.id}); } }catch(e){}
+  });
   var turnosDia={};
   pautas.forEach(function(x){
     if(x.ambito!=="turno_dia")return;
@@ -31660,7 +31717,7 @@ export default function App() {
             <PanelInformes gastos={gastos} cierres={cierres} empleados={empleados} fichajes={fichajes} adelantos={adelantos} retiros={retiros} aportes={aportes}
               vacaciones={vacaciones} justificativos={justificativos} ventasDeCierre={ventasDeCierre}
               renderCompetencia={function(){return <PanelCompetencia ventasDeCierre={ventasDeCierre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>;}}
-              crearResultados={function(m,onDatos){return <PanelResultados traspPend={traspPend} mesInicial={m} onDatos={onDatos} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              crearResultados={function(m,onDatos){return <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} mesInicial={m} onDatos={onDatos} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>;}}/>
@@ -31685,7 +31742,7 @@ export default function App() {
                 var hoyM=new Date().toISOString().slice(0,7), yy=parseInt(hoyM.slice(0,4),10), mm=parseInt(hoyM.slice(5,7),10);
                 var prevM=mm===1?(yy-1)+"-12":yy+"-"+("0"+(mm-1)).slice(-2);
                 return(
-              <PanelResultados traspPend={traspPend} mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
@@ -31697,7 +31754,7 @@ export default function App() {
           {/* Inicio: para el cuadro de disponibilidad hace falta calcular Resultados (oculto), igual que en Novedades. */}
           {esSofia&&!modulo&&(
             <div style={{display:"none"}}>
-              <PanelResultados traspPend={traspPend} onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
@@ -31707,7 +31764,7 @@ export default function App() {
           {/* MÓDULO NOVEDADES DEL DÍA — lo que pasó y lo que hay que mirar, en una pantalla */}
           {esSofia&&modulo==="novedades"&&(
             <div style={{display:"none"}}>
-              <PanelResultados traspPend={traspPend} onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} onDatos={setDatosGrupo} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
@@ -31715,12 +31772,12 @@ export default function App() {
                 var hoyM=new Date().toISOString().slice(0,7), yy=parseInt(hoyM.slice(0,4),10), mm=parseInt(hoyM.slice(5,7),10);
                 var prevM=mm===1?(yy-1)+"-12":yy+"-"+("0"+(mm-1)).slice(-2), anioM=(yy-1)+"-"+hoyM.slice(5,7);
                 return(<div>
-              <PanelResultados traspPend={traspPend} mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} mesInicial={prevM} onDatos={setDatosPrev} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
                 {comparaCostos&&(
-              <PanelResultados traspPend={traspPend} mesInicial={anioM} onDatos={setDatosAnio} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+              <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} mesInicial={anioM} onDatos={setDatosAnio} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
                 sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
                 transfPropias={transfPropias} impExtra={impExtra} areasCustomGastos={areasCustomGastos}
                 onSaveCorr={function(){}} onSaveTraspaso={function(){}} onSaveTransfPropia={function(){}} onSaveImpExtra={function(){}} onDeleteImpExtra={function(){}}/>
@@ -32084,7 +32141,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="resultados"&&(
-            <PanelResultados traspPend={traspPend} onSaveTraspPend={function(lid,mes,items){guardarOfPauta("traspaso_pend",{id:"trpend_"+lid+"_"+mes,local:lid,mes:mes,items:items});}} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
+            <PanelResultados traspPend={traspPend} cambiosDisp={cambiosDisp} onSaveTraspPend={function(lid,mes,items){guardarOfPauta("traspaso_pend",{id:"trpend_"+lid+"_"+mes,local:lid,mes:mes,items:items});}} onSaveCambioDisp={function(c){guardarOfPauta("cambio_disp",c);}} onDeleteCambioDisp={function(id){borrarPauta(id);}} deportes={deportes} extrasDep={extrasDeConcesion()} cajaInicial={cajaInicial} gastos={gastos} cierres={cierres} corrResultados={corrResultados} traspasos={traspasos}
               sueldos={sueldos} retiros={retiros} aportes={aportes} adelantos={adelantos}
               transfPropias={transfPropias} onSaveTransfPropia={function(x){guardarOfPauta("transf_propia",x);}} impExtra={impExtra} onSaveImpExtra={function(x){guardarOfPauta("imp_extra",x);}} onDeleteImpExtra={borrarPauta}
               onSaveCorr={function(corr){

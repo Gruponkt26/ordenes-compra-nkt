@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -571,6 +571,9 @@ function Estrellas(p) {
 }
 
 export function PanelCompetencia(props) {
+  // Vista del cajero: solo lectura y solo lo de su local; sin WhatsApp, sin borrar y sin configuración.
+  var vistaCajero = !!props.vistaCajero;
+  var soloMiLocal = vistaCajero ? (props.cajeroLocal || "") : "";
   var [tab, setTab] = useState("ranking");
   var [entradas, setEntradas] = useState(null);
   var [opiniones, setOpiniones] = useState(null);
@@ -667,7 +670,7 @@ export function PanelCompetencia(props) {
   var salon = LOCALES_COMPETENCIA.map(function (id) { return { local: localDe(id), r: resumen(id, "salon") }; });
   var ranking = salon.slice().sort(function (a, b) { return (b.r.general === null ? -1 : b.r.general) - (a.r.general === null ? -1 : a.r.general); });
 
-  var comentarios = listaTodas.filter(function (o) { return filtroLocal === "todos" || o.local === filtroLocal; }).slice(0, 80);
+  var comentarios = listaTodas.filter(function (o) { return (filtroLocal === "todos" || o.local === filtroLocal) && (!soloMiLocal || o.local === soloMiLocal); }).slice(0, 80);
 
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
   var sel = { padding: "7px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12 };
@@ -681,7 +684,7 @@ export function PanelCompetencia(props) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"], ["comunidad", "🌐 Comunidad"]].filter(function (t) { return !props.soloLectura || t[0] === "ranking"; }).map(function (t) {
+        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"], ["comunidad", "🌐 Comunidad"]].filter(function (t) { return !props.soloLectura || t[0] === "ranking" || (vistaCajero && (t[0] === "opiniones" || t[0] === "comunidad")); }).map(function (t) {
           var act = tab === t[0];
           return <button key={t[0]} onClick={function () { setTab(t[0]); }} style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid " + (act ? "#D4A017" : "#1A1A1A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#8C8C8C", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
         })}
@@ -875,7 +878,7 @@ export function PanelCompetencia(props) {
               )}
             </div>
           )}
-          <button onClick={function () { setVistaMes(true); }} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1px solid #D4A01755", background: "#D4A01711", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer", marginBottom: 12 }}>📊 Ver las opiniones mes por mes</button>
+          {!props.soloLectura && <button onClick={function () { setVistaMes(true); }} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1px solid #D4A01755", background: "#D4A01711", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer", marginBottom: 12 }}>📊 Ver las opiniones mes por mes</button>}
           {!props.soloLectura && periodo === MES_PRUEBA && lista.length > 0 && (
             <div style={{ background: "#14100A", border: "1px solid #D4A01755", borderRadius: 12, padding: "10px 13px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12, color: "#D8D8D8", lineHeight: 1.5 }}>Noviembre es el mes de prueba: estas {lista.length} opiniones no suman a la temporada.</div>
@@ -884,7 +887,7 @@ export function PanelCompetencia(props) {
           )}
 
           <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, marginBottom: 6 }}>En el local · ranking por promedio</div>
-          {ranking.map(function (x, i) {
+          {ranking.filter(function (x) { return !soloMiLocal || x.local.id === soloMiLocal; }).map(function (x, i) {
             var pocas = x.r.cantidad < MINIMO_OPINIONES;
             return (
               <div key={x.local.id} style={{ ...tarjeta, borderColor: x.local.color + "44" }}>
@@ -916,7 +919,7 @@ export function PanelCompetencia(props) {
           })}
 
           <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700, margin: "16px 0 6px" }}>🛵 Delivery (aparte)</div>
-          {LOCALES_COMPETENCIA.map(function (id) {
+          {LOCALES_COMPETENCIA.filter(function (id) { return !soloMiLocal || id === soloMiLocal; }).map(function (id) {
             var l = localDe(id), d = resumen(id, "delivery");
             return (
               <div key={id} style={{ ...tarjeta, borderColor: l.color + "44" }}>
@@ -948,12 +951,12 @@ export function PanelCompetencia(props) {
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "16px 0 6px", flexWrap: "wrap", gap: 8 }}>
             <div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>Quién opinó</div>
-            <select value={filtroLocal} onChange={function (e) { setFiltroLocal(e.target.value); }} style={sel}>
+            {!soloMiLocal && <select value={filtroLocal} onChange={function (e) { setFiltroLocal(e.target.value); }} style={sel}>
               <option value="todos">Todos los locales</option>
               {LOCALES_COMPETENCIA.map(function (id) { return <option key={id} value={id}>{localDe(id).nombre}</option>; })}
-            </select>
+            </select>}
           </div>
-          {delPersonalN > 0 && <div style={{ fontSize: 11, color: "#B07AE0", marginBottom: 6 }}>👤 {delPersonalN} opinion{delPersonalN === 1 ? "" : "es"} de celulares del personal no cuenta{delPersonalN === 1 ? "" : "n"} en el ranking.</div>}
+          {!props.soloLectura && delPersonalN > 0 && <div style={{ fontSize: 11, color: "#B07AE0", marginBottom: 6 }}>👤 {delPersonalN} opinion{delPersonalN === 1 ? "" : "es"} de celulares del personal no cuenta{delPersonalN === 1 ? "" : "n"} en el ranking.</div>}
           {comentarios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "8px 0" }}>Todavía no hay opiniones en este período.</div>}
           {comentarios.map(function (o) {
             var l = localDe(o.local);
@@ -967,15 +970,15 @@ export function PanelCompetencia(props) {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Estrellas valor={prom} chico />
                     <span style={{ fontSize: 10, color: "#6E6E6E" }}>{new Date(o.fecha).toLocaleDateString("es-AR")}</span>
-                    <button onClick={function () { borrar(o.id); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                    {!props.soloLectura && <button onClick={function () { borrar(o.id); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                   <b style={{ fontSize: 13, color: "#F0EDE8" }}>{nombreDe(o)}</b>
-                  {wspDe(o) && <a href={"https://wa.me/" + (wspDe(o).replace(/\D/g, "").length <= 10 ? "54" + wspDe(o).replace(/\D/g, "") : wspDe(o).replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {wspDe(o)}</a>}
-                  {o.prueba && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>🧪 de prueba · no cuenta</span>}
-                  {delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
-                  {!delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
+                  {!props.soloLectura && wspDe(o) && <a href={"https://wa.me/" + (wspDe(o).replace(/\D/g, "").length <= 10 ? "54" + wspDe(o).replace(/\D/g, "") : wspDe(o).replace(/\D/g, ""))} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 {wspDe(o)}</a>}
+                  {!props.soloLectura && o.prueba && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>🧪 de prueba · no cuenta</span>}
+                  {!props.soloLectura && delPersonal(o) && <span style={{ fontSize: 10.5, color: "#B07AE0", background: "#B07AE022", borderRadius: 6, padding: "1px 7px" }}>👤 celular del personal ({delPersonal(o).join(", ")}) · no cuenta</span>}
+                  {!props.soloLectura && !delPersonal(o) && o.disp && repetidas[o.disp + "|" + o.local] >= 3 && <span style={{ fontSize: 10.5, color: "#E0914A", background: "#E0914A22", borderRadius: 6, padding: "1px 7px" }}>⚠️ {repetidas[o.disp + "|" + o.local]} opiniones del mismo celular</span>}
                 </div>
                 <DetalleVotos o={o} />
                 {o.comentario && <div style={{ fontSize: 13, color: "#E8E8E8", lineHeight: 1.45, marginTop: 5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{o.comentario}</div>}
@@ -1083,7 +1086,7 @@ export function PanelCompetencia(props) {
       })()}
 
       {tab === "qr" && <QRParaImprimir />}
-      {tab === "comunidad" && <PanelComunidad />}
+      {tab === "comunidad" && (vistaCajero ? <PanelComunidadCajero local={soloMiLocal} usuario={props.usuarioCajero} /> : (!props.soloLectura && <PanelComunidad />))}
     </div>
   );
 }

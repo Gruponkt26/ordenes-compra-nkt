@@ -289,15 +289,7 @@ export function GrupoNkt() {
     });
   }
 
-  return (
-    <div style={fondo}><div style={caja}>
-      {modoPrueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, textAlign: "center", marginBottom: 14 }}>🧪 Modo prueba: lo que cargues acá no cuenta y lo podés borrar desde el panel.</div>}
-      <div style={{ textAlign: "center", marginBottom: 22 }}>
-        <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
-        <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
-      </div>
-
-      {(function () {
+  var bInstalar = (function () {
         // Ya está instalada (se abrió desde el ícono): no hace falta mostrar nada.
         var instalada = false;
         try { instalada = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true; } catch (e) {}
@@ -322,20 +314,19 @@ export function GrupoNkt() {
             )}
           </div>
         );
-      })()}
-
-      {!cupon && hecho !== "ok" && (
+      })();
+  var bIngresar = !cupon && hecho !== "ok" && (
         <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#8FD19A", textAlign: "center" }}>Ingresar</div>
+          <details>
+          <summary style={{ cursor: "pointer", fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 800, color: "#8FD19A", textAlign: "center" }}>¿Ya sos parte? Ingresar</summary>
           <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.5, margin: "6px 0 10px", textAlign: "center" }}>Si ya sos parte de la comunidad, entrá con tu WhatsApp para ver tu cupón y tus novedades.</div>
           <input value={wspVer} onChange={function (e) { setWspVer(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter") verMiCupon(); }} inputMode="tel" placeholder="Tu WhatsApp" style={inp} />
           {msgVer && <div style={{ color: "#E0714A", fontSize: 12.5, marginBottom: 8 }}>{msgVer}</div>}
           <button onClick={verMiCupon} disabled={buscando} style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{buscando ? "Ingresando…" : "Ingresar"}</button>
-          <div style={{ fontSize: 11.5, color: "#8C8C8C", textAlign: "center", marginTop: 8 }}>¿Todavía no sos parte? Sumate más abajo.</div>
+          </details>
         </div>
-      )}
-
-      {cupon && (function () {
+      );
+  var bCupon = cupon && (function () {
         var usados = historial.filter(function (c) { return c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
         return (
           <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
@@ -355,9 +346,8 @@ export function GrupoNkt() {
             </div>
           </div>
         );
-      })()}
-
-      {novedades.length > 0 && (
+      })();
+  var bNovedades = novedades.length > 0 && (
         <div style={{ background: "#111", border: "1px solid #D4A01744", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017", marginBottom: 8 }}>📣 Novedades</div>
           {novedades.map(function (n, i) {
@@ -371,9 +361,8 @@ export function GrupoNkt() {
             );
           })}
         </div>
-      )}
-
-      {LOCALES_GRUPO.map(function (l) {
+      );
+  var bLocales = LOCALES_GRUPO.map(function (l) {
         var d = cfg.locales[l.id] || {};
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
         var reserva = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero reservar una mesa. Día: ___ · Hora: ___ · Personas: ___ · A nombre de: ___");
@@ -401,9 +390,9 @@ export function GrupoNkt() {
             </div>
           </div>
         );
-      })}
-
-      <div style={{ background: "#14100A", border: "1px solid #D4A01766", borderRadius: 16, padding: "16px", marginTop: 6 }}>
+      });
+  var bSumarse = (
+<div style={{ background: "#14100A", border: "1px solid #D4A01766", borderRadius: 16, padding: "16px", marginTop: 6 }}>
         {hecho === "ok" ? (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 40 }}>🎉</div>
@@ -416,7 +405,7 @@ export function GrupoNkt() {
           </div>
         ) : (
           <div>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>¿Todavía no sos parte? Sumate a la comunidad</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad y recibí tu cupón de descuento</div>
             <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.55, margin: "6px 0 12px", textAlign: "center" }}>Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios de Grupo Nkt.</div>
             <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inp} />
             <input value={apellido} onChange={function (e) { setApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inp} />
@@ -439,7 +428,34 @@ export function GrupoNkt() {
           </div>
         )}
       </div>
+  );
 
+  // Cliente nuevo: primero sumarse (es lo que más importa del QR), después los locales. Miembro: primero su cupón.
+  return (
+    <div style={fondo}><div style={caja}>
+      {modoPrueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, textAlign: "center", marginBottom: 14 }}>🧪 Modo prueba: lo que cargues acá no cuenta y lo podés borrar desde el panel.</div>}
+      <div style={{ textAlign: "center", marginBottom: 22 }}>
+        <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
+        <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
+      </div>
+      {cupon ? (
+        <div>
+          {bCupon}
+          {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
+          {bInstalar}
+          {bNovedades}
+          {bLocales}
+          {hecho !== "ok" && <div style={{ marginTop: 6 }}>{bSumarse}</div>}
+        </div>
+      ) : (
+        <div>
+          <div style={{ marginBottom: 14 }}>{bSumarse}</div>
+          {bIngresar}
+          {bInstalar}
+          {bNovedades}
+          {bLocales}
+        </div>
+      )}
     </div></div>
   );
 }

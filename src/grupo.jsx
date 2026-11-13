@@ -43,7 +43,7 @@ async function guardarFila(id, ambito, obj) {
 }
 
 // ─── NOVEDADES ───
-// Las publica administración (Competencia → Comunidad) y las ve el miembro al entrar a su portal.
+// Las publica administración (módulo Comunidad) y las ve el miembro al entrar a su portal.
 export async function cargarNovedades() {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_novedad&order=created_at.desc&limit=60", { headers: SH });

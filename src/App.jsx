@@ -13303,6 +13303,9 @@ function PanelFichar(p){
             Ese día te tocaba trabajar y no hay ninguna marca. Subí una foto de tu <b>certificado</b> o escribí el <b>motivo</b>, así queda justificada la falta.
             {pend.length>1&&<span style={{color:"#8C8C8C"}}> Te quedan {pend.length-1} día{pend.length-1===1?"":"s"} más por justificar.</span>}
           </div>
+          <div style={{background:"#1A0D0A",border:"1px solid #C1440E88",borderRadius:10,padding:"10px 12px",marginTop:10,fontSize:12,color:"#F0C8B8",lineHeight:1.6}}>
+            <b style={{color:"#FF8A5C"}}>⚠️ Importante:</b> a partir del mes de <b>diciembre</b>, la única falta que se considerará justificada será la que tenga adjunto un <b>certificado médico u otro comprobante</b> que la justifique. Cualquier otro motivo cotidiano no será tomado en cuenta. Si el motivo es de <b>fuerza mayor</b>, por favor dejalo escrito acá.
+          </div>
           <textarea value={justForm.motivo} onChange={function(e){var v=e.target.value;setJustForm(function(f){return{...f,motivo:v};});}} rows={3} maxLength={500}
             placeholder="Motivo (ej: estuve enfermo, trámite, cambio de turno acordado con…)"
             style={{width:"100%",boxSizing:"border-box",marginTop:10,padding:"10px 12px",borderRadius:10,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:14,resize:"vertical",outline:"none"}}/>

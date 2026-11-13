@@ -14197,7 +14197,9 @@ function PanelFichajes(p){
         return ref&&String(ref.fecha||"").substring(0,7)===mes;
       });
     var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
-    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+minutosDeVacaciones(e,mes,p.vacaciones,conMarcas);
+    var vacD=diasDeVacaciones(e,mes,p.vacaciones,conMarcas,hoy);   // días de vacaciones (hasta hoy) que cuentan como trabajados
+    var vacMin=Object.keys(vacD).reduce(function(a,f){return a+vacD[f];},0);
+    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+vacMin;
     var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
     // Contra la jornada cargada: lo previsto hasta hoy, los días que le tocaban y no marcó,
@@ -14216,9 +14218,9 @@ function PanelFichajes(p){
     }
     return {e:e, jor:jor.sort(function(a,b){
       return String((b.entrada||b.salida).momento||"").localeCompare(String((a.entrada||a.salida).momento||""));
-    }), min:min, dias:dias, abiertas:abiertas,
+    }), min:min, dias:dias, abiertas:abiertas, vacD:vacD, vacMin:vacMin,
       tieneJornada:tiene, previstas:previstas, faltas:faltas, francosTrabajados:francosTrabajados};
-  }).filter(function(x){return x.jor.length>0||x.faltas.length>0;})
+  }).filter(function(x){return x.jor.length>0||x.faltas.length>0||x.vacMin>0;})
     .sort(function(a,b){return b.min-a.min;});
 
   var totalMin=porEmpleado.reduce(function(a,x){return a+x.min;},0);
@@ -14513,6 +14515,7 @@ function PanelFichajes(p){
                 <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:2}}>
                   {x.dias} día{x.dias===1?"":"s"}
                   {x.faltas.length>0?<span style={{color:"#C1440E"}}> · {x.faltas.length} falta{x.faltas.length===1?"":"s"}</span>:null}
+                  {Object.keys(x.vacD).length>0?<span style={{color:"#1A8A9B"}}> · 🏖️ {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)})</span>:null}
                   {x.francosTrabajados>0?<span style={{color:"#8B2FC9"}}> · {x.francosTrabajados} en franco</span>:null}
                   {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
                   {!x.tieneJornada?<span style={{color:"#D4A017"}}> · sin jornada</span>:null}
@@ -14569,12 +14572,13 @@ function PanelFichajes(p){
                   var filas=lista.map(function(f){
                     var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
                     var t=x.tieneJornada?turnoDe(x.e,f):null;
-                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0);
+                    var vac=js.length===0&&x.vacD[f]!==undefined;   // de vacaciones: cuenta la jornada como trabajada
+                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0)+(vac?x.vacD[f]:0);
                     var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0)&&!(f===hoy&&!turnoTerminado(t,f)))?t.minutos:0;
                     accT+=trab; accP+=prev;
                     var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
-                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem};
-                  }).filter(function(r){return r.js.length>0||r.prev>0||(r.t&&r.t.franco&&false);});
+                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem,vac:vac};
+                  }).filter(function(r){return r.js.length>0||r.prev>0||r.vac;});
                   if(filas.length===0)return null;
                   return(
                     <div>
@@ -14582,19 +14586,19 @@ function PanelFichajes(p){
                         <span style={{width:74,flexShrink:0}}>Día</span><span style={{flex:1,minWidth:150}}>Marcas</span><span style={{width:76,textAlign:"right"}}>Trabajó</span><span style={{width:92,textAlign:"right"}}>Acumulado</span>
                       </div>
                       {filas.map(function(r){
-                        var falta=r.prev>0&&r.js.length===0;
+                        var falta=r.prev>0&&r.js.length===0&&!r.vac;
                         return(
-                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":"transparent"}}>
+                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":"transparent")}}>
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
-                              {r.js.length===0?<span style={{color:falta?"#C1440E":"#6E6E6E"}}>{falta?"no marcó":"—"}</span>:r.js.map(function(j,k){return(
+                              {r.js.length===0?<span style={{color:r.vac?"#1A8A9B":(falta?"#C1440E":"#6E6E6E"),fontWeight:r.vac?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(falta?"no marcó":"—")}</span>:r.js.map(function(j,k){return(
                                 <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/>{j.entrada&&inicioContable(j,x.e)>new Date(j.entrada.momento)&&<span title="Marcó antes de su horario: las horas cuentan desde el horario de la jornada" style={{fontSize:10,color:"#7E7E7E"}}>(cuenta desde {horaLocal(inicioContable(j,x.e))})</span>}</span>
                               );})}
                               <span style={{display:"block",fontSize:10,color:r.t&&r.t.franco?"#8B2FC9":"#6E6E6E"}}>
                                 {r.t?(r.t.franco?"franco":"le tocaba "+fmtHs(r.t.minutos)+(r.t.desde?" ("+r.t.desde+"–"+r.t.hasta+")":"")):(x.tieneJornada?"":"sin jornada cargada")}
                               </span>
                             </span>
-                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E")}}>
+                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.vac?"#1A8A9B":(r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E"))}}>
                               {r.trab>0?fmtHs(r.trab):(r.js.length>0?"sin cerrar":"0h")}
                             </span>
                             <span style={{width:92,textAlign:"right",fontSize:11,fontVariantNumeric:"tabular-nums",color:"#9A9A9A"}}>
@@ -14604,7 +14608,7 @@ function PanelFichajes(p){
                         );
                       })}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
-                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{(function(){
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{Object.keys(x.vacD).length>0?<span style={{display:"block",color:"#1A8A9B",fontSize:11}}>🏖️ + {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)}) que cuentan como trabajados</span>:null}{(function(){
                           // Igual que en Novedades: solo los días en que se pasó 30 minutos o más, o que trabajó en un franco.
                           var porD={}; x.jor.forEach(function(j){ var f=String((j.entrada||j.salida).fecha).substring(0,10); porD[f]=(porD[f]||0)+minutosFueraDeJornada(j,x.e); });
                           var fu=Math.round(Object.keys(porD).reduce(function(a,f){ var t=turnoDe(x.e,f); return a+((porD[f]>=30||(t&&t.franco&&porD[f]>0))?porD[f]:0); },0)); return fu>0?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
@@ -25102,21 +25106,27 @@ var TOLERANCIA_ATRASO_MIN=10;
 var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
 // Horas que cuentan como trabajadas los días de vacaciones (sin marcar): las de su jornada de ese día, como si hubiera ido.
 // Las licencias ("[Licencia]") no entran. Los francos no suman. Un día con marcas ya cuenta por sus marcas.
-function minutosDeVacaciones(emp, mes, vacaciones, conMarcas){
-  if(!emp||!vacaciones||!vacaciones.length||!jornadaDe(emp))return 0;
-  var pr=String(mes).split("-"), ultimo=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate(), tot=0, visto={};
+// Devuelve {fecha: minutos} de los días de vacaciones del mes que cuentan como trabajados (hasta "hasta", si se indica).
+function diasDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
+  var out={};
+  if(!emp||!vacaciones||!vacaciones.length||!jornadaDe(emp))return out;
+  var pr=String(mes).split("-"), ultimo=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate();
   vacaciones.forEach(function(v){
     if(v.empleado_id!==emp.id||/^\[Licencia\]/.test(String(v.notas||"")))return;
     var d=String(v.fecha_desde).substring(0,10), h=String(v.fecha_hasta).substring(0,10);
     for(var i=1;i<=ultimo;i++){
       var f=mes+"-"+String(i).padStart(2,"0");
-      if(f<d||f>h||visto[f]||(conMarcas&&conMarcas[f]))continue;
+      if(f<d||f>h||out[f]!==undefined||(hasta&&f>hasta)||(conMarcas&&conMarcas[f]))continue;
       if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
       var t=turnoDe(emp,f);
-      if(t&&!t.franco){ visto[f]=true; tot+=t.minutos||0; }
+      if(t&&!t.franco)out[f]=t.minutos||0;
     }
   });
-  return tot;
+  return out;
+}
+function minutosDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
+  var d=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hasta);
+  return Object.keys(d).reduce(function(a,f){return a+d[f];},0);
 }
 function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   var hoy=fechaLocal();
@@ -25126,7 +25136,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
     return ref&&String(ref.fecha||"").substring(0,7)===mes;
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+minutosDeVacaciones(emp,mes,vacaciones,conMarcas);
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+minutosDeVacaciones(emp,mes,vacaciones,conMarcas,hoy);
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){

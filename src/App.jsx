@@ -25136,7 +25136,8 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
     return ref&&String(ref.fecha||"").substring(0,7)===mes;
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+minutosDeVacaciones(emp,mes,vacaciones,conMarcas,hoy);
+  var vacD=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hoy), vacMin=Object.keys(vacD).reduce(function(t,f){return t+vacD[f];},0);
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+vacMin;
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){
@@ -25162,7 +25163,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
       faltas.push({fecha:f,estado:j?j.estado:(f<INICIO_JUSTIFICATIVOS?"previa":"sin"),just:j||null});
     });
   }
-  return {tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
+  return {vacD:vacD,vacMin:vacMin,tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
 }
 function antiguedadTexto(fechaAlta,hasta){
   if(!fechaAlta)return "";
@@ -25386,6 +25387,7 @@ function FichaLaboral(p){
             </div>;
           })}
         </div>
+        {res.vacMin>0&&<div style={{background:"#0A1518",border:"1px solid #1A8A9B55",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#7CC9D4",lineHeight:1.6}}>🏖️ <b>{Object.keys(res.vacD).length} día{Object.keys(res.vacD).length===1?"":"s"} de vacaciones</b> ({Object.keys(res.vacD).sort().map(function(f){return fmtDate(f);}).join(" · ")}): sumaron <b>{fmtHs(res.vacMin)}</b> a tus horas, como si hubieras ido a trabajar.</div>}
         {(res.tarde.length>0||res.antes.length>0||res.abiertas>0||res.francosTrabajados>0)&&(
           <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.7,marginTop:8}}>
             {res.tarde.length>0&&<div>🕒 Llegó tarde: {res.tarde.map(function(x){return fmtDate(x.fecha)+" (+"+x.min+" min)";}).join(" · ")}</div>}

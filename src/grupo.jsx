@@ -605,6 +605,7 @@ function mesNombre(m) { return ["", "ene", "feb", "mar", "abr", "may", "jun", "j
 export function PanelComunidad() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [miembros, setMiembros] = useState(null);
+  var [filtroCom, setFiltroCom] = useState("todos");   // lista de miembros: todos o los de un local
   var [qr, setQr] = useState("");
   var [msg, setMsg] = useState("");
   var [copiado, setCopiado] = useState(false);
@@ -731,9 +732,21 @@ export function PanelComunidad() {
   var reales = (miembros || []).filter(function (m) { return !m.prueba; });
   var hoy = new Date(), cumples = reales.filter(function (m) { return m.dia === hoy.getDate() && m.mes === hoy.getMonth() + 1; });
   var conCumple = reales.filter(function (m) { return m.dia && m.mes; }).length;
+  // Por fecha de entrada: el último que se sumó, primero.
+  var ordenados = (miembros || []).slice().sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
+  var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
+  var porLocalCom = LOCALES_GRUPO.map(function (l) { return { l: l, n: reales.filter(function (m) { return m.fav === l.id; }).length }; });
 
   return (
     <div>
+      <div style={{ ...tarjeta, textAlign: "center", border: "1px solid #D4A01766", background: "#14110A" }}>
+        <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Clientes en la comunidad</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 64, fontWeight: 800, color: "#D4A017", lineHeight: 1.1, marginTop: 2 }}>{miembros === null ? "…" : reales.length}</div>
+        <div style={{ fontSize: 12.5, color: "#C8C8C8", marginTop: 2 }}>{miembros === null ? "Cargando…" : (reales.length === 1 ? "cliente sumado" : "clientes sumados")}{pruebas.length > 0 ? " · (+ " + pruebas.length + " de prueba, que no cuentan)" : ""}</div>
+        {miembros && reales.length > 0 && <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 12.5, color: "#B8B8B8" }}>
+          {porLocalCom.map(function (x) { return <span key={x.l.id}>{x.l.emoji} {x.l.nombre}: <b style={{ color: "#F0EDE8" }}>{x.n}</b></span>; })}
+        </div>}
+      </div>
       <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>🌐 Página «Grupo Nkt» para el público</div>
         <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>Es lo que ve el cliente al escanear este QR: los locales, pedir por WhatsApp, opinar y sumarse a la comunidad. Podés ponerlo en las mesas, en la bolsa del delivery y en las redes.</div>
@@ -885,13 +898,20 @@ export function PanelComunidad() {
         {miembros && miembros.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
         {miembros && miembros.length > 0 && (
           <div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {[{ id: "todos", txt: "Todos · " + miembros.filter(function (m) { return !m.prueba; }).length }].concat(porLocalCom.map(function (x) { return { id: x.l.id, txt: x.l.emoji + " " + x.l.nombre + " · " + x.n }; })).map(function (t) {
+                var act = filtroCom === t.id;
+                return <button key={t.id} onClick={function () { setFiltroCom(t.id); }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#9A9A9A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.txt}</button>;
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: "#7E7E7E", marginBottom: 6 }}>Ordenados por fecha de entrada: el último que se sumó, primero.</div>
             <button onClick={csv} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, cursor: "pointer", marginBottom: 8 }}>⬇️ Bajar la lista (Excel)</button>
-            {miembros.slice(0, 100).map(function (m) {
+            {ordenadosVista.slice(0, 100).map(function (m) {
               var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ minWidth: 0 }}>
-                    <b>{nombreCompleto(m)}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null}{empleadoDeWsp(m.wsp) ? <span style={{ color: "#FF8A5C", fontSize: 10.5, fontWeight: 700 }}> 👷 empleado/a</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
+                    <b>{nombreCompleto(m)}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null}{empleadoDeWsp(m.wsp) ? <span style={{ color: "#FF8A5C", fontSize: 10.5, fontWeight: 700 }}> 👷 empleado/a</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>{m.fecha ? <span style={{ color: "#7E7E7E", fontSize: 11 }}> · entró el {new Date(m.fecha).toLocaleDateString("es-AR")}</span> : null}
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";

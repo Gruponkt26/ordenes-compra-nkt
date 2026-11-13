@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelCanje } from "./grupo.jsx";
+import { PanelCanje, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -30594,6 +30594,7 @@ export default function App() {
   });
   saldosCruzados.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   SALDOS_CRUZADOS=saldosCruzados;
+  setEmpleadosGrupo(empleados);
   var f931Vence={};
   pautas.forEach(function(x){
     if(x.ambito!=="f931_vence")return;

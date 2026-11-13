@@ -111,6 +111,7 @@ async function emitirCupon(socio, cfg) {
 
 // Anota a una persona en la comunidad (conserva su alta y su cupón si ya estaba) y devuelve su cupón.
 export async function sumarSocio(socio, cfg) {
+  if (!socio.prueba && await esEmpleadoWsp(socio.wsp)) return { empleado: true };   // los empleados ya tienen un descuento aparte
   var previo = await leerPauta("com_" + socio.wsp);
   var ok = await guardarFila("com_" + socio.wsp, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
   if (!ok) return null;
@@ -271,16 +272,20 @@ export function GrupoNkt() {
     if (!acepta) { setError("Tildá la casilla para sumarte."); return; }
     setEnviando(true); setError("");
     var socio = { nombre: nombre.trim().slice(0, 60), apellido: apellido.trim().slice(0, 60), disp: idDispositivo(), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
-    leerPauta("com_" + w).then(function (previo) {
+    (modoPrueba ? Promise.resolve(false) : esEmpleadoWsp(w)).then(function (esEmp) {
+      if (esEmp) { setError(MSG_EMPLEADO); setEnviando(false); return null; }
+      return leerPauta("com_" + w).then(function (previo) {
       // Si ya estaba, se conserva su cupón y su fecha de alta.
-      return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
-    }).then(function (ok) {
+        return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
+      }).then(function (ok) {
+      if (ok === null) return;   // era empleado: ya se avisó
       if (!ok) { setError("No pudimos sumarte. Probá de nuevo."); setEnviando(false); return; }
       if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {} }
       return emitirCupon(socio, cfg).then(function (c) {
         if (c) { setCupon(c); if (!modoPrueba) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} } }
         setHecho("ok");
       });
+    });
     });
   }
 
@@ -439,6 +444,28 @@ export function GrupoNkt() {
   );
 }
 
+// Los empleados no pueden usar cupones de la comunidad. App.jsx le pasa la lista de empleados; se los reconoce por el teléfono de su ficha
+// (se comparan los últimos 8 dígitos, para que no importe el 54 9, el 0 o el 15).
+var EMPLEADOS_GRUPO = [];
+export function setEmpleadosGrupo(lista) { EMPLEADOS_GRUPO = Array.isArray(lista) ? lista : []; }
+function tel8(s) { var d = String(s || "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(-8) : ""; }
+export function empleadoDeWsp(wsp) {
+  var w = tel8(wsp); if (!w) return null;
+  return EMPLEADOS_GRUPO.find(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; }) || null;
+}
+
+export var MSG_EMPLEADO = "Los empleados del grupo no pueden sumarse a la comunidad: ya tienen un descuento aparte.";
+// Para el que se está sumando (sin sesión): se mira la lista de empleados en la base y se compara por teléfono.
+export async function esEmpleadoWsp(wsp) {
+  var w = tel8(wsp); if (!w) return false;
+  try {
+    var r = await fetch(SURL + "/rest/v1/empleados", { headers: SH });
+    var d = await r.json();
+    if (Array.isArray(d)) return d.some(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; });
+  } catch (e) {}
+  return !!empleadoDeWsp(wsp);
+}
+
 // ─── CANJE EN CAJA ───────────────────────────────────────────────────────────
 export function PanelCanje(props) {
   var [codigo, setCodigo] = useState("");
@@ -452,6 +479,7 @@ export function PanelCanje(props) {
   }
   function canjear() {
     if (!cupon || estadoCupon(cupon) !== "activo") return;
+    var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 Este cupón es de " + empC.nombre + ", que trabaja en el grupo: los empleados no pueden usar cupones."); return; }
     if (!window.confirm("¿Canjear el cupón " + cupon.codigo + " de " + cupon.nombre + " (" + cupon.pct + "% de descuento)? Después no se puede volver a usar.")) return;
     var nuevo = { ...cupon, estado: "usado", usado_at: new Date().toISOString(), usado_local: props.local || "", usado_por: props.usuario || "" };
     // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
@@ -467,6 +495,7 @@ export function PanelCanje(props) {
       } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
     });
   }
+  var empCupon = cupon ? empleadoDeWsp(cupon.wsp) : null;
   var est = estadoCupon(cupon);
   var col = est === "activo" ? "#4C9A5A" : "#E0714A";
   var inpS = { flex: 1, padding: "11px 13px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 16, letterSpacing: 2, textTransform: "uppercase" };
@@ -486,7 +515,8 @@ export function PanelCanje(props) {
             Estado: <b style={{ color: col }}>{est === "activo" ? "válido" : est === "usado" ? "ya usado" : "vencido"}</b> · vence el {new Date(cupon.vence).toLocaleDateString("es-AR")}
             {cupon.usado_at && <div>Canjeado el {new Date(cupon.usado_at).toLocaleString("es-AR")}{cupon.usado_local ? " en " + cupon.usado_local : ""}</div>}
           </div>
-          {est === "activo" && <button onClick={canjear} style={{ marginTop: 10, width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#3A7D44", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Canjear ahora</button>}
+          {empCupon && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#1A0D0A", border: "1px solid #C1440E88", fontSize: 12.5, color: "#FF8A5C", fontWeight: 700 }}>🚫 Es de {empCupon.nombre}, empleado/a del grupo: los empleados no pueden usar cupones. No lo canjees.</div>}
+          {est === "activo" && !empCupon && <button onClick={canjear} style={{ marginTop: 10, width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#3A7D44", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Canjear ahora</button>}
         </div>
       )}
     </div>
@@ -834,7 +864,7 @@ export function PanelComunidad() {
               return (
                 <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <div><b>{c.nombre}</b> <a href={linkWsp(c.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {c.wsp}</a></div>
+                    <div><b>{c.nombre}</b>{empleadoDeWsp(c.wsp) ? <span style={{ color: "#FF8A5C", fontSize: 10.5, fontWeight: 700 }}> 👷 empleado/a</span> : null} <a href={linkWsp(c.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {c.wsp}</a></div>
                     <span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span>
                   </div>
                   <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · cupón {ordenCupon(c)} de {resumenCup(c.wsp).total} del cliente · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
@@ -861,7 +891,7 @@ export function PanelComunidad() {
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ minWidth: 0 }}>
-                    <b>{nombreCompleto(m)}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
+                    <b>{nombreCompleto(m)}</b>{m.prueba ? <span style={{ color: "#E0914A", fontSize: 10.5 }}> 🧪 prueba</span> : null}{empleadoDeWsp(m.wsp) ? <span style={{ color: "#FF8A5C", fontSize: 10.5, fontWeight: 700 }}> 👷 empleado/a</span> : null} <a href={linkWsp(m.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {m.wsp}</a>
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";

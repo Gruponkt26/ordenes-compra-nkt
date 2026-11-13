@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, PanelComunidadCajero, cargarConfigGrupo, sumarSocio, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, cargarConfigGrupo, sumarSocio, MSG_EMPLEADO, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -184,6 +184,7 @@ export function Opinar() {
     var socio = { nombre: fNombre.trim().slice(0, 60), apellido: fApellido.trim().slice(0, 60), wsp: wDig.slice(0, 20), dia: 0, mes: 0, fav: localId, disp: idDispositivo(), fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
     (cfgGrupo ? Promise.resolve(cfgGrupo) : cargarConfigGrupo()).then(function (cg) { return sumarSocio(socio, cg); }).then(function (c) {
       setSumando(false);
+      if (c && c.empleado) { setErrCom(MSG_EMPLEADO); return; }
       if (!c) { setErrCom("No pudimos sumarte. Probá de nuevo."); return; }
       setCuponNuevo(c); setSocioAct({ ...socio, cupon: c.codigo });
       // Si todavía no se había identificado, el nombre también queda en su opinión.

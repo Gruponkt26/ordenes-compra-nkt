@@ -22978,6 +22978,24 @@ function PanelResultados(p){
     var ingresos=(d.detIngresos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
     var gastosDet=(d.detGastos||[]).filter(function(x){return x.tipo===tipo;}).sort(function(a,b){return(a.fecha||"").localeCompare(b.fecha||"");});
     var traspasoVal=tipo==="efectivo"?(d.traspaso?d.traspaso.efectivo:0):((d.traspaso?d.traspaso.transferencia:0)+(d.traspaso?d.traspaso.debito:0)+(d.traspaso?d.traspaso.credito:0));
+    // Movimientos de plata entre cuentas o entre efectivo y electrónico del mes: no son ingreso ni gasto, pero mueven la disponibilidad.
+    var movs=[];
+    if(tipo==="electronico"){
+      (p.transfPropias||[]).forEach(function(x){
+        if(!x.fecha||x.fecha.substring(0,7)!==mesFiltro)return;
+        var m=parseFloat(x.monto)||0; if(m<=0)return;
+        var nom=function(c){return String(c||"").replace("Transferencia - ","");};
+        if(localDelMedio(x.desde)===props.lid)movs.push({fecha:x.fecha,txt:"🔁 Transferencia a "+nom(x.hasta),monto:-m});
+        if(localDelMedio(x.hasta)===props.lid)movs.push({fecha:x.fecha,txt:"🔁 Transferencia desde "+nom(x.desde),monto:m});
+      });
+    }
+    (cambiosDisp[props.lid+"_"+mesFiltro]||[]).forEach(function(c){
+      var m=parseFloat(c.monto)||0, imp=(parseFloat(c.ic)||0)+(parseFloat(c.idb)||0)+(parseFloat(c.iibb)||0);
+      var cta=c.cuenta==="mp"?"Mercado Pago":"banco";
+      if(tipo==="efectivo")movs.push({fecha:c.fecha,txt:c.sentido==="el_ef"?"🔄 Sacado de "+cta:"🔄 Depositado en "+cta,monto:c.sentido==="el_ef"?m:-m});
+      else movs.push({fecha:c.fecha,txt:c.sentido==="el_ef"?"🔄 Sacado a efectivo (más impuestos)":"🔄 Depositado desde efectivo (menos impuestos)",monto:c.sentido==="el_ef"?-(m+(parseFloat(c.idb)||0)):(m-imp)});
+    });
+    movs.sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
     return(
       <div style={{background:"#080808",border:"1px solid #1A1A1A",borderRadius:8,padding:"10px 12px",marginTop:6,marginBottom:6}}>
         <div style={{fontSize:9,color:"#3A7D44",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>+ Ingresos ({ingresos.length})</div>
@@ -23016,6 +23034,18 @@ function PanelResultados(p){
           <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:6,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
             <span>IIBB retenido al acreditarse ({Math.round(ALICUOTA_IIBB*1000)/10}%)</span>
             <span style={{fontWeight:600}}>−{fmt(d.iibbElectronico)}</span>
+          </div>
+        )}
+        {movs.length>0&&(
+          <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid #1A1A1A"}}>
+            <div style={{fontSize:9,color:"#1A8A7B",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>🔄 Plata movida entre cuentas ({movs.length})</div>
+            {movs.map(function(x,i){return(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#9A9A9A",marginBottom:2}}>
+                <span>{fmtFecha(x.fecha)} · {x.txt}</span>
+                <span style={{color:x.monto>=0?"#3A7D44":"#C1440E",fontWeight:600}}>{x.monto>=0?"+":"−"}{fmt(Math.abs(x.monto))}</span>
+              </div>
+            );})}
+            {tipo==="electronico"&&(d.transfIibb||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8A6A2A",marginTop:2}}><span>IIBB de las transferencias entre CUIT distintos</span><span style={{fontWeight:600}}>−{fmt(d.transfIibb)}</span></div>}
           </div>
         )}
         {traspasoVal!==0&&(
@@ -24236,7 +24266,7 @@ function PanelResultados(p){
                     </div>
                   </div>
                 )}
-                {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="efectivo"/></div>}
+                {detalleAbierto===l.id+"_efectivo"&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} lid={l.id} tipo="efectivo"/></div>}
 
                 {/* Electrónico — suma de todos los medios electrónicos */}
                 {(function(){
@@ -24284,7 +24314,7 @@ function PanelResultados(p){
                         </div>
                       );})}
                     </div>
-                    {detalleAbierto===kElec&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} tipo="electronico"/></div>}
+                    {detalleAbierto===kElec&&<div onClick={function(e){e.stopPropagation();}}><DetalleDisp d={d} lid={l.id} tipo="electronico"/></div>}
                     </div>
                   );
                 })()}

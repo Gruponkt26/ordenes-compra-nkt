@@ -19517,6 +19517,24 @@ var SALDOS_CRUZADOS_DESDE="2026-10";
 // banco cobró de más o por movimientos que la app no ve). Pautas "imp_extra"; App las deja acá.
 // Cuentan como egreso del local en el mes de su fecha y descuentan de su cuenta bancaria.
 var IMP_EXTRA=[];
+// Plata pasada entre efectivo y electrónico (lista plana; la carga App en cada render). Cada una lleva sus impuestos: ic (crédito), idb (débito), iibb.
+var CAMBIOS_DISP=[];
+function impuestosDeCambios(lid, mes){
+  var out={credito:0,debito:0,iibb:0};
+  CAMBIOS_DISP.forEach(function(c){
+    if(c.local!==lid||!c.fecha||String(c.fecha).substring(0,7)!==mes)return;
+    out.credito+=parseFloat(c.ic)||0; out.debito+=parseFloat(c.idb)||0; out.iibb+=parseFloat(c.iibb)||0;
+  });
+  return out;
+}
+// Impuestos que corresponden a un movimiento (sugeridos; se pueden editar): depósito en banco = crédito + IIBB; en Mercado Pago = IIBB (y lo que tenga configurado);
+// extracción = débito.
+function sugerirImpuestosCambio(lid, sentido, cuenta, monto){
+  var m=parseFloat(monto)||0, mp=cuenta==="mp";
+  var r2=function(n){return Math.round(n*100)/100;};
+  if(sentido==="ef_el")return {ic:r2(m*impCreditoTasa(lid,mp?MEDIOS_MP[0]:"transferencia")),iibb:r2(m*ALICUOTA_IIBB),idb:0};
+  return {ic:0,iibb:0,idb:r2(m*impDebitoTasaDeMedio(lid,mp?"mercado pago":"transferencia"))};
+}
 // Transferencias entre cuentas propias: la plata sale de una cuenta (impuesto al débito) y entra a
 // otra (impuesto al crédito). No es ingreso ni gasto: sólo mueve la disponibilidad y el impuesto
 // cuenta como egreso del local de cada cuenta. Pautas "transf_propia"; App las deja acá.
@@ -22711,6 +22729,10 @@ function egresosOperativos(gastos, sueldos, adelantos, lid, mes, cierres, retiro
   impCredEgreso+=transfP.credito;
   iibbEgreso+=transfP.iibb;
   total+=impDebEgreso+impExtra.credito+transfP.credito+transfP.iibb;
+  // Impuestos de la plata pasada entre efectivo y electrónico: son un costo del local, como los demás impuestos por afuera.
+  var cmbImp=impuestosDeCambios(lid,mes);
+  impDebEgreso+=cmbImp.debito; impCredEgreso+=cmbImp.credito; iibbEgreso+=cmbImp.iibb;
+  total+=cmbImp.debito+cmbImp.credito+cmbImp.iibb;
   return{total:total,transfP:transfP,impExtra:impExtra,impAportes:impAp,gl:gl,iibbManual:iibbManual,iibbCalc:iibbCalc,iibbEgreso:iibbEgreso,comisionManual:comisionManual,comisionCalc:comisionCalc,comisionEgreso:comisionEgreso,impCredManual:impCredManual,impCredCalc:impCredCalc,impCredEgreso:impCredEgreso,impDebCalc:impDebCalc,impDebEgreso:impDebEgreso,pagosMedio:pagosMedio,sueldosADescontar:sueldosADescontar,periodoAnterior:periodoAnterior,sueldosTabla:sueldosTabla,hasSueldosGastos:hasSueldosGastos,hasAguinaldosGastos:hasAguinaldosGastos,adelantosMesLocal:adelantosMesLocal,adelantosMonto:adelantosMonto};
 }
 
@@ -23435,13 +23457,17 @@ function PanelResultados(p){
     // todavía está en la caja física de cada local.
     var scz=saldoCruzadoDe(lid,mesFiltro);
     // Plata que se pasó de efectivo (Caja mayor) a electrónico, o al revés: el total disponible no cambia, solo el medio.
+    // Lo que entra o sale del electrónico va al banco o a Mercado Pago según la cuenta, ya sin los impuestos que cobró (crédito + IIBB al depositar, débito al extraer).
     var cambioDisp=(cambiosDisp[lid+"_"+mesFiltro]||[]).reduce(function(a,c){
-      var m=parseFloat(c.monto)||0;
-      if(c.sentido==="el_ef"){ a.efectivo+=m; a.electronico-=m; } else { a.efectivo-=m; a.electronico+=m; }
+      var m=parseFloat(c.monto)||0, ic=parseFloat(c.ic)||0, idb=parseFloat(c.idb)||0, ib=parseFloat(c.iibb)||0;
+      var neto=c.sentido==="el_ef"?-(m+idb):(m-ic-ib);
+      if(c.sentido==="el_ef")a.efectivo+=m; else a.efectivo-=m;
+      a.electronico+=neto;
+      if(c.cuenta==="mp")a.mp+=neto; else a.banco+=neto;
       return a;
-    },{efectivo:0,electronico:0});
+    },{efectivo:0,electronico:0,banco:0,mp:0});
     var dispEfectivo=retirosCajaMenor-retiros-gastoEfectivo+(traspaso?traspaso.efectivo:0)+aporteEfectivo+scz.efectivo+cambioDisp.efectivo;
-    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0)+cambioDisp.electronico;
+    var dispTransferencia=ingrTransferencia-iibbTransferencia-comTransferencia-icTransferencia-idTransferencia-gastoTransferencia+(traspaso?traspaso.transferencia:0)+aporteTransferencia+scz.transferencia+(eg.transfP?eg.transfP.mov.transferencia:0)+cambioDisp.banco;
     // Cobrado con tarjeta el mes pasado que se acredita este mes, cargado con su fecha: cuenta en el total desde ya,
     // pero entra a lo disponible recién el día (y la hora) en que se acredita, como cualquier otro débito o crédito.
     var heredItems=(traspPend[lid+"_"+mesFiltro]||[]).map(function(i){return {fecha:i.fecha,monto:parseFloat(i.monto)||0};});
@@ -23462,7 +23488,7 @@ function PanelResultados(p){
     },0)*factorCom;
     var icMpCuenta=ingrMpCuenta*impCreditoTasa(lid,"mp_qr")*factorImpCred;
     var iibbMpCuenta=ingrMpCuenta*tasaIIBB;
-    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp+(eg.transfP?eg.transfP.mov.mp-eg.transfP.ic.mp-eg.transfP.ib.mp:0);
+    var dispMp=ingrMpCuenta-iibbMpCuenta-comMpCuenta-icMpCuenta-idMp-gastoMp+(eg.transfP?eg.transfP.mov.mp-eg.transfP.ic.mp-eg.transfP.ib.mp:0)+cambioDisp.mp;
     var dispElectronico=dispTransferencia+dispDebito+dispCredito+dispOtros+dispMp;
 
     // Disponibilidad "de hoy": el débito del POS del banco tarda 48 hs hábiles en acreditarse,
@@ -24219,8 +24245,9 @@ function PanelResultados(p){
                   var comElec=d.comisionElectronico||0;
                   var icElec=d.impCreditoElectronico||0;
                   var idElec=d.impDebitoElectronico||0;
-                  var dispElec=ingElec-iibbElec-comElec-icElec-idElec-gasElec+traspElec;
-                  if(ingElec===0&&gasElec===0&&traspElec===0)return null;
+                  var cambioEl=d.cambioDisp?d.cambioDisp.electronico:0;   // plata pasada desde/a efectivo, ya sin los impuestos que cobró
+                  var dispElec=ingElec-iibbElec-comElec-icElec-idElec-gasElec+traspElec+cambioEl;
+                  if(ingElec===0&&gasElec===0&&traspElec===0&&cambioEl===0)return null;
                   var kElec=l.id+"_electronico";
                   return(
                     <div>
@@ -24236,6 +24263,7 @@ function PanelResultados(p){
                       {idElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Impuesto al débito (0,6%)</span><span style={{color:"#8A6A2A"}}>−{fmt(idElec)}</span></div>}
                       {gasElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(gasElec)}</span></div>}
                       {traspElec!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(traspElec)}</span></div>}
+                      {cambioEl!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#1A8A7B",marginBottom:2}}><span>🔄 Pasado {cambioEl>0?"desde":"a"} efectivo (neto de impuestos)</span><span>{cambioEl>0?"+":"−"}{fmt(Math.abs(cambioEl))}</span></div>}
                       {/* Desglose */}
                       {[
                         {label:"Transferencia",ing:d.ingrTransferencia||0,gas:d.gastoTransferencia||0,tr:d.traspaso?.transferencia||0,com:(d.comTransferencia||0)+(d.icTransferencia||0)+(d.idTransferencia||0)},
@@ -24350,7 +24378,7 @@ function PanelResultados(p){
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #1A1A1A"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:8}}>
                   <div style={{fontSize:9,color:"#1A8A7B",textTransform:"uppercase",letterSpacing:1}}>🔄 Pasar plata entre efectivo y electrónico</div>
-                  {!(formCambio&&formCambio.local===l.id)&&p.onSaveCambioDisp&&<button onClick={function(){setFormCambio({local:l.id,sentido:"ef_el",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",nota:""});}} style={{padding:"4px 10px",borderRadius:7,border:"1px solid #1A8A7B88",background:"#1A8A7B22",color:"#1A8A7B",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Mover plata</button>}
+                  {!(formCambio&&formCambio.local===l.id)&&p.onSaveCambioDisp&&<button onClick={function(){setFormCambio({local:l.id,sentido:"ef_el",cuenta:"banco",fecha:(mesFiltro===mesCurrent?new Date().toISOString().split("T")[0]:mesFiltro+"-01"),monto:"",nota:""});}} style={{padding:"4px 10px",borderRadius:7,border:"1px solid #1A8A7B88",background:"#1A8A7B22",color:"#1A8A7B",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Mover plata</button>}
                 </div>
                 <div style={{fontSize:9.5,color:"#7E7E7E",lineHeight:1.4,marginBottom:6}}>Por ejemplo, sacás $100.000 de la Caja mayor y los depositás en el banco: el efectivo baja y el electrónico sube lo mismo. No es ingreso ni gasto: la plata total disponible no cambia.</div>
                 {formCambio&&formCambio.local===l.id&&(
@@ -24359,19 +24387,40 @@ function PanelResultados(p){
                       <option value="ef_el">💵 Efectivo (Caja mayor) → 📲 Electrónico · depósito en el banco</option>
                       <option value="el_ef">📲 Electrónico → 💵 Efectivo (Caja mayor) · extracción del banco</option>
                     </select>
+                    <select value={formCambio.cuenta||"banco"} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,cuenta:v,icTxt:undefined,iibbTxt:undefined,idbTxt:undefined};});}} style={{...INP,marginBottom:6}}>
+                      <option value="banco">{formCambio.sentido==="ef_el"?"🏦 Entra al banco del local":"🏦 Sale del banco del local"}</option>
+                      <option value="mp">{formCambio.sentido==="ef_el"?"📲 Entra a Mercado Pago":"📲 Sale de Mercado Pago"}</option>
+                    </select>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
                       <input type="date" value={formCambio.fecha} min={mesFiltro+"-01"} max={mesFiltro+"-31"} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,fecha:v};});}} style={INP}/>
                       <input type="number" inputMode="decimal" placeholder="Monto $" value={formCambio.monto} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,monto:v};});}} style={INP}/>
                     </div>
+                    {(function(){
+                      var sug=sugerirImpuestosCambio(l.id,formCambio.sentido,formCambio.cuenta||"banco",formCambio.monto);
+                      var val=function(txt,auto){return txt!==undefined?txt:(auto>0?String(auto):"");};
+                      var campos=formCambio.sentido==="ef_el"?[["ic","Impuesto al crédito $",sug.ic],["iibb","Ingresos brutos $",sug.iibb]]:[["idb","Impuesto al débito $",sug.idb]];
+                      return(
+                        <div style={{marginBottom:6}}>
+                          <div style={{fontSize:9.5,color:"#8C8C8C",marginBottom:4}}>Impuestos que cobra al mover la plata (sugeridos, podés cambiarlos). Se descuentan del electrónico y cuentan como gasto del local.</div>
+                          <div style={{display:"grid",gridTemplateColumns:campos.length===2?"1fr 1fr":"1fr",gap:6}}>
+                            {campos.map(function(cp){
+                              return <div key={cp[0]}><div style={{fontSize:9,color:"#8C8C8C",marginBottom:2}}>{cp[1]}</div><input type="number" inputMode="decimal" placeholder="0" value={val(formCambio[cp[0]+"Txt"],cp[2])} onChange={function(e){var v=e.target.value;setFormCambio(function(f){var n={...f};n[cp[0]+"Txt"]=v;return n;});}} style={INP}/></div>;
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <input placeholder="Nota (opcional)" value={formCambio.nota} onChange={function(e){var v=e.target.value;setFormCambio(function(f){return {...f,nota:v};});}} style={{...INP,marginBottom:6}}/>
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={function(){
                         var m=parseFloat(formCambio.monto)||0;
                         if(!(m>0)){alert("Poné el monto.");return;}
                         if(!formCambio.fecha||String(formCambio.fecha).slice(0,7)!==mesFiltro){alert("La fecha tiene que ser de "+mesFiltro+" (el mes que estás mirando).");return;}
-                        var origen=formCambio.sentido==="ef_el"?(d.dispEfectivo||0):(d.dispElectronicoHoy||0);
+                        var origen=formCambio.sentido==="ef_el"?(d.dispEfectivo||0):((formCambio.cuenta==="mp"?d.dispMp:d.dispTransferencia)||0);
                         if(m>origen+0.5&&!window.confirm("Estás pasando "+fmt(m)+" pero "+(formCambio.sentido==="ef_el"?"la Caja mayor":"el electrónico disponible")+" tiene "+fmt(origen)+". Va a quedar en negativo.\n\n¿Lo cargo igual?"))return;
-                        p.onSaveCambioDisp({id:"cdisp_"+Date.now(),local:l.id,fecha:formCambio.fecha,monto:m,sentido:formCambio.sentido,nota:String(formCambio.nota||"").trim(),usuario:p.usuario||""});
+                        var sg=sugerirImpuestosCambio(l.id,formCambio.sentido,formCambio.cuenta||"banco",m);
+                        var num=function(txt,auto){var v=txt!==undefined?parseFloat(txt):auto;return isNaN(v)?0:Math.max(0,v);};
+                        p.onSaveCambioDisp({id:"cdisp_"+Date.now(),local:l.id,fecha:formCambio.fecha,monto:m,sentido:formCambio.sentido,cuenta:formCambio.cuenta||"banco",ic:num(formCambio.icTxt,sg.ic),iibb:num(formCambio.iibbTxt,sg.iibb),idb:num(formCambio.idbTxt,sg.idb),nota:String(formCambio.nota||"").trim(),usuario:p.usuario||""});
                         setFormCambio(null);
                       }} style={{flex:2,padding:"8px",borderRadius:7,border:"none",background:"#1A8A7B",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Guardar</button>
                       <button onClick={function(){setFormCambio(null);}} style={{flex:1,padding:"8px",borderRadius:7,border:"1px solid #333",background:"none",color:"#8C8C8C",fontSize:12,cursor:"pointer"}}>Cancelar</button>
@@ -24381,7 +24430,7 @@ function PanelResultados(p){
                 {(cambiosDisp[l.id+"_"+mesFiltro]||[]).slice().sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));}).map(function(c){
                   return(
                     <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:11,color:"#B8B8B8",padding:"3px 0",borderTop:"1px solid #141414"}}>
-                      <span style={{minWidth:0}}>{new Date(c.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"})} · {c.sentido==="el_ef"?"📲 → 💵 sacó del banco":"💵 → 📲 depositó"}{c.nota?" · "+c.nota:""}</span>
+                      <span style={{minWidth:0}}>{new Date(c.fecha+"T00:00:00").toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"})} · {c.sentido==="el_ef"?(c.cuenta==="mp"?"📲 → 💵 sacó de Mercado Pago":"🏦 → 💵 sacó del banco"):(c.cuenta==="mp"?"💵 → 📲 depositó en Mercado Pago":"💵 → 🏦 depositó en el banco")}{(parseFloat(c.ic)||0)+(parseFloat(c.idb)||0)+(parseFloat(c.iibb)||0)>0?" · impuestos "+fmt((parseFloat(c.ic)||0)+(parseFloat(c.idb)||0)+(parseFloat(c.iibb)||0)):""}{c.nota?" · "+c.nota:""}</span>
                       <span style={{display:"flex",gap:8,alignItems:"center",whiteSpace:"nowrap"}}><b style={{color:"#F0EDE8"}}>{fmt(parseFloat(c.monto)||0)}</b>{p.onDeleteCambioDisp&&<button onClick={function(){if(window.confirm("¿Borrar este cambio de "+fmt(parseFloat(c.monto)||0)+"? La disponibilidad vuelve a como estaba."))p.onDeleteCambioDisp(c.id);}} title="Borrar" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12,padding:0}}>🗑️</button>}</span>
                     </div>
                   );
@@ -30507,6 +30556,7 @@ export default function App() {
     if(x.ambito!=="cambio_disp")return;
     try{ var dc=JSON.parse(x.texto||"{}"); if(dc.local&&dc.fecha&&(parseFloat(dc.monto)||0)>0){ var kc=dc.local+"_"+String(dc.fecha).slice(0,7); (cambiosDisp[kc]=cambiosDisp[kc]||[]).push({...dc,id:x.id}); } }catch(e){}
   });
+  CAMBIOS_DISP=Object.keys(cambiosDisp).reduce(function(a,k){return a.concat(cambiosDisp[k]);},[]);
   var turnosDia={};
   pautas.forEach(function(x){
     if(x.ambito!=="turno_dia")return;

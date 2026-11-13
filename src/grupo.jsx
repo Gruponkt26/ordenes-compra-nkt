@@ -111,6 +111,7 @@ async function emitirCupon(socio, cfg) {
 
 // Anota a una persona en la comunidad (conserva su alta y su cupón si ya estaba) y devuelve su cupón.
 export async function sumarSocio(socio, cfg) {
+  if (!socio.prueba && await esEmpleadoWsp(socio.wsp)) return { empleado: true };   // los empleados ya tienen un descuento aparte
   var previo = await leerPauta("com_" + socio.wsp);
   var ok = await guardarFila("com_" + socio.wsp, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
   if (!ok) return null;
@@ -271,16 +272,20 @@ export function GrupoNkt() {
     if (!acepta) { setError("Tildá la casilla para sumarte."); return; }
     setEnviando(true); setError("");
     var socio = { nombre: nombre.trim().slice(0, 60), apellido: apellido.trim().slice(0, 60), disp: idDispositivo(), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
-    leerPauta("com_" + w).then(function (previo) {
+    (modoPrueba ? Promise.resolve(false) : esEmpleadoWsp(w)).then(function (esEmp) {
+      if (esEmp) { setError(MSG_EMPLEADO); setEnviando(false); return null; }
+      return leerPauta("com_" + w).then(function (previo) {
       // Si ya estaba, se conserva su cupón y su fecha de alta.
-      return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
-    }).then(function (ok) {
+        return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
+      }).then(function (ok) {
+      if (ok === null) return;   // era empleado: ya se avisó
       if (!ok) { setError("No pudimos sumarte. Probá de nuevo."); setEnviando(false); return; }
       if (!modoPrueba) { try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {} }
       return emitirCupon(socio, cfg).then(function (c) {
         if (c) { setCupon(c); if (!modoPrueba) { try { localStorage.setItem("nkt_cupon", c.codigo); } catch (e) {} } }
         setHecho("ok");
       });
+    });
     });
   }
 
@@ -447,6 +452,18 @@ function tel8(s) { var d = String(s || "").replace(/\D/g, ""); return d.length >
 export function empleadoDeWsp(wsp) {
   var w = tel8(wsp); if (!w) return null;
   return EMPLEADOS_GRUPO.find(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; }) || null;
+}
+
+export var MSG_EMPLEADO = "Los empleados del grupo no pueden sumarse a la comunidad: ya tienen un descuento aparte.";
+// Para el que se está sumando (sin sesión): se mira la lista de empleados en la base y se compara por teléfono.
+export async function esEmpleadoWsp(wsp) {
+  var w = tel8(wsp); if (!w) return false;
+  try {
+    var r = await fetch(SURL + "/rest/v1/empleados", { headers: SH });
+    var d = await r.json();
+    if (Array.isArray(d)) return d.some(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; });
+  } catch (e) {}
+  return !!empleadoDeWsp(wsp);
 }
 
 // ─── CANJE EN CAJA ───────────────────────────────────────────────────────────

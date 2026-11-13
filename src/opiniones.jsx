@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { PanelComunidad, PanelComunidadCajero, cargarConfigGrupo, sumarSocio, MSG_EMPLEADO, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
+import { cargarConfigGrupo, sumarSocio, MSG_EMPLEADO, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -685,7 +685,7 @@ export function PanelCompetencia(props) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"], ["comunidad", "🌐 Comunidad"]].filter(function (t) { return !props.soloLectura || t[0] === "ranking" || (vistaCajero && (t[0] === "opiniones" || t[0] === "comunidad")); }).map(function (t) {
+        {[["ranking", "🏁 Ranking"], ["opiniones", "⭐ Opiniones de clientes"], ["qr", "🖨️ QR para imprimir"]].filter(function (t) { return !props.soloLectura || t[0] === "ranking" || (vistaCajero && t[0] === "opiniones"); }).map(function (t) {
           var act = tab === t[0];
           return <button key={t[0]} onClick={function () { setTab(t[0]); }} style={{ padding: "8px 14px", borderRadius: 9, border: "1px solid " + (act ? "#D4A017" : "#1A1A1A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#8C8C8C", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
         })}
@@ -1087,7 +1087,6 @@ export function PanelCompetencia(props) {
       })()}
 
       {tab === "qr" && <QRParaImprimir />}
-      {tab === "comunidad" && (vistaCajero ? <PanelComunidadCajero local={soloMiLocal} usuario={props.usuarioCajero} /> : (!props.soloLectura && <PanelComunidad />))}
     </div>
   );
 }

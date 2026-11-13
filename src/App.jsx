@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelCanje, setEmpleadosGrupo } from "./grupo.jsx";
+import { PanelCanje, PanelComunidad, PanelComunidadCajero, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -31313,6 +31313,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
               {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
               {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
+              {id:"comunidad",emoji:"🌐",label:"Comunidad",color:"#1A8A7B",action:function(){abrirModulo("comunidad","comunidad_inicio");}},
               {id:"informes",emoji:"📑",label:"Informes",color:"#1A8A7B",action:function(){abrirModulo("informes","informes_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
             ].map(function(m){return(
@@ -31403,6 +31404,7 @@ export default function App() {
               {id:"info",emoji:"ℹ️",label:"Info para colaboradores",color:"#1A6B8A",action:function(){abrirModulo("info","info_inicio");}},
                   {id:"comandas",emoji:"🍽️",label:"Comandas",color:"#C1440E",action:function(){abrirModulo("comandas","comandas_inicio");}},
                   {id:"competencia",emoji:"🏆",label:"Competencia",color:"#D4A017",action:function(){abrirModulo("competencia","competencia_inicio");}},
+              {id:"comunidad",emoji:"🌐",label:"Comunidad",color:"#1A8A7B",action:function(){abrirModulo("comunidad","comunidad_inicio");}},
               {id:"informes",emoji:"📑",label:"Informes",color:"#1A8A7B",action:function(){abrirModulo("informes","informes_inicio");}},
               {id:"chat",emoji:"💬",label:"Asistente IA",color:"#8B2FC9",action:function(){abrirModulo("chat","chat_inicio");}},
                 ].map(function(m){return(
@@ -31428,7 +31430,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="cupones"?"🎟️ Cupones":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="cupones"?"🎟️ Cupones":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -31494,6 +31496,7 @@ export default function App() {
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"competencia",emoji:"🏆",label:"Competencia",desc:"Cómo va la competencia entre los locales y por qué tiene cada uno su puntaje",color:"#D4A017",badge:0},
+                            ...(esCajero?[{id:"comunidad",emoji:"🌐",label:"Comunidad",desc:"Los clientes de tu local, sus cupones y el canje",color:"#1A8A7B",badge:0}]:[]),
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
                             {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",desc:"Emergencias, service y contactos del local",color:"#4CAF50",badge:0},
                             {id:"info_general",emoji:"ℹ️",label:"Info general",desc:"Información para todos los colaboradores",color:"#1A6B8A",badge:0}].concat(
@@ -31839,6 +31842,17 @@ export default function App() {
           {/* MÓDULO COMPETENCIA — opiniones de los clientes por QR y ranking entre locales */}
           {esSofia&&modulo==="competencia"&&(
             <PanelCompetencia ventasDeCierre={ventasDeCierre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
+          )}
+
+          {/* MÓDULO COMUNIDAD — los clientes sumados por QR: datos de los locales, miembros, cupones, canje y novedades */}
+          {esSofia&&modulo==="comunidad"&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Grupo Nkt · clientes, cupones y novedades</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:"#F0EDE8"}}>🌐 Comunidad</div>
+              </div>
+              <PanelComunidad/>
+            </div>
           )}
 
           {/* MÓDULO INFORMES — informes por área con filtros y bajada a Excel */}
@@ -32390,6 +32404,12 @@ export default function App() {
             <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} vistaCajero={esCajero} cajeroLocal={esCajero?(cu.local||""):""} usuarioCajero={cu.nombre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
+          {subCompras==="comunidad"&&esCajero&&(
+            <div style={{fontFamily:"'Inter',sans-serif"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:"#F0EDE8",marginBottom:12}}>🌐 Comunidad</div>
+              <PanelComunidadCajero local={cu.local||""} usuario={cu.nombre}/>
+            </div>
+          )}
           {subCompras==="cupones"&&esCajero&&<PanelCanje local={(getLocal(cu.local)||{}).nombre||cu.local||""} usuario={cu.nombre}/>}
 
           {!esSofia&&subCompras==="mificha"&&empleadoDe(cu)&&misDatos!==null&&(

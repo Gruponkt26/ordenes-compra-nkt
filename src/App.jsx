@@ -14196,8 +14196,8 @@ function PanelFichajes(p){
         var ref=(j.entrada||j.salida);
         return ref&&String(ref.fecha||"").substring(0,7)===mes;
       });
-    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0);
     var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
+    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+minutosDeVacaciones(e,mes,p.vacaciones,conMarcas);
     var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
     // Contra la jornada cargada: lo previsto hasta hoy, los días que le tocaban y no marcó,
@@ -14210,7 +14210,8 @@ function PanelFichajes(p){
         if(FICHAJE_DESDE&&f<FICHAJE_DESDE&&!conMarcas[f])return;   // antes de usar el sistema no hay faltas
         if(f===hoy&&!turnoTerminado(t,f))return;                    // el turno de hoy todavía no terminó: no es falta ni horas previstas
         previstas+=t.minutos;
-        if(!conMarcas[f])faltas.push(f);
+        var deVac=(p.vacaciones||[]).some(function(v){return v.empleado_id===e.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);});
+        if(!conMarcas[f]&&!deVac)faltas.push(f);
       });
     }
     return {e:e, jor:jor.sort(function(a,b){
@@ -25099,6 +25100,24 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
 // Vacaciones y Sueldos. El empleado ve la suya sin sueldos ni observaciones.
 var TOLERANCIA_ATRASO_MIN=10;
 var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
+// Horas que cuentan como trabajadas los días de vacaciones (sin marcar): las de su jornada de ese día, como si hubiera ido.
+// Las licencias ("[Licencia]") no entran. Los francos no suman. Un día con marcas ya cuenta por sus marcas.
+function minutosDeVacaciones(emp, mes, vacaciones, conMarcas){
+  if(!emp||!vacaciones||!vacaciones.length||!jornadaDe(emp))return 0;
+  var pr=String(mes).split("-"), ultimo=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate(), tot=0, visto={};
+  vacaciones.forEach(function(v){
+    if(v.empleado_id!==emp.id||/^\[Licencia\]/.test(String(v.notas||"")))return;
+    var d=String(v.fecha_desde).substring(0,10), h=String(v.fecha_hasta).substring(0,10);
+    for(var i=1;i<=ultimo;i++){
+      var f=mes+"-"+String(i).padStart(2,"0");
+      if(f<d||f>h||visto[f]||(conMarcas&&conMarcas[f]))continue;
+      if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
+      var t=turnoDe(emp,f);
+      if(t&&!t.franco){ visto[f]=true; tot+=t.minutos||0; }
+    }
+  });
+  return tot;
+}
 function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   var hoy=fechaLocal();
   var mias=(fichajes||[]).filter(function(f){return f.empleado_id===emp.id;});
@@ -25107,7 +25126,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
     return ref&&String(ref.fecha||"").substring(0,7)===mes;
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0);
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+minutosDeVacaciones(emp,mes,vacaciones,conMarcas);
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){
@@ -25695,7 +25714,7 @@ function PanelRecibosFC(p){
   function horasDelFichaje(empId,periodo){
     var e=empleadosTodos.find(function(x){return x.id===empId;}); if(!e)return "";
     var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
-    var min=0; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo)min+=minutosDe(j,e); }); }catch(err){}
+    var min=0, marcados={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo){min+=minutosDe(j,e); marcados[String(ref.fecha).substring(0,10)]=true;} }); min+=minutosDeVacaciones(e,periodo,p.vacaciones,marcados); }catch(err){}
     return min>0?String(Math.round(min/60*100)/100):"";
   }
   function diasDelFichaje(empId,periodo){
@@ -31726,7 +31745,7 @@ export default function App() {
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
-                   justificativos={justificativos} onSaveJustif={guardarJustif}
+                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}
                    localesDatos={localesDatos}
                    onSaveLocalDatos={async function(d){
                      var antes=localesDatos[d.local];

@@ -397,6 +397,13 @@ export function GrupoNkt() {
         var d = cfg.locales[l.id] || {};
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
         var reserva = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero reservar una mesa. Día: ___ · Hora: ___ · Personas: ___ · A nombre de: ___");
+        var consulta = linkWsp(d.wsp, "Hola " + l.nombre + "! Quería hacerles una consulta.");
+        // Todas las opciones se ven siempre; las que todavía no tienen su dato quedan apagadas ("pronto").
+        var itemLocal = function (link, txt, estilo) {
+          return link
+            ? <a href={link} target="_blank" rel="noreferrer" style={{ ...boton, ...(estilo || {}) }}>{txt}</a>
+            : <span style={{ ...boton, opacity: 0.4, cursor: "not-allowed" }} title="Pronto">{txt}</span>;
+        };
         return (
           <div key={l.id} style={{ position: "relative", overflow: "hidden", background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
             <div style={{ textAlign: "center" }}>
@@ -412,11 +419,12 @@ export function GrupoNkt() {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-              {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...boton, background: "#1F4D2A", borderColor: "#3A7D44" }}>🛵 Pedir delivery</a>}
-              {reserva && <a href={reserva} target="_blank" rel="noreferrer" style={{ ...boton, background: "#1F4D2A", borderColor: "#3A7D44" }}>📅 Reservar mesa</a>}
-              {d.direccion && <a href={"https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta")} target="_blank" rel="noreferrer" style={boton}>📍 Cómo llegar</a>}
-              {d.carta && <a href={d.carta} target="_blank" rel="noreferrer" style={boton}>🍽️ Ver la carta</a>}
-              {d.instagram && <a href={d.instagram} target="_blank" rel="noreferrer" style={boton}>📸 Instagram</a>}
+              {itemLocal(wa, "🛵 Pedir delivery", { background: "#1F4D2A", borderColor: "#3A7D44" })}
+              {itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}
+              {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
+              {itemLocal(d.carta, "🍽️ Ver la carta")}
+              {itemLocal(consulta, "💬 Escribinos")}
+              {itemLocal(d.instagram, "📸 Instagram")}
               <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
             {/* Franja cruzada: esta parte del portal todavía se está armando. No tapa los botones al tocar. */}

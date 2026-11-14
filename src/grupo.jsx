@@ -745,10 +745,18 @@ export function PanelComunidad() {
       setTimeout(function () { setMsgPrueba(""); }, 2500);
     });
   }
-  function quitar(id) {
-    if (!window.confirm("¿Sacar a esta persona de la comunidad?")) return;
-    fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }).then(function () {
-      setMiembros(function (p) { return (p || []).filter(function (m) { return m.id !== id; }); });
+  // Al sacar a alguien de la comunidad también se borran sus cupones sin usar (vigentes o vencidos): si no, seguirían figurando
+  // y podrían canjearse en caja. Los que ya canjeó quedan en el historial de canjeados.
+  function quitar(m) {
+    var propios = cupones.filter(function (c) { return c.wsp === m.wsp && c.estado !== "usado"; });
+    var msg = "¿Sacar a " + nombreCompleto(m) + " de la comunidad?" + (propios.length ? "\n\nTambién se borran sus " + propios.length + " cupón" + (propios.length === 1 ? "" : "es") + " sin usar. Los que ya canjeó quedan en el historial." : "");
+    if (!window.confirm(msg)) return;
+    var pedidos = [fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH })].concat(propios.map(function (c) {
+      return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cupon_" + c.codigo), { method: "DELETE", headers: SH });
+    }));
+    Promise.all(pedidos).then(function () {
+      setMiembros(function (p) { return (p || []).filter(function (x) { return x.id !== m.id; }); });
+      setCupones(function (p) { return (p || []).filter(function (c) { return !(c.wsp === m.wsp && c.estado !== "usado"); }); });
     });
   }
 
@@ -1003,7 +1011,7 @@ export function PanelComunidad() {
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>
-                  <button onClick={function () { quitar(m.id); }} title="Sacar de la lista" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                  <button onClick={function () { quitar(m); }} title="Sacar de la lista" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12 }}>🗑️</button>
                 </div>
               );
             })}

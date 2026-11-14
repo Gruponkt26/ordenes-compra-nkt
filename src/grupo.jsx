@@ -17,6 +17,14 @@ var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponD
 export function urlGrupo() { return URL_PUBLICA + "/grupo/"; }
 function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
 // Descuento del cupón: el del local donde la persona se sumó, si se cargó uno; si no, el general.
+// El descuento depende del local donde se CANJEA (cada local tiene el suyo); un cupón con "pctFijo" (cargado a mano) lo mantiene en cualquier local.
+export function pctCanje(c, cfg, localId) { return (c && c.pctFijo) ? c.pctFijo : pctPara(cfg, localId); }
+// Para mostrar un cupón: ya canjeado → lo que se descontó; sin canjear → su valor fijo o "según el local".
+function pctTexto(c) { return c.estado === "usado" ? c.pct + "%" : (c.pctFijo ? c.pctFijo + "%" : "según el local"); }
+function valoresPorLocal(cfg) { return LOCALES_GRUPO.map(function (l) { return { n: l.nombre, p: pctPara(cfg, l.id) }; }); }
+function mismoValor(cfg) { var v = valoresPorLocal(cfg); return v.every(function (x) { return x.p === v[0].p; }); }
+// "10% de descuento" o, si cambia según el local, "descuento de El Bodegón Nkt 10% · Kusama 15% · …".
+function fraseDescuento(cfg) { var v = valoresPorLocal(cfg); return mismoValor(cfg) ? v[0].p + "% de descuento" : "descuento de " + v.map(function (x) { return x.n + " " + x.p + "%"; }).join(" · "); }
 export function pctPara(cfg, local) { return ((cfg && cfg.cuponPctLocal) || {})[local] || (cfg && cfg.cuponPct) || 10; }
 export function nombreCompleto(m) { return ((m && m.nombre) || "") + (m && m.apellido ? " " + m.apellido : ""); }
 export function idDispositivo() {
@@ -82,7 +90,7 @@ export async function renovarCupon(wsp, cfg) {
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
   var ahora = new Date();
-  var cupon = { prueba: m.prueba ? 1 : 0, codigo: codigo, wsp: wsp, nombre: nombreCompleto(m), pct: pctPara(cfg, m.fav), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + ((cfg && cfg.cuponDias) || 30) * 86400000).toISOString(), estado: "activo", renovado: 1 };
+  var cupon = { prueba: m.prueba ? 1 : 0, codigo: codigo, wsp: wsp, nombre: nombreCompleto(m), pct: pctPara(cfg, ""), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + ((cfg && cfg.cuponDias) || 30) * 86400000).toISOString(), estado: "activo", renovado: 1 };
   if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
   await guardarFila("com_" + wsp, "comunidad", { ...m, cupon: codigo });
   return cupon;
@@ -103,7 +111,7 @@ async function emitirCupon(socio, cfg) {
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
   var ahora = new Date();
-  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: nombreCompleto(socio), pct: pctPara(cfg, socio.fav), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
+  var cupon = { prueba: socio.prueba ? 1 : 0, codigo: codigo, wsp: w, nombre: nombreCompleto(socio), pct: pctPara(cfg, ""), creado: ahora.toISOString(), vence: new Date(ahora.getTime() + (cfg.cuponDias || 30) * 86400000).toISOString(), estado: "activo" };
   if (!(await guardarFila("cupon_" + codigo, "cupon", cupon))) return null;
   await guardarFila("com_" + w, "comunidad", { ...socio, cupon: codigo });
   return cupon;
@@ -133,7 +141,7 @@ function cuponComoImagen(c) {
       if (logo) x.drawImage(img, 330, 90, 240, 240);
       x.textAlign = "center";
       x.fillStyle = "#9A9A9A"; x.font = "28px sans-serif"; x.fillText("TU CUPÓN DE DESCUENTO", 450, 400);
-      x.fillStyle = "#4C9A5A"; x.font = "bold 150px serif"; x.fillText(c.pct + "% OFF", 450, 560);
+      x.fillStyle = "#4C9A5A"; var tx = c.pctTxt || (c.pct + "% OFF"); x.font = "bold " + (tx.length > 10 ? 100 : 150) + "px serif"; x.fillText(tx, 450, 560);
       x.fillStyle = "#F0EDE8"; x.font = "bold 110px sans-serif"; x.fillText(c.codigo, 450, 720);
       x.fillStyle = "#C8C8C8"; x.font = "32px sans-serif";
       x.fillText("Válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR"), 450, 810);
@@ -163,10 +171,18 @@ async function guardarCuponImagen(c) {
 export function TarjetaCupon(props) {
   var c = props.cupon, est = estadoCupon(c);
   var col = est === "activo" ? "#4C9A5A" : "#8C8C8C";
+  var [cfgT, setCfgT] = useState(null);
+  useEffect(function () { cargarConfigGrupo().then(setCfgT); }, []);
+  // El descuento depende del local donde se canjea: si es el mismo en los 3 se muestra uno solo; si no, el más alto y el detalle abajo.
+  var usado = est === "usado", vals = cfgT ? valoresPorLocal(cfgT) : [];
+  var maxP = vals.length ? Math.max.apply(null, vals.map(function (x) { return x.p; })) : 0;
+  var grande = usado ? c.pct + "% OFF" : (c.pctFijo ? c.pctFijo + "% OFF" : (cfgT ? (mismoValor(cfgT) ? maxP + "% OFF" : "Hasta " + maxP + "% OFF") : "…"));
+  var detalle = (!usado && !c.pctFijo && cfgT && !mismoValor(cfgT)) ? vals.map(function (x) { return x.n + " " + x.p + "%"; }).join(" · ") : "";
   return (
     <div style={{ background: "#0F1A10", border: "2px dashed " + col, borderRadius: 14, padding: "14px", marginTop: 14, textAlign: "center" }}>
       <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento{c.prueba ? " · 🧪 PRUEBA" : ""}</div>
-      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{c.pct}% OFF</div>
+      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{grande}</div>
+      {detalle && <div style={{ fontSize: 12, color: "#8FD19A", marginTop: -2 }}>{detalle}</div>}
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
         {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez; cuando lo uses, tu próximo cupón ya queda listo para tu siguiente compra.</span>}
@@ -175,7 +191,7 @@ export function TarjetaCupon(props) {
       </div>
       {est === "activo" && (
         <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <button onClick={function () { guardarCuponImagen(c); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #4C9A5A", background: "#14301A", color: "#8FD19A", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>📥 Guardar mi cupón en el celular</button>
+          <button onClick={function () { guardarCuponImagen({ ...c, pctTxt: grande }); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #4C9A5A", background: "#14301A", color: "#8FD19A", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>📥 Guardar mi cupón en el celular</button>
         </div>
       )}
     </div>
@@ -495,6 +511,8 @@ export function PanelCanje(props) {
   var [cupon, setCupon] = useState(null);
   var [msg, setMsg] = useState("");
   var [ocupado, setOcupado] = useState(false);
+  var [cfgC, setCfgC] = useState(null);
+  useEffect(function () { cargarConfigGrupo().then(setCfgC); }, []);
   function buscar() {
     var c = normCodigo(codigo); if (!c) return;
     setOcupado(true); setMsg(""); setCupon(null);
@@ -503,19 +521,23 @@ export function PanelCanje(props) {
   function canjear() {
     if (!cupon || estadoCupon(cupon) !== "activo") return;
     var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 Este cupón es de " + empC.nombre + ", que trabaja en el grupo: los empleados no pueden usar cupones."); return; }
-    if (!window.confirm("¿Canjear el cupón " + cupon.codigo + " de " + cupon.nombre + " (" + cupon.pct + "% de descuento)? Después no se puede volver a usar.")) return;
-    var nuevo = { ...cupon, estado: "usado", usado_at: new Date().toISOString(), usado_local: props.local || "", usado_por: props.usuario || "" };
-    // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
-    leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
-      if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
-      guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) {
-        setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento.");
-        // Se le deja listo el siguiente cupón para su próxima compra.
-        cargarConfigGrupo().then(function (cfgG) { return renovarCupon(cupon.wsp, cfgG); }).then(function (sig) {
-          if (sig) setMsg("✅ Canjeado. Aplicá el " + cupon.pct + "% de descuento. Su próximo cupón ya quedó listo: " + sig.codigo + ".");
-          if (props.onCanje) props.onCanje();
-        });
-      } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
+    // El descuento es el del local donde se canjea; se lee la configuración al momento para no usar un valor viejo.
+    cargarConfigGrupo().then(function (cfgF) {
+      var pctApl = pctCanje(cupon, cfgF, props.localId);
+      if (!window.confirm("¿Canjear el cupón " + cupon.codigo + " de " + cupon.nombre + " con " + pctApl + "% de descuento? Después no se puede volver a usar.")) return;
+      var nuevo = { ...cupon, pct: pctApl, estado: "usado", usado_at: new Date().toISOString(), usado_local: props.local || "", usado_por: props.usuario || "" };
+      // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
+      leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
+        if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
+        guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) {
+          setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + pctApl + "% de descuento.");
+          // Se le deja listo el siguiente cupón para su próxima compra.
+          renovarCupon(cupon.wsp, cfgF).then(function (sig) {
+            if (sig) setMsg("✅ Canjeado. Aplicá el " + pctApl + "% de descuento. Su próximo cupón ya quedó listo: " + sig.codigo + ".");
+            if (props.onCanje) props.onCanje();
+          });
+        } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
+      });
     });
   }
   var empCupon = cupon ? empleadoDeWsp(cupon.wsp) : null;
@@ -533,7 +555,7 @@ export function PanelCanje(props) {
       {msg && <div style={{ fontSize: 13, color: msg.indexOf("✅") === 0 ? "#4C9A5A" : "#E0714A", marginTop: 10 }}>{msg}</div>}
       {cupon && (
         <div style={{ marginTop: 10, border: "1px solid " + col + "66", borderRadius: 12, padding: "12px 14px" }}>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>{cupon.nombre} · <span style={{ color: col }}>{cupon.pct}% OFF</span></div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>{cupon.nombre} · <span style={{ color: col }}>{est === "usado" ? cupon.pct : (cfgC ? pctCanje(cupon, cfgC, props.localId) : "…")}% OFF</span>{est === "activo" && <span style={{ color: "#9A9A9A", fontSize: 11.5, fontWeight: 400 }}> · el descuento de {props.local || "este local"}</span>}</div>
           <div style={{ fontSize: 12, color: "#B8B8B8", marginTop: 4, lineHeight: 1.6 }}>
             Estado: <b style={{ color: col }}>{est === "activo" ? "válido" : est === "usado" ? "ya usado" : "vencido"}</b> · vence el {new Date(cupon.vence).toLocaleDateString("es-AR")}
             {cupon.usado_at && <div>Canjeado el {new Date(cupon.usado_at).toLocaleString("es-AR")}{cupon.usado_local ? " en " + cupon.usado_local : ""}</div>}
@@ -581,7 +603,7 @@ export function PanelComunidadCajero(props) {
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 10 }}>🌐 Comunidad Grupo Nkt{nomLocal ? " · " + nomLocal : ""}</div>
-      <PanelCanje local={nomLocal} usuario={props.usuario} onCanje={cargar} />
+      <PanelCanje local={nomLocal} localId={local} usuario={props.usuario} onCanje={cargar} />
       <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>
         👥 <b>{mios.length}</b> miembro{mios.length === 1 ? " se sumó" : "s se sumaron"} desde {nomLocal || "los locales"} · 🎟️ <b>{cuenta.todos}</b> cupones: <b style={{ color: "#4C9A5A" }}>{cuenta.vigentes}</b> vigentes · <b>{cuenta.usados}</b> usados · <b>{cuenta.vencidos}</b> vencidos
       </div>
@@ -599,7 +621,7 @@ export function PanelComunidadCajero(props) {
           return (
             <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{c.nombre}</b><span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span></div>
-              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {c.pct}% · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
+              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · {pctTexto(c)} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
               {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}</div>}
             </div>
           );
@@ -672,24 +694,14 @@ export function PanelComunidad() {
     fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(n.id), { method: "DELETE", headers: SH }).then(function () { setNovAdm(function (p) { return p.filter(function (x) { return x.id !== n.id; }); }); });
   }
   function guardarValores() {
-    guardarFila("grupo_config", "grupo_config", cfg).then(function (ok) { setMsgCup(ok ? "✓ Guardado: vale para los cupones nuevos y los que se generen al canjear." : "No se pudo guardar"); setTimeout(function () { setMsgCup(""); }, 4000); });
-  }
-  // Pasa los cupones vigentes sin usar al descuento que figura ahora (el de su local, o el general).
-  function aplicarAVigentes() {
-    var vig = cupones.filter(function (c) { return !c.prueba && estadoCupon(c) === "activo"; });
-    if (vig.length === 0) { setMsgCup("No hay cupones vigentes para actualizar."); setTimeout(function () { setMsgCup(""); }, 3000); return; }
-    if (!window.confirm("¿Cambiar el descuento de los " + vig.length + " cupones vigentes sin usar al valor actual? Los ya usados no se tocan.")) return;
-    Promise.all(vig.map(function (c) {
-      var m = (miembros || []).find(function (x) { return x.wsp === c.wsp; });
-      return guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: pctPara(cfg, m ? m.fav : "") });
-    })).then(function () { cargarCupones(); setMsgCup("✓ Se actualizaron " + vig.length + " cupones vigentes."); setTimeout(function () { setMsgCup(""); }, 4000); });
+    guardarFila("grupo_config", "grupo_config", cfg).then(function (ok) { setMsgCup(ok ? "✓ Guardado: vale ya mismo para todos los cupones." : "No se pudo guardar"); setTimeout(function () { setMsgCup(""); }, 4000); });
   }
   function cambiarPctCupon(c) {
-    var v = window.prompt("Descuento para el cupón " + c.codigo + " de " + c.nombre + " (%):", String(c.pct));
+    var v = window.prompt("Descuento fijo para el cupón " + c.codigo + " de " + c.nombre + " (%), igual en los 3 locales. Sin esto, el cupón toma el descuento del local donde se canjea:", String(c.pctFijo || ""));
     if (v === null) return;
     var n = parseInt(String(v).replace(/\D/g, ""), 10);
     if (!(n >= 1 && n <= 100)) { window.alert("Poné un número entre 1 y 100."); return; }
-    guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: n }).then(function () { cargarCupones(); });
+    guardarFila("cupon_" + c.codigo, "cupon", { ...c, pct: n, pctFijo: n }).then(function () { cargarCupones(); });
   }
   // Cuántos cupones lleva cada cliente (emitidos y canjeados), sin contar los de prueba.
   function resumenCup(wsp) {
@@ -721,7 +733,7 @@ export function PanelComunidad() {
   function csvCupones() {
     var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por", "Nº de cupón del cliente"]].concat(cupones.filter(esDeMiembro).map(function (c) {
       var e = estadoCupon(c);
-      return [c.codigo, c.nombre, c.wsp, c.pct + "%", c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || "", ordenCupon(c)];
+      return [c.codigo, c.nombre, c.wsp, pctTexto(c), c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || "", ordenCupon(c)];
     }));
     var txt = "\ufeff" + filas.map(function (f) { return f.map(function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_grupo_nkt.csv"; a.click();
@@ -885,14 +897,14 @@ export function PanelComunidad() {
 
       <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>⚙️ Valor de los cupones</div>
-        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>El descuento que se cambia acá vale para los cupones nuevos y para el siguiente que reciba cada persona al canjear. Podés poner un valor distinto según el local donde se sumó el cliente; el cupón se usa igual en cualquiera de los 3.</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>El cupón se usa en cualquiera de los 3 locales, y el descuento es el del local donde se canjea: lo que pongas acá vale para todos los cupones, los que ya están emitidos y los nuevos.</div>
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Descuento general (%)</div>
             <input value={cfg.cuponPct} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponPct: Math.min(v, 100) }; }); }} inputMode="numeric" style={sel} /></div>
           <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Días de validez</div>
             <input value={cfg.cuponDias} onChange={function (e) { var v = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0; setCfg(function (c) { return { ...c, cuponDias: v }; }); }} inputMode="numeric" style={sel} /></div>
         </div>
-        <div style={{ fontSize: 11, color: "#8C8C8C", margin: "4px 0" }}>Según el local donde se sumó (vacío = el general)</div>
+        <div style={{ fontSize: 11, color: "#8C8C8C", margin: "4px 0" }}>Descuento al canjear en cada local (vacío = el general)</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           {LOCALES_GRUPO.map(function (l) {
             return (
@@ -905,7 +917,6 @@ export function PanelComunidad() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={guardarValores} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Guardar valores</button>
-          <button onClick={aplicarAVigentes} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #D4A01766", background: "#D4A01722", color: "#D4A017", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Aplicar también a los cupones vigentes</button>
         </div>
         {msgCup && <div style={{ fontSize: 12, color: "#8FD19A", marginTop: 8 }}>{msgCup}</div>}
       </div>
@@ -935,14 +946,14 @@ export function PanelComunidad() {
             {lista.slice(0, 100).map(function (c) {
               var e = estadoCupon(c), col = e === "activo" ? "#4C9A5A" : e === "usado" ? "#8C8C8C" : "#E0714A";
               var primer = String(c.nombre || "").split(" ")[0];
-              var txt = "Hola " + primer + "! Te recordamos que tenés un cupón de Grupo Nkt de " + c.pct + "% de descuento (" + c.codigo + "), válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR") + " en cualquiera de nuestros locales. Tu portal con novedades, delivery y reservas: " + urlGrupo() + " ¡Te esperamos!";
+              var txt = "Hola " + primer + "! Te recordamos que tenés un cupón de Grupo Nkt de " + fraseDescuento(cfg) + " (" + c.codigo + "), válido hasta el " + new Date(c.vence).toLocaleDateString("es-AR") + " en cualquiera de nuestros locales. Tu portal con novedades, delivery y reservas: " + urlGrupo() + " ¡Te esperamos!";
               return (
                 <div key={c.codigo} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <div><b>{c.nombre}</b>{empleadoDeWsp(c.wsp) ? <span style={{ color: "#FF8A5C", fontSize: 10.5, fontWeight: 700 }}> 👷 empleado/a</span> : null} <a href={linkWsp(c.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", fontSize: 11.5 }}>💬 {c.wsp}</a></div>
                     <span style={{ color: col, fontWeight: 800, fontSize: 11.5 }}>{e === "activo" ? "VIGENTE" : e === "usado" ? "USADO" : "VENCIDO"}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · cupón {ordenCupon(c)} de {resumenCup(c.wsp).total} del cliente · {c.pct}% · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>🎟️ <b style={{ color: "#C8C8C8" }}>{c.codigo}</b> · cupón {ordenCupon(c)} de {resumenCup(c.wsp).total} del cliente · {pctTexto(c)} · emitido {c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "—"} · vence {c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "—"}</div>
                   {c.usado_at && <div style={{ fontSize: 11, color: "#8C8C8C", marginTop: 1 }}>✅ Canjeado el {new Date(c.usado_at).toLocaleString("es-AR")}{c.usado_local ? " en " + c.usado_local : ""}{c.usado_por ? " · por " + c.usado_por : ""}</div>}
                   {e === "activo" && <button onClick={function () { cambiarPctCupon(c); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", marginRight: 12, padding: 0, marginTop: 4 }}>✏️ Cambiar descuento</button>}
                   {e === "activo" && <a href={linkWsp(c.wsp, txt)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 4, fontSize: 11.5, color: "#4C9A5A", textDecoration: "none" }}>💬 Recordarle que lo use</a>}
@@ -1017,7 +1028,7 @@ export function PanelComunidad() {
                     {m.cupon && (function () {
                       var cp = cupones.find(function (x) { return x.codigo === m.cupon; });
                       var est = cp ? estadoCupon(cp) : "";
-                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
+                      var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + fraseDescuento(cfg) + ", válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
                       var rc = resumenCup(m.wsp);
                       return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"} · {rc.vencidos} vencido{rc.vencidos === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}

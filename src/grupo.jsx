@@ -7,9 +7,9 @@ import { SURL, SH } from "./comun.js";
 
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
 var LOCALES_GRUPO = [
-  { id: "l1", nombre: "El Bodegón Nkt", color: "#C1440E", logo: "/logos/bodegon.png", alto: 34, desc: "Cocina de bodegón, buena mesa y buena compañía." },
-  { id: "l2", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
-  { id: "l3", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
+  { id: "l1", emoji: "🍷", nombre: "El Bodegón Nkt", color: "#C1440E", logo: "/logos/bodegon.png", alto: 34, desc: "Cocina de bodegón, buena mesa y buena compañía." },
+  { id: "l2", emoji: "🍣", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
+  { id: "l3", emoji: "🍕", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
 var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, locales: {} };
 
@@ -685,7 +685,7 @@ export function PanelComunidad() {
   // Cuántos cupones lleva cada cliente (emitidos y canjeados), sin contar los de prueba.
   function resumenCup(wsp) {
     var mios = cupones.filter(function (c) { return !c.prueba && c.wsp === wsp; });
-    return { total: mios.length, usados: mios.filter(function (c) { return c.estado === "usado"; }).length };
+    return { total: mios.length, usados: mios.filter(function (c) { return c.estado === "usado"; }).length, vencidos: mios.filter(function (c) { return estadoCupon(c) === "vencido"; }).length };
   }
   // Número de orden de un cupón dentro de los de ese cliente: el 1.º, el 2.º…
   function ordenCupon(c) {
@@ -725,9 +725,9 @@ export function PanelComunidad() {
     try { navigator.clipboard.writeText(urlGrupo()); setCopiado(true); setTimeout(function () { setCopiado(false); }, 1800); } catch (e) {}
   }
   function csv() {
-    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón actual", "Cupones emitidos", "Cupones canjeados"]].concat(reales.map(function (m) {
+    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón actual", "Cupones emitidos", "Cupones canjeados", "Cupones vencidos"]].concat(reales.slice().sort(function (x, y) { return String(y.fecha || "").localeCompare(String(x.fecha || "")); }).map(function (m) {
       var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
-      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || "", resumenCup(m.wsp).total, resumenCup(m.wsp).usados];
+      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || "", resumenCup(m.wsp).total, resumenCup(m.wsp).usados, resumenCup(m.wsp).vencidos];
     }));
     var txt = "﻿" + filas.map(function (f) { return f.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "comunidad_grupo_nkt.csv"; a.click();
@@ -767,6 +767,16 @@ export function PanelComunidad() {
     return Object.keys(m).sort(function (a, b) { return a.localeCompare(b, "es"); }).map(function (k) { return { k: k, lista: m[k] }; });
   }
   var porLocalCanje = vistaCanje === "local" ? agrupar(function (c) { return c.usado_local; }) : agrupar(function (c) { return c.nombre; });
+  // Resumen por local: miembros, cupones emitidos, canjeados, vencidos y vigentes (sin los de prueba).
+  function statsDe(lista) {
+    var ws = {}; lista.forEach(function (m) { ws[m.wsp] = 1; });
+    var cs = cupones.filter(function (c) { return !c.prueba && ws[c.wsp]; });
+    return { miembros: lista.length, total: cs.length, usados: cs.filter(function (c) { return c.estado === "usado"; }).length, vencidos: cs.filter(function (c) { return estadoCupon(c) === "vencido"; }).length, vigentes: cs.filter(function (c) { return estadoCupon(c) === "activo"; }).length };
+  }
+  var filasResumen = LOCALES_GRUPO.map(function (l) { return { id: l.id, txt: l.emoji + " " + l.nombre, s: statsDe(reales.filter(function (m) { return m.fav === l.id; })) }; })
+    .concat([{ id: "", txt: "Sin local elegido", s: statsDe(reales.filter(function (m) { return !LOCALES_GRUPO.some(function (l) { return l.id === m.fav; }); })) }])
+    .filter(function (f) { return f.id !== "" || f.s.miembros > 0; });
+  var totalResumen = statsDe(reales);
   var porLocalCom = LOCALES_GRUPO.map(function (l) { return { l: l, n: reales.filter(function (m) { return m.fav === l.id; }).length }; });
 
   return (
@@ -955,6 +965,21 @@ export function PanelComunidad() {
         {miembros && miembros.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
         {miembros && miembros.length > 0 && (
           <div>
+            <div style={{ overflowX: "auto", marginBottom: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead><tr style={{ color: "#8C8C8C", textAlign: "right" }}>
+                  <th style={{ textAlign: "left", padding: "4px 6px", fontWeight: 600 }}>Local</th><th style={{ padding: "4px 6px", fontWeight: 600 }}>Miembros</th><th style={{ padding: "4px 6px", fontWeight: 600 }}>Cupones</th><th style={{ padding: "4px 6px", fontWeight: 600 }}>Canjeados</th><th style={{ padding: "4px 6px", fontWeight: 600 }}>Vencidos</th><th style={{ padding: "4px 6px", fontWeight: 600 }}>Vigentes</th>
+                </tr></thead>
+                <tbody>
+                  {filasResumen.map(function (f) { return <tr key={f.id || "sin"} style={{ borderTop: "1px solid #1E1E1E", textAlign: "right", color: "#C8C8C8" }}>
+                    <td style={{ textAlign: "left", padding: "5px 6px", color: "#F0EDE8" }}>{f.txt}</td><td style={{ padding: "5px 6px", fontWeight: 700 }}>{f.s.miembros}</td><td style={{ padding: "5px 6px" }}>{f.s.total}</td><td style={{ padding: "5px 6px", color: "#4C9A5A", fontWeight: 700 }}>{f.s.usados}</td><td style={{ padding: "5px 6px", color: "#E0714A" }}>{f.s.vencidos}</td><td style={{ padding: "5px 6px" }}>{f.s.vigentes}</td>
+                  </tr>; })}
+                  <tr style={{ borderTop: "2px solid #2A2A2A", textAlign: "right", color: "#F0EDE8", fontWeight: 800 }}>
+                    <td style={{ textAlign: "left", padding: "5px 6px" }}>Total</td><td style={{ padding: "5px 6px" }}>{totalResumen.miembros}</td><td style={{ padding: "5px 6px" }}>{totalResumen.total}</td><td style={{ padding: "5px 6px", color: "#4C9A5A" }}>{totalResumen.usados}</td><td style={{ padding: "5px 6px", color: "#E0714A" }}>{totalResumen.vencidos}</td><td style={{ padding: "5px 6px" }}>{totalResumen.vigentes}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {[{ id: "todos", txt: "Todos · " + miembros.filter(function (m) { return !m.prueba; }).length }].concat(porLocalCom.map(function (x) { return { id: x.l.id, txt: x.l.emoji + " " + x.l.nombre + " · " + x.n }; })).map(function (t) {
                 var act = filtroCom === t.id;
@@ -974,7 +999,7 @@ export function PanelComunidad() {
                       var est = cp ? estadoCupon(cp) : "";
                       var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
                       var rc = resumenCup(m.wsp);
-                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
+                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"} · {rc.vencidos} vencido{rc.vencidos === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>

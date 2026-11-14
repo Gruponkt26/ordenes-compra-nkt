@@ -710,7 +710,7 @@ export function PanelComunidad() {
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_canjeados_grupo_nkt.csv"; a.click();
   }
   function csvCupones() {
-    var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por", "Nº de cupón del cliente"]].concat(cupones.filter(function (c) { return !c.prueba; }).map(function (c) {
+    var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por", "Nº de cupón del cliente"]].concat(cupones.filter(esDeMiembro).map(function (c) {
       var e = estadoCupon(c);
       return [c.codigo, c.nombre, c.wsp, c.pct + "%", c.creado ? new Date(c.creado).toLocaleDateString("es-AR") : "", c.vence ? new Date(c.vence).toLocaleDateString("es-AR") : "", e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_local || "", c.usado_por || "", ordenCupon(c)];
     }));
@@ -764,6 +764,9 @@ export function PanelComunidad() {
   var reales = (miembros || []).filter(function (m) { return !m.prueba; });
   var hoy = new Date(), cumples = reales.filter(function (m) { return m.dia === hoy.getDate() && m.mes === hoy.getMonth() + 1; });
   var conCumple = reales.filter(function (m) { return m.dia && m.mes; }).length;
+  // "Cupones otorgados" muestra solo los de quienes siguen en la comunidad hoy (los de quien se sacó de la lista ya no figuran).
+  var wspMiembros = {}; reales.forEach(function (m) { wspMiembros[m.wsp] = 1; });
+  function esDeMiembro(c) { return !c.prueba && !!wspMiembros[c.wsp]; }
   // Por fecha de entrada: el último que se sumó, primero.
   var ordenados = (miembros || []).slice().sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
@@ -899,7 +902,7 @@ export function PanelComunidad() {
       </div>
 
       {(function () {
-        var todos = cupones.filter(function (c) { return !c.prueba; }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
+        var todos = cupones.filter(esDeMiembro).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
         var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
         var cuenta = { todos: todos.length, vigentes: 0, usados: 0, vencidos: 0 };
         todos.forEach(function (c) { cuenta[est(c)]++; });

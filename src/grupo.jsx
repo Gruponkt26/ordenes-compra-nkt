@@ -384,7 +384,7 @@ export function GrupoNkt() {
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
         var reserva = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero reservar una mesa. Día: ___ · Hora: ___ · Personas: ___ · A nombre de: ___");
         return (
-          <div key={l.id} style={{ background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
+          <div key={l.id} style={{ position: "relative", overflow: "hidden", background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
             <div style={{ textAlign: "center" }}>
               <div style={{ background: "#fff", borderRadius: 12, padding: "8px 14px", display: "inline-block", maxWidth: "100%" }}>
                 <img src={l.logo} alt={l.nombre} style={{ display: "block", height: l.alto, maxWidth: "100%", width: "auto", margin: "0 auto" }} />
@@ -405,6 +405,8 @@ export function GrupoNkt() {
               {d.instagram && <a href={d.instagram} target="_blank" rel="noreferrer" style={boton}>📸 Instagram</a>}
               <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
+            {/* Franja cruzada: esta parte del portal todavía se está armando. No tapa los botones al tocar. */}
+            <div style={{ position: "absolute", top: "50%", left: "-25%", width: "150%", transform: "translateY(-50%) rotate(-9deg)", background: "rgba(212,160,23,0.93)", color: "#1A1204", textAlign: "center", fontWeight: 800, letterSpacing: 3, fontSize: 15, padding: "8px 0", pointerEvents: "none", boxShadow: "0 3px 12px rgba(0,0,0,0.55)" }}>🚧 EN DESARROLLO 🚧</div>
           </div>
         );
       });

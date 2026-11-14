@@ -227,7 +227,7 @@ export function GrupoNkt() {
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
       if (!c) { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); return; }
-      leerPauta("com_" + c.wsp).then(function (m) {
+      leerMiembro(c.wsp).then(function (m) {
         if (m) cuponActual(c).then(function (a) { if (a) { setCupon(a); if (!modoPrueba) { try { localStorage.setItem("nkt_cupon", a.codigo); } catch (e) {} } } else setCupon(c); }); else { try { localStorage.removeItem("nkt_comunidad"); localStorage.removeItem("nkt_cupon"); } catch (e) {} setHecho(""); }
       });
     });
@@ -253,7 +253,8 @@ export function GrupoNkt() {
     var w = soloDigitos(wspVer);
     if (w.length < 8) { setMsgVer("Escribí tu WhatsApp completo."); return; }
     setBuscando(true); setMsgVer("");
-    leerPauta("com_" + w).then(function (m) {
+    (modoPrueba ? Promise.resolve(false) : esEmpleadoWsp(w)).then(function (esEmp) { return esEmp ? "EMP" : leerPauta("com_" + w); }).then(function (m) {
+      if (m === "EMP") { setBuscando(false); setMsgVer(MSG_ACCESO_EMPLEADO); return null; }
       if (!m || !m.cupon) { setBuscando(false); setMsgVer("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, hacelo en el formulario de más abajo."); return null; }
       return leerPauta("cupon_" + m.cupon).then(function (c) {
         setBuscando(false);
@@ -470,6 +471,12 @@ export function empleadoDeWsp(wsp) {
   return EMPLEADOS_GRUPO.find(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; }) || null;
 }
 
+export var MSG_ACCESO_EMPLEADO = "Los empleados del grupo no tienen acceso a la comunidad: ya tienen un descuento aparte.";
+// Como leerPauta("com_…") pero un empleado cuenta como "no es miembro": no ve su cupón aunque ya estuviera sumado.
+export async function leerMiembro(wsp) {
+  if (await esEmpleadoWsp(wsp)) return null;
+  return leerPauta("com_" + wsp);
+}
 export var MSG_EMPLEADO = "Los empleados del grupo no pueden sumarse a la comunidad: ya tienen un descuento aparte.";
 // Para el que se está sumando (sin sesión): se mira la lista de empleados en la base y se compara por teléfono.
 export async function esEmpleadoWsp(wsp) {
@@ -770,8 +777,8 @@ export function PanelComunidad() {
   // Por fecha de entrada: el último que se sumó, primero.
   var ordenados = (miembros || []).slice().sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
-  // Cupones canjeados (sin los de prueba), del más reciente al más viejo.
-  var canjeados = cupones.filter(function (c) { return !c.prueba && c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
+  // Cupones canjeados de los miembros actuales (sin los de prueba), del más reciente al más viejo.
+  var canjeados = cupones.filter(function (c) { return esDeMiembro(c) && c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
   function agrupar(clave) {
     var m = {};
     canjeados.forEach(function (c) { var k = clave(c) || "(sin dato)"; (m[k] = m[k] || []).push(c); });

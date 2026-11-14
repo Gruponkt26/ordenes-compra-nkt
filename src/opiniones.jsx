@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
-import { cargarConfigGrupo, sumarSocio, MSG_EMPLEADO, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
+import { cargarConfigGrupo, sumarSocio, MSG_EMPLEADO, MSG_ACCESO_EMPLEADO, leerMiembro, esEmpleadoWsp, TarjetaCupon, leerPauta, nombreCompleto, cuponActual } from "./grupo.jsx";
 
 // El QR se imprime: apunta siempre a la dirección real de la app, no a la pantalla desde donde se arme.
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
@@ -126,7 +126,7 @@ export function Opinar() {
     var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       if (!c) return;
-      leerPauta("com_" + c.wsp).then(function (m) { if (m) { setYaEsParte(true); setCuponYa(c); cuponActual(c).then(function (a) { if (a) setCuponYa(a); }); } });
+      leerMiembro(c.wsp).then(function (m) { if (m) { setYaEsParte(true); setCuponYa(c); cuponActual(c).then(function (a) { if (a) setCuponYa(a); }); } });
     });
   }, []);
   var [enviando, setEnviando] = useState(false);
@@ -152,7 +152,8 @@ export function Opinar() {
     var w = ingWsp.replace(/\D/g, "");
     if (w.length < 8) { setIngMsg("Escribí tu WhatsApp completo."); return; }
     setIngBusy(true); setIngMsg("");
-    leerPauta("com_" + w).then(function (m) {
+    (modoPrueba ? Promise.resolve(false) : esEmpleadoWsp(w)).then(function (esEmp) { return esEmp ? "EMP" : leerPauta("com_" + w); }).then(function (m) {
+      if (m === "EMP") { setIngBusy(false); setIngMsg(MSG_ACCESO_EMPLEADO); return null; }
       if (!m || !m.cupon) { setIngBusy(false); setIngMsg("No encontramos ese WhatsApp en la comunidad. Si todavía no te sumaste, hacelo más abajo."); return null; }
       return leerPauta("cupon_" + m.cupon).then(function (c) {
         if (!c) { setIngBusy(false); setIngMsg("No encontramos tu cupón. Escribinos y lo revisamos."); return; }

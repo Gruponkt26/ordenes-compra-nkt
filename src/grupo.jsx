@@ -600,6 +600,9 @@ export function PanelComunidadCajero(props) {
   var [miembros, setMiembros] = useState(null);
   var [cupones, setCupones] = useState([]);
   var [filtro, setFiltro] = useState("todos");
+  var [qrC, setQrC] = useState("");
+  var [qrGrande, setQrGrande] = useState(false);
+  useEffect(function () { QRCode.toDataURL(urlGrupo(), { margin: 2, width: 720, errorCorrectionLevel: "M" }).then(setQrC).catch(function () {}); }, []);
   function cargar() {
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
       setMiembros(Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : []);
@@ -610,12 +613,13 @@ export function PanelComunidadCajero(props) {
   }
   useEffect(function () { cargar(); }, []);
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
-  var mios = (miembros || []).filter(function (m) { return !m.prueba && (!local || m.fav === local); });
+  // Todos los miembros de la comunidad, sin importar dónde se sumaron: el cupón se canjea en cualquiera de los 3 locales.
+  var mios = (miembros || []).filter(function (m) { return !m.prueba; }).sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var wsps = {}; mios.forEach(function (m) { wsps[m.wsp] = true; });
   // Los cupones de los clientes de este local, más los que se canjearon acá aunque el cliente se haya sumado en otro.
   // Solo de quienes siguen en la comunidad: los que administración sacó de la lista ya no figuran (ni con sus cupones).
   var wspActivos = {}; (miembros || []).forEach(function (m) { if (!m.prueba) wspActivos[m.wsp] = true; });
-  var cups = cupones.filter(function (c) { return !c.prueba && wspActivos[c.wsp] && (wsps[c.wsp] || (nomLocal && c.usado_local === nomLocal)); }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
+  var cups = cupones.filter(function (c) { return !c.prueba && wspActivos[c.wsp]; }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
   var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
   var cuenta = { todos: cups.length, vigentes: 0, usados: 0, vencidos: 0 };
   cups.forEach(function (c) { cuenta[est(c)]++; });
@@ -628,8 +632,22 @@ export function PanelComunidadCajero(props) {
     <div>
       <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 10 }}>🌐 Comunidad Grupo Nkt{nomLocal ? " · " + nomLocal : ""}</div>
       <PanelCanje local={nomLocal} localId={local} usuario={props.usuario} onCanje={cargar} />
+      <div style={{ ...tarjeta, textAlign: "center" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>📲 QR para sumar clientes</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, marginBottom: 10 }}>Mostrale este QR al cliente: lo escanea con la cámara, se suma a la comunidad y recibe su cupón.</div>
+        {qrC && <div style={{ background: "#fff", padding: 8, borderRadius: 12, display: "inline-block" }}><img src={qrC} alt="QR Grupo Nkt" style={{ width: 170, display: "block" }} /></div>}
+        <div><button onClick={function () { setQrGrande(true); }} style={{ marginTop: 10, padding: "10px 16px", borderRadius: 10, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>🔍 Mostrar en pantalla grande</button></div>
+      </div>
+      {qrGrande && (
+        <div onClick={function () { setQrGrande(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, textAlign: "center" }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, color: "#F0EDE8", marginBottom: 6 }}>Sumate a Grupo Nkt</div>
+          <div style={{ fontSize: 13.5, color: "#C8C8C8", marginBottom: 14 }}>Escaneá el QR con la cámara de tu celular</div>
+          <div style={{ background: "#fff", padding: 12, borderRadius: 16 }}><img src={qrC} alt="QR Grupo Nkt" style={{ width: "min(78vw, 360px)", display: "block" }} /></div>
+          <div style={{ fontSize: 12, color: "#8C8C8C", marginTop: 16 }}>Tocá la pantalla para cerrar</div>
+        </div>
+      )}
       <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>
-        👥 <b>{mios.length}</b> miembro{mios.length === 1 ? " se sumó" : "s se sumaron"} desde {nomLocal || "los locales"} · 🎟️ <b>{cuenta.todos}</b> cupones: <b style={{ color: "#4C9A5A" }}>{cuenta.vigentes}</b> vigentes · <b>{cuenta.usados}</b> usados · <b>{cuenta.vencidos}</b> vencidos
+        👥 <b>{mios.length}</b> miembro{mios.length === 1 ? "" : "s"} en la comunidad · 🎟️ <b>{cuenta.todos}</b> cupones: <b style={{ color: "#4C9A5A" }}>{cuenta.vigentes}</b> vigentes · <b>{cuenta.usados}</b> usados · <b>{cuenta.vencidos}</b> vencidos
       </div>
       <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 8 }}>🎟️ Cupones</div>
@@ -652,9 +670,9 @@ export function PanelComunidadCajero(props) {
         })}
       </div>
       <div style={tarjeta}>
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 Miembros de {nomLocal || "la comunidad"}</div>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 Miembros de la comunidad · {mios.length}</div>
         {miembros === null && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Cargando…</div>}
-        {miembros && mios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie desde acá.</div>}
+        {miembros && mios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
         {mios.slice(0, 100).map(function (m) {
           var rc = resumenCup(m.wsp), cp = cupones.find(function (x) { return x.codigo === m.cupon; });
           var e = cp ? estadoCupon(cp) : "";

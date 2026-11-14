@@ -332,7 +332,7 @@ export function GrupoNkt() {
           <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
             <div style={{ fontSize: 11.5, color: "#D4A017", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5, textAlign: "center" }}>Mi cupón</div>
             <TarjetaCupon cupon={cupon} />
-            {historial.length > 0 && <div style={{ textAlign: "center", fontSize: 12.5, color: "#C8C8C8", marginTop: 12 }}>🎟️ Llevás <b>{usados.length}</b> cupón{usados.length === 1 ? "" : "es"} canjeado{usados.length === 1 ? "" : "s"}</div>}
+            {historial.length > 0 && <div style={{ textAlign: "center", fontSize: 12.5, color: "#C8C8C8", marginTop: 12 }}>🎟️ Llevás <b>{usados.length}</b> {usados.length === 1 ? "cupón" : "cupones"} canjeado{usados.length === 1 ? "" : "s"}</div>}
             {usados.length > 0 && (
               <details style={{ marginTop: 8, fontSize: 12, color: "#9A9A9A" }}>
                 <summary style={{ cursor: "pointer", textAlign: "center" }}>Ver mi historial</summary>
@@ -606,7 +606,7 @@ export function PanelComunidadCajero(props) {
           return (
             <div key={m.id} style={{ padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
               <b>{nombreCompleto(m)}</b>
-              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>{m.cupon ? "🎟️ " + m.cupon + (e ? " · " + (e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido") : "") + " · " : ""}<b style={{ color: "#D4A017" }}>{rc.total} cupón{rc.total === 1 ? "" : "es"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b>{m.fecha ? " · desde " + new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
+              <div style={{ fontSize: 11, color: "#9A9A9A", marginTop: 2 }}>{m.cupon ? "🎟️ " + m.cupon + (e ? " · " + (e === "activo" ? "vigente" : e === "usado" ? "usado" : "vencido") : "") + " · " : ""}<b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b>{m.fecha ? " · desde " + new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
             </div>
           );
         })}
@@ -621,6 +621,7 @@ function mesNombre(m) { return ["", "ene", "feb", "mar", "abr", "may", "jun", "j
 export function PanelComunidad() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [miembros, setMiembros] = useState(null);
+  var [vistaCanje, setVistaCanje] = useState("local");   // cupones canjeados: por local o por cliente
   var [filtroCom, setFiltroCom] = useState("todos");   // lista de miembros: todos o los de un local
   var [qr, setQr] = useState("");
   var [msg, setMsg] = useState("");
@@ -701,6 +702,13 @@ export function PanelComunidad() {
       setCupones(Array.isArray(d) ? d.map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } }).filter(Boolean) : []);
     }).catch(function () {});
   }
+  function csvCanjeados() {
+    var filas = [["Local del canje", "Cliente", "WhatsApp", "Código", "Descuento", "Canjeado el", "Canjeado por"]].concat(canjeados.slice().sort(function (a, b) { return String(a.usado_local || "").localeCompare(String(b.usado_local || ""), "es") || String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"); }).map(function (c) {
+      return [c.usado_local || "", c.nombre, c.wsp, c.codigo, c.pct + "%", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_por || ""];
+    }));
+    var txt = "\ufeff" + filas.map(function (f) { return f.map(function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_canjeados_grupo_nkt.csv"; a.click();
+  }
   function csvCupones() {
     var filas = [["Código", "Cliente", "WhatsApp", "Descuento", "Emitido", "Vence", "Estado", "Canjeado el", "Local del canje", "Canjeado por", "Nº de cupón del cliente"]].concat(cupones.filter(function (c) { return !c.prueba; }).map(function (c) {
       var e = estadoCupon(c);
@@ -751,6 +759,14 @@ export function PanelComunidad() {
   // Por fecha de entrada: el último que se sumó, primero.
   var ordenados = (miembros || []).slice().sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
+  // Cupones canjeados (sin los de prueba), del más reciente al más viejo.
+  var canjeados = cupones.filter(function (c) { return !c.prueba && c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
+  function agrupar(clave) {
+    var m = {};
+    canjeados.forEach(function (c) { var k = clave(c) || "(sin dato)"; (m[k] = m[k] || []).push(c); });
+    return Object.keys(m).sort(function (a, b) { return a.localeCompare(b, "es"); }).map(function (k) { return { k: k, lista: m[k] }; });
+  }
+  var porLocalCanje = vistaCanje === "local" ? agrupar(function (c) { return c.usado_local; }) : agrupar(function (c) { return c.nombre; });
   var porLocalCom = LOCALES_GRUPO.map(function (l) { return { l: l, n: reales.filter(function (m) { return m.fav === l.id; }).length }; });
 
   return (
@@ -909,6 +925,31 @@ export function PanelComunidad() {
       })()}
 
       <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 6 }}>✅ Cupones canjeados · {canjeados.length}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {[["local", "Por local"], ["cliente", "Por cliente"]].map(function (t) {
+            var act = vistaCanje === t[0];
+            return <button key={t[0]} onClick={function () { setVistaCanje(t[0]); }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#9A9A9A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
+          })}
+        </div>
+        {canjeados.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se canjeó ningún cupón.</div>}
+        {porLocalCanje.map(function (gr) {
+          return (
+            <div key={gr.k} style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#F0EDE8", borderBottom: "1px solid #2A2A2A", paddingBottom: 3 }}>{vistaCanje === "local" ? "📍 " : "👤 "}{gr.k} · <span style={{ color: "#D4A017" }}>{gr.lista.length} {gr.lista.length === 1 ? "cupón" : "cupones"}</span></div>
+              {gr.lista.map(function (c) {
+                return <div key={c.codigo} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", padding: "5px 0", borderBottom: "1px solid #141414", fontSize: 12 }}>
+                  <span style={{ color: "#C8C8C8" }}>{vistaCanje === "local" ? c.nombre : (c.usado_local || "—")}{empleadoDeWsp(c.wsp) ? <span style={{ color: "#FF8A5C", fontWeight: 700 }}> 👷</span> : null}</span>
+                  <span style={{ color: "#8C8C8C" }}>{c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} · {c.codigo} · {c.pct}%{c.usado_por ? " · por " + c.usado_por : ""}</span>
+                </div>;
+              })}
+            </div>
+          );
+        })}
+        {canjeados.length > 0 && <button onClick={csvCanjeados} style={{ marginTop: 12, padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, cursor: "pointer" }}>⬇️ Bajar canjeados (Excel)</button>}
+      </div>
+
+      <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 La comunidad · {miembros === null ? "…" : reales.length + " miembro" + (reales.length === 1 ? "" : "s")}{pruebas.length > 0 ? " (+ " + pruebas.length + " de prueba)" : ""}</div>
         {miembros && miembros.length > 0 && <div style={{ fontSize: 11.5, color: "#9A9A9A", marginBottom: 8 }}>{conCumple} dejaron su cumpleaños.{cumples.length > 0 ? " 🎂 Hoy cumple: " + cumples.map(function (m) { return m.nombre; }).join(", ") + "." : ""}</div>}
         {miembros && miembros.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
@@ -933,7 +974,7 @@ export function PanelComunidad() {
                       var est = cp ? estadoCupon(cp) : "";
                       var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + cp.pct + "% de descuento, válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
                       var rc = resumenCup(m.wsp);
-                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} cupón{rc.total === 1 ? "" : "es"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
+                      return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>

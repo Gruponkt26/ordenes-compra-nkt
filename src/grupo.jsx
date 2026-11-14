@@ -567,7 +567,9 @@ export function PanelComunidadCajero(props) {
   var mios = (miembros || []).filter(function (m) { return !m.prueba && (!local || m.fav === local); });
   var wsps = {}; mios.forEach(function (m) { wsps[m.wsp] = true; });
   // Los cupones de los clientes de este local, más los que se canjearon acá aunque el cliente se haya sumado en otro.
-  var cups = cupones.filter(function (c) { return !c.prueba && (wsps[c.wsp] || (nomLocal && c.usado_local === nomLocal)); }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
+  // Solo de quienes siguen en la comunidad: los que administración sacó de la lista ya no figuran (ni con sus cupones).
+  var wspActivos = {}; (miembros || []).forEach(function (m) { if (!m.prueba) wspActivos[m.wsp] = true; });
+  var cups = cupones.filter(function (c) { return !c.prueba && wspActivos[c.wsp] && (wsps[c.wsp] || (nomLocal && c.usado_local === nomLocal)); }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
   var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
   var cuenta = { todos: cups.length, vigentes: 0, usados: 0, vencidos: 0 };
   cups.forEach(function (c) { cuenta[est(c)]++; });

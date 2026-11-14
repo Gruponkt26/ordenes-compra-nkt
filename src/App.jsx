@@ -3233,6 +3233,46 @@ function PautasFichaje(){
     </div>
   );
 }
+// Cómo funciona el ingreso a la comunidad y el canje de cupones, para los cajeros: queda fijo en «Info para cajeros».
+function PautasComunidad(){
+  var [abierto,setAbierto]=useState(true);
+  var bloques=[
+    {t:"🌐 Qué es la comunidad",l:[
+      "Grupo Nkt es la comunidad de clientes de los 3 locales: El Bodegón, Kusama y Colantonio's. Los clientes se suman con un QR único (el mismo en los 3 locales) y reciben un cupón de descuento.",
+      "El cupón se puede canjear en cualquiera de los 3 locales, no solo en el que se sumó el cliente."]},
+    {t:"📲 Cómo sumar a un cliente (ingreso)",l:[
+      "En tu inicio entrá a «Comunidad». Más abajo del cuadro de canje está el «QR para sumar clientes». Tocá «Mostrar en pantalla grande» y dejá que el cliente lo escanee con la cámara de su celular.",
+      "Al escanear, el cliente nuevo completa su nombre, apellido y WhatsApp (el cumpleaños y el lugar favorito son opcionales), tilda la casilla y toca «Sumarme». Ahí mismo ve su cupón, con un código tipo NKT-4K7P.",
+      "Si el cliente ya era miembro, en la misma pantalla toca «¿Ya sos parte? Ingresar», escribe su WhatsApp y ve su cupón vigente y cuántos canjeó.",
+      "Los empleados del grupo no pueden sumarse ni ingresar: ya tienen un descuento aparte.",
+      "El cliente puede dejar la app en su celular con el botón «Descargar la app» que aparece en esa pantalla."]},
+    {t:"🎟️ Cómo canjear un cupón",l:[
+      "1. Pedile al cliente el código que ve en su celular (por ejemplo NKT-4K7P).",
+      "2. En «Comunidad», cuadro «Canjear cupón de la comunidad»: escribí el código y tocá «Buscar».",
+      "3. Mirá el estado: «válido», «ya usado» o «vencido». Solo un cupón válido se puede canjear. Si aparece el aviso rojo de que es de un empleado, no lo canjees.",
+      "4. La pantalla muestra el descuento que corresponde a TU local (por ejemplo «15% OFF»). Puede ser distinto en cada local: aplicá siempre el que figura en tu pantalla, no el que el cliente cree.",
+      "5. Tocá «Canjear ahora» y confirmá. Aplicá el descuento. Un cupón canjeado no se puede volver a usar.",
+      "6. Al canjear, el cliente recibe solo su próximo cupón, con un código nuevo, listo para su siguiente compra. Lo ves en el mensaje verde de la pantalla."]},
+    {t:"🔎 Qué más ves en Comunidad",l:[
+      "Todos los miembros de la comunidad (de cualquier local) y sus cupones, con los filtros Todos, Vigentes, Usados y Vencidos. Sirve para buscar a un cliente si no se acuerda su código.",
+      "Cada cliente tiene un solo cupón vigente a la vez. Si el cupón venció, al ingresar con su WhatsApp recibe uno nuevo.",
+      "Si un código dice «No existe», revisalo letra por letra: los códigos no usan el 0, la O, el 1 ni la I."]}
+  ];
+  return(
+    <div style={{background:"#14110A",border:"1px solid #D4A01755",borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+      <button onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+        <span style={{fontSize:14,fontWeight:800,color:"#D4A017"}}>🌐 Comunidad: ingreso y canje de cupones</span>
+        <span style={{fontSize:11,color:"#7E7E7E"}}>{abierto?"▾ ocultar":"▸ ver"}</span>
+      </button>
+      {abierto&&bloques.map(function(b){return(
+        <div key={b.t} style={{marginTop:11}}>
+          <div style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>{b.t}</div>
+          {b.l.map(function(x,i){return <div key={i} style={{fontSize:12.5,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid #D4A01755",marginBottom:3}}>{x}</div>;})}
+        </div>
+      );})}
+    </div>
+  );
+}
 function PanelInfoCajero(p){
   // Quien edita ve las cuatro secciones; un colaborador ve la suya (p.misSecciones) más General.
   // Si viene "solo", se muestra únicamente esa sección (el colaborador tiene un módulo para la general y otro para la suya).
@@ -3299,6 +3339,7 @@ function PanelInfoCajero(p){
       </div>
 
       {sec==="general"&&<PautasFichaje/>}
+      {sec==="cajeros"&&<PautasComunidad/>}
 
       {puedeEditar&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"13px",marginBottom:14}}>

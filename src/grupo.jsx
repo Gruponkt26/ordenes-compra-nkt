@@ -177,12 +177,26 @@ export function TarjetaCupon(props) {
   var usado = est === "usado", vals = cfgT ? valoresPorLocal(cfgT) : [];
   var maxP = vals.length ? Math.max.apply(null, vals.map(function (x) { return x.p; })) : 0;
   var grande = usado ? c.pct + "% OFF" : (c.pctFijo ? c.pctFijo + "% OFF" : (cfgT ? (mismoValor(cfgT) ? maxP + "% OFF" : "Hasta " + maxP + "% OFF") : "…"));
-  var detalle = (!usado && !c.pctFijo && cfgT && !mismoValor(cfgT)) ? vals.map(function (x) { return x.n + " " + x.p + "%"; }).join(" · ") : "";
+  var hoyTxt = new Date().toLocaleDateString("es-AR");
   return (
     <div style={{ background: "#0F1A10", border: "2px dashed " + col, borderRadius: 14, padding: "14px", marginTop: 14, textAlign: "center" }}>
       <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento{c.prueba ? " · 🧪 PRUEBA" : ""}</div>
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{grande}</div>
-      {detalle && <div style={{ fontSize: 12, color: "#8FD19A", marginTop: -2 }}>{detalle}</div>}
+      {est === "activo" && (c.pctFijo ? (
+        <div style={{ fontSize: 12, color: "#8FD19A", marginBottom: 6 }}>Descuento especial: {c.pctFijo}% en los 3 locales</div>
+      ) : cfgT && (
+        <div style={{ margin: "8px 0 10px" }}>
+          <div style={{ fontSize: 11, color: "#9A9A9A", marginBottom: 6 }}>Lo que vale tu cupón hoy ({hoyTxt}), según el local donde lo uses:</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {LOCALES_GRUPO.map(function (l) {
+              return <div key={l.id} style={{ flex: 1, border: "1px solid " + l.color + "99", borderRadius: 10, padding: "7px 4px", background: "#0A110B" }}>
+                <div style={{ fontSize: 10.5, color: l.color, fontWeight: 800, lineHeight: 1.2 }}>{l.nombre}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#F0EDE8", fontFamily: "'Playfair Display',serif" }}>{pctPara(cfgT, l.id)}%</div>
+              </div>;
+            })}
+          </div>
+        </div>
+      ))}
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
         {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez; cuando lo uses, tu próximo cupón ya queda listo para tu siguiente compra.</span>}

@@ -602,6 +602,13 @@ export function PanelComunidadCajero(props) {
   var [filtro, setFiltro] = useState("todos");
   var [qrC, setQrC] = useState("");
   var [qrGrande, setQrGrande] = useState(false);
+  var [cfgV, setCfgV] = useState(null);      // lo que ven los clientes: configuración (descuentos, bienvenida, datos de los locales)
+  var [novV, setNovV] = useState(null);      // y las novedades vigentes
+  useEffect(function () {
+    cargarConfigGrupo().then(setCfgV);
+    // Las de todos los locales y las del propio local del cajero.
+    cargarNovedades().then(function (l) { setNovV(l.filter(novedadVisible).filter(function (n) { return !n.local || n.local === "todos" || n.local === local; })); });
+  }, []);
   useEffect(function () { QRCode.toDataURL(urlGrupo(), { margin: 2, width: 720, errorCorrectionLevel: "M" }).then(setQrC).catch(function () {}); }, []);
   function cargar() {
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
@@ -637,6 +644,53 @@ export function PanelComunidadCajero(props) {
         <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, marginBottom: 10 }}>Mostrale este QR al cliente: lo escanea con la cámara, se suma a la comunidad y recibe su cupón.</div>
         {qrC && <div style={{ background: "#fff", padding: 8, borderRadius: 12, display: "inline-block" }}><img src={qrC} alt="QR Grupo Nkt" style={{ width: 170, display: "block" }} /></div>}
         <div><button onClick={function () { setQrGrande(true); }} style={{ marginTop: 10, padding: "10px 16px", borderRadius: 10, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>🔍 Mostrar en pantalla grande</button></div>
+      </div>
+      <div style={tarjeta}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 8 }}>👀 Lo que ven los clientes</div>
+        <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, marginBottom: 10 }}>Así podés contestarles si preguntan por promos, descuentos o por los otros locales. Es solo para consultar.</div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", marginBottom: 6 }}>📣 Novedades y promos vigentes</div>
+        {novV === null && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Cargando…</div>}
+        {novV && novV.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Por ahora no hay novedades ni promos publicadas.</div>}
+        {novV && novV.map(function (n) {
+          var ln = LOCALES_GRUPO.find(function (x) { return x.id === n.local; });
+          return (
+            <div key={n.id} style={{ padding: "8px 0", borderTop: "1px solid #1A1A1A" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: "#F0EDE8" }}>{n.titulo}</div>
+              <div style={{ fontSize: 10.5, color: ln ? ln.color : "#7E7E7E", margin: "2px 0 3px" }}>{ln ? ln.nombre : "Todos los locales"}{n.hasta ? " · hasta el " + n.hasta.split("-").reverse().join("/") : ""}</div>
+              <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{n.texto}</div>
+            </div>
+          );
+        })}
+        {cfgV && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", margin: "12px 0 6px" }}>🎟️ Descuento del cupón hoy, según el local</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {LOCALES_GRUPO.map(function (l) {
+                return <div key={l.id} style={{ flex: 1, textAlign: "center", border: "1px solid " + l.color + "99", borderRadius: 10, padding: "7px 4px" }}>
+                  <div style={{ fontSize: 10.5, color: l.color, fontWeight: 800, lineHeight: 1.2 }}>{l.nombre}</div>
+                  <div style={{ fontSize: 19, fontWeight: 800, color: "#F0EDE8", fontFamily: "'Playfair Display',serif" }}>{pctPara(cfgV, l.id)}%</div>
+                </div>;
+              })}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", margin: "12px 0 6px" }}>🌟 Beneficios de la comunidad</div>
+            <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{cfgV.bienvenida || "Te vamos a avisar de las novedades, los platos nuevos y los beneficios de la comunidad."}</div>
+            <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.55, marginTop: 4 }}>Cada cupón se usa una sola vez y vence a los {cfgV.cuponDias || 30} días; al canjearlo, el cliente recibe el siguiente.</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", margin: "12px 0 6px" }}>🏠 Datos de los locales</div>
+            {LOCALES_GRUPO.map(function (l) {
+              var d = (cfgV.locales || {})[l.id] || {};
+              return (
+                <div key={l.id} style={{ padding: "7px 0", borderTop: "1px solid #1A1A1A", fontSize: 12, color: "#C8C8C8", lineHeight: 1.6 }}>
+                  <b style={{ color: l.color }}>{l.nombre}</b>
+                  <div>📍 {d.direccion || "—"}</div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>🕒 {d.horarios || "—"}</div>
+                  {d.wsp && <div>💬 {d.wsp}</div>}
+                  {d.carta && <div>🍽️ <a href={d.carta} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Ver la carta</a></div>}
+                  {d.instagram && <div>📸 <a href={d.instagram} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Instagram</a></div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       {qrGrande && (
         <div onClick={function () { setQrGrande(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16, textAlign: "center" }}>

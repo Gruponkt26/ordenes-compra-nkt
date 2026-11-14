@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelCanje, PanelComunidad, PanelComunidadCajero, setEmpleadosGrupo } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -31430,7 +31430,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="cupones"?"🎟️ Cupones":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -31485,7 +31485,7 @@ export default function App() {
           {enCompras&&!subCompras&&(
             <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
               {[].concat(
-                esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0},{id:"cupones",emoji:"🎟️",label:"Cupones",desc:"Canjear el cupón de descuento de la comunidad",color:"#D4A017",badge:0}]:[],
+                esCajero?[{id:"caja",emoji:"🧾",label:"Caja",desc:"Cierre diario y historial de cierres",color:"#3A7D44",badge:0}]:[],
                 puedeCompras?[
                   {id:"ordenes",emoji:"📋",label:"Órdenes de compra",desc:esAdmin?"Despacho, análisis y, por local, historial y faltantes":(verDespacho?"Despachar y ver las órdenes del local":"Ver las órdenes del local"),color:"#C1440E",badge:esAdmin?faltantes.length:0},
                   {id:"stock",emoji:"📦",label:"Stock",desc:"Stock de platos y materia prima",color:"#8B2FC9",badge:0},
@@ -32410,7 +32410,6 @@ export default function App() {
               <PanelComunidadCajero local={cu.local||""} usuario={cu.nombre}/>
             </div>
           )}
-          {subCompras==="cupones"&&esCajero&&<PanelCanje local={(getLocal(cu.local)||{}).nombre||cu.local||""} usuario={cu.nombre}/>}
 
           {!esSofia&&subCompras==="mificha"&&empleadoDe(cu)&&misDatos!==null&&(
             <MisDatosPersonales emp={empleadoDe(cu)} datos={misDatos} onDatos={setMisDatos} onSaveEmp={guardarEmpleado} usuario={cu.nombre}/>

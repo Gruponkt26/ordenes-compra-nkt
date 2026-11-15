@@ -196,7 +196,6 @@ export function TarjetaCupon(props) {
   var usado = est === "usado", vals = cfgT ? valoresPorLocal(cfgT) : [];
   var maxP = vals.length ? Math.max.apply(null, vals.map(function (x) { return x.p; })) : 0;
   var grande = usado ? c.pct + "% OFF" : (c.pctFijo ? c.pctFijo + "% OFF" : (cfgT ? (mismoValor(cfgT) ? maxP + "% OFF" : "Hasta " + maxP + "% OFF") : "…"));
-  var hoyTxt = new Date().toLocaleDateString("es-AR");
   return (
     <div style={{ background: "#0F1A10", border: "2px dashed " + col, borderRadius: 14, padding: "14px", marginTop: 14, textAlign: "center" }}>
       <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento{c.prueba ? " · 🧪 PRUEBA" : ""}</div>
@@ -205,7 +204,7 @@ export function TarjetaCupon(props) {
         <div style={{ fontSize: 12, color: "#8FD19A", marginBottom: 6 }}>Descuento especial: {c.pctFijo}% en los 3 locales</div>
       ) : cfgT && (
         <div style={{ margin: "8px 0 10px" }}>
-          <div style={{ fontSize: 11, color: "#9A9A9A", marginBottom: 6 }}>Lo que vale tu cupón hoy ({hoyTxt}), según el local donde lo uses:</div>
+          <div style={{ fontSize: 11, color: "#9A9A9A", marginBottom: 6 }}>Lo que vale tu cupón hoy según el local que elijas:</div>
           <div style={{ display: "flex", gap: 6 }}>
             {LOCALES_GRUPO.map(function (l) {
               return <div key={l.id} style={{ flex: 1, border: "1px solid " + l.color + "99", borderRadius: 10, padding: "7px 4px", background: "#0A110B" }}>

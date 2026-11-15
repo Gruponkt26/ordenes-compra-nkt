@@ -794,6 +794,7 @@ export function PanelComunidadCajero(props) {
           <div style={{ fontSize: 12, color: "#8C8C8C", marginTop: 16 }}>Tocá la pantalla para cerrar</div>
         </div>
       )}
+      <MovimientoComunidad ancho={9999} margen={12} />
       <div style={{ ...tarjeta, fontSize: 12, color: "#C8C8C8", lineHeight: 1.7 }}>
         👥 <b>{mios.length}</b> miembro{mios.length === 1 ? "" : "s"} en la comunidad · 🎟️ <b>{cuenta.todos}</b> cupones: <b style={{ color: "#4C9A5A" }}>{cuenta.vigentes}</b> vigentes · <b>{cuenta.usados}</b> usados · <b>{cuenta.vencidos}</b> vencidos
       </div>

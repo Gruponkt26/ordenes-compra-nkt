@@ -445,10 +445,11 @@ export function GrupoNkt() {
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#5BB8DC", textAlign: "center", marginBottom: 10 }}>🤔 ¿Sabés cómo usar tus cupones?</div>
       {[
         ["1", "Mostrá tu código", "Elegí cualquiera de los 3 locales y mostrale tu código (por ejemplo NKT-4K7P) al cajero. Podés guardar el cupón en tu celular para tenerlo sin internet."],
-        ["2", "Pedí que lo canjeen antes de pagar", "El cajero lo busca y te aplica lo que corresponde en ese local: puede ser un descuento o un beneficio especial. Mirá arriba lo que vale hoy en cada uno."],
-        ["3", "Se usa una sola vez", "Cuando lo canjean, listo: ese cupón ya no se puede volver a usar."],
-        ["4", "Te llega el siguiente solo", "Apenas canjeás uno, ya queda listo el próximo para tu siguiente visita, con un código nuevo. Lo ves acá, al entrar a Grupo Nkt."],
-        ["5", "Ojo con el vencimiento", "Cada cupón vale " + (cfg.cuponDias || 30) + " días. La fecha figura en tu cupón. Si se vence sin usar, al volver a entrar recibís uno nuevo."]
+        ["2", "También sentado en la mesa", "Si estás sentado en la mesa del local, también podés usarlo. Pedí que lo canjeen antes de pagar la cuenta."],
+        ["3", "Pedí que lo canjeen antes de pagar", "El cajero lo busca y te aplica lo que corresponde en ese local: puede ser un descuento o un beneficio especial. Mirá arriba lo que vale hoy en cada uno."],
+        ["4", "Se usa una sola vez", "Cuando lo canjean, listo: ese cupón ya no se puede volver a usar."],
+        ["5", "Te llega el siguiente solo", "Apenas canjeás uno, ya queda listo el próximo para tu siguiente visita, con un código nuevo. Lo ves acá, al entrar a Grupo Nkt."],
+        ["6", "Ojo con el vencimiento", "Cada cupón vale " + (cfg.cuponDias || 30) + " días. La fecha figura en tu cupón. Si se vence sin usar, al volver a entrar recibís uno nuevo."]
       ].map(function (p) {
         return (
           <div key={p[0]} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "7px 0", borderTop: p[0] === "1" ? "none" : "1px solid #1A2A36" }}>

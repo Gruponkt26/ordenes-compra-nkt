@@ -445,7 +445,7 @@ export function GrupoNkt() {
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#5BB8DC", textAlign: "center", marginBottom: 10 }}>🤔 ¿Sabés cómo usar tus cupones?</div>
       {[
         ["1", "Mostrá tu código", "Elegí cualquiera de los 3 locales y mostrale tu código (por ejemplo NKT-4K7P) al cajero. Podés guardar el cupón en tu celular para tenerlo sin internet."],
-        ["2", "También sentado en la mesa", "Si estás sentado en la mesa del local, también podés usarlo. Pedí que lo canjeen antes de pagar la cuenta."],
+        ["2", "También sentado en la mesa", "Si estás sentado en la mesa del local, también podés usarlo. Pedí que lo canjeen antes de pagar la cuenta. Ojo: se puede usar un solo cupón por mesa."],
         ["3", "Pedí que lo canjeen antes de pagar", "El cajero lo busca y te aplica lo que corresponde en ese local: puede ser un descuento o un beneficio especial. Mirá arriba lo que vale hoy en cada uno."],
         ["4", "Se usa una sola vez", "Cuando lo canjean, listo: ese cupón ya no se puede volver a usar."],
         ["5", "Te llega el siguiente solo", "Apenas canjeás uno, ya queda listo el próximo para tu siguiente visita, con un código nuevo. Lo ves acá, al entrar a Grupo Nkt."],

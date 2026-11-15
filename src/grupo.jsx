@@ -779,6 +779,9 @@ export function PanelComunidad() {
   var [msgCup, setMsgCup] = useState("");
   var [msgDesc, setMsgDesc] = useState("");
   var [novAdm, setNovAdm] = useState([]);
+  var [envNov, setEnvNov] = useState(null);       // novedad que se está mandando por WhatsApp
+  var [envMsg, setEnvMsg] = useState("");         // texto del mensaje ({nombre} se reemplaza por el de cada persona)
+  var [envLocal, setEnvLocal] = useState("todos");
   var [formNov, setFormNov] = useState({ titulo: "", texto: "", local: "todos", hasta: "" });
   var [msgNov, setMsgNov] = useState("");
 
@@ -799,6 +802,29 @@ export function PanelComunidad() {
       if (ok) { setFormNov({ titulo: "", texto: "", local: "todos", hasta: "" }); cargarNovedades().then(setNovAdm); setMsgNov("✓ Publicada: ya la ven los miembros."); } else setMsgNov("No se pudo publicar.");
       setTimeout(function () { setMsgNov(""); }, 3500);
     });
+  }
+  // Mandar una novedad por WhatsApp, persona por persona: se abre el chat con el mensaje listo y queda marcado quién ya lo recibió
+  // (se guarda en la misma novedad, así no se repite aunque se cierre o se use otra compu).
+  function abrirEnvio(n) {
+    setEnvNov(n); setEnvLocal("todos");
+    setEnvMsg("Hola {nombre}! Novedad de Grupo Nkt 🎉\n\n*" + n.titulo + "*\n" + n.texto + "\n\nMirá todo en " + urlGrupo());
+  }
+  function enviarA(m) {
+    var url = linkWsp(m.wsp, envMsg.replace(/\{nombre\}/g, (m.nombre || "").split(" ")[0]));
+    if (!url) return;
+    window.open(url, "_blank");
+    var env = { ...(envNov.enviados || {}), [m.wsp]: new Date().toISOString() };
+    var nuevo = { ...envNov, enviados: env };
+    setEnvNov(nuevo);
+    var o = { ...nuevo }; delete o.id;
+    guardarFila(envNov.id, "grupo_novedad", o).then(function () { setNovAdm(function (p) { return p.map(function (x) { return x.id === nuevo.id ? nuevo : x; }); }); });
+  }
+  function reiniciarEnvio() {
+    if (!window.confirm("¿Marcar a todos como que todavía no recibieron esta novedad?")) return;
+    var nuevo = { ...envNov, enviados: {} };
+    setEnvNov(nuevo);
+    var o = { ...nuevo }; delete o.id;
+    guardarFila(envNov.id, "grupo_novedad", o).then(function () { setNovAdm(function (p) { return p.map(function (x) { return x.id === nuevo.id ? nuevo : x; }); }); });
   }
   function ocultarNovedad(n, activa) {
     var o = { ...n }; delete o.id; o.activa = activa;
@@ -1014,6 +1040,7 @@ export function PanelComunidad() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                     <div><b>{n.titulo}</b> <span style={{ fontSize: 10.5, color: l ? l.color : "#7E7E7E" }}>· {l ? l.nombre : "todos"}{n.hasta ? " · hasta " + n.hasta.split("-").reverse().join("/") : ""}{!vis ? " · oculta" : ""}</span></div>
                     <div style={{ display: "flex", gap: 8, whiteSpace: "nowrap" }}>
+                      <button onClick={function () { abrirEnvio(n); }} style={{ background: "none", border: "none", color: "#25D366", fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>📲 Mandar por WhatsApp{n.enviados && Object.keys(n.enviados).length > 0 ? " (" + Object.keys(n.enviados).length + ")" : ""}</button>
                       <button onClick={function () { ocultarNovedad(n, n.activa === false); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", padding: 0 }}>{n.activa === false ? "Mostrar" : "Ocultar"}</button>
                       <button onClick={function () { borrarNovedad(n); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 12, padding: 0 }}>🗑️</button>
                     </div>
@@ -1025,6 +1052,49 @@ export function PanelComunidad() {
           </div>
         )}
       </div>
+
+      {envNov && (function () {
+        var dest = reales.filter(function (m) { return envLocal === "todos" || m.fav === envLocal; });
+        var env = envNov.enviados || {};
+        var hechos = dest.filter(function (m) { return env[m.wsp]; }).length;
+        var pendientes = dest.filter(function (m) { return !env[m.wsp]; });
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div style={{ background: "#0F0F0F", border: "1px solid #25D36666", borderRadius: 14, padding: "14px 16px", width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#25D366" }}>📲 Mandar por WhatsApp · {envNov.titulo}</div>
+                <button onClick={function () { setEnvNov(null); }} style={{ background: "none", border: "none", color: "#9A9A9A", fontSize: 18, cursor: "pointer" }}>✕</button>
+              </div>
+              <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.5, margin: "6px 0 8px" }}>Tocá «Enviar» al lado de cada persona: se abre su chat de WhatsApp con el mensaje ya escrito y solo tenés que mandarlo. Queda marcado quién ya lo recibió.</div>
+              <textarea value={envMsg} onChange={function (e) { setEnvMsg(e.target.value); }} rows={6} style={{ width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12.5, resize: "vertical" }} />
+              <div style={{ fontSize: 10.5, color: "#7E7E7E", marginBottom: 8 }}>«{"{nombre}"}» se reemplaza por el nombre de cada persona.</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {[{ id: "todos", txt: "Todos" }].concat(LOCALES_GRUPO.map(function (l) { return { id: l.id, txt: l.nombre }; })).map(function (t) {
+                  var act = envLocal === t.id;
+                  return <button key={t.id} onClick={function () { setEnvLocal(t.id); }} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid " + (act ? "#25D366" : "#2A2A2A"), background: act ? "#25D36622" : "none", color: act ? "#25D366" : "#9A9A9A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.txt}</button>;
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                <div style={{ fontSize: 12, color: "#C8C8C8" }}><b>{hechos}</b> de <b>{dest.length}</b> ya la recibieron</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {pendientes.length > 0 && <button onClick={function () { enviarA(pendientes[0]); }} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#25D366", color: "#000", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Enviar al siguiente ({pendientes[0].nombre})</button>}
+                  {hechos > 0 && <button onClick={reiniciarEnvio} style={{ background: "none", border: "none", color: "#8C8C8C", fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>Reiniciar</button>}
+                </div>
+              </div>
+              {dest.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "8px 0" }}>No hay miembros para esta selección.</div>}
+              {dest.map(function (m) {
+                var ya = env[m.wsp];
+                return (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #1A1A1A", fontSize: 12.5 }}>
+                    <div style={{ minWidth: 0 }}><b>{nombreCompleto(m)}</b>{ya ? <span style={{ color: "#4C9A5A", fontSize: 11 }}> · ✅ enviado {new Date(ya).toLocaleDateString("es-AR")}</span> : null}<div style={{ fontSize: 10.5, color: "#7E7E7E" }}>{m.wsp}</div></div>
+                    <button onClick={function () { enviarA(m); }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid " + (ya ? "#2A2A2A" : "#25D366"), background: ya ? "none" : "#25D36622", color: ya ? "#8C8C8C" : "#25D366", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>{ya ? "Reenviar" : "Enviar"}</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={tarjeta}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017", marginBottom: 4 }}>⚙️ Valor de los cupones</div>

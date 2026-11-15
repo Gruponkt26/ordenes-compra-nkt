@@ -31,9 +31,26 @@ export function idDispositivo() {
   try { var d = window.localStorage.getItem("nkt_dispositivo"); if (!d) { d = Math.random().toString(36).slice(2, 8); window.localStorage.setItem("nkt_dispositivo", d); } return d; } catch (e) { return ""; }
 }
 function soloDigitos(s) { return String(s || "").replace(/\D/g, ""); }
-function linkWsp(w, texto) {
+// Número de WhatsApp argentino listo para wa.me: acepta 0, 15, espacios, guiones, +54, 54 o 549 (los celulares van con 549).
+function numeroWsp(w) {
   var n = soloDigitos(w); if (!n) return "";
-  return "https://wa.me/" + (n.length <= 10 ? "54" + n : n) + (texto ? "?text=" + encodeURIComponent(texto) : "");
+  if (n.indexOf("549") === 0) return n;
+  if (n.indexOf("54") === 0 && n.length >= 12) return "549" + n.slice(2);
+  n = n.replace(/^0+/, "");
+  if (n.length === 12 && (n.slice(2, 4) === "15" || n.slice(3, 5) === "15" || n.slice(4, 6) === "15")) n = n.slice(0, n.slice(2, 4) === "15" ? 2 : n.slice(3, 5) === "15" ? 3 : 4) + n.slice(n.slice(2, 4) === "15" ? 4 : n.slice(3, 5) === "15" ? 5 : 6);
+  if (n.length === 10) return "549" + n;
+  return n.length <= 10 ? "54" + n : n;
+}
+function linkWsp(w, texto) {
+  var n = numeroWsp(w); if (!n) return "";
+  return "https://wa.me/" + n + (texto ? "?text=" + encodeURIComponent(texto) : "");
+}
+// Enlace web escrito a mano: si falta el https:// (o es un @usuario de Instagram) se completa para que abra bien.
+function linkWeb(u, tipo) {
+  u = String(u || "").trim(); if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  if (tipo === "instagram") return "https://www.instagram.com/" + u.replace(/^@/, "").replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, "").replace(/\/+$/, "");
+  return "https://" + u.replace(/^\/+/, "");
 }
 
 export async function cargarConfigGrupo() {
@@ -424,9 +441,9 @@ export function GrupoNkt() {
               {itemLocal(wa, "🛵 Pedir delivery", { background: "#1F4D2A", borderColor: "#3A7D44" })}
               {itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}
               {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
-              {itemLocal(d.carta, "🍽️ Ver la carta")}
+              {itemLocal(linkWeb(d.carta), "🍽️ Ver la carta")}
               {itemLocal(consulta, "💬 Escribinos")}
-              {itemLocal(d.instagram, "📸 Instagram")}
+              {itemLocal(linkWeb(d.instagram, "instagram"), "📸 Instagram")}
               <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
             {/* Franja cruzada: esta parte del portal todavía se está armando. No tapa los botones al tocar. */}
@@ -687,8 +704,8 @@ export function PanelComunidadCajero(props) {
                   <div>📍 {d.direccion || "—"}</div>
                   <div style={{ whiteSpace: "pre-wrap" }}>🕒 {d.horarios || "—"}</div>
                   {d.wsp && <div>💬 {d.wsp}</div>}
-                  {d.carta && <div>🍽️ <a href={d.carta} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Ver la carta</a></div>}
-                  {d.instagram && <div>📸 <a href={d.instagram} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Instagram</a></div>}
+                  {d.carta && <div>🍽️ <a href={linkWeb(d.carta)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Ver la carta</a></div>}
+                  {d.instagram && <div>📸 <a href={linkWeb(d.instagram, "instagram")} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A" }}>Instagram</a></div>}
                 </div>
               );
             })}

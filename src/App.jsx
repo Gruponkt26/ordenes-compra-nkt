@@ -3250,7 +3250,7 @@ function PautasComunidad(){
       "1. Pedile al cliente el código que ve en su celular (por ejemplo NKT-4K7P).",
       "2. En «Comunidad», cuadro «Canjear cupón de la comunidad»: escribí el código y tocá «Buscar».",
       "3. Mirá el estado: «válido», «ya usado» o «vencido». Solo un cupón válido se puede canjear. Si aparece el aviso rojo de que es de un empleado, no lo canjees.",
-      "4. La pantalla muestra el descuento que corresponde a TU local (por ejemplo «15% OFF»). Puede ser distinto en cada local: aplicá siempre el que figura en tu pantalla, no el que el cliente cree.",
+      "4. La pantalla muestra lo que corresponde a TU local: un descuento (por ejemplo «15% OFF») o un beneficio especial (por ejemplo «🎁 2x1 en pizzas» o «🎁 1 vino de regalo»). Puede ser distinto en cada local: aplicá siempre lo que figura en tu pantalla, no lo que el cliente cree.",
       "5. Tocá «Canjear ahora» y confirmá. Aplicá el descuento. Un cupón canjeado no se puede volver a usar.",
       "6. Al canjear, el cliente recibe solo su próximo cupón, con un código nuevo, listo para su siguiente compra. Lo ves en el mensaje verde de la pantalla."]},
     {t:"🔎 Qué más ves en Comunidad",l:[

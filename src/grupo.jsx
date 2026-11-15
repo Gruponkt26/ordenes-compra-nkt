@@ -203,13 +203,14 @@ export function TarjetaCupon(props) {
       {est === "activo" && (c.pctFijo ? (
         <div style={{ fontSize: 12, color: "#8FD19A", marginBottom: 6 }}>Descuento especial: {c.pctFijo}% en los 3 locales</div>
       ) : cfgT && (
-        <div style={{ margin: "8px 0 10px" }}>
-          <div style={{ fontSize: 11, color: "#9A9A9A", marginBottom: 6 }}>Lo que vale tu cupón hoy según el local que elijas:</div>
-          <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ margin: "10px 0 12px", padding: "11px 8px 10px", borderRadius: 14, border: "2px solid #F5C542", background: "linear-gradient(160deg,#2A1D05,#0F1A10)", boxShadow: "0 0 16px rgba(245,197,66,0.25)" }}>
+          <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F5C542", marginBottom: 9, lineHeight: 1.3, textAlign: "center" }}>👇 Lo que vale tu cupón hoy según el local donde lo uses</div>
+          <div style={{ display: "flex", gap: 7 }}>
             {LOCALES_GRUPO.map(function (l) {
-              return <div key={l.id} style={{ flex: 1, border: "1px solid " + l.color + "99", borderRadius: 10, padding: "7px 4px", background: "#0A110B" }}>
-                <div style={{ fontSize: 10.5, color: l.color, fontWeight: 800, lineHeight: 1.2 }}>{l.nombre}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#F0EDE8", fontFamily: "'Playfair Display',serif" }}>{pctPara(cfgT, l.id)}%</div>
+              return <div key={l.id} style={{ flex: 1, border: "2px solid " + l.color, borderRadius: 12, padding: "9px 3px 8px", background: "rgba(0,0,0,0.45)" }}>
+                <div style={{ fontSize: 12, color: l.color, fontWeight: 800, lineHeight: 1.2, filter: "brightness(1.35)" }}>{l.nombre}</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Playfair Display',serif", lineHeight: 1.15, marginTop: 2 }}>{pctPara(cfgT, l.id)}%</div>
+                <div style={{ fontSize: 10, color: "#C8C8C8", letterSpacing: 1 }}>DE DESCUENTO</div>
               </div>;
             })}
           </div>

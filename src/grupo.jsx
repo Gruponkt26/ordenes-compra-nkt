@@ -189,6 +189,29 @@ async function guardarCuponImagen(c) {
   var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Cupon_GrupoNkt_" + c.codigo + ".png"; a.click();
 }
 
+// El recuadro con lo que vale el cupón en cada local (descuento o beneficio especial), siempre al día con la configuración.
+function ValoresPorLocal(props) {
+  var cfgT = props.cfg;
+  return (
+    <div style={{ margin: "10px 0 12px", padding: "11px 8px 10px", textAlign: "center", borderRadius: 14, border: "2px solid #F5C542", background: "linear-gradient(160deg,#2A1D05,#0F1A10)", boxShadow: "0 0 16px rgba(245,197,66,0.25)" }}>
+          <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F5C542", marginBottom: 9, lineHeight: 1.3, textAlign: "center" }}>{props.titulo || "👇 Lo que vale tu cupón hoy según el local donde lo uses"}</div>
+          <div style={{ display: "flex", gap: 7 }}>
+            {LOCALES_GRUPO.map(function (l) {
+              return <div key={l.id} style={{ flex: 1, border: "2px solid " + l.color, borderRadius: 12, padding: "9px 3px 8px", background: "rgba(0,0,0,0.45)" }}>
+                <div style={{ fontSize: 12, color: l.color, fontWeight: 800, lineHeight: 1.2, filter: "brightness(1.35)" }}>{l.nombre}</div>
+                {benefPara(cfgT, l.id) ? (
+                  <div><div style={{ fontSize: 22, lineHeight: 1.2 }}>🎁</div><div style={{ fontSize: 14.5, fontWeight: 800, color: "#FFFFFF", lineHeight: 1.25, padding: "0 2px" }}>{benefPara(cfgT, l.id)}</div></div>
+                ) : (
+                  <div><div style={{ fontSize: 30, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Playfair Display',serif", lineHeight: 1.15, marginTop: 2 }}>{pctPara(cfgT, l.id)}%</div>
+                  <div style={{ fontSize: 10, color: "#C8C8C8", letterSpacing: 1 }}>DE DESCUENTO</div></div>
+                )}
+              </div>;
+            })}
+          </div>
+        </div>
+  );
+}
+
 export function TarjetaCupon(props) {
   var c = props.cupon, est = estadoCupon(c);
   var col = est === "activo" ? "#4C9A5A" : "#8C8C8C";
@@ -205,24 +228,7 @@ export function TarjetaCupon(props) {
       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 30, fontWeight: 800, color: col, margin: "4px 0" }}>{grande}</div>
       {est === "activo" && (c.pctFijo ? (
         <div style={{ fontSize: 12, color: "#8FD19A", marginBottom: 6 }}>Descuento especial: {c.pctFijo}% en los 3 locales</div>
-      ) : cfgT && (
-        <div style={{ margin: "10px 0 12px", padding: "11px 8px 10px", borderRadius: 14, border: "2px solid #F5C542", background: "linear-gradient(160deg,#2A1D05,#0F1A10)", boxShadow: "0 0 16px rgba(245,197,66,0.25)" }}>
-          <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F5C542", marginBottom: 9, lineHeight: 1.3, textAlign: "center" }}>👇 Lo que vale tu cupón hoy según el local donde lo uses</div>
-          <div style={{ display: "flex", gap: 7 }}>
-            {LOCALES_GRUPO.map(function (l) {
-              return <div key={l.id} style={{ flex: 1, border: "2px solid " + l.color, borderRadius: 12, padding: "9px 3px 8px", background: "rgba(0,0,0,0.45)" }}>
-                <div style={{ fontSize: 12, color: l.color, fontWeight: 800, lineHeight: 1.2, filter: "brightness(1.35)" }}>{l.nombre}</div>
-                {benefPara(cfgT, l.id) ? (
-                  <div><div style={{ fontSize: 22, lineHeight: 1.2 }}>🎁</div><div style={{ fontSize: 14.5, fontWeight: 800, color: "#FFFFFF", lineHeight: 1.25, padding: "0 2px" }}>{benefPara(cfgT, l.id)}</div></div>
-                ) : (
-                  <div><div style={{ fontSize: 30, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Playfair Display',serif", lineHeight: 1.15, marginTop: 2 }}>{pctPara(cfgT, l.id)}%</div>
-                  <div style={{ fontSize: 10, color: "#C8C8C8", letterSpacing: 1 }}>DE DESCUENTO</div></div>
-                )}
-              </div>;
-            })}
-          </div>
-        </div>
-      ))}
+      ) : cfgT && <ValoresPorLocal cfg={cfgT} />)}
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: "#F0EDE8" }}>{c.codigo}</div>
       <div style={{ fontSize: 12, color: "#B8B8B8", lineHeight: 1.6, marginTop: 8 }}>
         {est === "activo" && <span><b style={{ color: "#8FD19A" }}>Válido en cualquiera de nuestros 3 locales:</b> El Bodegón, Kusama y Colantonio's. Mostralo en caja. Vence el {new Date(c.vence).toLocaleDateString("es-AR")}. Se usa una sola vez; cuando lo uses, tu próximo cupón ya queda listo para tu siguiente compra.</span>}
@@ -241,6 +247,7 @@ export function TarjetaCupon(props) {
 // ─── PÁGINA PÚBLICA ──────────────────────────────────────────────────────────
 export function GrupoNkt() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
+  var [cfgListo, setCfgListo] = useState(false);   // para no mostrar valores de relleno mientras carga
   var [nombre, setNombre] = useState("");
   var [apellido, setApellido] = useState("");
   var [wsp, setWsp] = useState("");
@@ -278,7 +285,7 @@ export function GrupoNkt() {
       var lm = document.querySelector('link[rel="manifest"]'); if (lm) lm.setAttribute("href", "/manifest-grupo.json");
       var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (mt) mt.setAttribute("content", "Grupo Nkt");
     } catch (e) {}
-    cargarConfigGrupo().then(setCfg);
+    cargarConfigGrupo().then(function (c) { setCfg(c); setCfgListo(true); });
     var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
@@ -430,6 +437,8 @@ export function GrupoNkt() {
           })}
         </div>
       );
+  // Lo que dan los cupones hoy en cada local: lo ve quien todavía no es parte, para que sepa qué se pierde.
+  var bValores = cfgListo && <div style={{ marginBottom: 14 }}><ValoresPorLocal cfg={cfg} titulo="🎟️ Lo que te dan los cupones de la comunidad hoy, según el local donde los uses" /></div>;
   var bLocales = LOCALES_GRUPO.map(function (l) {
         var d = cfg.locales[l.id] || {};
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
@@ -482,7 +491,7 @@ export function GrupoNkt() {
           </div>
         ) : (
           <div>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad y recibí tu cupón de descuento</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 800, color: "#D4A017", textAlign: "center" }}>Sumate a la comunidad para comenzar a recibir tus cupones de beneficios</div>
             <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.55, margin: "6px 0 12px", textAlign: "center" }}>Enterate primero de las novedades, los platos nuevos, los sorteos y los beneficios de Grupo Nkt.</div>
             <input value={nombre} onChange={function (e) { setNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inp} />
             <input value={apellido} onChange={function (e) { setApellido(e.target.value); }} maxLength={60} placeholder="Tu apellido" style={inp} />
@@ -507,7 +516,9 @@ export function GrupoNkt() {
       </div>
   );
 
-  // Cliente nuevo: primero sumarse (es lo que más importa del QR), después los locales. Miembro: primero su cupón.
+  // Quien todavía no es parte: las novedades y lo que dan los cupones hoy, enseguida "Ya sos parte · Ingresar" y "Sumate".
+  // Los 3 locales aparecen recién cuando la persona se une o ingresa. Miembro: sus novedades, su cupón y los locales.
+  var esParte = !!cupon || hecho === "ok" || hecho === "ya";   // "ya": este celular ya se había unido (se confirma en la base mientras carga)
   return (
     <div style={fondo}><div style={caja}>
       {modoPrueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, textAlign: "center", marginBottom: 14 }}>🧪 Modo prueba: lo que cargues acá no cuenta y lo podés borrar desde el panel.</div>}
@@ -515,7 +526,7 @@ export function GrupoNkt() {
         <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
         <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
       </div>
-      {cupon ? (
+      {esParte ? (
         <div>
           {bNovedades}
           {bCupon}
@@ -527,10 +538,10 @@ export function GrupoNkt() {
       ) : (
         <div>
           {bNovedades}
-          <div style={{ marginBottom: 14 }}>{bSumarse}</div>
+          {bValores}
           {bIngresar}
+          <div style={{ marginBottom: 14 }}>{bSumarse}</div>
           {bInstalar}
-          {bLocales}
         </div>
       )}
     </div></div>

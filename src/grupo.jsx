@@ -446,8 +446,6 @@ export function GrupoNkt() {
               {itemLocal(linkWeb(d.instagram, "instagram"), "📸 Instagram")}
               <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
-            {/* Franja cruzada: esta parte del portal todavía se está armando. No tapa los botones al tocar. */}
-            <div style={{ position: "absolute", top: "50%", left: "-25%", width: "150%", transform: "translateY(-50%) rotate(-9deg)", background: "rgba(212,160,23,0.93)", color: "#1A1204", textAlign: "center", fontWeight: 800, letterSpacing: 3, fontSize: 15, padding: "8px 0", pointerEvents: "none", boxShadow: "0 3px 12px rgba(0,0,0,0.55)" }}>🚧 EN DESARROLLO 🚧</div>
           </div>
         );
       });

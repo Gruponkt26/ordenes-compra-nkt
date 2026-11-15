@@ -439,6 +439,26 @@ export function GrupoNkt() {
       );
   // Lo que dan los cupones hoy en cada local: lo ve quien todavía no es parte, para que sepa qué se pierde.
   var bValores = cfgListo && <div style={{ marginBottom: 14 }}><ValoresPorLocal cfg={cfg} titulo="🎟️ Lo que te dan los cupones de la comunidad hoy, según el local donde los uses" /></div>;
+  // Instructivo rápido para el miembro: cómo se usa el cupón.
+  var bInstructivo = (
+    <div style={{ background: "#0F1620", border: "1px solid #1A6B8A88", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
+      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#5BB8DC", textAlign: "center", marginBottom: 10 }}>🤔 ¿Sabés cómo usar tus cupones?</div>
+      {[
+        ["1", "Mostrá tu código", "Elegí cualquiera de los 3 locales y mostrale tu código (por ejemplo NKT-4K7P) al cajero. Podés guardar el cupón en tu celular para tenerlo sin internet."],
+        ["2", "Pedí que lo canjeen antes de pagar", "El cajero lo busca y te aplica lo que corresponde en ese local: puede ser un descuento o un beneficio especial. Mirá arriba lo que vale hoy en cada uno."],
+        ["3", "Se usa una sola vez", "Cuando lo canjean, listo: ese cupón ya no se puede volver a usar."],
+        ["4", "Te llega el siguiente solo", "Apenas canjeás uno, ya queda listo el próximo para tu siguiente visita, con un código nuevo. Lo ves acá, al entrar a Grupo Nkt."],
+        ["5", "Ojo con el vencimiento", "Cada cupón vale " + (cfg.cuponDias || 30) + " días. La fecha figura en tu cupón. Si se vence sin usar, al volver a entrar recibís uno nuevo."]
+      ].map(function (p) {
+        return (
+          <div key={p[0]} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "7px 0", borderTop: p[0] === "1" ? "none" : "1px solid #1A2A36" }}>
+            <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 13, background: "#1A6B8A", color: "#fff", fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{p[0]}</div>
+            <div><div style={{ fontSize: 14, fontWeight: 800, color: "#F0EDE8" }}>{p[1]}</div><div style={{ fontSize: 12.5, color: "#B8C4CC", lineHeight: 1.5, marginTop: 1 }}>{p[2]}</div></div>
+          </div>
+        );
+      })}
+    </div>
+  );
   var bLocales = LOCALES_GRUPO.map(function (l) {
         var d = cfg.locales[l.id] || {};
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
@@ -531,6 +551,7 @@ export function GrupoNkt() {
           {bNovedades}
           {bCupon}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
+          {cupon && bInstructivo}
           {bInstalar}
           {bLocales}
           {hecho !== "ok" && <div style={{ marginTop: 6 }}>{bSumarse}</div>}

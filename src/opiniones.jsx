@@ -145,6 +145,8 @@ export function Opinar() {
 
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", padding: "22px 16px 40px", boxSizing: "border-box" };
   var caja = { maxWidth: 440, margin: "0 auto" };
+  // Para volver a la página de Grupo Nkt (los 3 locales y la comunidad) desde cualquier parte de la opinión.
+  var volver = <a href={"/grupo/" + (modoPrueba ? "?prueba" : "")} style={{ display: "inline-block", marginBottom: 14, padding: "8px 14px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>← Volver a Grupo Nkt</a>;
 
   var wDig = fWsp.replace(/\D/g, "");
   // "Ya soy parte": entra con su WhatsApp, sin volver a cargar sus datos. La opinión queda con su nombre.
@@ -283,11 +285,12 @@ export function Opinar() {
   }
 
   if (!valido) {
-    return <div style={fondo}><div style={caja}><div style={{ fontSize: 15, marginTop: 40, textAlign: "center" }}>Este enlace no es válido. Escaneá de nuevo el código QR.</div></div></div>;
+    return <div style={fondo}><div style={caja}>{volver}<div style={{ fontSize: 15, marginTop: 40, textAlign: "center" }}>Este enlace no es válido. Escaneá de nuevo el código QR.</div></div></div>;
   }
   if (hecho) {
     return (
-      <div style={fondo}><div style={{ ...caja, textAlign: "center", marginTop: 50 }}>
+      <div style={fondo}><div style={{ ...caja, textAlign: "center", marginTop: 20 }}>
+        <div style={{ textAlign: "left" }}>{volver}</div>
         <div style={{ fontSize: 46 }}>🙌</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, fontWeight: 800, marginTop: 10 }}>¡Gracias!</div>
         <div style={{ fontSize: 14, color: "#9A9A9A", marginTop: 10, lineHeight: 1.6 }}>
@@ -331,6 +334,7 @@ export function Opinar() {
 
   return (
     <div style={fondo}><div style={caja}>
+      {volver}
       <div style={{ textAlign: "center", marginBottom: 20 }}>
         {LOGOS[localId]
           ? <LogoLocal id={localId} alto={localId === "l1" ? 34 : 70} />

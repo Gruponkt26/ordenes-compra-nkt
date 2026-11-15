@@ -439,7 +439,7 @@ export function GrupoNkt() {
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
               {itemLocal(wa, "🛵 Pedir delivery", { background: "#1F4D2A", borderColor: "#3A7D44" })}
-              {itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}
+              {l.id === "l3" && itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}   {/* El Bodegón y Kusama no toman reservas por acá */}
               {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
               {itemLocal(linkWeb(d.carta), "🍽️ Ver la carta")}
               {itemLocal(consulta, "💬 Escribinos")}

@@ -15302,6 +15302,9 @@ function semanaDe(fecha){
 
 // Tarjeta de Novedades: lo que se movió con el personal en los últimos 7 días. Quién trabajó más que su jornada, en su franco, en otro local,
 // y los cambios de horario o de días laborales que se hicieron en Jornadas.
+// Un retiro de caja con monto negativo es un PASO de Caja Mayor a la caja menor (entra plata al cajón): se guarda en retiro_caja con signo negativo.
+function plataRetiro(v){ return "$"+Math.abs(parseFloat(v)||0).toLocaleString("es-AR"); }
+function rotuloRetiro(v,normal){ return (parseFloat(v)||0)<0?"↩️ Paso de caja mayor a caja menor":normal; }
 function TarjetaCambiosPersonal(p){
   var fichajes=p.fichajes||[], empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [abierta,setAbierta]=useState(false);
@@ -15620,8 +15623,8 @@ function PanelNovedades(p){
 
   // Los retiros van en su propio bloque abajo de los cierres, no colgando de cada uno: son
   // dos cosas distintas —lo que entró y lo que salió del cajón— y mezcladas se leen mal.
-  var retirosCaja=cierresR.filter(function(c){return (parseFloat(c.retiro_caja||0)||0)>0;})
-    .sort(function(a,b){return (parseFloat(b.retiro_caja||0)||0)-(parseFloat(a.retiro_caja||0)||0);});
+  var retirosCaja=cierresR.filter(function(c){return (parseFloat(c.retiro_caja||0)||0)!==0;})
+    .sort(function(a,b){return Math.abs(parseFloat(b.retiro_caja||0)||0)-Math.abs(parseFloat(a.retiro_caja||0)||0);});
   // El total abierto por local, pero sólo cuando hace falta: si cada local retiró una vez
   // sola, el renglón ya lo dice y el desglose sería repetir lo de arriba. En una semana con
   // varios retiros del mismo local, en cambio, es el único lugar donde se ve su suma.
@@ -15632,7 +15635,7 @@ function PanelNovedades(p){
     var m={};
     cierresR.forEach(function(c){
       var v=parseFloat(c.retiro_caja||0)||0;
-      if(v>0)m[c.local]=(m[c.local]||0)+v;
+      if(v!==0)m[c.local]=(m[c.local]||0)+v;
     });
     return Object.keys(m).sort(function(a,b){return m[b]-m[a];})
       .map(function(k){ return ((getLocal(k)||{}).nombre||k)+" "+fmt(m[k]); }).join(" · ");
@@ -16804,7 +16807,7 @@ function PanelNovedades(p){
                     return <div key={"rc"+c.id}>
                       <Fila primera={i===0}
                         izq={<span>{l?l.emoji+" "+l.nombre:c.local}{rango!=="hoy"&&c.fecha?<span style={{color:"#7E7E7E"}}> · {fmtDate(c.fecha)}</span>:null}</span>}
-                        detalle={c.retiro_caja_nota||null}
+                        detalle={((parseFloat(c.retiro_caja)||0)<0?"↩️ Paso de caja mayor a caja menor · ":"")+(c.retiro_caja_nota||"")||null}
                         der={<span>{fmt(parseFloat(c.retiro_caja))}{p.onCorregirRetiroCaja&&<button onClick={function(){setRetiroEdit(editando?null:{id:c.id,monto:String(parseFloat(c.retiro_caja)||0),nota:c.retiro_caja_nota||""});}} title="Corregir el retiro" style={{background:"none",border:"none",color:"#6E6E6E",cursor:"pointer",fontSize:12,marginLeft:6}}>✏️</button>}</span>} color="#8B6BB8"/>
                       {editando&&(
                         <div style={{background:"#0B0B0B",border:"1px solid #1E1E1E",borderRadius:8,padding:"9px",margin:"4px 0 8px"}}>
@@ -20714,9 +20717,9 @@ function PanelCierresSofia(p) {
                                   📤 Egreso de caja: ${parseFloat(c.egresos_diarios).toLocaleString("es-AR")}{c.egresos_nota?" ("+c.egresos_nota+")":""} · cargar en Egresos
                                 </div>
                               )}
-                              {parseFloat(c.retiro_caja||0)>0&&(
+                              {(parseFloat(c.retiro_caja||0)||0)!==0&&(
                                 <div style={{fontSize:9,color:"#8C8C8C",marginTop:4}}>
-                                  💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
+                                  {rotuloRetiro(c.retiro_caja,"💼 Retiro de caja")}: {plataRetiro(c.retiro_caja)}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
                                 </div>
                               )}
                               <div style={{fontSize:9,color:"#3A7D44",marginTop:4,paddingTop:4,borderTop:"1px solid #1A1A1A"}}>
@@ -21428,9 +21431,9 @@ function PanelCierre(p) {
                 <span style={{color:"#5A2A0A"}}> · no descuenta</span>
               </div>
             )}
-            {hoyData.retiro_caja>0&&(
+            {(parseFloat(hoyData.retiro_caja)||0)!==0&&(
               <div style={{marginTop:6,fontSize:11,color:"#9A9A9A"}}>
-                💼 Retiro diario de caja: ${parseFloat(hoyData.retiro_caja).toLocaleString("es-AR")}{hoyData.retiro_caja_nota?" ("+hoyData.retiro_caja_nota+")":""}
+                {rotuloRetiro(hoyData.retiro_caja,"💼 Retiro diario de caja")}: {plataRetiro(hoyData.retiro_caja)}{hoyData.retiro_caja_nota?" ("+hoyData.retiro_caja_nota+")":""}
                 <span style={{color:"#7E7E7E"}}> · informativo</span>
               </div>
             )}
@@ -21441,9 +21444,9 @@ function PanelCierre(p) {
           </div>
         ):(
           <div>
-            {hoyEsSoloRetiro&&parseFloat(hoyDataCruda.retiro_caja||0)>0&&(
+            {hoyEsSoloRetiro&&(parseFloat(hoyDataCruda.retiro_caja||0)||0)!==0&&(
               <div style={{background:"#1A1426",border:"1px solid #8B6BB844",borderRadius:8,padding:"9px 12px",marginBottom:10,fontSize:12,color:"#C8B8E8",lineHeight:1.5}}>
-                💼 Hoy se retiró de la caja <b>${parseFloat(hoyDataCruda.retiro_caja).toLocaleString("es-AR")}</b>{hoyDataCruda.retiro_caja_nota?" ("+hoyDataCruda.retiro_caja_nota+")":""}
+                {(parseFloat(hoyDataCruda.retiro_caja)||0)<0?"↩️ Hoy pasaron de caja mayor a la caja menor ":"💼 Hoy se retiró de la caja "}<b>{plataRetiro(hoyDataCruda.retiro_caja)}</b>{hoyDataCruda.retiro_caja_nota?" ("+hoyDataCruda.retiro_caja_nota+")":""}
                 <div style={{fontSize:10,color:"#8A7AAA",marginTop:2}}>Ya queda anotado en el cierre. Lo vas a ver al cargarlo.</div>
               </div>
             )}
@@ -21536,9 +21539,9 @@ function PanelCierre(p) {
             </div>
           </div>
 
-          {(parseFloat(form.retiro_caja)||0)>0&&(
+          {(parseFloat(form.retiro_caja)||0)!==0&&(
             <div style={{background:"#1A1426",border:"1px solid #8B6BB844",borderRadius:10,padding:"10px 13px",marginBottom:12,fontSize:12,color:"#C8B8E8",lineHeight:1.5}}>
-              💼 Retiro de caja ya anotado: <b>${(parseFloat(form.retiro_caja)||0).toLocaleString("es-AR")}</b>{form.retiro_caja_nota?" ("+form.retiro_caja_nota+")":""}
+              {(parseFloat(form.retiro_caja)||0)<0?"↩️ Paso de caja mayor a caja menor ya anotado: ":"💼 Retiro de caja ya anotado: "}<b>{plataRetiro(form.retiro_caja)}</b>{form.retiro_caja_nota?" ("+form.retiro_caja_nota+")":""}
               <div style={{fontSize:10,color:"#8A7AAA",marginTop:2}}>Lo hizo Administración. No se puede editar desde acá ni cambia el total.</div>
             </div>
           )}
@@ -21595,9 +21598,9 @@ function PanelCierre(p) {
                         {sumaMedios(c,MEDIOS_PAT)>0&&"🏦Pat "+sumaMedios(c,MEDIOS_PAT).toLocaleString("es-AR")+" "}
                         {sumaMedios(c,MEDIOS_MP)>0&&"📱MP "+sumaMedios(c,MEDIOS_MP).toLocaleString("es-AR")}
                       </div>
-                      {c.retiro_caja>0&&(
+                      {(parseFloat(c.retiro_caja)||0)!==0&&(
                         <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>
-                          💼 Retiro de caja: ${parseFloat(c.retiro_caja).toLocaleString("es-AR")}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
+                          {rotuloRetiro(c.retiro_caja,"💼 Retiro de caja")}: {plataRetiro(c.retiro_caja)}{c.retiro_caja_nota?" ("+c.retiro_caja_nota+")":""}
                         </div>
                       )}
                       <div style={{fontSize:10,color:"#3A7D44",marginTop:2}}>
@@ -23371,7 +23374,7 @@ function PanelResultados(p){
     var detIngresos=[];
     cl.forEach(function(c){
       var rcm=parseFloat(c.retiro_caja||0)||0;
-      if(rcm>0)detIngresos.push({fecha:c.fecha,concepto:"💼 Retiro de caja menor"+(c.retiro_caja_nota?" — "+c.retiro_caja_nota:""),monto:rcm,tipo:"efectivo"});
+      if(rcm!==0)detIngresos.push({fecha:c.fecha,concepto:(rcm<0?"↩️ Paso de caja mayor a caja menor":"💼 Retiro de caja menor")+(c.retiro_caja_nota?" — "+c.retiro_caja_nota:""),monto:rcm,tipo:"efectivo"});
       [["transferencia","Transferencia"],["tarjeta_debito","Débito"],["tarjeta_credito","Crédito"],["otros","QR / Otros"],["mp_transferencia","Transferencia MP"],["mp_qr","QR MP"],["mp_debito","Débito MP"],["mp_credito","Crédito MP"]].forEach(function(f){
         var v=parseFloat(c[f[0]]||0);
         if(v>0)detIngresos.push({fecha:c.fecha,concepto:"Cierre de caja — "+f[1],monto:v,tipo:"electronico"});
@@ -24301,13 +24304,13 @@ function PanelResultados(p){
                 <div style={{fontSize:9,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏦 Caja mayor estimada</div>
                 
                 {/* Efectivo */}
-                {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo||d.retirosCajaMenor>0)&&(
+                {(d.dispEfectivo!==0||d.ingrEfectivo!==0||d.gastoEfectivo!==0||d.traspaso?.efectivo||d.retirosCajaMenor!==0)&&(
                   <div style={{background:"#0A0A0A",borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer"}} onClick={function(){var k=l.id+"_efectivo";setDetalleAbierto(detalleAbierto===k?null:k);}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                       <span style={{fontSize:10,color:"#8C8C8C",fontWeight:700}}>💵 Efectivo {detalleAbierto===l.id+"_efectivo"?"▾":"▸"}</span>
                       <span style={{fontSize:13,fontWeight:800,color:d.dispEfectivo>=0?"#3A7D44":"#C1440E",fontFamily:"'Playfair Display',serif"}}>{fmt(d.dispEfectivo)}</span>
                     </div>
-                    {(d.retirosCajaMenor||0)>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>💼 Retirado de caja menor</span><span style={{color:"#3A7D44"}}>+{fmt(d.retirosCajaMenor)}</span></div>}
+                    {(d.retirosCajaMenor||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>{d.retirosCajaMenor<0?"↩️ Pasado a caja menor":"💼 Retirado de caja menor"}</span><span style={{color:d.retirosCajaMenor<0?"#C1440E":"#3A7D44"}}>{d.retirosCajaMenor<0?"−":"+"}{fmt(Math.abs(d.retirosCajaMenor))}</span></div>}
                     {d.gastoEfectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#7E7E7E",marginBottom:2}}><span>Gastos</span><span style={{color:"#C1440E"}}>−{fmt(d.gastoEfectivo)}</span></div>}
                     {(d.traspaso?.efectivo||0)!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#D4A017",marginBottom:2}}><span>Traspaso</span><span>+{fmt(d.traspaso.efectivo)}</span></div>}
                     {d.cambioDisp&&d.cambioDisp.efectivo!==0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#1A8A7B",marginBottom:2}}><span>🔄 Pasado {d.cambioDisp.efectivo>0?"desde":"a"} electrónico</span><span>{d.cambioDisp.efectivo>0?"+":"−"}{fmt(Math.abs(d.cambioDisp.efectivo))}</span></div>}
@@ -30871,7 +30874,11 @@ export default function App() {
     // La fecha se puede elegir (por defecto el día de negocio) para anotar un retiro que se olvidó.
     var hoyRM=f.fecha||diaDeNegocio();
     var existente=cierres.find(function(c){return c.local===f.local&&c.fecha===hoyRM;});
-    var notaNueva="Retiro menor — "+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
+    // "paso": plata que va de Caja Mayor a la caja menor (entra al cajón). Se guarda en retiro_caja con signo negativo:
+    // la caja menor suma y la Caja Mayor resta, que es el reverso exacto de un retiro.
+    var esPaso=f.sentido==="paso";
+    if(esPaso)monto=-monto;
+    var notaNueva=(esPaso?"Paso de Caja Mayor a caja menor — ":"Retiro menor — ")+(cu&&cu.nombre?cu.nombre:"Administración")+(f.nota?": "+f.nota:"");
     var nota=existente&&existente.retiro_caja_nota?existente.retiro_caja_nota+" · "+notaNueva:notaNueva;
     var cierre=existente
       ? {...existente, retiro_caja:(parseFloat(existente.retiro_caja)||0)+monto, retiro_caja_nota:nota}
@@ -32148,9 +32155,9 @@ export default function App() {
 
                 {/* Retiro de caja menor: lo carga Sofía acá, pero queda anotado en el
                     cierre del local como si lo hubiese puesto el cajero. */}
-                <button onClick={function(){setRetiroMenorForm({local:"l1",monto:"",nota:"",fecha:diaDeNegocio()});}}
+                <button onClick={function(){setRetiroMenorForm({local:"l1",monto:"",nota:"",fecha:diaDeNegocio(),sentido:"retiro"});}}
                   style={{width:"100%",padding:"14px",borderRadius:12,border:"1px solid #8B6BB855",background:"#8B6BB811",color:"#8B6BB8",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer",textAlign:"center",marginBottom:12}}>
-                  💼 Retiro de caja menor
+                  💼 Retiro de caja (caja menor ⇄ caja mayor)
                 </button>
 
                 {/* Modal de retiro menor */}
@@ -32168,9 +32175,18 @@ export default function App() {
                   return(
                     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
                       <div style={{background:"#111",borderRadius:16,padding:"20px",width:"100%",maxWidth:380,border:"1px solid #2A2A2A"}}>
-                        <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>💼 Retiro de caja menor</div>
+                        <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:8}}>{retiroMenorForm.sentido==="paso"?"↩️ Paso de Caja Mayor a caja menor":"💼 Retiro de caja menor a Caja Mayor"}</div>
+                        <div style={{display:"flex",gap:6,marginBottom:12}}>
+                          {[["retiro","💼 Retiro","caja menor → Caja Mayor"],["paso","↩️ Paso","Caja Mayor → caja menor"]].map(function(t){
+                            var act=(retiroMenorForm.sentido||"retiro")===t[0];
+                            return <button key={t[0]} onClick={function(){setRetiroMenorForm(function(f){return{...f,sentido:t[0]};});}}
+                              style={{flex:1,padding:"9px 6px",borderRadius:8,border:"1px solid "+(act?"#8B6BB8":"#2A2A2A"),background:act?"#8B6BB822":"#0F0F0F",color:act?"#C8B8E8":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:800,cursor:"pointer"}}>
+                              {t[1]}<div style={{fontSize:9.5,fontWeight:600,marginTop:2,color:act?"#A898C8":"#6E6E6E"}}>{t[2]}</div>
+                            </button>;
+                          })}
+                        </div>
                         <div style={{display:"inline-block",fontSize:11,fontWeight:800,letterSpacing:0.5,textTransform:"uppercase",color:"#8B6BB8",background:"#8B6BB822",border:"1px solid #8B6BB855",borderRadius:20,padding:"4px 12px",marginBottom:10}}>Cierre del {fmtDate(hoyRM)}</div>
-                        <div style={{fontSize:11,color:"#9A9A9A",marginBottom:16,lineHeight:1.5}}>Queda anotado en el cierre de ese día de ese local, igual que si lo hubiese cargado el cajero.</div>
+                        <div style={{fontSize:11,color:"#9A9A9A",marginBottom:16,lineHeight:1.5}}>{retiroMenorForm.sentido==="paso"?"Plata que pasa de la Caja Mayor al cajón (por ejemplo para dar cambio o dejar fondo): la caja menor suma y la Caja Mayor resta. ":""}Queda anotado en el cierre de ese día de ese local, igual que si lo hubiese cargado el cajero.</div>
 
                         <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Local</label>
                         <div style={{display:"flex",gap:6,marginBottom:14}}>
@@ -32185,7 +32201,8 @@ export default function App() {
                         </div>
                         <div style={{fontSize:11.5,color:"#C8C8C8",marginBottom:14}}>
                           Hay en la caja menor de {lRM?lRM.nombre:""}: <b style={{color:disponibleRM<0?"#E0714A":"#F0EDE8"}}>{fmtRM(disponibleRM)}</b>
-                          {montoRM>0&&<span style={{color:montoRM>disponibleRM?"#E0714A":"#8C8C8C"}}> · {montoRM>disponibleRM?"te pasás por "+fmtRM(montoRM-disponibleRM):"quedan "+fmtRM(disponibleRM-montoRM)}</span>}
+                          {montoRM>0&&retiroMenorForm.sentido==="paso"&&<span style={{color:"#8FD19A"}}> · quedan {fmtRM(disponibleRM+montoRM)}</span>}
+                          {montoRM>0&&retiroMenorForm.sentido!=="paso"&&<span style={{color:montoRM>disponibleRM?"#E0714A":"#8C8C8C"}}> · {montoRM>disponibleRM?"te pasás por "+fmtRM(montoRM-disponibleRM):"quedan "+fmtRM(disponibleRM-montoRM)}</span>}
                         </div>
 
                         <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:6}}>Monto</label>

@@ -839,6 +839,86 @@ export function PanelComunidadCajero(props) {
 // ─── PANEL DE ADMINISTRACIÓN ─────────────────────────────────────────────────
 function mesNombre(m) { return ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][m] || ""; }
 
+// ─── MOVIMIENTO: cuántos entran y cuántos se van, por local ─────────────────
+// Las bajas se anotan al sacar a alguien de la lista (ámbito "comunidad_baja"): desde que existe este registro. Las de antes no figuran.
+function registrarBaja(m, motivo) {
+  return guardarFila("baja_" + Date.now() + "_" + m.wsp, "comunidad_baja", { wsp: m.wsp, nombre: nombreCompleto(m), fav: m.fav || "", entro: m.fecha || "", fecha: new Date().toISOString(), motivo: motivo, prueba: m.prueba ? 1 : 0 });
+}
+function diaAR(iso) { try { return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "America/Argentina/Buenos_Aires" }); } catch (e) { return ""; } }
+async function leerAmbito(amb) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq." + amb + "&order=created_at.desc&limit=2000", { headers: SH });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+// Cuadro de movimiento de la comunidad: por local, cuántos entraron, cuántos se fueron y cuántos hay hoy. Se usa en Comunidad y en el panel de gestión.
+export function MovimientoComunidad(props) {
+  var [datos, setDatos] = useState(null);
+  var [per, setPer] = useState("mes");
+  useEffect(function () { Promise.all([leerAmbito("comunidad"), leerAmbito("comunidad_baja")]).then(function (r) { setDatos({ miembros: r[0], bajas: r[1] }); }); }, []);
+  var hoy = diaAR(new Date().toISOString());
+  var hace7 = diaAR(new Date(Date.now() - 6 * 86400000).toISOString());
+  function enPeriodo(d) {
+    if (!d) return false;
+    if (per === "hoy") return d === hoy;
+    if (per === "semana") return d >= hace7 && d <= hoy;
+    if (per === "mes") return d.slice(0, 7) === hoy.slice(0, 7);
+    return true;
+  }
+  var miembros = datos ? datos.miembros.filter(function (m) { return !m.prueba && !empleadoDeWsp(m.wsp, nombreCompleto(m)); }) : [];
+  var bajas = datos ? datos.bajas.filter(function (b) { return !b.prueba && b.motivo !== "empleado"; }) : [];
+  var cols = LOCALES_GRUPO.slice().reverse().map(function (l) { return { id: l.id, l: l }; });   // Colantonio's, Kusama, Bodegón: igual que Disponibilidad hoy
+  var sinLocal = miembros.filter(function (m) { return !LOCALES_GRUPO.some(function (l) { return l.id === m.fav; }); }).length + bajas.filter(function (b) { return !LOCALES_GRUPO.some(function (l) { return l.id === b.fav; }); }).length;
+  if (sinLocal > 0) cols.push({ id: "", l: { nombre: "Sin local", emoji: "❔", color: "#9A9A9A" } });
+  function delLocal(id, x) { return id === "" ? !LOCALES_GRUPO.some(function (l) { return l.id === x.fav; }) : x.fav === id; }
+  var calc = cols.map(function (c) {
+    var ms = miembros.filter(function (m) { return delLocal(c.id, m); }), bs = bajas.filter(function (b) { return delLocal(c.id, b); });
+    var entraron = per === "total" ? ms.length + bs.length : ms.filter(function (m) { return enPeriodo(diaAR(m.fecha)); }).length;
+    var fueron = bs.filter(function (b) { return enPeriodo(diaAR(b.fecha)); }).length;
+    return { entraron: entraron, fueron: fueron, neto: entraron - fueron, hoy: ms.length };
+  });
+  var suma = function (k) { return calc.reduce(function (a, x) { return a + x[k]; }, 0); };
+  var th = { fontSize: 9.5, color: "#7E7E7E", textTransform: "uppercase", letterSpacing: 1, textAlign: "right", padding: "0 0 6px" };
+  var num = function (col) { return { textAlign: "right", fontSize: "clamp(11px,3.2vw,14px)", fontWeight: 800, fontVariantNumeric: "tabular-nums", color: col || "#F0EDE8", padding: "9px 0" }; };
+  var filas = [["Entraron", "entraron", "#4C9A5A", "+"], ["Se fueron", "fueron", "#E0714A", "−"], ["Neto", "neto", "#F0EDE8", ""], ["Miembros hoy", "hoy", "#D4A017", ""]];
+  return (
+    <div style={{ width: "100%", maxWidth: props.ancho || 440, boxSizing: "border-box", margin: "0 auto", background: "#0C0C0C", border: "1px solid #D4A01744", borderRadius: 16, padding: "14px 14px", marginBottom: props.margen || 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#D4A017", textTransform: "uppercase", letterSpacing: 1.5 }}>👥 Comunidad · entran y se van</div>
+        {!datos && <div style={{ fontSize: 10, color: "#6E6E6E" }}>Calculando…</div>}
+      </div>
+      <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+        {[["hoy", "Hoy"], ["semana", "7 días"], ["mes", "Este mes"], ["total", "Total"]].map(function (t) {
+          var act = per === t[0];
+          return <button key={t[0]} onClick={function () { setPer(t[0]); }} style={{ flex: 1, padding: "5px 2px", borderRadius: 7, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#8C8C8C", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
+        })}
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left", width: "25%" }}></th>
+            {cols.map(function (c) { return <th key={c.id || "sin"} style={{ ...th, color: c.l.color, fontWeight: 800 }}><div style={{ fontSize: 14, letterSpacing: 0 }}>{c.l.emoji}</div>{String(c.l.nombre || "").replace(/^El /, "").replace(" Nkt", "").replace("'s", "").toUpperCase().slice(0, 11)}</th>; })}
+            <th style={{ ...th, color: "#F0EDE8", fontWeight: 800 }}><div style={{ fontSize: 14, letterSpacing: 0 }}>∑</div>TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map(function (f) {
+            return (
+              <tr key={f[1]} style={{ borderTop: f[1] === "hoy" ? "2px solid #222" : "1px solid #1A1A1A" }}>
+                <td style={{ fontSize: 10.5, fontWeight: 700, color: "#9A9A9A", padding: "9px 4px 9px 0", lineHeight: 1.2 }}>{f[0]}</td>
+                {calc.map(function (x, i) { var v = x[f[1]]; return <td key={i} style={num(f[1] === "neto" ? (v > 0 ? "#4C9A5A" : v < 0 ? "#E0714A" : "#F0EDE8") : f[2])}>{datos ? (f[1] === "neto" && v > 0 ? "+" : "") + v : "—"}</td>; })}
+                <td style={{ ...num(f[1] === "neto" ? (suma("neto") > 0 ? "#4C9A5A" : suma("neto") < 0 ? "#E0714A" : "#F0EDE8") : f[2]), fontWeight: 900 }}>{datos ? (f[1] === "neto" && suma("neto") > 0 ? "+" : "") + suma(f[1]) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 9.5, color: "#6E6E6E", marginTop: 6, lineHeight: 1.4 }}>El local es el que eligió cada cliente al sumarse. Las bajas se cuentan desde que se empezaron a anotar (cuando se saca a alguien de la lista). No incluye empleados ni pruebas.</div>
+    </div>
+  );
+}
+
 export function PanelComunidad() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [miembros, setMiembros] = useState(null);
@@ -986,7 +1066,7 @@ export function PanelComunidad() {
     var wl = {}; empleadosEnCom.forEach(function (m) { wl[m.wsp] = 1; });
     var cs = cupones.filter(function (c) { return wl[c.wsp] && c.estado !== "usado"; });
     if (!window.confirm("¿Sacar de la comunidad a " + empleadosEnCom.map(nombreCompleto).join(", ") + "?\n\nSe borran sus fichas y sus " + cs.length + " cupón" + (cs.length === 1 ? "" : "es") + " sin usar.")) return;
-    Promise.all(empleadosEnCom.map(function (m) { return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH }); })
+    Promise.all(empleadosEnCom.map(function (m) { registrarBaja(m, "empleado"); return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH }); })
       .concat(cs.map(function (c) { return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cupon_" + c.codigo), { method: "DELETE", headers: SH }); }))).then(function () { cargarMiembros(); cargarCupones(); });
   }
   // Al sacar a alguien de la comunidad también se borran sus cupones sin usar (vigentes o vencidos): si no, seguirían figurando
@@ -995,7 +1075,8 @@ export function PanelComunidad() {
     var propios = cupones.filter(function (c) { return c.wsp === m.wsp && c.estado !== "usado"; });
     var msg = "¿Sacar a " + nombreCompleto(m) + " de la comunidad?" + (propios.length ? "\n\nTambién se borran sus " + propios.length + " cupón" + (propios.length === 1 ? "" : "es") + " sin usar. Los que ya canjeó quedan en el historial." : "");
     if (!window.confirm(msg)) return;
-    var pedidos = [fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH })].concat(propios.map(function (c) {
+    // Queda anotada la baja (quién, de qué local, cuándo) para poder contar cuántos se van.
+    var pedidos = [registrarBaja(m, "admin"), fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH })].concat(propios.map(function (c) {
       return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cupon_" + c.codigo), { method: "DELETE", headers: SH });
     }));
     Promise.all(pedidos).then(function () {
@@ -1045,6 +1126,7 @@ export function PanelComunidad() {
           <button onClick={sacarEmpleados} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>Sacarlos de la comunidad (y borrar sus cupones)</button>
         </div>
       )}
+      <MovimientoComunidad ancho={9999} margen={12} />
       <div style={{ ...tarjeta, textAlign: "center", border: "1px solid #D4A01766", background: "#14110A" }}>
         <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Clientes en la comunidad</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 64, fontWeight: 800, color: "#D4A017", lineHeight: 1.1, marginTop: 2 }}>{miembros === null ? "…" : reales.length}</div>

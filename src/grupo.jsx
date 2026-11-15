@@ -11,7 +11,7 @@ var LOCALES_GRUPO = [
   { id: "l2", emoji: "🍣", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", emoji: "🍕", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, locales: {} };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {} };
 
 // La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
 export function urlGrupo() { return URL_PUBLICA + "/grupo/"; }
@@ -19,12 +19,14 @@ function esModoPrueba() { try { return new URLSearchParams(window.location.searc
 // Descuento del cupón: el del local donde la persona se sumó, si se cargó uno; si no, el general.
 // El descuento depende del local donde se CANJEA (cada local tiene el suyo); un cupón con "pctFijo" (cargado a mano) lo mantiene en cualquier local.
 export function pctCanje(c, cfg, localId) { return (c && c.pctFijo) ? c.pctFijo : pctPara(cfg, localId); }
-// Para mostrar un cupón: ya canjeado → lo que se descontó; sin canjear → su valor fijo o "según el local".
-function pctTexto(c) { return c.estado === "usado" ? c.pct + "%" : (c.pctFijo ? c.pctFijo + "%" : "según el local"); }
-function valoresPorLocal(cfg) { return LOCALES_GRUPO.map(function (l) { return { n: l.nombre, p: pctPara(cfg, l.id) }; }); }
-function mismoValor(cfg) { var v = valoresPorLocal(cfg); return v.every(function (x) { return x.p === v[0].p; }); }
-// "10% de descuento" o, si cambia según el local, "descuento de El Bodegón Nkt 10% · Kusama 15% · …".
-function fraseDescuento(cfg) { var v = valoresPorLocal(cfg); return mismoValor(cfg) ? v[0].p + "% de descuento" : "descuento de " + v.map(function (x) { return x.n + " " + x.p + "%"; }).join(" · "); }
+// Para mostrar un cupón: ya canjeado → lo que se dio (beneficio o descuento); sin canjear → su valor fijo o "según el local".
+function pctTexto(c) { return c.estado === "usado" ? (c.beneficio || c.pct + "%") : (c.pctFijo ? c.pctFijo + "%" : "según el local"); }
+// Beneficio especial de un local en lugar del porcentaje (ej: "2x1 en pizzas", "1 vino de regalo"). Vacío = vale el descuento.
+export function benefPara(cfg, local) { return String(((cfg && cfg.cuponBenefLocal) || {})[local] || "").trim(); }
+function valoresPorLocal(cfg) { return LOCALES_GRUPO.map(function (l) { return { n: l.nombre, p: pctPara(cfg, l.id), b: benefPara(cfg, l.id) }; }); }
+function mismoValor(cfg) { var v = valoresPorLocal(cfg); return v.every(function (x) { return x.p === v[0].p && x.b === v[0].b; }); }
+// "10% de descuento" o, si cambia según el local, "El Bodegón Nkt 10% · Kusama 1 vino de regalo · …".
+function fraseDescuento(cfg) { var v = valoresPorLocal(cfg); return mismoValor(cfg) && !v[0].b ? v[0].p + "% de descuento" : "beneficio según el local: " + v.map(function (x) { return x.n + " " + (x.b || x.p + "%"); }).join(" · "); }
 export function pctPara(cfg, local) { return ((cfg && cfg.cuponPctLocal) || {})[local] || (cfg && cfg.cuponPct) || 10; }
 export function nombreCompleto(m) { return ((m && m.nombre) || "") + (m && m.apellido ? " " + m.apellido : ""); }
 export function idDispositivo() {
@@ -58,7 +60,7 @@ export async function cargarConfigGrupo() {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, locales: (x && x.locales) || {} };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {} };
   } catch (e) { return CONFIG_VACIA; }
 }
 async function guardarFila(id, ambito, obj) {
@@ -195,7 +197,8 @@ export function TarjetaCupon(props) {
   // El descuento depende del local donde se canjea: si es el mismo en los 3 se muestra uno solo; si no, el más alto y el detalle abajo.
   var usado = est === "usado", vals = cfgT ? valoresPorLocal(cfgT) : [];
   var maxP = vals.length ? Math.max.apply(null, vals.map(function (x) { return x.p; })) : 0;
-  var grande = usado ? c.pct + "% OFF" : (c.pctFijo ? c.pctFijo + "% OFF" : (cfgT ? (mismoValor(cfgT) ? maxP + "% OFF" : "Hasta " + maxP + "% OFF") : "…"));
+  var hayBen = vals.some(function (x) { return x.b; }), todosBen = vals.length > 0 && vals.every(function (x) { return x.b; });
+  var grande = usado ? (c.beneficio || c.pct + "% OFF") : (c.pctFijo ? c.pctFijo + "% OFF" : (cfgT ? (hayBen ? (todosBen ? "🎁 Beneficios por local" : "Descuentos y beneficios") : (mismoValor(cfgT) ? maxP + "% OFF" : "Hasta " + maxP + "% OFF")) : "…"));
   return (
     <div style={{ background: "#0F1A10", border: "2px dashed " + col, borderRadius: 14, padding: "14px", marginTop: 14, textAlign: "center" }}>
       <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Tu cupón de descuento{c.prueba ? " · 🧪 PRUEBA" : ""}</div>
@@ -209,8 +212,12 @@ export function TarjetaCupon(props) {
             {LOCALES_GRUPO.map(function (l) {
               return <div key={l.id} style={{ flex: 1, border: "2px solid " + l.color, borderRadius: 12, padding: "9px 3px 8px", background: "rgba(0,0,0,0.45)" }}>
                 <div style={{ fontSize: 12, color: l.color, fontWeight: 800, lineHeight: 1.2, filter: "brightness(1.35)" }}>{l.nombre}</div>
-                <div style={{ fontSize: 30, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Playfair Display',serif", lineHeight: 1.15, marginTop: 2 }}>{pctPara(cfgT, l.id)}%</div>
-                <div style={{ fontSize: 10, color: "#C8C8C8", letterSpacing: 1 }}>DE DESCUENTO</div>
+                {benefPara(cfgT, l.id) ? (
+                  <div><div style={{ fontSize: 22, lineHeight: 1.2 }}>🎁</div><div style={{ fontSize: 14.5, fontWeight: 800, color: "#FFFFFF", lineHeight: 1.25, padding: "0 2px" }}>{benefPara(cfgT, l.id)}</div></div>
+                ) : (
+                  <div><div style={{ fontSize: 30, fontWeight: 800, color: "#FFFFFF", fontFamily: "'Playfair Display',serif", lineHeight: 1.15, marginTop: 2 }}>{pctPara(cfgT, l.id)}%</div>
+                  <div style={{ fontSize: 10, color: "#C8C8C8", letterSpacing: 1 }}>DE DESCUENTO</div></div>
+                )}
               </div>;
             })}
           </div>
@@ -387,7 +394,7 @@ export function GrupoNkt() {
               <details style={{ marginTop: 8, fontSize: 12, color: "#9A9A9A" }}>
                 <summary style={{ cursor: "pointer", textAlign: "center" }}>Ver mi historial</summary>
                 {usados.map(function (c) {
-                  return <div key={c.codigo} style={{ padding: "5px 0", borderTop: "1px solid #1E2A1E" }}>{c.codigo} · {c.pct}% · usado el {c.usado_at ? new Date(c.usado_at).toLocaleDateString("es-AR") : "—"}{c.usado_local ? " en " + c.usado_local : ""}</div>;
+                  return <div key={c.codigo} style={{ padding: "5px 0", borderTop: "1px solid #1E2A1E" }}>{c.codigo} · {c.beneficio || c.pct + "%"} · usado el {c.usado_at ? new Date(c.usado_at).toLocaleDateString("es-AR") : "—"}{c.usado_local ? " en " + c.usado_local : ""}</div>;
                 })}
               </details>
             )}
@@ -600,16 +607,18 @@ export function PanelCanje(props) {
     // El descuento es el del local donde se canjea; se lee la configuración al momento para no usar un valor viejo.
     cargarConfigGrupo().then(function (cfgF) {
       var pctApl = pctCanje(cupon, cfgF, props.localId);
-      if (!window.confirm("¿Canjear el cupón " + cupon.codigo + " de " + cupon.nombre + " con " + pctApl + "% de descuento? Después no se puede volver a usar.")) return;
-      var nuevo = { ...cupon, pct: pctApl, estado: "usado", usado_at: new Date().toISOString(), usado_local: props.local || "", usado_por: props.usuario || "" };
+      var benApl = cupon.pctFijo ? "" : benefPara(cfgF, props.localId);   // beneficio especial del local (2x1, regalo…) en lugar del %
+      var dar = benApl ? "el beneficio «" + benApl + "»" : pctApl + "% de descuento";
+      if (!window.confirm("¿Canjear el cupón " + cupon.codigo + " de " + cupon.nombre + " con " + dar + "? Después no se puede volver a usar.")) return;
+      var nuevo = { ...cupon, pct: pctApl, ...(benApl ? { beneficio: benApl } : {}), estado: "usado", usado_at: new Date().toISOString(), usado_local: props.local || "", usado_por: props.usuario || "" };
       // Se vuelve a leer justo antes de guardar, por si otro local lo canjeó recién.
       leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
         if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
         guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) {
-          setCupon(nuevo); setMsg("✅ Canjeado. Aplicá el " + pctApl + "% de descuento.");
+          setCupon(nuevo); setMsg("✅ Canjeado. Aplicá " + dar + ".");
           // Se le deja listo el siguiente cupón para su próxima compra.
           renovarCupon(cupon.wsp, cfgF).then(function (sig) {
-            if (sig) setMsg("✅ Canjeado. Aplicá el " + pctApl + "% de descuento. Su próximo cupón ya quedó listo: " + sig.codigo + ".");
+            if (sig) setMsg("✅ Canjeado. Aplicá " + dar + ". Su próximo cupón ya quedó listo: " + sig.codigo + ".");
             if (props.onCanje) props.onCanje();
           });
         } else setMsg("No se pudo guardar el canje. Probá de nuevo."); });
@@ -631,7 +640,7 @@ export function PanelCanje(props) {
       {msg && <div style={{ fontSize: 13, color: msg.indexOf("✅") === 0 ? "#4C9A5A" : "#E0714A", marginTop: 10 }}>{msg}</div>}
       {cupon && (
         <div style={{ marginTop: 10, border: "1px solid " + col + "66", borderRadius: 12, padding: "12px 14px" }}>
-          <div style={{ fontSize: 15, fontWeight: 800 }}>{cupon.nombre} · <span style={{ color: col }}>{est === "usado" ? cupon.pct : (cfgC ? pctCanje(cupon, cfgC, props.localId) : "…")}% OFF</span>{est === "activo" && <span style={{ color: "#9A9A9A", fontSize: 11.5, fontWeight: 400 }}> · el descuento de {props.local || "este local"}</span>}</div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>{cupon.nombre} · <span style={{ color: col }}>{est === "usado" ? (cupon.beneficio ? "🎁 " + cupon.beneficio : cupon.pct + "% OFF") : (cfgC ? (!cupon.pctFijo && benefPara(cfgC, props.localId) ? "🎁 " + benefPara(cfgC, props.localId) : pctCanje(cupon, cfgC, props.localId) + "% OFF") : "…")}</span>{est === "activo" && <span style={{ color: "#9A9A9A", fontSize: 11.5, fontWeight: 400 }}> · lo que corresponde en {props.local || "este local"}</span>}</div>
           <div style={{ fontSize: 12, color: "#B8B8B8", marginTop: 4, lineHeight: 1.6 }}>
             Estado: <b style={{ color: col }}>{est === "activo" ? "válido" : est === "usado" ? "ya usado" : "vencido"}</b> · vence el {new Date(cupon.vence).toLocaleDateString("es-AR")}
             {cupon.usado_at && <div>Canjeado el {new Date(cupon.usado_at).toLocaleString("es-AR")}{cupon.usado_local ? " en " + cupon.usado_local : ""}</div>}
@@ -715,12 +724,12 @@ export function PanelComunidadCajero(props) {
         })}
         {cfgV && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", margin: "12px 0 6px" }}>🎟️ Descuento del cupón hoy, según el local</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#F0EDE8", margin: "12px 0 6px" }}>🎟️ Lo que vale el cupón hoy, según el local</div>
             <div style={{ display: "flex", gap: 6 }}>
               {LOCALES_GRUPO.map(function (l) {
                 return <div key={l.id} style={{ flex: 1, textAlign: "center", border: "1px solid " + l.color + "99", borderRadius: 10, padding: "7px 4px" }}>
                   <div style={{ fontSize: 10.5, color: l.color, fontWeight: 800, lineHeight: 1.2 }}>{l.nombre}</div>
-                  <div style={{ fontSize: 19, fontWeight: 800, color: "#F0EDE8", fontFamily: "'Playfair Display',serif" }}>{pctPara(cfgV, l.id)}%</div>
+                  {benefPara(cfgV, l.id) ? <div style={{ fontSize: 12.5, fontWeight: 800, color: "#F0EDE8", lineHeight: 1.25 }}>🎁 {benefPara(cfgV, l.id)}</div> : <div style={{ fontSize: 19, fontWeight: 800, color: "#F0EDE8", fontFamily: "'Playfair Display',serif" }}>{pctPara(cfgV, l.id)}%</div>}
                 </div>;
               })}
             </div>
@@ -899,7 +908,7 @@ export function PanelComunidad() {
   }
   function csvCanjeados() {
     var filas = [["Local del canje", "Cliente", "WhatsApp", "Código", "Descuento", "Canjeado el", "Canjeado por"]].concat(canjeados.slice().sort(function (a, b) { return String(a.usado_local || "").localeCompare(String(b.usado_local || ""), "es") || String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"); }).map(function (c) {
-      return [c.usado_local || "", c.nombre, c.wsp, c.codigo, c.pct + "%", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_por || ""];
+      return [c.usado_local || "", c.nombre, c.wsp, c.codigo, c.beneficio || c.pct + "%", c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR") : "", c.usado_por || ""];
     }));
     var txt = "\ufeff" + filas.map(function (f) { return f.map(function (x) { return '"' + String(x == null ? "" : x).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "cupones_canjeados_grupo_nkt.csv"; a.click();
@@ -1149,6 +1158,17 @@ export function PanelComunidad() {
             );
           })}
         </div>
+        <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 2px" }}>🎁 Beneficio especial en cada local (opcional): reemplaza al porcentaje en ese local. Ej: «2x1 en pizzas», «1 vino de regalo»</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          {LOCALES_GRUPO.map(function (l) {
+            return (
+              <div key={l.id} style={{ flex: "1 1 160px" }}>
+                <div style={{ fontSize: 10.5, color: l.color, fontWeight: 700, marginBottom: 3 }}>{l.nombre}</div>
+                <input value={(cfg.cuponBenefLocal || {})[l.id] || ""} maxLength={60} placeholder="Vacío = solo el descuento" onChange={function (e) { var v = e.target.value; setCfg(function (c) { var o = { ...(c.cuponBenefLocal || {}) }; if (v.trim()) o[l.id] = v; else delete o[l.id]; return { ...c, cuponBenefLocal: o }; }); }} style={sel} />
+              </div>
+            );
+          })}
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={guardarValores} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Guardar valores</button>
         </div>
@@ -1215,7 +1235,7 @@ export function PanelComunidad() {
               {gr.lista.map(function (c) {
                 return <div key={c.codigo} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", padding: "5px 0", borderBottom: "1px solid #141414", fontSize: 12 }}>
                   <span style={{ color: "#C8C8C8" }}>{vistaCanje === "local" ? c.nombre : (c.usado_local || "—")}{empleadoDeWsp(c.wsp, c.nombre) ? <span style={{ color: "#FF8A5C", fontWeight: 700 }}> 👷</span> : null}</span>
-                  <span style={{ color: "#8C8C8C" }}>{c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} · {c.codigo} · {c.pct}%{c.usado_por ? " · por " + c.usado_por : ""}</span>
+                  <span style={{ color: "#8C8C8C" }}>{c.usado_at ? new Date(c.usado_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} · {c.codigo} · {c.beneficio || c.pct + "%"}{c.usado_por ? " · por " + c.usado_por : ""}</span>
                 </div>;
               })}
             </div>

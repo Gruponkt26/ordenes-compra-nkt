@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelComunidad, PanelComunidadCajero, setEmpleadosGrupo } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -31437,6 +31437,7 @@ export default function App() {
                   </div>
                 );
               })()}
+              <MovimientoComunidad ancho={440} margen={0} />
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:440}}>
                 {[
                   {id:"novedades",emoji:"🔔",label:"Novedades del día",color:"#D4A017",action:function(){abrirModulo("novedades","novedades_inicio");}},

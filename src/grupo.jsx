@@ -513,13 +513,14 @@ export function empleadoDeWsp(wsp) {
   return EMPLEADOS_GRUPO.find(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; }) || null;
 }
 
-export var MSG_ACCESO_EMPLEADO = "Los empleados del grupo no tienen acceso a la comunidad: ya tienen un descuento aparte.";
+export var DESCUENTO_EMPLEADOS = 25;   // el descuento que ya tienen los empleados, aparte de la comunidad
+export var MSG_ACCESO_EMPLEADO = "No se puede: los empleados ya tienen su descuento del " + DESCUENTO_EMPLEADOS + "%, por eso no tienen acceso a la comunidad.";
 // Como leerPauta("com_…") pero un empleado cuenta como "no es miembro": no ve su cupón aunque ya estuviera sumado.
 export async function leerMiembro(wsp) {
   if (await esEmpleadoWsp(wsp)) return null;
   return leerPauta("com_" + wsp);
 }
-export var MSG_EMPLEADO = "Los empleados del grupo no pueden sumarse a la comunidad: ya tienen un descuento aparte.";
+export var MSG_EMPLEADO = "No se puede: los empleados ya tienen su descuento del " + DESCUENTO_EMPLEADOS + "%, por eso no pueden sumarse a la comunidad.";
 // Para el que se está sumando (sin sesión): se mira la lista de empleados en la base y se compara por teléfono.
 export async function esEmpleadoWsp(wsp) {
   var w = tel8(wsp); if (!w) return false;
@@ -546,7 +547,7 @@ export function PanelCanje(props) {
   }
   function canjear() {
     if (!cupon || estadoCupon(cupon) !== "activo") return;
-    var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 Este cupón es de " + empC.nombre + ", que trabaja en el grupo: los empleados no pueden usar cupones."); return; }
+    var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 No se puede canjear: " + empC.nombre + " es empleado/a y ya tiene su descuento del " + DESCUENTO_EMPLEADOS + "%."); return; }
     // El descuento es el del local donde se canjea; se lee la configuración al momento para no usar un valor viejo.
     cargarConfigGrupo().then(function (cfgF) {
       var pctApl = pctCanje(cupon, cfgF, props.localId);
@@ -586,7 +587,7 @@ export function PanelCanje(props) {
             Estado: <b style={{ color: col }}>{est === "activo" ? "válido" : est === "usado" ? "ya usado" : "vencido"}</b> · vence el {new Date(cupon.vence).toLocaleDateString("es-AR")}
             {cupon.usado_at && <div>Canjeado el {new Date(cupon.usado_at).toLocaleString("es-AR")}{cupon.usado_local ? " en " + cupon.usado_local : ""}</div>}
           </div>
-          {empCupon && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#1A0D0A", border: "1px solid #C1440E88", fontSize: 12.5, color: "#FF8A5C", fontWeight: 700 }}>🚫 Es de {empCupon.nombre}, empleado/a del grupo: los empleados no pueden usar cupones. No lo canjees.</div>}
+          {empCupon && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#1A0D0A", border: "1px solid #C1440E88", fontSize: 12.5, color: "#FF8A5C", fontWeight: 700 }}>🚫 No se puede canjear: {empCupon.nombre} es empleado/a y ya tiene su descuento del {DESCUENTO_EMPLEADOS}%. No lo canjees.</div>}
           {est === "activo" && !empCupon && <button onClick={canjear} style={{ marginTop: 10, width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#3A7D44", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Canjear ahora</button>}
         </div>
       )}

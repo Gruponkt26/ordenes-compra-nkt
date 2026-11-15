@@ -3244,7 +3244,7 @@ function PautasComunidad(){
       "En tu inicio entrá a «Comunidad». Más abajo del cuadro de canje está el «QR para sumar clientes». Tocá «Mostrar en pantalla grande» y dejá que el cliente lo escanee con la cámara de su celular.",
       "Al escanear, el cliente nuevo completa su nombre, apellido y WhatsApp (el cumpleaños y el lugar favorito son opcionales), tilda la casilla y toca «Sumarme». Ahí mismo ve su cupón, con un código tipo NKT-4K7P.",
       "Si el cliente ya era miembro, en la misma pantalla toca «¿Ya sos parte? Ingresar», escribe su WhatsApp y ve su cupón vigente y cuántos canjeó.",
-      "Los empleados del grupo no pueden sumarse ni ingresar: ya tienen un descuento aparte.",
+      "Los empleados del grupo no pueden sumarse, ingresar ni canjear cupones: ya tienen su descuento del 25%. Si un empleado intenta canjear, no se lo canjees.",
       "El cliente puede dejar la app en su celular con el botón «Descargar la app» que aparece en esa pantalla."]},
     {t:"🎟️ Cómo canjear un cupón",l:[
       "1. Pedile al cliente el código que ve en su celular (por ejemplo NKT-4K7P).",

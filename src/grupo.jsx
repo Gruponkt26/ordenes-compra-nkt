@@ -438,7 +438,8 @@ export function GrupoNkt() {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-              {itemLocal(wa, "🛵 Pedir delivery", { background: "#1F4D2A", borderColor: "#3A7D44" })}
+              {/* Delivery todavía no está habilitado: queda a la vista como "Próximamente". Para activarlo, volver a usar itemLocal(wa, ...). */}
+              <span style={{ ...boton, opacity: 0.6, cursor: "default", background: "#161616" }}>🛵 Pedir delivery<span style={{ display: "block", fontSize: 10.5, color: "#D4A017", fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>Próximamente</span></span>
               {l.id === "l3" && itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}   {/* El Bodegón y Kusama no toman reservas por acá */}
               {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
               {itemLocal(linkWeb(d.carta), "🍽️ Ver la carta")}

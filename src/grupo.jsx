@@ -86,6 +86,7 @@ function estadoCupon(c) {
 export async function renovarCupon(wsp, cfg) {
   var m = await leerPauta("com_" + wsp);
   if (!m) return null;
+  if (await esEmpleadoWsp(wsp)) return null;   // los empleados no tienen cupones
   var codigo = "";
   for (var i = 0; i < 8; i++) { var c = codigoNuevo(); if (!(await leerPauta("cupon_" + c))) { codigo = c; break; } }
   if (!codigo) return null;
@@ -105,6 +106,7 @@ export async function cuponActual(c, cfg) {
 }
 // Crea el cupón de quien se suma (o devuelve el que ya tenía) y lo asocia a su ficha de la comunidad.
 async function emitirCupon(socio, cfg) {
+  if (!socio.prueba && await esEmpleadoWsp(socio.wsp)) return null;   // los empleados no tienen cupones
   var w = socio.wsp, previo = await leerPauta("com_" + w);
   if (previo && previo.cupon) { var existente = await leerPauta("cupon_" + previo.cupon); if (existente) return existente; }
   var codigo = "";
@@ -511,13 +513,14 @@ export function empleadoDeWsp(wsp) {
   return EMPLEADOS_GRUPO.find(function (e) { return e && e.activo !== false && tel8(e.telefono) === w; }) || null;
 }
 
-export var MSG_ACCESO_EMPLEADO = "Los empleados del grupo no tienen acceso a la comunidad: ya tienen un descuento aparte.";
+export var DESCUENTO_EMPLEADOS = 25;   // el descuento que ya tienen los empleados, aparte de la comunidad
+export var MSG_ACCESO_EMPLEADO = "No se puede: los empleados ya tienen su descuento del " + DESCUENTO_EMPLEADOS + "%, por eso no tienen acceso a la comunidad.";
 // Como leerPauta("com_…") pero un empleado cuenta como "no es miembro": no ve su cupón aunque ya estuviera sumado.
 export async function leerMiembro(wsp) {
   if (await esEmpleadoWsp(wsp)) return null;
   return leerPauta("com_" + wsp);
 }
-export var MSG_EMPLEADO = "Los empleados del grupo no pueden sumarse a la comunidad: ya tienen un descuento aparte.";
+export var MSG_EMPLEADO = "No se puede: los empleados ya tienen su descuento del " + DESCUENTO_EMPLEADOS + "%, por eso no pueden sumarse a la comunidad.";
 // Para el que se está sumando (sin sesión): se mira la lista de empleados en la base y se compara por teléfono.
 export async function esEmpleadoWsp(wsp) {
   var w = tel8(wsp); if (!w) return false;
@@ -544,7 +547,7 @@ export function PanelCanje(props) {
   }
   function canjear() {
     if (!cupon || estadoCupon(cupon) !== "activo") return;
-    var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 Este cupón es de " + empC.nombre + ", que trabaja en el grupo: los empleados no pueden usar cupones."); return; }
+    var empC = empleadoDeWsp(cupon.wsp); if (empC) { setMsg("🚫 No se puede canjear: " + empC.nombre + " es empleado/a y ya tiene su descuento del " + DESCUENTO_EMPLEADOS + "%."); return; }
     // El descuento es el del local donde se canjea; se lee la configuración al momento para no usar un valor viejo.
     cargarConfigGrupo().then(function (cfgF) {
       var pctApl = pctCanje(cupon, cfgF, props.localId);
@@ -584,7 +587,7 @@ export function PanelCanje(props) {
             Estado: <b style={{ color: col }}>{est === "activo" ? "válido" : est === "usado" ? "ya usado" : "vencido"}</b> · vence el {new Date(cupon.vence).toLocaleDateString("es-AR")}
             {cupon.usado_at && <div>Canjeado el {new Date(cupon.usado_at).toLocaleString("es-AR")}{cupon.usado_local ? " en " + cupon.usado_local : ""}</div>}
           </div>
-          {empCupon && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#1A0D0A", border: "1px solid #C1440E88", fontSize: 12.5, color: "#FF8A5C", fontWeight: 700 }}>🚫 Es de {empCupon.nombre}, empleado/a del grupo: los empleados no pueden usar cupones. No lo canjees.</div>}
+          {empCupon && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#1A0D0A", border: "1px solid #C1440E88", fontSize: 12.5, color: "#FF8A5C", fontWeight: 700 }}>🚫 No se puede canjear: {empCupon.nombre} es empleado/a y ya tiene su descuento del {DESCUENTO_EMPLEADOS}%. No lo canjees.</div>}
           {est === "activo" && !empCupon && <button onClick={canjear} style={{ marginTop: 10, width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#3A7D44", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Canjear ahora</button>}
         </div>
       )}
@@ -621,11 +624,11 @@ export function PanelComunidadCajero(props) {
   useEffect(function () { cargar(); }, []);
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
   // Todos los miembros de la comunidad, sin importar dónde se sumaron: el cupón se canjea en cualquiera de los 3 locales.
-  var mios = (miembros || []).filter(function (m) { return !m.prueba; }).sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
+  var mios = (miembros || []).filter(function (m) { return !m.prueba && !empleadoDeWsp(m.wsp); }).sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var wsps = {}; mios.forEach(function (m) { wsps[m.wsp] = true; });
   // Los cupones de los clientes de este local, más los que se canjearon acá aunque el cliente se haya sumado en otro.
   // Solo de quienes siguen en la comunidad: los que administración sacó de la lista ya no figuran (ni con sus cupones).
-  var wspActivos = {}; (miembros || []).forEach(function (m) { if (!m.prueba) wspActivos[m.wsp] = true; });
+  var wspActivos = {}; (miembros || []).forEach(function (m) { if (!m.prueba && !empleadoDeWsp(m.wsp)) wspActivos[m.wsp] = true; });
   var cups = cupones.filter(function (c) { return !c.prueba && wspActivos[c.wsp]; }).sort(function (a, b) { return String(b.creado || "").localeCompare(String(a.creado || "")); });
   var est = function (c) { var e = estadoCupon(c); return e === "activo" ? "vigentes" : e === "usado" ? "usados" : "vencidos"; };
   var cuenta = { todos: cups.length, vigentes: 0, usados: 0, vencidos: 0 };
@@ -862,6 +865,13 @@ export function PanelComunidad() {
       setTimeout(function () { setMsgPrueba(""); }, 2500);
     });
   }
+  function sacarEmpleados() {
+    var wl = {}; empleadosEnCom.forEach(function (m) { wl[m.wsp] = 1; });
+    var cs = cupones.filter(function (c) { return wl[c.wsp] && c.estado !== "usado"; });
+    if (!window.confirm("¿Sacar de la comunidad a " + empleadosEnCom.map(nombreCompleto).join(", ") + "?\n\nSe borran sus fichas y sus " + cs.length + " cupón" + (cs.length === 1 ? "" : "es") + " sin usar.")) return;
+    Promise.all(empleadosEnCom.map(function (m) { return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(m.id), { method: "DELETE", headers: SH }); })
+      .concat(cs.map(function (c) { return fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cupon_" + c.codigo), { method: "DELETE", headers: SH }); }))).then(function () { cargarMiembros(); cargarCupones(); });
+  }
   // Al sacar a alguien de la comunidad también se borran sus cupones sin usar (vigentes o vencidos): si no, seguirían figurando
   // y podrían canjearse en caja. Los que ya canjeó quedan en el historial de canjeados.
   function quitar(m) {
@@ -878,14 +888,16 @@ export function PanelComunidad() {
   }
 
   var pruebas = (miembros || []).filter(function (m) { return m.prueba; });
-  var reales = (miembros || []).filter(function (m) { return !m.prueba; });
+  var reales = (miembros || []).filter(function (m) { return !m.prueba && !empleadoDeWsp(m.wsp); });
+  // Empleados que figuran como miembros (se sumaron antes de que se los bloqueara): no cuentan, y se pueden sacar de una vez.
+  var empleadosEnCom = (miembros || []).filter(function (m) { return !m.prueba && empleadoDeWsp(m.wsp); });
   var hoy = new Date(), cumples = reales.filter(function (m) { return m.dia === hoy.getDate() && m.mes === hoy.getMonth() + 1; });
   var conCumple = reales.filter(function (m) { return m.dia && m.mes; }).length;
   // "Cupones otorgados" muestra solo los de quienes siguen en la comunidad hoy (los de quien se sacó de la lista ya no figuran).
   var wspMiembros = {}; reales.forEach(function (m) { wspMiembros[m.wsp] = 1; });
   function esDeMiembro(c) { return !c.prueba && !!wspMiembros[c.wsp]; }
   // Por fecha de entrada: el último que se sumó, primero.
-  var ordenados = (miembros || []).slice().sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
+  var ordenados = (miembros || []).filter(function (m) { return !empleadoDeWsp(m.wsp); }).sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
   var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
   // Cupones canjeados de los miembros actuales (sin los de prueba), del más reciente al más viejo.
   var canjeados = cupones.filter(function (c) { return esDeMiembro(c) && c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
@@ -909,6 +921,13 @@ export function PanelComunidad() {
 
   return (
     <div>
+      {empleadosEnCom.length > 0 && (
+        <div style={{ ...tarjeta, border: "1px solid #C1440E88", background: "#1A0D0A" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#FF8A5C", marginBottom: 4 }}>👷 Hay {empleadosEnCom.length} empleado{empleadosEnCom.length === 1 ? "" : "s"} entre los miembros</div>
+          <div style={{ fontSize: 12, color: "#E0B8A8", lineHeight: 1.5, marginBottom: 8 }}>{empleadosEnCom.map(nombreCompleto).join(", ")}. Los empleados no pueden tener cupones: no se cuentan ni figuran en las listas, y ya no pueden canjear.</div>
+          <button onClick={sacarEmpleados} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>Sacarlos de la comunidad (y borrar sus cupones)</button>
+        </div>
+      )}
       <div style={{ ...tarjeta, textAlign: "center", border: "1px solid #D4A01766", background: "#14110A" }}>
         <div style={{ fontSize: 11, color: "#9A9A9A", textTransform: "uppercase", letterSpacing: 1.5 }}>Clientes en la comunidad</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 64, fontWeight: 800, color: "#D4A017", lineHeight: 1.1, marginTop: 2 }}>{miembros === null ? "…" : reales.length}</div>
@@ -1108,7 +1127,7 @@ export function PanelComunidad() {
               </table>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-              {[{ id: "todos", txt: "Todos · " + miembros.filter(function (m) { return !m.prueba; }).length }].concat(porLocalCom.map(function (x) { return { id: x.l.id, txt: x.l.emoji + " " + x.l.nombre + " · " + x.n }; })).map(function (t) {
+              {[{ id: "todos", txt: "Todos · " + reales.length }].concat(porLocalCom.map(function (x) { return { id: x.l.id, txt: x.l.emoji + " " + x.l.nombre + " · " + x.n }; })).map(function (t) {
                 var act = filtroCom === t.id;
                 return <button key={t.id} onClick={function () { setFiltroCom(t.id); }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#9A9A9A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.txt}</button>;
               })}

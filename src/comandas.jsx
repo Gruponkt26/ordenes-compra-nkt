@@ -24,6 +24,34 @@ async function sbComandasDisponible() {
     return txt || ("Error " + r.status);
   } catch(e) { return String((e && e.message) || e); }
 }
+// ─── COBRO ────────────────────────────────────────────────────────────
+// Cómo se pagó cada comanda. Se guarda en pautas (ámbito "comanda_pago", un registro por comanda) para no tener que tocar la tabla comandas:
+// {comanda_id, local, fecha (día de negocio), total, pagos:[{medio, monto}], cobro_por, cobrado_at}. El cierre de caja lo lee para controlar.
+export var MEDIOS_COBRO = [
+  { id:"efectivo",      emoji:"💵", nombre:"Efectivo" },
+  { id:"transferencia", emoji:"📲", nombre:"Transferencia" },
+  { id:"debito",        emoji:"💳", nombre:"Débito" },
+  { id:"credito",       emoji:"💳", nombre:"Crédito" },
+  { id:"qr",            emoji:"📱", nombre:"QR / Mercado Pago" },
+];
+async function sbGuardarPago(p) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await fetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cpago_" + p.comanda_id, ambito:"comanda_pago", texto:JSON.stringify(p), usuario:p.cobro_por || "", created_at:ahora, updated_at:ahora }) });
+    if (!r.ok) return (await r.text()) || ("Error " + r.status);
+    return null;
+  } catch(e) { return String((e && e.message) || e); }
+}
+// Lo cobrado en comandas de un local en un día de negocio, para el cierre de caja.
+export async function cargarPagosComandas(localId, fecha) {
+  try {
+    var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_pago&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
+  } catch(e) { return []; }
+}
 async function sbLoadMesas() {
   try {
     var r = await fetch(SURL + "/rest/v1/comanda_mesas?order=orden", { headers: {...SH, "Cache-Control":"no-cache"} });
@@ -171,6 +199,49 @@ function hace(iso) {
 // Lo que se ve al tocar una mesa: lo que ya pidió, lo que falta mandar, y la carta
 // para agregar. El pedido se arma primero y se manda después, a propósito: el mozo
 // toma toda la mesa y recién ahí la cocina recibe una tanda, no siete papelitos.
+// El cobro: elegir cómo se pagó y, si dividen la cuenta, cargar más de un medio. La suma tiene que dar el total.
+function Cobro(props) {
+  var total = props.total;
+  var [lineas, setLineas] = useState([{ medio:"efectivo", monto:String(total) }]);
+  var [guardando, setGuardando] = useState(false);
+  var suma = lineas.reduce(function(a, l) { return a + (parseFloat(l.monto) || 0); }, 0);
+  var falta = Math.round((total - suma) * 100) / 100;
+  var ok = Math.abs(falta) < 1 && lineas.every(function(l) { return (parseFloat(l.monto) || 0) > 0; });
+  function cambiar(i, k, v) { setLineas(function(prev) { return prev.map(function(l, j) { return j === i ? { ...l, [k]: v } : l; }); }); }
+  function agregar() { setLineas(function(prev) { return prev.concat([{ medio:"transferencia", monto: falta > 0 ? String(falta) : "" }]); }); }
+  function quitar(i) { setLineas(function(prev) { return prev.length > 1 ? prev.filter(function(l, j) { return j !== i; }) : prev; }); }
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}>
+      <div style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:16, padding:"18px", width:"100%", maxWidth:420, maxHeight:"92vh", overflowY:"auto" }}>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800, color:"#F0EDE8" }}>💰 Cobrar · {props.titulo}</div>
+        <div style={{ fontSize:26, fontWeight:800, color:props.color || "#3A7D44", margin:"6px 0 12px" }}>{pesos(total)}</div>
+        {lineas.map(function(l, i) {
+          return (
+            <div key={i} style={{ display:"flex", gap:7, marginBottom:8, alignItems:"center" }}>
+              <select value={l.medio} onChange={function(e) { cambiar(i, "medio", e.target.value); }} style={{ ...INP, flex:1.4, padding:"10px 8px" }}>
+                {MEDIOS_COBRO.map(function(m) { return <option key={m.id} value={m.id}>{m.emoji} {m.nombre}</option>; })}
+              </select>
+              <input type="number" inputMode="decimal" value={l.monto} onChange={function(e) { cambiar(i, "monto", e.target.value); }} placeholder="$" style={{ ...INP, flex:1, padding:"10px 8px" }} />
+              {lineas.length > 1 && <button onClick={function() { quitar(i); }} style={{ background:"none", border:"none", color:"#888", fontSize:16, cursor:"pointer" }}>✕</button>}
+            </div>
+          );
+        })}
+        <button onClick={agregar} style={{ ...GH, padding:"8px 12px", fontSize:12, marginBottom:10 }}>➕ Dividir el pago en otro medio</button>
+        <div style={{ fontSize:12, color: Math.abs(falta) < 1 ? "#4C9A5A" : "#E0714A", marginBottom:12 }}>
+          {Math.abs(falta) < 1 ? "✓ El pago completa el total." : (falta > 0 ? "Faltan " + pesos(falta) + " para completar el total." : "Te pasás por " + pesos(-falta) + ".")}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button disabled={!ok || guardando} onClick={function() { setGuardando(true); props.onConfirmar(lineas.map(function(l) { return { medio:l.medio, monto:Math.round((parseFloat(l.monto) || 0) * 100) / 100 }; })); }}
+            style={{ flex:2, padding:"12px", borderRadius:9, border:"none", background:(ok && !guardando) ? "#3A7D44" : "#1A1A1A", color:(ok && !guardando) ? "#fff" : "#555", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:(ok && !guardando) ? "pointer" : "not-allowed" }}>
+            {guardando ? "Guardando…" : "Cobrar y cerrar"}
+          </button>
+          <button onClick={props.onCancelar} style={{ flex:1, padding:"12px", borderRadius:9, border:"1px solid #2A2A2A", background:"none", color:"#888", fontFamily:"'Inter',sans-serif", fontSize:13, cursor:"pointer" }}>Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
@@ -855,10 +926,26 @@ export default function PanelComandas(p) {
     };
     guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
   }
+  var [cobrando, setCobrando] = useState(null);   // {c, total}: la comanda que se está cobrando
   function cerrar(c, total, sinMandar) {
     if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin mandar a la cocina. Mandalos o sacalos antes de cerrar."); return; }
-    guardar({ ...c, estado:"cerrada", cerrada_at:new Date().toISOString(), total: total === undefined ? c.total : total });
-    setAbiertaId(null);
+    var t = total === undefined ? c.total : total;
+    if (!(Number(t) > 0)) {   // sin importe no hay nada que cobrar: se cierra directo
+      guardar({ ...c, estado:"cerrada", cerrada_at:new Date().toISOString(), total:t });
+      setAbiertaId(null);
+      return;
+    }
+    setCobrando({ c:c, total:t });
+  }
+  function confirmarCobro(pagos) {
+    var c = cobrando.c, total = cobrando.total, ahoraISO = new Date().toISOString();
+    var fecha = p.diaDeNegocio ? p.diaDeNegocio() : ahoraISO.slice(0, 10);
+    // El cobro queda anotado aparte (para el cierre) y la comanda se cierra. Si el cobro no se pudo anotar, no se cierra: así no se pierde la plata.
+    sbGuardarPago({ comanda_id:c.id, local:c.local, fecha:fecha, total:total, pagos:pagos, tipo:c.tipo, cobro_por:usuario, cobrado_at:ahoraISO }).then(function(err) {
+      if (err) { alert("No se pudo anotar el cobro. La comanda sigue abierta.\n\n" + String(err).slice(0, 200)); setCobrando(null); return; }
+      guardar({ ...c, estado:"cerrada", cerrada_at:ahoraISO, total:total });
+      setCobrando(null); setAbiertaId(null);
+    });
   }
 
   // ─── CONFIGURACIÓN DE MESAS ────────────────────────────────────────────────
@@ -952,7 +1039,7 @@ export default function PanelComandas(p) {
 
       {/* Mesas / Delivery / Mostrador */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-        {CMD_VISTAS.map(function(v) {
+        {CMD_VISTAS.filter(function(v) { return !(p.soloServicio && v.id === "carta"); }).map(function(v) {
           var act = vista === v.id && !config;
           var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
           return (
@@ -964,6 +1051,7 @@ export default function PanelComandas(p) {
         })}
       </div>
 
+      {cobrando && <Cobro total={cobrando.total} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
       ) : comandaAbierta ? (
@@ -989,10 +1077,10 @@ export default function PanelComandas(p) {
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:14 }}>
               {local && local.nombre} todavía no tiene mesas cargadas
             </div>
-            <button onClick={function() { setConfig(true); }}
+            {p.soloServicio ? <div style={{ fontSize:12, color:"#666" }}>Pedile a administración que cargue las mesas.</div> : (<button onClick={function() { setConfig(true); }}
               style={{ padding:"11px 20px", borderRadius:9, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>
               Cargar las mesas
-            </button>
+            </button>)}
           </div>
         ) : (
           <>
@@ -1011,7 +1099,7 @@ export default function PanelComandas(p) {
                 </div>
               );
             })}
-            <button onClick={function() { setConfig(true); }} style={{ ...GH, padding:"8px 14px", fontSize:11, marginTop:4 }}>⚙️ Editar el plano</button>
+            {!p.soloServicio && <button onClick={function() { setConfig(true); }} style={{ ...GH, padding:"8px 14px", fontSize:11, marginTop:4 }}>⚙️ Editar el plano</button>}
           </>
         )
       ) : (

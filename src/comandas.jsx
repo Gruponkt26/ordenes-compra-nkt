@@ -513,10 +513,10 @@ function VentanaControl(props) {
   );
 }
 
-// Los mozos de un local: los empleados activos cargados en ese local, agrupados por sector (Salón primero).
-var SECTORES_ORDEN = ["Salón", "Barra", "Cocina"];
+// Los mozos de un local: los empleados activos cargados en ese local, de los sectores Salón y Barra.
+var SECTORES_ORDEN = ["Salón", "Barra"];   // solo estos sectores toman pedidos
 function mozosDeLocal(empleados, localId) {
-  return (empleados || []).filter(function(e) { return e.activo !== false && e.local === localId && e.nombre; })
+  return (empleados || []).filter(function(e) { return e.activo !== false && e.local === localId && e.nombre && SECTORES_ORDEN.indexOf(e.categoria) >= 0; })
     .sort(function(a, b) {
       var ia = SECTORES_ORDEN.indexOf(a.categoria), ib = SECTORES_ORDEN.indexOf(b.categoria);
       ia = ia < 0 ? 99 : ia; ib = ib < 0 ? 99 : ib;

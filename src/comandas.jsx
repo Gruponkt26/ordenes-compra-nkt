@@ -791,6 +791,23 @@ function Carta(props) {
       setCarta(function(prev) { return prev.filter(function(y) { return y.id !== x.id; }); });
       sbDeleteCarta(x.id);
     }
+    // Categorías: cambiarles el nombre (se les cambia a todos sus platos) o borrarlas enteras, con sus platos.
+    function renombrarCat(cat) {
+      var nuevo = window.prompt("Nuevo nombre para la categoría «" + cat + "»:", cat);
+      if (nuevo === null) return;
+      nuevo = nuevo.trim();
+      if (!nuevo || nuevo === cat) return;
+      if (categorias.indexOf(nuevo) !== -1) { alert("Ya existe una categoría que se llama «" + nuevo + "». Para juntarlas, movés los platos de una a la otra."); return; }
+      var cambiados = delLocal.filter(function(x) { return x.categoria === cat; }).map(function(x) { return { ...x, categoria:nuevo }; });
+      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }).concat(cambiados); });
+      sbSaveCartaMuchos(cambiados).then(function(err) { if (err) { alert("No se pudo cambiar el nombre:\n\n" + String(err).slice(0, 200)); cargarCarta(); } });
+    }
+    function borrarCat(cat) {
+      var platosCat = delLocal.filter(function(x) { return x.categoria === cat; });
+      if (!window.confirm("¿Borrar la categoría «" + cat + "» con sus " + platosCat.length + " plato" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un plato de lugar, usá la flecha ↪ de cada plato.")) return;
+      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }); });
+      platosCat.forEach(function(x) { sbDeleteCarta(x.id); });
+    }
     // Trae los platos del menú de stock de este local. No pisa lo que ya está: si un
     // plato ya figura en la carta, se saltea, así se puede volver a apretar cuando se
     // agrega algo al menú sin perder los precios cargados.
@@ -890,7 +907,11 @@ function Carta(props) {
             });
           return (
             <div key={cat} style={{ marginBottom:16 }}>
-              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>{cat} ({platos.length})</div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7 }}>
+                <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, flex:1 }}>{cat} ({platos.length})</div>
+                <button onClick={function() { renombrarCat(cat); }} title="Cambiarle el nombre a la categoría" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
+                <button onClick={function() { borrarCat(cat); }} title="Borrar la categoría entera" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️</button>
+              </div>
               <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                 {platos.map(function(x) {
                   var faltaPrecio = x.precio === null || x.precio === undefined || x.precio === "";
@@ -914,6 +935,13 @@ function Carta(props) {
                         style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:x.activo===false?"#555":"#3A7D44", fontSize:11, cursor:"pointer" }}>
                         {x.activo===false ? "✖️" : "✓"}
                       </button>
+                      {categorias.length > 1 && (
+                        <select value="" title="Mover a otra categoría" onChange={function(e) { var v = e.target.value; if (v) guardarPlato({ ...x, categoria:v }); }}
+                          style={{ width:34, background:"#111", border:"1px solid #2A2A2A", borderRadius:6, color:"#888", fontSize:11, padding:"3px 2px", cursor:"pointer" }}>
+                          <option value="">↪</option>
+                          {categorias.filter(function(k) { return k !== cat; }).map(function(k) { return <option key={k} value={k}>Mover a {k}</option>; })}
+                        </select>
+                      )}
                       <button onClick={function() { borrarPlato(x); }}
                         style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:"#555", fontSize:11, cursor:"pointer" }}>🗑️</button>
                     </div>
@@ -1371,7 +1399,7 @@ export default function PanelComandas(p) {
           <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
       ) : vista === "carta" ? (
-        p.soloServicio
+        (p.soloServicio && !p.puedeEditarCarta)
           ? <CartaConsulta localId={localId} color={color} carta={carta} />
           : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
       ) : vista === "mesas" ? (

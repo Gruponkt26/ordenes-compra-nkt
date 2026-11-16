@@ -32107,7 +32107,7 @@ export default function App() {
 
           {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}
           {esSofia&&modulo==="comandas"&&(
-            <PanelComandas usuario={cu.nombre} menuStock={menuStock} diaDeNegocio={diaDeNegocio}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} empleados={empleados} diaDeNegocio={diaDeNegocio}/>
           )}
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
@@ -32649,7 +32649,7 @@ export default function App() {
           )}
 
           {subCompras==="comandas"&&puedeComandas&&(
-            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarCarta={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarPlano={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} empleados={empleados} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarCarta={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarPlano={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
           )}
           {subCompras==="comunidad"&&esCajero&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>

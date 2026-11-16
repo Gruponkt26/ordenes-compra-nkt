@@ -513,6 +513,49 @@ function VentanaControl(props) {
   );
 }
 
+// Los mozos de un local: los empleados activos cargados en ese local, agrupados por sector (Salón primero).
+var SECTORES_ORDEN = ["Salón", "Barra", "Cocina"];
+function mozosDeLocal(empleados, localId) {
+  return (empleados || []).filter(function(e) { return e.activo !== false && e.local === localId && e.nombre; })
+    .sort(function(a, b) {
+      var ia = SECTORES_ORDEN.indexOf(a.categoria), ib = SECTORES_ORDEN.indexOf(b.categoria);
+      ia = ia < 0 ? 99 : ia; ib = ib < 0 ? 99 : ib;
+      return ia - ib || String(a.nombre).localeCompare(String(b.nombre));
+    });
+}
+// ¿Quién toma el pedido? Se pregunta al abrir una mesa, un delivery o un mostrador.
+function ElegirMozo(props) {
+  var mozos = props.mozos, color = props.color, ultimo = props.ultimo;
+  var sectores = [];
+  mozos.forEach(function(m) { var k = m.categoria || "Otro"; if (sectores.indexOf(k) < 0) sectores.push(k); });
+  return (
+    <div onClick={props.onCancelar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid "+color+"55", borderRadius:14, padding:"16px", width:"100%", maxWidth:420, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:3 }}>🧑‍🍳 ¿Quién toma el pedido?</div>
+        <div style={{ fontSize:11, color:"#777", marginBottom:12 }}>{props.titulo}</div>
+        {sectores.map(function(sec) {
+          return (
+            <div key={sec} style={{ marginBottom:11 }}>
+              <div style={{ fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{sec}</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {mozos.filter(function(m) { return (m.categoria || "Otro") === sec; }).map(function(m) {
+                  var act = ultimo === m.nombre;
+                  return <button key={m.id} onClick={function() { props.onElegir(m.nombre); }}
+                    style={{ padding:"10px 14px", borderRadius:9, border:"1px solid " + (act ? color : "#2A2A2A"), background: act ? color + "22" : "#161616", color: act ? color : "#DDD", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>{m.nombre}</button>;
+                })}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display:"flex", gap:8, marginTop:6 }}>
+          <button onClick={function() { props.onElegir(props.usuario); }} style={{ ...GH, flex:1, padding:"9px", fontSize:11 }}>Nadie / yo ({props.usuario})</button>
+          <button onClick={props.onCancelar} style={{ ...GH, padding:"9px 14px", fontSize:11 }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
@@ -614,7 +657,14 @@ function ComandaDetalle(props) {
             <span style={{ fontSize:15, fontWeight:800, color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color }}>{props.titulo}</span>
           </div>
           <div style={{ fontSize:10, color:"#555" }}>
-            #{c.numero}{c.mozo ? " · " + c.mozo : ""}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""}
+            #{c.numero}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""} · Mozo:{" "}
+            {props.mozos && props.mozos.length > 0 ? (
+              <select value={c.mozo || ""} onChange={function(e) { props.onCambiarMozo(e.target.value); }}
+                style={{ background:"#161616", color:"#DDD", border:"1px solid #2A2A2A", borderRadius:6, fontSize:11, padding:"2px 4px" }}>
+                {(c.mozo && !props.mozos.some(function(m) { return m.nombre === c.mozo; })) && <option value={c.mozo}>{c.mozo}</option>}
+                {props.mozos.map(function(m) { return <option key={m.id} value={m.nombre}>{m.nombre}</option>; })}
+              </select>
+            ) : (c.mozo || "—")}
           </div>
         </div>
       </div>
@@ -1243,15 +1293,16 @@ function NuevaComanda(props) {
 
     function crear() {
       if (esDelivery && !direccion.trim()) return;
-      guardar({
-        id: "cmd_" + Date.now(),
-        local: localId, tipo: props.tipo, numero: proximoNumero(), estado: "abierta",
-        mozo: usuario, cliente: cliente.trim() || null,
-        direccion: esDelivery ? direccion.trim() : null,
-        telefono: telefono.trim() || null,
-        abierta_at: new Date().toISOString(), usuario: usuario,
-      });
+      var datos = { cliente: cliente.trim() || null, direccion: esDelivery ? direccion.trim() : null, telefono: telefono.trim() || null };
       setCliente(""); setDireccion(""); setTelefono(""); setAbierto(false);
+      props.pedirMozo((esDelivery ? "🛵 Delivery" : "🥡 Mostrador") + (datos.cliente ? " · " + datos.cliente : ""), function(mozo) {
+        guardar({
+          id: "cmd_" + Date.now(),
+          local: localId, tipo: props.tipo, numero: proximoNumero(), estado: "abierta",
+          mozo: mozo, cliente: datos.cliente, direccion: datos.direccion, telefono: datos.telefono,
+          abierta_at: new Date().toISOString(), usuario: usuario,
+        });
+      });
     }
 
     if (!abierto) return (
@@ -1293,6 +1344,14 @@ export default function PanelComandas(p) {
   var [abiertaId, setAbiertaId] = useState(null);
   var [ahora, setAhora] = useState(Date.now());
   var [practica, setPractica] = useState(false);
+  var mozos = mozosDeLocal(p.empleados, localId);
+  var [eligeMozo, setEligeMozo] = useState(null);   // {titulo, alElegir}
+  var [ultimoMozo, setUltimoMozo] = useState(null);
+  // Pregunta quién toma el pedido; si el local no tiene empleados cargados, sigue con el usuario de siempre.
+  function pedirMozo(titulo, alElegir) {
+    if (!mozos.length) { alElegir(usuario); return; }
+    setEligeMozo({ titulo: titulo, alElegir: alElegir });
+  }
   var [posPlano, setPosPlano] = useState({});     // {mesaId: {x, y}} en %
   var [verPlano, setVerPlano] = useState(false);
   var [acomodando, setAcomodando] = useState(false);
@@ -1428,13 +1487,15 @@ export default function PanelComandas(p) {
   function abrirMesa(mesa) {
     var ya = comandaDeMesa(mesa.id);
     if (ya) { setAbiertaId(ya.id); return; }
-    var nueva = {
-      id: "cmd_" + Date.now(),
-      local: localId, tipo: "mesa", mesa_id: mesa.id,
-      numero: proximoNumero(), estado: "abierta",
-      mozo: usuario, abierta_at: new Date().toISOString(), usuario: usuario,
-    };
-    guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
+    pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
+      var nueva = {
+        id: "cmd_" + Date.now(),
+        local: localId, tipo: "mesa", mesa_id: mesa.id,
+        numero: proximoNumero(), estado: "abierta",
+        mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
+      };
+      guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
+    });
   }
   var [cobrando, setCobrando] = useState(null);   // {c, total}: la comanda que se está cobrando
   // Lo extra de la comanda abierta (descuento, factura, control), guardado aparte.
@@ -1597,6 +1658,9 @@ export default function PanelComandas(p) {
         })}
       </div>
 
+      {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
+        onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
+        onCancelar={function() { setEligeMozo(null); }} />}
       {cobrando && <Cobro total={cobrando.total} subtotal={cobrando.subtotal} descuento={cobrando.desc} factura={(extras[cobrando.c.id] || {}).factura} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
@@ -1610,6 +1674,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
+          mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (
         <>
@@ -1831,7 +1896,7 @@ export default function PanelComandas(p) {
             <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
             <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
           </div>
-          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} />
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} pedirMozo={pedirMozo} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>

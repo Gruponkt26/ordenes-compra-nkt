@@ -77,7 +77,9 @@ async function simIniciar() {
 }
 function simTerminar() { SIM = null; }
 // Cuadros que se acomodan en el plano además de las mesas.
+var CMD_PALETA = ["#9AA0A6", "#4C9A5A", "#3A9BC1", "#D4A017", "#E07B39", "#B07CD8", "#C77DA8", "#A98B62"];
 var CMD_EXTRAS = [
+  { id:"rect",    emoji:"▭", nombre:"Rectángulo", color:"#9AA0A6", medidas:[4, 4] },
   { id:"salon",   emoji:"🍽️", nombre:"Salón",   color:"#4C9A5A", medidas:[4, 10] },
   { id:"barra",   emoji:"🍸", nombre:"Barra",   color:"#B07CD8" },
   { id:"cocina",  emoji:"🍳", nombre:"Cocina",  color:"#E07B39" },
@@ -1709,6 +1711,17 @@ export default function PanelComandas(p) {
                 });
                 setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
               }
+              function renombrarExtra(z) {
+                var n = window.prompt("Nombre de esta área (vacío = sin nombre):", z.nombre || "");
+                if (n === null) return;
+                var nuevos = extrasPlano.map(function(q) { return q.id === z.id ? { ...q, nombre: n.trim() || null } : q; });
+                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
+              }
+              function colorExtra(z, base) {
+                var i = CMD_PALETA.indexOf(z.color || base);
+                var nuevos = extrasPlano.map(function(q) { return q.id === z.id ? { ...q, color: CMD_PALETA[(i + 1) % CMD_PALETA.length] } : q; });
+                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
+              }
               function quitarExtra(id) {
                 var nuevos = extrasPlano.filter(function(z) { return z.id !== id; });
                 setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
@@ -1745,12 +1758,13 @@ export default function PanelComandas(p) {
                   <div onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}
                     style={{ position:"relative", width:"100%", maxWidth: dimOk ? 640 : "none", margin:"0 auto", height: dimOk ? "auto" : 520, aspectRatio: dimOk ? (dimsPlano.ancho + " / " + dimsPlano.largo) : "auto", borderRadius:12, border:"1px solid " + (acomodando ? "#D4A017" : "#1E1E1E"), background:"#0A0A0A", backgroundImage:"linear-gradient(#141414 1px, transparent 1px), linear-gradient(90deg, #141414 1px, transparent 1px)", backgroundSize: dimOk ? (100 / Number(dimsPlano.ancho)) + "% " + (100 / Number(dimsPlano.largo)) + "%" : "10% 10%", overflow:"hidden", touchAction: acomodando ? "none" : "auto" }}>
                     {extrasPlano.map(function(z) {
-                      var t = CMD_EXTRAS.find(function(e) { return e.id === z.tipo; }) || CMD_EXTRAS[0];
+                      var t0 = CMD_EXTRAS.find(function(e) { return e.id === z.tipo; }) || CMD_EXTRAS[0];
+                      var t = { ...t0, color: z.color || t0.color };
                       return (
                         <div key={z.id}
                           onPointerDown={function(e) { if (!acomodando) return; e.preventDefault(); e.currentTarget.parentNode.setPointerCapture && e.currentTarget.parentNode.setPointerCapture(e.pointerId); setArrastre(z.id); }}
                           style={{ position:"absolute", left:z.x + "%", top:z.y + "%", transform:"translate(-50%,-50%)", ...(z.w ? { width:z.w + "%", height:z.h + "%" } : { minWidth:110, height:46 }), boxSizing:"border-box", padding:"0 14px", borderRadius:8, background:t.color + "22", border:"1px solid " + t.color + "88", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", gap:6, fontSize:12, fontWeight:800, letterSpacing:0.6, textTransform:"uppercase", cursor: acomodando ? "grab" : "default", zIndex: arrastre === z.id ? 5 : 0, userSelect:"none" }}>
-                          <span style={{ textAlign:"center", lineHeight:1.2 }}>{t.emoji} {z.nombre || t.nombre}{z.w && dimOk ? <span style={{ display:"block", fontSize:9, opacity:0.75, fontWeight:600, textTransform:"none" }}>{Math.round(z.w * Number(dimsPlano.ancho) / 10) / 10} × {Math.round(z.h * Number(dimsPlano.largo) / 10) / 10} m</span> : null}</span>
+                          <span style={{ textAlign:"center", lineHeight:1.2 }}>{z.tipo === "rect" && !z.nombre ? "" : t.emoji + " " + (z.nombre || t.nombre)}{z.w && dimOk ? <span style={{ display:"block", fontSize:9, opacity:0.75, fontWeight:600, textTransform:"none" }}>{Math.round(z.w * Number(dimsPlano.ancho) / 10) / 10} × {Math.round(z.h * Number(dimsPlano.largo) / 10) / 10} m</span> : null}</span>
                           {acomodando && (
                             <span style={{ position:"absolute", bottom:2, left:4, display:"flex", gap:2 }}>
                               {[["↔+", 0.5, 0], ["↔−", -0.5, 0], ["↕+", 0, 0.5], ["↕−", 0, -0.5]].map(function(q) {
@@ -1758,6 +1772,8 @@ export default function PanelComandas(p) {
                               })}
                             </span>
                           )}
+                          {acomodando && <button onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { renombrarExtra(z); }} title="Poner nombre" style={{ background:"transparent", border:"none", color:t.color, cursor:"pointer", fontSize:12, padding:0 }}>✎</button>}
+                          {acomodando && <button onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { colorExtra(z, t0.color); }} title="Cambiar color" style={{ background:"transparent", border:"none", color:t.color, cursor:"pointer", fontSize:12, padding:0 }}>🎨</button>}
                           {acomodando && <button onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { quitarExtra(z.id); }} title="Quitar" style={{ background:"transparent", border:"none", color:t.color, cursor:"pointer", fontSize:13, padding:0 }}>✕</button>}
                         </div>
                       );

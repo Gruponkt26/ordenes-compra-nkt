@@ -45,6 +45,7 @@ function simResponder(url, opts) {
       if (v.indexOf("eq.") === 0) return v0 === v.slice(3);
       if (v.indexOf("in.(") === 0) return v.slice(4, -1).split(",").indexOf(v0) >= 0;
       if (v.indexOf("gte.") === 0) return v0 >= v.slice(4);
+      if (v.indexOf("like.") === 0) return v0.indexOf(v.slice(5).replace(/\*$/, "")) === 0;
       return true;
     });
   }
@@ -180,6 +181,32 @@ async function sbLeerFaltantes(localId, fecha) {
     return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
   } catch(e) { return []; }
 }
+// Registro de todo lo que se hace en una cuenta, con la hora: pautas, ámbito "comanda_log", un registro por acción.
+// El id empieza con el de la comanda para poder traer el historial de una sola cuenta.
+async function sbLogAcciones(filas) {
+  if (!filas || !filas.length) return;
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var body = filas.map(function(f, i) { return { id:"clog_" + f.comanda_id + "_" + Date.now() + "_" + i + "_" + Math.random().toString(36).slice(2, 5), ambito:"comanda_log", texto:JSON.stringify(f), usuario:f.por || "", created_at:ahora, updated_at:ahora }; });
+    await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify(body) });
+  } catch(e) {}
+}
+function leerLog(filas) { return (Array.isArray(filas) ? filas : []).map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(Boolean).sort(function(a, b) { return String(a.at).localeCompare(String(b.at)); }); }
+async function sbLeerLogDia(localId, fecha) {
+  try {
+    var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_log&created_at=gte." + d0.toISOString() + "&order=created_at.asc&limit=3000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    return leerLog(await r.json()).filter(function(x) { return x.local === localId && x.fecha === fecha; });
+  } catch(e) { return []; }
+}
+async function sbLeerLogComanda(cid) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=like." + encodeURIComponent("clog_" + cid + "_") + "*&order=created_at.asc&limit=300", { headers: {...SH, "Cache-Control":"no-cache"} });
+    return leerLog(await r.json());
+  } catch(e) { return []; }
+}
+function horaSeg(iso) { try { return new Date(iso).toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false }); } catch(e) { return ""; } }
 // Lo que se descuenta de un subtotal: {tipo:"%"|"$", valor}.
 function montoDescuento(subtotal, d) {
   if (!d || !(Number(d.valor) > 0)) return 0;
@@ -597,6 +624,7 @@ function InformeTurno(props) {
   var color = props.color, localId = props.localId;
   var [fecha, setFecha] = useState(props.diaDeNegocio ? props.diaDeNegocio() : new Date().toISOString().slice(0, 10));
   var [turno, setTurno] = useState("todo");
+  var [verTodoLog, setVerTodoLog] = useState(false);
   var [datos, setDatos] = useState(null);
   useEffect(function() {
     var vivo = true; setDatos(null);
@@ -609,7 +637,8 @@ function InformeTurno(props) {
         its = await sbLoadItems(ids);
       }
       var falt = await sbLeerFaltantes(localId, fecha);
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt });
+      var log = await sbLeerLogDia(localId, fecha);
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -636,7 +665,7 @@ function InformeTurno(props) {
     var ventas = filas.reduce(function(a, f) { return a + (Number(f.pg.total) || 0); }, 0);
     var desc = filas.reduce(function(a, f) { return a + (Number(f.pg.descuento) || 0); }, 0);
     var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { var k = normalizarMedio(q.medio); porMedio[k] = (porMedio[k] || 0) + (Number(q.monto) || 0); }); });
-    var porMozo = {}; filas.forEach(function(f) { var k = f.c.mozo || "Sin mozo"; var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
+    var porMozo = {}; filas.forEach(function(f) { var k = f.c.tipo === "mesa" ? (f.c.mozo || "Sin mozo") : "🧾 Cajero: " + (f.c.mozo || "—"); var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
     var itemsT = datos.items.filter(function(i) { return ids[i.comanda_id]; });
     var cocina = itemsT.filter(function(i) { return i.estado === "entregado" && i.enviado_at && i.entregado_at; }).map(function(i) { return { nombre:i.nombre, min:(new Date(i.entregado_at) - new Date(i.enviado_at)) / 60000 }; }).filter(function(x) { return x.min >= 0 && x.min < 240; });
     var cocProm = cocina.length ? cocina.reduce(function(a, x) { return a + x.min; }, 0) / cocina.length : null;
@@ -682,7 +711,7 @@ function InformeTurno(props) {
         </div>
 
         <div style={card}>
-          <div style={h}>🧑‍🍳 Por mozo</div>
+          <div style={h}>🧑‍🍳 Por mozo (delivery y mostrador van al cajero)</div>
           {Object.keys(porMozo).sort(function(a, b) { return porMozo[b].v - porMozo[a].v; }).map(function(k) {
             var o = porMozo[k]; var pm = o.mins.length ? o.mins.reduce(function(a, x) { return a + x; }, 0) / o.mins.length : null;
             return <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><span style={{ color:"#DDD" }}>{k}</span><span style={{ color:"#999" }}>{o.n} · prom. {fmtMin(pm)} · <b style={{ color:"#F0EDE8" }}>{pesos(o.v)}</b></span></div>;
@@ -709,6 +738,27 @@ function InformeTurno(props) {
               {f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}
             </div>;
           })}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🕒 Registro de acciones (con la hora de cada una)</div>
+          {(function() {
+            var lg = (datos.log || []).filter(function(x) { return turno === "todo" || turnoDe(x.at) === turno; });
+            if (!lg.length) return <div style={{ fontSize:12, color:"#555" }}>No hay acciones registradas en este turno.</div>;
+            var ver = verTodoLog ? lg : lg.slice(-40);
+            return (
+              <div>
+                {!verTodoLog && lg.length > 40 && <button onClick={function() { setVerTodoLog(true); }} style={{ ...GH, padding:"5px 10px", fontSize:11, marginBottom:6 }}>Ver las {lg.length} acciones (ahora se ven las últimas 40)</button>}
+                {ver.map(function(x, i) {
+                  return <div key={i} style={{ display:"flex", gap:8, padding:"4px 0", borderTop:"1px solid #181818", fontSize:11.5, alignItems:"baseline" }}>
+                    <span style={{ color:"#4C9A5A", fontVariantNumeric:"tabular-nums", minWidth:58 }}>{horaSeg(x.at)}</span>
+                    <span style={{ color:"#999", minWidth:88 }}>{x.titulo}</span>
+                    <span style={{ color:"#DDD", flex:1 }}><b>{x.accion}</b>{x.detalle ? " · " + x.detalle : ""} <span style={{ color:"#666" }}>({x.por})</span></span>
+                  </div>;
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -774,6 +824,7 @@ function ElegirMozo(props) {
 function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
+  var [historial, setHistorial] = useState(null);   // null = cerrado; lista = abierto
   var [categoria, setCategoria] = useState(null);
   var [busqueda, setBusqueda] = useState("");
   var [notaDe, setNotaDe] = useState(null);
@@ -872,8 +923,8 @@ function ComandaDetalle(props) {
             <span style={{ fontSize:15, fontWeight:800, color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color }}>{props.titulo}</span>
           </div>
           <div style={{ fontSize:10, color:"#555" }}>
-            #{c.numero}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""} · Mozo:{" "}
-            {props.mozos && props.mozos.length > 0 ? (
+            #{c.numero}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""} · {c.tipo === "mesa" ? "Mozo:" : "Cajero:"}{" "}
+            {c.tipo === "mesa" && props.mozos && props.mozos.length > 0 ? (
               <select value={c.mozo || ""} onChange={function(e) { props.onCambiarMozo(e.target.value); }}
                 style={{ background:"#161616", color:"#DDD", border:"1px solid #2A2A2A", borderRadius:6, fontSize:11, padding:"2px 4px" }}>
                 {(c.mozo && !props.mozos.some(function(m) { return m.nombre === c.mozo; })) && <option value={c.mozo}>{c.mozo}</option>}
@@ -882,6 +933,22 @@ function ComandaDetalle(props) {
             ) : (c.mozo || "—")}
           </div>
         </div>
+      </div>
+
+      {/* Historial de la cuenta: cada acción con su hora */}
+      <div style={{ marginBottom:10 }}>
+        <button onClick={function() { if (historial) setHistorial(null); else sbLeerLogComanda(c.id).then(function(l) { setHistorial(l); }); }}
+          style={{ ...GH, padding:"6px 12px", fontSize:11 }}>🕒 {historial ? "Ocultar el historial" : "Ver el historial de esta cuenta"}</button>
+        {historial && (
+          <div style={{ background:"#0F0F0F", border:"1px solid #1E1E1E", borderRadius:10, padding:"8px 10px", marginTop:8 }}>
+            {historial.length === 0 ? <div style={{ fontSize:11, color:"#555" }}>Todavía no hay acciones registradas.</div> : historial.map(function(x, i) {
+              return <div key={i} style={{ display:"flex", gap:8, padding:"3px 0", fontSize:11.5, alignItems:"baseline" }}>
+                <span style={{ color:"#4C9A5A", minWidth:58, fontVariantNumeric:"tabular-nums" }}>{horaSeg(x.at)}</span>
+                <span style={{ color:"#DDD", flex:1 }}><b>{x.accion}</b>{x.detalle ? " · " + x.detalle : ""} <span style={{ color:"#666" }}>({x.por})</span></span>
+              </div>;
+            })}
+          </div>
+        )}
       </div>
 
       {/* Lo anotado en esta cuenta: descuento, facturación, control */}
@@ -1510,14 +1577,15 @@ function NuevaComanda(props) {
       if (esDelivery && !direccion.trim()) return;
       var datos = { cliente: cliente.trim() || null, direccion: esDelivery ? direccion.trim() : null, telefono: telefono.trim() || null };
       setCliente(""); setDireccion(""); setTelefono(""); setAbierto(false);
-      props.pedirMozo((esDelivery ? "🛵 Delivery" : "🥡 Mostrador") + (datos.cliente ? " · " + datos.cliente : ""), function(mozo) {
-        guardar({
-          id: "cmd_" + Date.now(),
-          local: localId, tipo: props.tipo, numero: proximoNumero(), estado: "abierta",
-          mozo: mozo, cliente: datos.cliente, direccion: datos.direccion, telefono: datos.telefono,
-          abierta_at: new Date().toISOString(), usuario: usuario,
-        });
-      });
+      // Delivery y mostrador los toma siempre el cajero: es quien está logueado, no se pregunta.
+      var nueva = {
+        id: "cmd_" + Date.now(),
+        local: localId, tipo: props.tipo, numero: proximoNumero(), estado: "abierta",
+        mozo: usuario, cliente: datos.cliente, direccion: datos.direccion, telefono: datos.telefono,
+        abierta_at: new Date().toISOString(), usuario: usuario,
+      };
+      props.registrar(nueva, esDelivery ? "Abrió un delivery" : "Abrió un pedido de mostrador", "Cajero: " + usuario + (datos.cliente ? " · " + datos.cliente : "") + (datos.direccion ? " · " + datos.direccion : ""));
+      guardar(nueva);
     }
 
     if (!abierto) return (
@@ -1570,6 +1638,15 @@ export default function PanelComandas(p) {
     if (!mozos.length) { alElegir(usuario); return; }
     setEligeMozo({ titulo: titulo, alElegir: alElegir });
   }
+
+  // Todo lo que se hace en una cuenta queda anotado con quién y a qué hora (se ve en el historial de la cuenta y en el informe).
+  function registrarVarias(arr) {
+    var fecha = p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10);
+    sbLogAcciones(arr.map(function(x, i) {
+      return { local: x.c.local || localId, fecha: fecha, comanda_id: x.c.id, titulo: x.c.tipo ? tituloDe(x.c) : "", accion: x.accion, detalle: x.detalle || "", por: usuario, at: new Date(Date.now() + i).toISOString() };
+    }));
+  }
+  function registrar(c, accion, detalle) { registrarVarias([{ c: c, accion: accion, detalle: detalle }]); }
   var [posPlano, setPosPlano] = useState({});     // {mesaId: {x, y}} en %
   var [verPlano, setVerPlano] = useState(false);
   var [acomodando, setAcomodando] = useState(false);
@@ -1684,6 +1761,23 @@ export default function PanelComandas(p) {
   // que se ve cargado pero no se guardó es un plato que la cocina nunca recibe.
   function guardarItems(filas) {
     var antes = items;
+    var grupos = {};
+    filas.forEach(function(f) {
+      var prev = items.find(function(x) { return x.id === f.id; });
+      var det = (Number(f.cant) || 1) + "x " + f.nombre, acc = null;
+      if (!prev) { acc = f.estado === "cancelado" ? "Quitó plato" : "Agregó plato"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; }
+      else if (prev.estado !== f.estado) {
+        acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : "Marchó a la cocina") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó plato" : "Volvió a pendiente";
+        if (f.estado === "cancelado" && f.nota) det += " — " + f.nota;
+      }
+      else if (Number(prev.cant) !== Number(f.cant)) { acc = "Cambió la cantidad"; det = f.nombre + ": " + prev.cant + " → " + f.cant; }
+      else if (Number(prev.precio) !== Number(f.precio)) { acc = "Puso precio"; det = f.nombre + ": " + pesos(f.precio); }
+      else if ((prev.nota || "") !== (f.nota || "")) { acc = "Anotó una nota"; det = f.nombre + ": " + (f.nota || "(sin nota)"); }
+      if (!acc) return;
+      var k = f.comanda_id + "|" + acc; (grupos[k] = grupos[k] || { cid: f.comanda_id, acc: acc, dets: [] }).dets.push(det);
+    });
+    var lista = Object.keys(grupos).map(function(k) { var g = grupos[k]; return { c: comandas.find(function(x) { return x.id === g.cid; }) || { id: g.cid }, accion: g.acc, detalle: g.dets.join(", ") }; });
+    if (lista.length) registrarVarias(lista);
     setItems(function(prev) {
       var ids = filas.map(function(f) { return f.id; });
       return prev.filter(function(x) { return ids.indexOf(x.id) === -1; }).concat(filas);
@@ -1698,6 +1792,8 @@ export default function PanelComandas(p) {
     });
   }
   function borrarItem(id) {
+    var it = items.find(function(x) { return x.id === id; });
+    if (it) registrarVarias([{ c: comandas.find(function(x) { return x.id === it.comanda_id; }) || { id: it.comanda_id }, accion: "Sacó un ítem sin mandar", detalle: (Number(it.cant) || 1) + "x " + it.nombre }]);
     setItems(function(prev) { return prev.filter(function(x) { return x.id !== id; }); });
     sbDeleteItem(id);
   }
@@ -1712,6 +1808,7 @@ export default function PanelComandas(p) {
         numero: proximoNumero(), estado: "abierta",
         mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
       };
+      registrar(nueva, "Abrió la mesa", "Mozo: " + mozo);
       guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
     });
   }
@@ -1725,6 +1822,12 @@ export default function PanelComandas(p) {
     return function() { vivo = false; };
   }, [abiertaId]);
   function guardarExtra(id, e) {
+    var antes = extras[id] || {}, cx = comandas.find(function(x) { return x.id === id; });
+    if (cx) {
+      if (JSON.stringify(antes.descuento || null) !== JSON.stringify(e.descuento || null)) registrar(cx, e.descuento ? "Aplicó descuento" : "Quitó el descuento", e.descuento ? (e.descuento.tipo === "%" ? e.descuento.valor + "%" : pesos(e.descuento.valor)) + (e.descuento.motivo ? " — " + e.descuento.motivo : "") : "");
+      if (JSON.stringify(antes.factura || null) !== JSON.stringify(e.factura || null)) registrar(cx, e.factura ? "Cargó datos para facturar" : "Quitó los datos de facturación", e.factura ? "Factura " + e.factura.tipo + (e.factura.razon ? " · " + e.factura.razon : "") : "");
+      if (!antes.control_at && e.control_at) registrar(cx, "Marcó el control de la cuenta", "");
+    }
     setExtras(function(prev) { return { ...prev, [id]: e }; });
     sbGuardarExtra(id, e, usuario);
   }
@@ -1739,6 +1842,7 @@ export default function PanelComandas(p) {
     }
     if (!delPedido.length && !window.confirm("La cuenta está vacía. ¿Cerrarla sin cobrar nada?")) return;
     if (!(Number(t) > 0)) {   // sin importe no hay nada que cobrar: se cierra directo
+      registrar(c, "Cerró la cuenta sin cobro", "Importe $0");
       guardar({ ...c, estado:"cerrada", cerrada_at:new Date().toISOString(), total:t });
       setAbiertaId(null);
       return;
@@ -1752,6 +1856,7 @@ export default function PanelComandas(p) {
     var ex = extras[c.id] || {};
     sbGuardarPago({ comanda_id:c.id, local:c.local, fecha:fecha, total:total, subtotal:cobrando.subtotal, descuento:cobrando.desc, descuento_motivo:(ex.descuento && ex.descuento.motivo) || "", factura:ex.factura || null, pagos:pagos, tipo:c.tipo, cobro_por:usuario, cobrado_at:ahoraISO }).then(function(err) {
       if (err) { alert("No se pudo anotar el cobro. La comanda sigue abierta.\n\n" + String(err).slice(0, 200)); setCobrando(null); return; }
+      registrar(c, "Cobró y cerró la cuenta", pesos(total) + " · " + (pagos || []).map(function(q) { var m = mediosDeLocal(c.local).find(function(x) { return x.id === q.medio; }); return (m ? m.nombre : q.medio) + " " + pesos(q.monto); }).join(" + "));
       guardar({ ...c, estado:"cerrada", cerrada_at:ahoraISO, total:total });
       setCobrando(null); setAbiertaId(null);
     });
@@ -1898,7 +2003,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
+          mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (
         <>
@@ -2122,7 +2227,7 @@ export default function PanelComandas(p) {
             <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
             <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
           </div>
-          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} pedirMozo={pedirMozo} />
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>

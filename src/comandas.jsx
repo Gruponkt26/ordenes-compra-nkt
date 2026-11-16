@@ -83,6 +83,10 @@ var CMD_EXTRAS = [
   { id:"entrada", emoji:"🚪", nombre:"Entrada", color:"#3A9BC1" },
   { id:"banos",   emoji:"🚻", nombre:"Baños",   color:"#7E8C99" },
   { id:"caja",    emoji:"💰", nombre:"Caja",    color:"#D4A017" },
+  { id:"patio",    emoji:"🌳", nombre:"Patio",    color:"#5FA05F" },
+  { id:"deposito", emoji:"📦", nombre:"Depósito", color:"#A98B62" },
+  { id:"vereda",   emoji:"🚶", nombre:"Vereda",   color:"#8FA3B0" },
+  { id:"otro",     emoji:"✏️", nombre:"Otro (con nombre)", color:"#C77DA8" },
 ];
 // ─── COBRO ────────────────────────────────────────────────────────────
 // Cómo se pagó cada comanda. Se guarda en pautas (ámbito "comanda_pago", un registro por comanda) para no tener que tocar la tabla comandas:
@@ -1669,7 +1673,18 @@ export default function PanelComandas(p) {
                 sbDeleteMesa(m.id);
               }
               function agregarExtra(tipo) {
-                var nuevos = extrasPlano.concat([{ id: "x_" + Date.now(), tipo: tipo, x: 50, y: 50 }]);
+                var nom = null;
+                if (tipo === "otro") { nom = window.prompt("¿Qué es? (ej: Escenario, Fumadores)"); if (!nom || !nom.trim()) return; nom = nom.trim(); }
+                var nuevos = extrasPlano.concat([{ id: "x_" + Date.now(), tipo: tipo, nombre: nom, x: 50, y: Math.min(90, 20 + extrasPlano.length * 7) }]);
+                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
+              }
+              // Agranda o achica un cuadro (ancho y alto en % del lienzo); la primera vez parte de un tamaño base.
+              function tamanoExtra(id, dw, dh) {
+                var nuevos = extrasPlano.map(function(z) {
+                  if (z.id !== id) return z;
+                  var w = z.w || 30, h = z.h || 8;
+                  return { ...z, w: Math.max(8, Math.min(100, w + dw)), h: Math.max(3, Math.min(100, h + dh)) };
+                });
                 setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
               }
               function quitarExtra(id) {
@@ -1712,8 +1727,15 @@ export default function PanelComandas(p) {
                       return (
                         <div key={z.id}
                           onPointerDown={function(e) { if (!acomodando) return; e.preventDefault(); e.currentTarget.parentNode.setPointerCapture && e.currentTarget.parentNode.setPointerCapture(e.pointerId); setArrastre(z.id); }}
-                          style={{ position:"absolute", left:z.x + "%", top:z.y + "%", transform:"translate(-50%,-50%)", minWidth:110, height:46, padding:"0 14px", borderRadius:8, background:t.color + "22", border:"1px solid " + t.color + "88", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", gap:6, fontSize:12, fontWeight:800, letterSpacing:0.6, textTransform:"uppercase", cursor: acomodando ? "grab" : "default", zIndex: arrastre === z.id ? 5 : 0, userSelect:"none" }}>
-                          <span>{t.emoji} {t.nombre}</span>
+                          style={{ position:"absolute", left:z.x + "%", top:z.y + "%", transform:"translate(-50%,-50%)", ...(z.w ? { width:z.w + "%", height:z.h + "%" } : { minWidth:110, height:46 }), boxSizing:"border-box", padding:"0 14px", borderRadius:8, background:t.color + "22", border:"1px solid " + t.color + "88", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", gap:6, fontSize:12, fontWeight:800, letterSpacing:0.6, textTransform:"uppercase", cursor: acomodando ? "grab" : "default", zIndex: arrastre === z.id ? 5 : 0, userSelect:"none" }}>
+                          <span>{t.emoji} {z.nombre || t.nombre}</span>
+                          {acomodando && (
+                            <span style={{ position:"absolute", bottom:2, left:4, display:"flex", gap:2 }}>
+                              {[["↔+", 6, 0], ["↔−", -6, 0], ["↕+", 0, 3], ["↕−", 0, -3]].map(function(q) {
+                                return <button key={q[0]} onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { tamanoExtra(z.id, q[1], q[2]); }} style={{ background:"#000A", border:"1px solid " + t.color + "66", borderRadius:4, color:t.color, fontSize:9, cursor:"pointer", padding:"1px 3px" }}>{q[0]}</button>;
+                              })}
+                            </span>
+                          )}
                           {acomodando && <button onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { quitarExtra(z.id); }} title="Quitar" style={{ background:"transparent", border:"none", color:t.color, cursor:"pointer", fontSize:13, padding:0 }}>✕</button>}
                         </div>
                       );

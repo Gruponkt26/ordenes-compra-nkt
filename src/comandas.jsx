@@ -1467,7 +1467,7 @@ export default function PanelComandas(p) {
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:14 }}>
               {local && local.nombre} todavía no tiene mesas cargadas
             </div>
-            {p.soloServicio ? <div style={{ fontSize:12, color:"#666" }}>Pedile a administración que cargue las mesas.</div> : (<button onClick={function() { setConfig(true); }}
+            {(p.soloServicio && !p.puedeEditarPlano) ? <div style={{ fontSize:12, color:"#666" }}>Pedile a administración que cargue las mesas.</div> : (<button onClick={function() { setConfig(true); }}
               style={{ padding:"11px 20px", borderRadius:9, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>
               Cargar las mesas
             </button>)}
@@ -1494,7 +1494,7 @@ export default function PanelComandas(p) {
                 </div>
               );
             })}
-            {!p.soloServicio && <button onClick={function() { setConfig(true); }} style={{ ...GH, padding:"8px 14px", fontSize:11, marginTop:4 }}>⚙️ Editar el plano</button>}
+            {(!p.soloServicio || p.puedeEditarPlano) && <button onClick={function() { setConfig(true); }} style={{ ...GH, padding:"8px 14px", fontSize:11, marginTop:4 }}>⚙️ Editar el plano</button>}
           </>
         )
       ) : (

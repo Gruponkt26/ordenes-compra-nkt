@@ -43,6 +43,28 @@ async function sbGuardarPago(p) {
     return null;
   } catch(e) { return String((e && e.message) || e); }
 }
+// Lo extra de cada comanda (descuento, datos para facturar, control pedido) vive en pautas, ámbito "comanda_extra", un registro por comanda.
+async function sbLeerExtra(id) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cextra_" + id) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) && d[0] ? (JSON.parse(d[0].texto) || {}) : {};
+  } catch(e) { return {}; }
+}
+async function sbGuardarExtra(id, obj, usuario) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await fetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cextra_" + id, ambito:"comanda_extra", texto:JSON.stringify(obj), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+// Lo que se descuenta de un subtotal: {tipo:"%"|"$", valor}.
+function montoDescuento(subtotal, d) {
+  if (!d || !(Number(d.valor) > 0)) return 0;
+  var m = d.tipo === "%" ? subtotal * Math.min(100, Number(d.valor)) / 100 : Math.min(subtotal, Number(d.valor));
+  return Math.round(m * 100) / 100;
+}
 // Lo cobrado en comandas de un local en un día de negocio, para el cierre de caja.
 export async function cargarPagosComandas(localId, fecha) {
   try {
@@ -221,7 +243,9 @@ function Cobro(props) {
       <div style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:16, padding:"18px", width:"100%", maxWidth:420, maxHeight:"92vh", overflowY:"auto" }}>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800, color:"#F0EDE8" }}>💰 Cobrar · {props.titulo}</div>
         {props.tipo && CMD_TIPO[props.tipo] && <span style={{ display:"inline-block", marginTop:4, background:CMD_TIPO[props.tipo].color+"26", color:CMD_TIPO[props.tipo].color, border:"1px solid "+CMD_TIPO[props.tipo].color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{CMD_TIPO[props.tipo].emoji} {CMD_TIPO[props.tipo].nombre.toUpperCase()}</span>}
+        {props.descuento > 0 && <div style={{ fontSize:11.5, color:"#8C8C8C", marginTop:6 }}>Subtotal {pesos(props.subtotal)} · <span style={{ color:"#D4A017" }}>descuento −{pesos(props.descuento)}</span></div>}
         <div style={{ fontSize:26, fontWeight:800, color:props.color || "#3A7D44", margin:"6px 0 12px" }}>{pesos(total)}</div>
+        {props.factura && <div style={{ fontSize:11.5, color:"#5BB8DC", marginBottom:10 }}>🧾 A facturar: {props.factura.tipo === "A" ? "Factura A · " + (props.factura.razon || "") : "Consumidor final"}</div>}
         {lineas.map(function(l, i) {
           return (
             <div key={i} style={{ display:"flex", gap:7, marginBottom:8, alignItems:"center" }}>
@@ -249,17 +273,177 @@ function Cobro(props) {
   );
 }
 
+// ─── OPCIONES DE LA MESA ──────────────────────────────────────────────
+function Ventana(props) {
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}>
+      <div style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:16, padding:"18px", width:"100%", maxWidth:440, maxHeight:"92vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800, color:"#F0EDE8" }}>{props.titulo}</div>
+          <button onClick={props.onCerrar} style={{ background:"none", border:"none", color:"#888", fontSize:20, cursor:"pointer" }}>✕</button>
+        </div>
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
+// Quitar un plato: lo todavía no mandado se saca sin más; lo ya mandado queda anotado como quitado, con el motivo.
+function VentanaQuitar(props) {
+  var [motivo, setMotivo] = useState("Error de carga");
+  var [otro, setOtro] = useState("");
+  var lista = props.items;
+  var texto = motivo === "Otro" ? (otro.trim() || "Otro") : motivo;
+  return (
+    <Ventana titulo="➖ Quitar un plato" onCerrar={props.onCerrar}>
+      <label style={{ display:"block", fontSize:9, color:"#8C8C8C", textTransform:"uppercase", marginBottom:4 }}>Motivo (para lo que ya se mandó a la cocina)</label>
+      <select value={motivo} onChange={function(e) { setMotivo(e.target.value); }} style={{ ...INP, marginBottom:motivo === "Otro" ? 6 : 12 }}>
+        {["Error de carga", "El cliente cambió de idea", "No hay stock", "Reclamo del cliente", "Otro"].map(function(m) { return <option key={m} value={m}>{m}</option>; })}
+      </select>
+      {motivo === "Otro" && <input value={otro} onChange={function(e) { setOtro(e.target.value); }} placeholder="Escribí el motivo" style={{ ...INP, marginBottom:12 }} />}
+      {lista.length === 0 && <div style={{ fontSize:13, color:"#777", padding:"10px 0" }}>No hay platos para quitar.</div>}
+      {lista.map(function(i) {
+        var mandado = i.estado !== "pendiente";
+        return (
+          <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"8px 0", borderTop:"1px solid #1A1A1A" }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:13.5, color:"#F0EDE8" }}>{i.cant}× {i.nombre}</div>
+              <div style={{ fontSize:10.5, color:mandado ? "#E0914A" : "#777" }}>{mandado ? "Ya mandado a la cocina" : "Sin mandar"} · {pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</div>
+            </div>
+            <button onClick={function() { props.onQuitar(i, texto, false); }} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #C1440E66", background:"#C1440E18", color:"#E0714A", fontSize:11.5, fontWeight:800, cursor:"pointer" }}>Quitar {Number(i.cant) > 1 ? "1" : ""}</button>
+            {Number(i.cant) > 1 && <button onClick={function() { props.onQuitar(i, texto, true); }} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #2A2A2A", background:"none", color:"#9A9A9A", fontSize:11.5, cursor:"pointer" }}>Todos</button>}
+          </div>
+        );
+      })}
+    </Ventana>
+  );
+}
+
+// Descuento sobre la cuenta, en porcentaje o en pesos, con el motivo anotado.
+function VentanaDescuento(props) {
+  var actual = props.descuento || {};
+  var [tipo, setTipo] = useState(actual.tipo || "%");
+  var [valor, setValor] = useState(actual.valor ? String(actual.valor) : "");
+  var [motivo, setMotivo] = useState(actual.motivo || "");
+  var v = Number(valor) || 0;
+  var monto = montoDescuento(props.subtotal, { tipo:tipo, valor:v });
+  var valido = v > 0 && (tipo === "$" ? v <= props.subtotal : v <= 100);
+  return (
+    <Ventana titulo="🏷️ Descuento" onCerrar={props.onCerrar}>
+      <div style={{ fontSize:12, color:"#9A9A9A", marginBottom:10 }}>Cuenta: <b style={{ color:"#F0EDE8" }}>{pesos(props.subtotal)}</b></div>
+      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+        {[["%", "En porcentaje (%)"], ["$", "En pesos ($)"]].map(function(t) {
+          var act = tipo === t[0];
+          return <button key={t[0]} onClick={function() { setTipo(t[0]); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"1px solid "+(act ? "#D4A017" : "#2A2A2A"), background:act ? "#D4A01722" : "#111", color:act ? "#D4A017" : "#888", fontSize:12.5, fontWeight:800, cursor:"pointer" }}>{t[1]}</button>;
+        })}
+      </div>
+      {tipo === "%" && (
+        <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
+          {[5, 10, 15, 20, 25, 50].map(function(n) { return <button key={n} onClick={function() { setValor(String(n)); }} style={{ padding:"6px 11px", borderRadius:7, border:"1px solid #2A2A2A", background:Number(valor) === n ? "#D4A01722" : "#111", color:Number(valor) === n ? "#D4A017" : "#9A9A9A", fontSize:12, fontWeight:700, cursor:"pointer" }}>{n}%</button>; })}
+        </div>
+      )}
+      <input type="number" inputMode="decimal" value={valor} onChange={function(e) { setValor(e.target.value); }} placeholder={tipo === "%" ? "Porcentaje" : "Monto en pesos"} style={{ ...INP, marginBottom:8 }} />
+      <div style={{ display:"flex", gap:6, marginBottom:6, flexWrap:"wrap" }}>
+        {["Empleado", "Cortesía", "Reclamo", "Cupón de la comunidad"].map(function(m) { return <button key={m} onClick={function() { setMotivo(m); }} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #2A2A2A", background:motivo === m ? "#1A6B8A33" : "#111", color:motivo === m ? "#5BB8DC" : "#888", fontSize:11, cursor:"pointer" }}>{m}</button>; })}
+      </div>
+      <input value={motivo} onChange={function(e) { setMotivo(e.target.value); }} placeholder="Motivo del descuento" style={{ ...INP, marginBottom:10 }} />
+      {valido && <div style={{ fontSize:13, color:"#8FD19A", marginBottom:10 }}>Descuento: −{pesos(monto)} · Total a cobrar: <b>{pesos(Math.max(0, props.subtotal - monto))}</b></div>}
+      <div style={{ display:"flex", gap:8 }}>
+        <button disabled={!valido} onClick={function() { props.onGuardar({ tipo:tipo, valor:v, motivo:motivo.trim() }); }} style={{ flex:2, padding:"11px", borderRadius:9, border:"none", background:valido ? "#D4A017" : "#1A1A1A", color:valido ? "#000" : "#555", fontSize:13, fontWeight:800, cursor:valido ? "pointer" : "not-allowed" }}>Aplicar descuento</button>
+        {actual.valor > 0 && <button onClick={function() { props.onGuardar(null); }} style={{ flex:1, padding:"11px", borderRadius:9, border:"1px solid #C1440E66", background:"none", color:"#E0714A", fontSize:12, cursor:"pointer" }}>Quitar</button>}
+      </div>
+    </Ventana>
+  );
+}
+
+// Facturar: deja anotados los datos del comprobante. No emite la factura electrónica: eso lo hace quien factura, con estos datos.
+function VentanaFactura(props) {
+  var actual = props.factura || {};
+  var [tipo, setTipo] = useState(actual.tipo || "B");
+  var [cuit, setCuit] = useState(actual.cuit || "");
+  var [razon, setRazon] = useState(actual.razon || "");
+  var [email, setEmail] = useState(actual.email || "");
+  var dig = cuit.replace(/\D/g, "");
+  var valido = tipo === "B" || (dig.length === 11 && razon.trim().length > 1);
+  return (
+    <Ventana titulo="🧾 Facturar" onCerrar={props.onCerrar}>
+      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+        {[["B", "Consumidor final"], ["A", "Factura A (con CUIT)"]].map(function(t) {
+          var act = tipo === t[0];
+          return <button key={t[0]} onClick={function() { setTipo(t[0]); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"1px solid "+(act ? "#3A9BC1" : "#2A2A2A"), background:act ? "#3A9BC122" : "#111", color:act ? "#5BB8DC" : "#888", fontSize:12.5, fontWeight:800, cursor:"pointer" }}>{t[1]}</button>;
+        })}
+      </div>
+      {tipo === "A" && (
+        <div>
+          <input value={cuit} onChange={function(e) { setCuit(e.target.value); }} inputMode="numeric" placeholder="CUIT (11 números)" style={{ ...INP, marginBottom:8 }} />
+          <input value={razon} onChange={function(e) { setRazon(e.target.value); }} placeholder="Razón social" style={{ ...INP, marginBottom:8 }} />
+        </div>
+      )}
+      <input value={email} onChange={function(e) { setEmail(e.target.value); }} placeholder="Email para enviarla (opcional)" style={{ ...INP, marginBottom:10 }} />
+      {!valido && <div style={{ fontSize:11.5, color:"#E0914A", marginBottom:8 }}>Para la factura A hacen falta el CUIT completo y la razón social.</div>}
+      <div style={{ fontSize:10.5, color:"#777", lineHeight:1.5, marginBottom:10 }}>Esto deja anotado que la cuenta se factura y con qué datos; queda en el cobro y en el cierre. La factura electrónica se emite aparte.</div>
+      <div style={{ display:"flex", gap:8 }}>
+        <button disabled={!valido} onClick={function() { props.onGuardar({ tipo:tipo, cuit:tipo === "A" ? dig : "", razon:tipo === "A" ? razon.trim() : "", email:email.trim() }); }} style={{ flex:2, padding:"11px", borderRadius:9, border:"none", background:valido ? "#3A9BC1" : "#1A1A1A", color:valido ? "#fff" : "#555", fontSize:13, fontWeight:800, cursor:valido ? "pointer" : "not-allowed" }}>Anotar para facturar</button>
+        {actual.tipo && <button onClick={function() { props.onGuardar(null); }} style={{ flex:1, padding:"11px", borderRadius:9, border:"1px solid #C1440E66", background:"none", color:"#E0714A", fontSize:12, cursor:"pointer" }}>Quitar</button>}
+      </div>
+    </Ventana>
+  );
+}
+
+// El control (precuenta): lo que se le muestra o se le imprime al cliente antes de cobrar. No es una factura.
+function VentanaControl(props) {
+  var lineas = props.items;
+  function textoPlano() {
+    var t = (props.localNombre || "") + "\nCONTROL · " + props.titulo + "\n" + new Date().toLocaleString("es-AR") + "\n-----------------------------\n";
+    lineas.forEach(function(i) { t += i.cant + " x " + i.nombre + "  " + pesos((Number(i.precio) || 0) * (Number(i.cant) || 1)) + "\n"; });
+    t += "-----------------------------\nSubtotal: " + pesos(props.subtotal) + "\n";
+    if (props.descuento > 0) t += "Descuento: -" + pesos(props.descuento) + "\n";
+    t += "TOTAL: " + pesos(props.total) + "\n(No válido como factura)";
+    return t;
+  }
+  function imprimir() {
+    var w = window.open("", "_blank", "width=380,height=600");
+    if (!w) { alert("El navegador bloqueó la ventana de impresión. Permitila e intentá de nuevo."); return; }
+    w.document.write("<pre style=\"font-family:monospace;font-size:14px;white-space:pre-wrap\">" + textoPlano().replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</pre>");
+    w.document.close(); w.focus(); w.print();
+  }
+  return (
+    <Ventana titulo={"🧾 Control · " + props.titulo} onCerrar={props.onCerrar}>
+      <div style={{ background:"#0A0A0A", border:"1px solid #1E1E1E", borderRadius:10, padding:"12px", marginBottom:12 }}>
+        {lineas.length === 0 && <div style={{ fontSize:13, color:"#777" }}>La cuenta está vacía.</div>}
+        {lineas.map(function(i) {
+          return <div key={i.id} style={{ display:"flex", justifyContent:"space-between", gap:8, fontSize:13, color:"#F0EDE8", padding:"3px 0" }}><span>{i.cant}× {i.nombre}</span><span>{pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</span></div>;
+        })}
+        <div style={{ borderTop:"1px solid #222", marginTop:8, paddingTop:8, fontSize:12.5, color:"#B8B8B8" }}>
+          <div style={{ display:"flex", justifyContent:"space-between" }}><span>Subtotal</span><span>{pesos(props.subtotal)}</span></div>
+          {props.descuento > 0 && <div style={{ display:"flex", justifyContent:"space-between", color:"#8FD19A" }}><span>Descuento{props.motivoDesc ? " (" + props.motivoDesc + ")" : ""}</span><span>−{pesos(props.descuento)}</span></div>}
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:18, fontWeight:800, color:"#F0EDE8", marginTop:4 }}><span>TOTAL</span><span>{pesos(props.total)}</span></div>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        <button onClick={imprimir} style={{ flex:1, padding:"11px", borderRadius:9, border:"none", background:"#3A7D44", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>🖨️ Imprimir</button>
+        <button onClick={function() { try { navigator.clipboard.writeText(textoPlano()); alert("Copiado."); } catch (e) {} }} style={{ ...GH, flex:1, padding:"11px", fontSize:13 }}>📋 Copiar</button>
+      </div>
+      <div style={{ fontSize:10.5, color:"#777", marginTop:8 }}>Es un control para el cliente, no una factura.</div>
+    </Ventana>
+  );
+}
+
 function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
   var [categoria, setCategoria] = useState(null);
   var [busqueda, setBusqueda] = useState("");
   var [notaDe, setNotaDe] = useState(null);
+  var [ventana, setVentana] = useState(null);   // opciones de la mesa: "quitar" | "control" | "descuento" | "factura"
+  var extra = props.extra || {};
 
   var mios = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
   var pendientes = mios.filter(function(i) { return i.estado === "pendiente"; });
   var mandados = mios.filter(function(i) { return i.estado !== "pendiente"; });
-  var total = mios.reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0);
+  var subtotal = mios.reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0);
+  var descM = montoDescuento(subtotal, extra.descuento);   // lo que se descuenta
+  var total = Math.max(0, subtotal - descM);                // lo que se cobra
 
   // Las tandas ya mandadas, de la más nueva a la más vieja.
   var rondas = [];
@@ -297,6 +481,20 @@ function ComandaDetalle(props) {
       usuario: props.usuario || "", created_at: new Date().toISOString(),
     }]);
   }
+  // Quitar un plato (o una unidad). Lo sin mandar se saca; lo ya mandado queda como "cancelado", con el motivo en la aclaración.
+  function quitar(i, motivo, todos) {
+    var n = Number(i.cant) || 1, sacar = todos ? n : 1, quien = props.usuario || "";
+    var notaQ = "Quitado: " + motivo + (quien ? " (" + quien + ")" : "") + (i.nota ? " · " + i.nota : "");
+    if (i.estado === "pendiente") {
+      if (sacar >= n) props.onBorrarItem(i.id); else props.onGuardarItems([{ ...i, cant:n - sacar }]);
+      return;
+    }
+    if (sacar >= n) { props.onGuardarItems([{ ...i, estado:"cancelado", nota:notaQ }]); return; }
+    props.onGuardarItems([
+      { ...i, cant:n - sacar },
+      { ...i, id:"it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7), cant:sacar, estado:"cancelado", nota:notaQ },
+    ]);
+  }
   function mandar() {
     if (!pendientes.length) return;
     var ronda = mandados.reduce(function(a, i) { return Math.max(a, Number(i.ronda) || 0); }, 0) + 1;
@@ -320,6 +518,38 @@ function ComandaDetalle(props) {
           <div style={{ fontSize:10, color:"#555" }}>
             #{c.numero}{c.mozo ? " · " + c.mozo : ""}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""}
           </div>
+        </div>
+      </div>
+
+      {/* Lo anotado en esta cuenta: descuento, facturación, control */}
+      {(extra.descuento || extra.factura || extra.control_at) && (
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+          {extra.descuento && descM > 0 && <span style={{ background:"#D4A01722", border:"1px solid #D4A01766", color:"#D4A017", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🏷️ Descuento {extra.descuento.tipo === "%" ? extra.descuento.valor + "%" : pesos(extra.descuento.valor)}{extra.descuento.motivo ? " · " + extra.descuento.motivo : ""}</span>}
+          {extra.factura && <span style={{ background:"#3A9BC122", border:"1px solid #3A9BC166", color:"#5BB8DC", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🧾 A facturar · {extra.factura.tipo === "A" ? "Factura A" + (extra.factura.razon ? " · " + extra.factura.razon : "") : "Consumidor final"}</span>}
+          {extra.control_at && <span style={{ background:"#3A7D4422", border:"1px solid #3A7D4466", color:"#8FD19A", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🧾 Control pedido hace {hace(extra.control_at)}</span>}
+        </div>
+      )}
+
+      {/* Opciones de la mesa o del pedido */}
+      <div style={{ background:"#0C0C0C", border:"1px solid #1E1E1E", borderRadius:12, padding:"10px", marginBottom:12 }}>
+        <div style={{ ...LBL, marginBottom:8 }}>Opciones</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:7 }}>
+          {[
+            { id:"marchar",  txt:"🔥 Marchar",     sub:pendientes.length ? pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0) + " a la cocina" : "nada para mandar", col:"#E0914A", off:!pendientes.length, fn:mandar },
+            { id:"sumar",    txt:"➕ Sumar plato",  sub:"de la carta",                                                                    col:"#4C9A5A", off:false, fn:function() { setAgregando(true); } },
+            { id:"quitar",   txt:"➖ Quitar plato", sub:"con motivo",                                                                     col:"#E0714A", off:!mios.length, fn:function() { setVentana("quitar"); } },
+            { id:"control",  txt:"🧾 Control",      sub:"precuenta",                                                                      col:"#8FD19A", off:!mios.length, fn:function() { setVentana("control"); if (props.onExtra) props.onExtra({ ...extra, control_at:new Date().toISOString() }); } },
+            { id:"desc",     txt:"🏷️ Descuento",    sub:props.puedeDescuento === false ? "lo aplica el cajero" : (descM > 0 ? "−" + pesos(descM) : "% o $"),                       col:"#D4A017", off:!mios.length || props.puedeDescuento === false, fn:function() { setVentana("descuento"); } },
+            { id:"facturar", txt:"🧾 Facturar",     sub:extra.factura ? "anotado" : "datos de factura",                                    col:"#5BB8DC", off:!mios.length, fn:function() { setVentana("factura"); } },
+          ].map(function(b) {
+            return (
+              <button key={b.id} disabled={b.off} onClick={b.fn}
+                style={{ padding:"10px 4px", borderRadius:9, border:"1px solid "+(b.off ? "#1E1E1E" : b.col+"66"), background:b.off ? "#0E0E0E" : b.col+"14", color:b.off ? "#444" : b.col, fontFamily:"'Inter',sans-serif", cursor:b.off ? "not-allowed" : "pointer", textAlign:"center", lineHeight:1.25 }}>
+                <div style={{ fontSize:12.5, fontWeight:800 }}>{b.txt}</div>
+                <div style={{ fontSize:9.5, fontWeight:500, opacity:0.85, marginTop:1 }}>{b.sub}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -450,13 +680,19 @@ function ComandaDetalle(props) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, marginTop:14, padding:"12px 13px", background:"#0F0F0F", border:"1px solid #1A1A1A", borderRadius:10 }}>
         <div>
           <div style={{ fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>Total</div>
+          {descM > 0 && <div style={{ fontSize:11, color:"#8C8C8C" }}>Subtotal {pesos(subtotal)} · <span style={{ color:"#D4A017" }}>descuento −{pesos(descM)}</span></div>}
           <div style={{ fontSize:20, fontWeight:800, color:"#F0EDE8" }}>{pesos(total)}</div>
         </div>
-        <button onClick={function() { props.onCerrar(total, pendientes.length); }}
+        <button onClick={function() { props.onCerrar(total, pendientes.length, subtotal, descM); }}
           style={{ padding:"11px 18px", borderRadius:9, border:"none", background:mios.length?"#3A7D44":"#1A1A1A", color:mios.length?"#fff":"#555", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>
           Cerrar mesa
         </button>
       </div>
+
+      {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
+      {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
+      {ventana === "descuento" && <VentanaDescuento subtotal={subtotal} descuento={extra.descuento} onCerrar={function() { setVentana(null); }} onGuardar={function(d) { var e = { ...extra }; if (d) e.descuento = { ...d, por:props.usuario || "" }; else delete e.descuento; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
+      {ventana === "factura" && <VentanaFactura factura={extra.factura} onCerrar={function() { setVentana(null); }} onGuardar={function(f) { var e = { ...extra }; if (f) e.factura = f; else delete e.factura; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
     </div>
   );
 }
@@ -977,7 +1213,19 @@ export default function PanelComandas(p) {
     guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
   }
   var [cobrando, setCobrando] = useState(null);   // {c, total}: la comanda que se está cobrando
-  function cerrar(c, total, sinMandar) {
+  // Lo extra de la comanda abierta (descuento, factura, control), guardado aparte.
+  var [extras, setExtras] = useState({});
+  useEffect(function() {
+    if (!abiertaId) return;
+    var vivo = true;
+    sbLeerExtra(abiertaId).then(function(e) { if (vivo) setExtras(function(prev) { return { ...prev, [abiertaId]: e }; }); });
+    return function() { vivo = false; };
+  }, [abiertaId]);
+  function guardarExtra(id, e) {
+    setExtras(function(prev) { return { ...prev, [id]: e }; });
+    sbGuardarExtra(id, e, usuario);
+  }
+  function cerrar(c, total, sinMandar, subtotal, desc) {
     if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin mandar a la cocina. Mandalos o sacalos antes de cerrar."); return; }
     var t = total === undefined ? c.total : total;
     if (!(Number(t) > 0)) {   // sin importe no hay nada que cobrar: se cierra directo
@@ -985,13 +1233,14 @@ export default function PanelComandas(p) {
       setAbiertaId(null);
       return;
     }
-    setCobrando({ c:c, total:t });
+    setCobrando({ c:c, total:t, subtotal:subtotal === undefined ? t : subtotal, desc:desc || 0 });
   }
   function confirmarCobro(pagos) {
     var c = cobrando.c, total = cobrando.total, ahoraISO = new Date().toISOString();
     var fecha = p.diaDeNegocio ? p.diaDeNegocio() : ahoraISO.slice(0, 10);
     // El cobro queda anotado aparte (para el cierre) y la comanda se cierra. Si el cobro no se pudo anotar, no se cierra: así no se pierde la plata.
-    sbGuardarPago({ comanda_id:c.id, local:c.local, fecha:fecha, total:total, pagos:pagos, tipo:c.tipo, cobro_por:usuario, cobrado_at:ahoraISO }).then(function(err) {
+    var ex = extras[c.id] || {};
+    sbGuardarPago({ comanda_id:c.id, local:c.local, fecha:fecha, total:total, subtotal:cobrando.subtotal, descuento:cobrando.desc, descuento_motivo:(ex.descuento && ex.descuento.motivo) || "", factura:ex.factura || null, pagos:pagos, tipo:c.tipo, cobro_por:usuario, cobrado_at:ahoraISO }).then(function(err) {
       if (err) { alert("No se pudo anotar el cobro. La comanda sigue abierta.\n\n" + String(err).slice(0, 200)); setCobrando(null); return; }
       guardar({ ...c, estado:"cerrada", cerrada_at:ahoraISO, total:total });
       setCobrando(null); setAbiertaId(null);
@@ -1102,7 +1351,7 @@ export default function PanelComandas(p) {
         })}
       </div>
 
-      {cobrando && <Cobro total={cobrando.total} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
+      {cobrando && <Cobro total={cobrando.total} subtotal={cobrando.subtotal} descuento={cobrando.desc} factura={(extras[cobrando.c.id] || {}).factura} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
       ) : comandaAbierta ? (
@@ -1112,7 +1361,9 @@ export default function PanelComandas(p) {
           onVolver={function() { setAbiertaId(null); }}
           onGuardarItems={guardarItems}
           onBorrarItem={borrarItem}
-          onCerrar={function(total, sinMandar) { cerrar(comandaAbierta, total, sinMandar); }}
+          onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
+          extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
+          puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
         />
       ) : config ? (
         <>

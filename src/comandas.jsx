@@ -505,6 +505,20 @@ function ComandaDetalle(props) {
   }
 
   var LBL = { display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6 };
+  // Un plato cargado sin precio (de la carta, que todavía no lo tenía) hace que la cuenta dé $0: se le pone el precio acá, sin salir de la comanda.
+  function ponerPrecio(i) {
+    var v = window.prompt("Precio de «" + i.nombre + "» (por unidad):", "");
+    if (v === null) return;
+    var n = parseFloat(String(v).replace(",", "."));
+    if (!(n > 0)) { alert("Poné un precio mayor a cero."); return; }
+    props.onGuardarItems([{ ...i, precio:n }]);
+  }
+  function PrecioItem(q) {
+    var sin = !(Number(q.i.precio) > 0);
+    return sin
+      ? <button onClick={function() { ponerPrecio(q.i); }} style={{ background:"#D4A01722", border:"1px solid #D4A01788", borderRadius:6, padding:"3px 8px", color:"#D4A017", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>Poner precio</button>
+      : <span style={{ fontSize:q.chico ? 11 : 12, color:q.chico ? "#555" : "#666", whiteSpace:"nowrap" }}>{pesos((Number(q.i.precio) || 0) * (Number(q.i.cant) || 1))}</span>;
+  }
 
   return (
     <div>
@@ -570,7 +584,7 @@ function ComandaDetalle(props) {
                   <button onClick={function() { props.onGuardarItems([{ ...i, cant:(Number(i.cant) || 1) + 1 }]); }}
                     style={{ width:28, height:28, borderRadius:7, border:"1px solid #2A2A2A", background:"#111", color:"#888", fontSize:15, cursor:"pointer", flex:"none" }}>+</button>
                   <span style={{ fontSize:13, color:"#F0EDE8", flex:1, minWidth:0 }}>{i.nombre}</span>
-                  <span style={{ fontSize:12, color:"#666", whiteSpace:"nowrap" }}>{pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</span>
+                  {PrecioItem({ i:i })}
                   <button onClick={function() { setNotaDe(notaDe === i.id ? null : i.id); }} title="Aclaración"
                     style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:i.nota?color:"#555", fontSize:11, cursor:"pointer" }}>✎</button>
                 </div>
@@ -661,7 +675,7 @@ function ComandaDetalle(props) {
                     <div style={{ fontSize:13, color:"#F0EDE8", textDecoration:listo?"line-through":"none" }}>{i.nombre}</div>
                     {i.nota && <div style={{ fontSize:11, color:"#D4A017" }}>▸ {i.nota}</div>}
                   </div>
-                  <span style={{ fontSize:11, color:"#555", whiteSpace:"nowrap" }}>{pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</span>
+                  {PrecioItem({ i:i, chico:true })}
                   <button onClick={function() {
                       props.onGuardarItems([{ ...i, estado: listo ? "enviado" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
                     }}
@@ -685,7 +699,7 @@ function ComandaDetalle(props) {
         </div>
         <button onClick={function() { props.onCerrar(total, pendientes.length, subtotal, descM); }}
           style={{ padding:"11px 18px", borderRadius:9, border:"none", background:mios.length?"#3A7D44":"#1A1A1A", color:mios.length?"#fff":"#555", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>
-          Cerrar mesa
+          {c.tipo === "delivery" ? "Cerrar delivery" : (c.tipo === "mostrador" ? "Cerrar pedido" : "Cerrar mesa")}
         </button>
       </div>
 
@@ -1256,6 +1270,13 @@ export default function PanelComandas(p) {
   function cerrar(c, total, sinMandar, subtotal, desc) {
     if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin mandar a la cocina. Mandalos o sacalos antes de cerrar."); return; }
     var t = total === undefined ? c.total : total;
+    var delPedido = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+    var sinPrecio = delPedido.filter(function(i) { return !(Number(i.precio) > 0); });
+    if (sinPrecio.length) {
+      alert("Hay " + sinPrecio.length + " plato" + (sinPrecio.length === 1 ? "" : "s") + " sin precio: " + sinPrecio.map(function(i) { return i.nombre; }).join(", ") + ".\n\nTocá «Poner precio» al lado de cada uno antes de cerrar, así no se pierde la venta.");
+      return;
+    }
+    if (!delPedido.length && !window.confirm("La cuenta está vacía. ¿Cerrarla sin cobrar nada?")) return;
     if (!(Number(t) > 0)) {   // sin importe no hay nada que cobrar: se cierra directo
       guardar({ ...c, estado:"cerrada", cerrada_at:new Date().toISOString(), total:t });
       setAbiertaId(null);

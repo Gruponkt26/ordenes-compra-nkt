@@ -199,6 +199,24 @@ async function sbLeerEntregas(desdeISO) {
     return o;
   } catch(e) { return {}; }
 }
+// El turno de cada local: se abre con la fecha del día y se cierra cuando no queda ninguna cuenta abierta.
+// Va en pautas, ámbito "turno", un registro por local y fecha: {local, fecha, estado:"abierto"|"cerrado", abierto_at, abierto_por, cerrado_at, cerrado_por}.
+async function sbGuardarTurno(t) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"turno_" + t.local + "_" + t.fecha, ambito:"turno", texto:JSON.stringify(t), usuario:(t.estado === "abierto" ? t.abierto_por : t.cerrado_por) || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function sbLeerTurnos(localId) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.turno&created_at=gte." + new Date(Date.now() - 14 * 86400000).toISOString() + "&order=created_at.desc&limit=200", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return (Array.isArray(d) ? d : []).map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId; })
+      .sort(function(a, b) { return String(b.abierto_at).localeCompare(String(a.abierto_at)); });
+  } catch(e) { return []; }
+}
 // Registro de todo lo que se hace en una cuenta, con la hora: pautas, ámbito "comanda_log", un registro por acción.
 // El id empieza con el de la comanda para poder traer el historial de una sola cuenta.
 async function sbLogAcciones(filas) {
@@ -1649,6 +1667,7 @@ function NuevaComanda(props) {
 
     function crear() {
       if (esDelivery && !direccion.trim()) return;
+      if (!props.puedeAbrirCuenta()) return;
       var datos = { cliente: cliente.trim() || null, direccion: esDelivery ? direccion.trim() : null, telefono: telefono.trim() || null };
       setCliente(""); setDireccion(""); setTelefono(""); setAbierto(false);
       // Delivery y mostrador los toma siempre el cajero: es quien está logueado, no se pregunta.
@@ -1704,8 +1723,15 @@ export default function PanelComandas(p) {
   var [abiertaId, setAbiertaId] = useState(null);
   var [ahora, setAhora] = useState(Date.now());
   var [practica, setPractica] = useState(false);
+  useEffect(function() { setTurnos(null); sbLeerTurnos(localId).then(setTurnos); }, [localId, practica]);
   var mozos = mozosDeLocal(p.empleados, localId);
   var [faltante, setFaltante] = useState(false);
+  var [turnos, setTurnos] = useState(null);          // null = todavía no se leyó
+  var [abriendoTurno, setAbriendoTurno] = useState(false);
+  var [fechaTurno, setFechaTurno] = useState("");
+  var turnoActual = (turnos || []).find(function(t) { return t.estado === "abierto"; }) || null;
+  // El día de las ventas es el del turno abierto: así lo cobrado cae en el cierre de esa fecha.
+  function fechaNegocio() { return turnoActual ? turnoActual.fecha : (p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)); }
   var [entregas, setEntregas] = useState({});   // tiempos de entrega prometidos {comanda_id: {...}}
   var [refInforme, setRefInforme] = useState(0);
   var verInforme = !p.soloServicio || !!p.puedeDescuento;   // el informe lo ven administración y cajeros
@@ -1719,7 +1745,7 @@ export default function PanelComandas(p) {
 
   // Todo lo que se hace en una cuenta queda anotado con quién y a qué hora (se ve en el historial de la cuenta y en el informe).
   function registrarVarias(arr) {
-    var fecha = p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10);
+    var fecha = fechaNegocio();
     sbLogAcciones(arr.map(function(x, i) {
       return { local: x.c.local || localId, fecha: fecha, comanda_id: x.c.id, titulo: x.c.tipo ? tituloDe(x.c) : "", accion: x.accion, detalle: x.detalle || "", por: usuario, at: new Date(Date.now() + i).toISOString() };
     }));
@@ -1775,6 +1801,7 @@ export default function PanelComandas(p) {
 
   function cargar() {
     sbLeerEntregas().then(setEntregas);
+    sbLeerTurnos(localId).then(setTurnos);
     return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
       setMesas(r[0]); setComandas(r[1]); setCargando(false);
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
@@ -1885,9 +1912,37 @@ export default function PanelComandas(p) {
     sbDeleteItem(id);
   }
 
+  // Sin turno abierto no se toman pedidos nuevos (en el modo práctica no hace falta).
+  function puedeAbrirCuenta() {
+    if (practica || turnoActual) return true;
+    alert(turnos === null ? "Todavía se está leyendo el turno, probá de nuevo en un segundo." : "El turno está cerrado. Primero hay que abrir el turno.");
+    return false;
+  }
+  function abrirTurno() {
+    var f = fechaTurno;
+    if (!f) return;
+    var previo = (turnos || []).find(function(t) { return t.fecha === f; });
+    if (previo && !window.confirm("El " + f.split("-").reverse().join("/") + " ya tuvo un turno" + (previo.estado === "cerrado" ? " cerrado" : "") + ". ¿Reabrirlo?")) return;
+    var t = { local: localId, fecha: f, estado: "abierto", abierto_at: new Date().toISOString(), abierto_por: usuario, cerrado_at: null, cerrado_por: null };
+    setTurnos(function(prev) { return [t].concat((prev || []).filter(function(x) { return x.fecha !== f; })); });
+    setAbriendoTurno(false);
+    sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar la apertura del turno."); });
+  }
+  function cerrarTurno() {
+    var pendientes = comandas.filter(function(c) { return c.local === localId; });
+    if (pendientes.length) {
+      alert("No se puede cerrar el turno: hay " + pendientes.length + " cuenta" + (pendientes.length === 1 ? "" : "s") + " sin cobrar.\n\n" + pendientes.map(function(c) { return "• " + tituloDe(c); }).join("\n") + "\n\nCobralas o cerralas y volvé a intentar.");
+      return;
+    }
+    if (!window.confirm("¿Cerrar el turno del " + turnoActual.fecha.split("-").reverse().join("/") + "?\n\nDespués no se pueden abrir cuentas nuevas hasta abrir otro turno.")) return;
+    var t = { ...turnoActual, estado: "cerrado", cerrado_at: new Date().toISOString(), cerrado_por: usuario };
+    setTurnos(function(prev) { return (prev || []).map(function(x) { return x.fecha === t.fecha ? t : x; }); });
+    sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar el cierre del turno."); });
+  }
   function abrirMesa(mesa) {
     var ya = comandaDeMesa(mesa.id);
     if (ya) { setAbiertaId(ya.id); return; }
+    if (!puedeAbrirCuenta()) return;
     pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
       var nueva = {
         id: "cmd_" + Date.now(),
@@ -1938,7 +1993,7 @@ export default function PanelComandas(p) {
   }
   function confirmarCobro(pagos) {
     var c = cobrando.c, total = cobrando.total, ahoraISO = new Date().toISOString();
-    var fecha = p.diaDeNegocio ? p.diaDeNegocio() : ahoraISO.slice(0, 10);
+    var fecha = fechaNegocio();
     // El cobro queda anotado aparte (para el cierre) y la comanda se cierra. Si el cobro no se pudo anotar, no se cierra: así no se pierde la plata.
     var ex = extras[c.id] || {};
     sbGuardarPago({ comanda_id:c.id, local:c.local, fecha:fecha, total:total, subtotal:cobrando.subtotal, descuento:cobrando.desc, descuento_motivo:(ex.descuento && ex.descuento.motivo) || "", factura:ex.factura || null, pagos:pagos, tipo:c.tipo, cobro_por:usuario, cobrado_at:ahoraISO }).then(function(err) {
@@ -2008,10 +2063,31 @@ export default function PanelComandas(p) {
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
       </div>
 
+      {!practica && turnos !== null && (
+        turnoActual ? (
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:"#0E1F14", border:"1px solid #3A7D4466", borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
+            <span style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>🟢 Turno abierto</span>
+            <span style={{ fontSize:12, color:"#C8C8C8", flex:1, minWidth:150 }}>Día {turnoActual.fecha.split("-").reverse().join("/")} · desde las {horaSeg(turnoActual.abierto_at).slice(0, 5)} · {turnoActual.abierto_por}</span>
+            {verInforme && <button onClick={cerrarTurno} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #C1440E", background:"#C1440E22", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⏹ Cerrar turno</button>}
+          </div>
+        ) : (
+          <div style={{ background:"#2A0E0A", border:"1px solid #C1440E88", borderRadius:10, padding:"11px 12px", marginBottom:10 }}>
+            <div style={{ fontSize:13, fontWeight:800, color:"#E0714A" }}>🔴 Turno cerrado</div>
+            <div style={{ fontSize:11.5, color:"#C9A79B", margin:"3px 0 8px" }}>Hay que abrir el turno para tomar pedidos. Las cuentas que ya estaban abiertas se pueden terminar de cobrar.</div>
+            {verInforme ? (abriendoTurno ? (
+              <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                <input type="date" value={fechaTurno} onChange={function(e) { setFechaTurno(e.target.value); }} style={{ ...INP, width:"auto", padding:"8px 10px", fontSize:13 }} />
+                <button onClick={abrirTurno} disabled={!fechaTurno} style={{ padding:"9px 16px", borderRadius:8, border:"none", background:"#4C9A5A", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>Abrir turno</button>
+                <button onClick={function() { setAbriendoTurno(false); }} style={{ ...GH, padding:"9px 12px", fontSize:12 }}>Cancelar</button>
+              </div>
+            ) : <button onClick={function() { setFechaTurno(p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)); setAbriendoTurno(true); }} style={{ padding:"9px 16px", borderRadius:8, border:"none", background:"#4C9A5A", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>▶ Abrir turno</button>) : <div style={{ fontSize:11, color:"#9A7A70" }}>Pedile a un cajero o a administración que abra el turno.</div>}
+          </div>
+        )
+      )}
       <div style={{ marginBottom:10 }}>
         <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante de plato</button>
       </div>
-      {faltante && <VentanaFaltante color={color} localId={localId} fecha={p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)} usuario={usuario} carta={carta}
+      {faltante && <VentanaFaltante color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
         onCerrar={function() { setFaltante(false); }}
         onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
       {practica ? (
@@ -2099,7 +2175,7 @@ export default function PanelComandas(p) {
           <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
       ) : vista === "informe" ? (
-        <InformeTurno localId={localId} color={color} mesas={mesas} diaDeNegocio={p.diaDeNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
+        <InformeTurno localId={localId} color={color} mesas={mesas} diaDeNegocio={fechaNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
       ) : vista === "carta" ? (
         (p.soloServicio && !p.puedeEditarCarta)
           ? <CartaConsulta localId={localId} color={color} carta={carta} />
@@ -2315,7 +2391,7 @@ export default function PanelComandas(p) {
             <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
             <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
           </div>
-          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} />
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>

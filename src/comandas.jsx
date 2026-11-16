@@ -1636,8 +1636,11 @@ export default function PanelComandas(p) {
               var dimRatio = dimOk ? Number(dimsPlano.largo) / Number(dimsPlano.ancho) : 1;
               function posDe(m) {
                 if (posPlano[m.id]) return posPlano[m.id];
+                // Grilla automática según el ancho real del lienzo en pantalla (≈ 300 px si es angosto): una celda cada ~90 px.
                 var i = mesasLocal.filter(function(q) { return !posPlano[q.id]; }).indexOf(m);
-                return { x: 12 + (i % 5) * 19, y: 10 + Math.floor(i / 5) * 16 };
+                var anchoPx = dimOk ? (dimRatio > 1.4 ? 300 : 640) : 600, altoPx = dimOk ? anchoPx * dimRatio : 520;
+                var cols = Math.max(1, Math.floor(anchoPx / 90));
+                return { x: Math.round((i % cols + 0.5) * 100 / cols), y: Math.min(95, Math.round((Math.floor(i / cols) + 0.5) * 90 / altoPx * 100)) };
               }
               function mover(e) {
                 if (!arrastre || !acomodando) return;
@@ -1646,6 +1649,24 @@ export default function PanelComandas(p) {
                 var y = Math.max(5, Math.min(95, Math.round((e.clientY - r.top) / r.height * 50) * 2));
                 if (String(arrastre).indexOf("x_") === 0) setExtrasPlano(function(prev) { return prev.map(function(z) { return z.id === arrastre ? { ...z, x: x, y: y } : z; }); });
                 else setPosPlano(function(prev) { var o = { ...prev }; o[arrastre] = { x: x, y: y }; return o; });
+              }
+              // Crear y borrar mesas directo desde el plano.
+              function nuevaMesa() {
+                var nombre = window.prompt("¿Cómo se llama la mesa? (número o nombre)", String(Math.max.apply(null, [0].concat(mesasLocal.map(function(m) { return parseInt(m.nombre, 10) || 0; }))) + 1));
+                if (!nombre || !nombre.trim()) return;
+                var m = { id: "mesa_" + localId + "_" + Date.now(), local: localId, sector: "salon", nombre: nombre.trim(), orden: parseInt(nombre, 10) || 900, activa: true };
+                var fin = { ...posPlano }; mesasLocal.forEach(function(q) { fin[q.id] = posDe(q); });
+                fin[m.id] = { x: 50, y: 50 };
+                setMesas(function(prev) { return prev.concat([m]); });
+                setPosPlano(fin);
+                sbSaveMesa(m).then(function(err) { if (err) alert("No se pudo guardar la mesa:\n\n" + err); });
+                sbGuardarPlano(localId, fin, extrasPlano, dimsPlano, usuario);
+              }
+              function borrarMesa(m) {
+                if (comandaDeMesa(m.id)) { alert("Esa mesa tiene una comanda abierta. Cerrala antes de borrarla."); return; }
+                if (!window.confirm("¿Borrar la mesa " + m.nombre + "?")) return;
+                setMesas(function(prev) { return prev.filter(function(x) { return x.id !== m.id; }); });
+                sbDeleteMesa(m.id);
               }
               function agregarExtra(tipo) {
                 var nuevos = extrasPlano.concat([{ id: "x_" + Date.now(), tipo: tipo, x: 50, y: 50 }]);
@@ -1677,6 +1698,7 @@ export default function PanelComandas(p) {
                         <span>m de largo</span>
                       </div>
                       <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        <button onClick={nuevaMesa} style={{ ...GH, padding:"5px 10px", fontSize:11, borderColor:color, color:color }}>+ 🪑 Mesa</button>
                         {CMD_EXTRAS.map(function(t) {
                           return <button key={t.id} onClick={function() { agregarExtra(t.id); }} style={{ ...GH, padding:"5px 10px", fontSize:11 }}>+ {t.emoji} {t.nombre}</button>;
                         })}
@@ -1703,6 +1725,7 @@ export default function PanelComandas(p) {
                           onPointerDown={function(e) { if (!acomodando) return; e.preventDefault(); e.currentTarget.parentNode.setPointerCapture && e.currentTarget.parentNode.setPointerCapture(e.pointerId); setArrastre(m.id); }}
                           style={{ position:"absolute", left:q.x + "%", top:q.y + "%", transform:"translate(-50%,-50%) scale(0.85)", cursor: acomodando ? "grab" : "default", zIndex: arrastre === m.id ? 5 : 1, outline: acomodando ? "2px dashed #D4A01788" : "none", borderRadius:12 }}>
                           <div style={{ pointerEvents: acomodando ? "none" : "auto" }}><Mesa mesa={m} /></div>
+                          {acomodando && <button onPointerDown={function(e) { e.stopPropagation(); }} onClick={function() { borrarMesa(m); }} title="Borrar mesa" style={{ position:"absolute", top:-8, right:-8, width:24, height:24, borderRadius:12, border:"none", background:"#C1440E", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", padding:0, zIndex:6 }}>✕</button>}
                         </div>
                       );
                     })}

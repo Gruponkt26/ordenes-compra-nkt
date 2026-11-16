@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
-import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda } from "./comandas.jsx";
+import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
@@ -21148,7 +21148,8 @@ function PanelCierre(p) {
   // Día de negocio, no calendario: un cajero que abre a la noche y cierra pasada la
   // medianoche sigue cargando el cierre de ESE mismo día, no del día siguiente.
   var hoy=diaDeNegocio();
-  var turnoAhora=turnoDeComanda(new Date().toISOString());
+  var turnosL=turnosLocal(localId), unSoloTurno=turnosL.length===1;
+  var turnoAhora=unSoloTurno?turnosL[0].id:turnoDeComanda(new Date().toISOString());
   var formVacio={fecha:hoy,turno:turnoAhora,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
@@ -21163,7 +21164,7 @@ function PanelCierre(p) {
   // En la app no hay "caja" aparte: lo cobrado en las comandas entra solo al cierre.
   // Se completan los casilleros vacíos una vez por fecha, en un cierre nuevo.
   // Lo cobrado en comandas de ESTE turno: el cierre se arma por turno (mediodía 5 a 17 h, noche 17 a 5 h).
-  var pagosTurno=pagosCom.filter(function(c){return !form.turno||!c.cobrado_at||turnoDeComanda(c.cobrado_at)===form.turno;});
+  var pagosTurno=pagosCom.filter(function(c){return unSoloTurno||!form.turno||!c.cobrado_at||turnoDeComanda(c.cobrado_at)===form.turno;});
   var autoCom=useRef({});
   useEffect(function(){
     if(!showForm||editId||!form.fecha||!pagosTurno.length||autoCom.current[form.fecha+form.turno])return;
@@ -21461,12 +21462,12 @@ function PanelCierre(p) {
 
       {!showForm&&pagosCom.length>0&&(function(){
         var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
-        var turnos=[["mediodia","☀️ Mediodía"],["noche","🌙 Noche"]];
+        var turnos=turnosL.map(function(t){return [t.id,t.nombre+(unSoloTurno?" (desde las "+t.desde+")":"")];});
         var cerrado=function(t){ return cierresLocal.some(function(c){return c.fecha===hoy&&turnoDeCierre(c)===t&&esCierreReal(c);}); };
         return(<div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:14}}>
-          <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:8}}>🍽️ Cobrado hoy en comandas, por turno</div>
+          <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:8}}>🍽️ Cobrado hoy en comandas</div>
           {turnos.map(function(t){
-            var ps=pagosCom.filter(function(c){return !c.cobrado_at||turnoDeComanda(c.cobrado_at)===t[0];});
+            var ps=pagosCom.filter(function(c){return unSoloTurno||!c.cobrado_at||turnoDeComanda(c.cobrado_at)===t[0];});
             if(!ps.length)return null;
             var tot={}; ps.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
             var totC=mediosDeLocal(localId).reduce(function(s,m){return s+(tot[m.id]||0);},0);
@@ -21590,13 +21591,14 @@ function PanelCierre(p) {
           </div>
           <div style={{marginBottom:10}}>
             <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Turno que se cierra</label>
-            <div style={{display:"flex",gap:6}}>
+            {unSoloTurno&&<div style={{fontSize:12,color:"#C8C8C8",background:"#141414",border:"1px solid #2A2A2A",borderRadius:8,padding:"9px 12px"}}>{turnosL[0].nombre} · servicio desde las {turnosL[0].desde}. Los casilleros se completan con todo lo cobrado en las comandas del día.</div>}
+            {!unSoloTurno&&<div style={{display:"flex",gap:6}}>
               {[["mediodia","☀️ Mediodía"],["noche","🌙 Noche"]].map(function(t){
                 var act=form.turno===t[0];
                 return <button key={t[0]} type="button" disabled={!!editId} onClick={function(){ if(form.turno===t[0])return; if(calcTotal(form)>0&&!window.confirm("Al cambiar de turno se vuelven a completar los importes con las comandas de ese turno. ¿Seguimos?"))return; autoCom.current[form.fecha+t[0]]=false; setForm(function(f){return{...f,turno:t[0],efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:""};}); }} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid "+(act?(local?local.color:"#C1440E"):"#2A2A2A"),background:act?(local?local.color:"#C1440E")+"26":"#0F0F0F",color:act?(local?local.color:"#C1440E"):"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:editId?"default":"pointer"}}>{t[1]}</button>;
               })}
-            </div>
-            <div style={{fontSize:10,color:"#6A6A6A",marginTop:4}}>Mediodía: de 5 a 17 h · Noche: de 17 a 5 h. Los casilleros se completan con lo cobrado en las comandas de ese turno.</div>
+            </div>}
+            {!unSoloTurno&&<div style={{fontSize:10,color:"#6A6A6A",marginTop:4}}>Mediodía: de 5 a 17 h · Noche: de 17 a 5 h. Los casilleros se completan con lo cobrado en las comandas de ese turno.</div>}
           </div>
           {(function(){
             if(!pagosTurno.length)return null;

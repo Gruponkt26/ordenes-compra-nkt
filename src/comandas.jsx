@@ -636,6 +636,16 @@ function VentanaFaltante(props) {
 
 // ─── INFORME DEL TURNO ────────────────────────────────────────────────
 // Qué pasó en el servicio: cuánto tardó cada mesa, el promedio, la más lenta, la cocina, lo cobrado por medio de pago y los faltantes.
+// Los turnos de cada local. Hoy cada uno tiene uno solo: la noche (Kusama y Colantonio's desde las 19:30, el Bodegón desde las 20:00).
+// Con un solo turno no se parte el día: todo lo cobrado en el día de negocio es de ese turno. Si algún local suma otro turno, se agrega acá.
+var TURNOS_LOCAL = {
+  l1: [{ id:"noche", nombre:"🌙 Noche", desde:"20:00" }],
+  l2: [{ id:"noche", nombre:"🌙 Noche", desde:"19:30" }],
+  l3: [{ id:"noche", nombre:"🌙 Noche", desde:"19:30" }],
+};
+export function turnosLocal(localId) {
+  return TURNOS_LOCAL[localId] || [{ id:"mediodia", nombre:"☀️ Mediodía", desde:"05:00" }, { id:"noche", nombre:"🌙 Noche", desde:"17:00" }];
+}
 export function turnoDe(iso) { var h = new Date(iso).getHours(); return h >= 5 && h < 17 ? "mediodia" : "noche"; }
 function fmtMin(m) { if (m === null || m === undefined || isNaN(m)) return "—"; m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; }
 function InformeTurno(props) {
@@ -791,7 +801,8 @@ function InformeTurno(props) {
     <div>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
         <input type="date" value={fecha} onChange={function(e) { setFecha(e.target.value); }} style={{ ...INP, width:"auto", padding:"7px 10px", fontSize:12 }} />
-        {[["todo", "Todo el día"], ["mediodia", "☀️ Mediodía"], ["noche", "🌙 Noche"]].map(function(x) {
+        {turnosLocal(localId).length === 1 && <span style={{ fontSize:12, color:"#8C8C8C" }}>{turnosLocal(localId)[0].nombre} · servicio desde las {turnosLocal(localId)[0].desde}</span>}
+        {turnosLocal(localId).length > 1 && [["todo", "Todo el día"], ["mediodia", "☀️ Mediodía"], ["noche", "🌙 Noche"]].map(function(x) {
           var act = turno === x[0];
           return <button key={x[0]} onClick={function() { setTurno(x[0]); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid " + (act ? color : "#222"), background: act ? color + "22" : "transparent", color: act ? color : "#777", fontSize:12, fontWeight:700, cursor:"pointer" }}>{x[1]}</button>;
         })}

@@ -636,7 +636,7 @@ function VentanaFaltante(props) {
 
 // ─── INFORME DEL TURNO ────────────────────────────────────────────────
 // Qué pasó en el servicio: cuánto tardó cada mesa, el promedio, la más lenta, la cocina, lo cobrado por medio de pago y los faltantes.
-function turnoDe(iso) { var h = new Date(iso).getHours(); return h >= 5 && h < 17 ? "mediodia" : "noche"; }
+export function turnoDe(iso) { var h = new Date(iso).getHours(); return h >= 5 && h < 17 ? "mediodia" : "noche"; }
 function fmtMin(m) { if (m === null || m === undefined || isNaN(m)) return "—"; m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; }
 function InformeTurno(props) {
   var color = props.color, localId = props.localId;

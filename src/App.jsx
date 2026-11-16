@@ -21554,6 +21554,9 @@ function PanelCierre(p) {
             var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
             var filasC=MEDIOS_COBRO.filter(function(m){ return (tot[m.id]||0)>0||cargado[m.id]>0; });
             var totC=MEDIOS_COBRO.reduce(function(a,m){return a+(tot[m.id]||0);},0), totF=MEDIOS_COBRO.reduce(function(a,m){return a+cargado[m.id];},0);
+            // Lo cobrado en comandas separado por tipo de pedido: mesas, delivery y mostrador.
+            var porTipo={mesa:{n:0,t:0},delivery:{n:0,t:0},mostrador:{n:0,t:0}};
+            pagosCom.forEach(function(c){ var k=porTipo[c.tipo]?c.tipo:"mostrador"; porTipo[k].n++; porTipo[k].t+=parseFloat(c.total)||0; });
             function completar(){
               setForm(function(f){ var o={...f}; MEDIOS_COBRO.forEach(function(m){ var k=campoDe[m.id]; if((tot[m.id]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round((tot[m.id])*100)/100); }); return o; });
             }
@@ -21569,6 +21572,11 @@ function PanelCierre(p) {
                     <tr style={{borderTop:"2px solid #1E3A24"}}><td style={{padding:"6px 0",fontWeight:800,color:"#F0EDE8"}}>Total</td><td style={{textAlign:"right",fontWeight:800,color:"#F0EDE8"}}>{P(totC)}</td><td style={{textAlign:"right",fontWeight:800,color:"#C8C8C8"}}>{P(totF)}</td><td style={{textAlign:"right",fontWeight:800,color:Math.abs(totF-totC)<1?"#4C9A5A":"#E0714A"}}>{Math.abs(totF-totC)<1?"✓":(totF-totC>0?"+":"−")+P(Math.abs(totF-totC))}</td></tr>
                   </tbody>
                 </table>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+                  {[["mesa","🪑 Mesas","#4C9A5A"],["delivery","🛵 Delivery","#3A9BC1"],["mostrador","🥡 Mostrador","#D4A017"]].filter(function(x){return porTipo[x[0]].n>0;}).map(function(x){
+                    return <span key={x[0]} style={{background:x[2]+"1F",border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {porTipo[x[0]].n} · {P(porTipo[x[0]].t)}</span>;
+                  })}
+                </div>
                 <button onClick={completar} style={{marginTop:8,padding:"7px 12px",borderRadius:8,border:"1px solid #3A7D4488",background:"#3A7D4422",color:"#8FD19A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Completar los casilleros vacíos con las comandas</button>
                 <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6,lineHeight:1.4}}>Es un control: no cambia nada solo. Las ventas que no se cargaron como comanda no figuran acá, así que puede haber diferencia.</div>
               </div>

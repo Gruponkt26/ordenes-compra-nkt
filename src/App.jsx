@@ -6816,11 +6816,12 @@ function ResumenVacaciones({empleados, vacaciones, anio}){
   );
 }
 
-// Motivos habituales de licencia con goce de sueldo (días corridos, según la Ley de Contrato de Trabajo art. 158). Sirven para cargarlos rápido:
+// Motivos habituales de licencia (días corridos, según la Ley de Contrato de Trabajo art. 158). Sirven para cargarlos rápido:
 // al elegir uno se completa el tipo (paga), el motivo y el "hasta". El convenio de cada actividad puede dar más días: se pueden cambiar a mano.
 var MOTIVOS_LICENCIA_PAGA=[
   {id:"matrimonio",txt:"Matrimonio",dias:10},
-  {id:"nacimiento",txt:"Nacimiento de hijo",dias:2},
+  {id:"nacimiento",txt:"Nacimiento de hijo (papá)",dias:2},
+  {id:"maternidad",txt:"Maternidad (la paga ANSES)",dias:90,tipo:"licencia_sin"},
   {id:"fall_conyuge",txt:"Fallecimiento de cónyuge, hijo o padre/madre",dias:3},
   {id:"fall_hermano",txt:"Fallecimiento de un hermano",dias:1},
   {id:"examen",txt:"Examen (enseñanza media o universitaria)",dias:2},
@@ -7004,18 +7005,18 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                 </div>
               </div>
               <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo habitual con goce de sueldo (opcional)</label>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo habitual de licencia (opcional)</label>
                 <select value={form.motivoId||""} onChange={function(e){
                   var m=MOTIVOS_LICENCIA_PAGA.find(function(x){return x.id===e.target.value;});
                   setForm(function(f){
                     if(!m)return{...f,motivoId:"",motivoDias:0};
-                    return{...f,motivoId:m.id,motivoDias:m.dias,tipo:"licencia_paga",notas:m.txt,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};
+                    return{...f,motivoId:m.id,motivoDias:m.dias,tipo:m.tipo||"licencia_paga",notas:m.txt,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};
                   });
                 }} style={INP}>
                   <option value="">— Elegir un motivo (o cargarlo a mano abajo) —</option>
                   {MOTIVOS_LICENCIA_PAGA.map(function(m){return <option key={m.id} value={m.id}>{m.txt} · {m.dias} día{m.dias===1?"":"s"} corrido{m.dias===1?"":"s"}</option>;})}
                 </select>
-                {form.motivoId&&<div style={{fontSize:10,color:"#8FD19A",marginTop:4,lineHeight:1.4}}>Se cargó como licencia paga, con {form.motivoDias} día{form.motivoDias===1?"":"s"} corrido{form.motivoDias===1?"":"s"} desde la fecha de inicio. Si tu convenio da más días, cambiá el «Hasta».</div>}
+                {form.motivoId&&<div style={{fontSize:10,color:"#8FD19A",marginTop:4,lineHeight:1.4}}>Se cargó como {form.tipo==="licencia_sin"?"licencia sin goce (no suma horas; el pago no lo hace el local, por ejemplo la asignación por maternidad de ANSES)":"licencia paga"}, con {form.motivoDias} día{form.motivoDias===1?"":"s"} corrido{form.motivoDias===1?"":"s"} desde la fecha de inicio. Si tu convenio da más días, cambiá el «Hasta».</div>}
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo</label>

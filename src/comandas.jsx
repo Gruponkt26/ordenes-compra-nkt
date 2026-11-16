@@ -25,6 +25,57 @@ async function sbComandasDisponible() {
     return txt || ("Error " + r.status);
   } catch(e) { return String((e && e.message) || e); }
 }
+
+// ─── MODO PRÁCTICA ────────────────────────────────────────────────────
+// Un simulador para aprender a usar comandas y cobro sin tocar nada real: mientras está
+// prendido, todo lo que pasa por cfetch se lee y se escribe en memoria (mesas y carta se
+// copian de las reales al entrar). Nada llega a la base, así que no entra al cierre de caja.
+// El cierre lee con el fetch de verdad (cargarPagosComandas), nunca con éste.
+var SIM = null;
+function simResponder(url, opts) {
+  var t = SIM.t, m = (opts && opts.method) || "GET";
+  var partes = String(url).split("/rest/v1/")[1].split("?");
+  var tabla = partes[0]; if (!t[tabla]) t[tabla] = [];
+  var ps = (partes[1] || "").split("&").filter(Boolean).map(function(kv) { var i = kv.indexOf("="); return [kv.slice(0, i), decodeURIComponent(kv.slice(i + 1))]; });
+  function pasa(f) {
+    return ps.every(function(q) {
+      var k = q[0], v = q[1];
+      if (k === "select" || k === "order" || k === "limit") return true;
+      var v0 = String(f[k] == null ? "" : f[k]);
+      if (v.indexOf("eq.") === 0) return v0 === v.slice(3);
+      if (v.indexOf("in.(") === 0) return v.slice(4, -1).split(",").indexOf(v0) >= 0;
+      if (v.indexOf("gte.") === 0) return v0 >= v.slice(4);
+      return true;
+    });
+  }
+  var ok = function(d) { return new Response(JSON.stringify(d), { status: 200 }); };
+  if (m === "POST") {
+    var cuerpo = JSON.parse(opts.body); if (!Array.isArray(cuerpo)) cuerpo = [cuerpo];
+    cuerpo.forEach(function(f) {
+      var i = t[tabla].findIndex(function(x) { return x.id === f.id; });
+      if (i >= 0) t[tabla][i] = { ...t[tabla][i], ...f }; else t[tabla].push({ ...f });
+    });
+    return ok([]);
+  }
+  if (m === "DELETE") { t[tabla] = t[tabla].filter(function(f) { return !pasa(f); }); return ok([]); }
+  var filas = t[tabla].filter(pasa);
+  var ord = (ps.find(function(q) { return q[0] === "order"; }) || [0, ""])[1].split(",").filter(Boolean);
+  if (ord.length) filas = filas.slice().sort(function(a, b) {
+    for (var i = 0; i < ord.length; i++) {
+      var c = ord[i].split(".")[0], d = ord[i].indexOf(".desc") > 0 ? -1 : 1;
+      if (a[c] < b[c]) return -d; if (a[c] > b[c]) return d;
+    }
+    return 0;
+  });
+  return ok(filas);
+}
+function cfetch(url, opts) { return SIM ? Promise.resolve(simResponder(url, opts)) : fetch(url, opts); }
+async function simIniciar() {
+  var t = { comanda_mesas: [], comandas: [], comanda_items: [], carta: [], pautas: [] };
+  t.comanda_mesas = await sbLoadMesas(); t.carta = await sbLoadCarta();
+  SIM = { t: t };
+}
+function simTerminar() { SIM = null; }
 // ─── COBRO ────────────────────────────────────────────────────────────
 // Cómo se pagó cada comanda. Se guarda en pautas (ámbito "comanda_pago", un registro por comanda) para no tener que tocar la tabla comandas:
 // {comanda_id, local, fecha (día de negocio), total, pagos:[{medio, monto}], cobro_por, cobrado_at}. El cierre de caja lo lee para controlar.
@@ -39,7 +90,7 @@ async function sbGuardarPago(p) {
   try {
     var ahora = new Date().toISOString();
     var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
-    var r = await fetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cpago_" + p.comanda_id, ambito:"comanda_pago", texto:JSON.stringify(p), usuario:p.cobro_por || "", created_at:ahora, updated_at:ahora }) });
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cpago_" + p.comanda_id, ambito:"comanda_pago", texto:JSON.stringify(p), usuario:p.cobro_por || "", created_at:ahora, updated_at:ahora }) });
     if (!r.ok) return (await r.text()) || ("Error " + r.status);
     return null;
   } catch(e) { return String((e && e.message) || e); }
@@ -47,7 +98,7 @@ async function sbGuardarPago(p) {
 // Lo extra de cada comanda (descuento, datos para facturar, control pedido) vive en pautas, ámbito "comanda_extra", un registro por comanda.
 async function sbLeerExtra(id) {
   try {
-    var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cextra_" + id) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cextra_" + id) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) && d[0] ? (JSON.parse(d[0].texto) || {}) : {};
   } catch(e) { return {}; }
@@ -56,7 +107,7 @@ async function sbGuardarExtra(id, obj, usuario) {
   try {
     var ahora = new Date().toISOString();
     var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
-    var r = await fetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cextra_" + id, ambito:"comanda_extra", texto:JSON.stringify(obj), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cextra_" + id, ambito:"comanda_extra", texto:JSON.stringify(obj), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
     return r.ok;
   } catch(e) { return false; }
 }
@@ -77,7 +128,7 @@ export async function cargarPagosComandas(localId, fecha) {
 }
 async function sbLoadMesas() {
   try {
-    var r = await fetch(SURL + "/rest/v1/comanda_mesas?order=orden", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/comanda_mesas?order=orden", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
@@ -85,17 +136,17 @@ async function sbLoadMesas() {
 async function sbSaveMesa(m) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL + "/rest/v1/comanda_mesas", { method:"POST", headers:h, body:JSON.stringify(m) });
+    var r = await cfetch(SURL + "/rest/v1/comanda_mesas", { method:"POST", headers:h, body:JSON.stringify(m) });
     if (!r.ok) { var e = await r.text(); console.error("sbSaveMesa:", r.status, e); return e || ("Error " + r.status); }
     return null;
   } catch(e) { return String((e && e.message) || e); }
 }
 async function sbDeleteMesa(id) {
-  try { await fetch(SURL + "/rest/v1/comanda_mesas?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
+  try { await cfetch(SURL + "/rest/v1/comanda_mesas?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
 }
 async function sbLoadComandas() {
   try {
-    var r = await fetch(SURL + "/rest/v1/comandas?estado=eq.abierta&order=abierta_at", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/comandas?estado=eq.abierta&order=abierta_at", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
@@ -103,7 +154,7 @@ async function sbLoadComandas() {
 async function sbSaveComanda(c) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL + "/rest/v1/comandas", { method:"POST", headers:h, body:JSON.stringify(c) });
+    var r = await cfetch(SURL + "/rest/v1/comandas", { method:"POST", headers:h, body:JSON.stringify(c) });
     if (!r.ok) { var e = await r.text(); console.error("sbSaveComanda:", r.status, e); return e || ("Error " + r.status); }
     return null;
   } catch(e) { return String((e && e.message) || e); }
@@ -111,7 +162,7 @@ async function sbSaveComanda(c) {
 
 async function sbLoadCarta() {
   try {
-    var r = await fetch(SURL + "/rest/v1/carta?order=categoria,orden", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/carta?order=categoria,orden", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
@@ -122,7 +173,7 @@ async function sbLoadCarta() {
 async function sbSaveCartaMuchos(filas) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(filas) });
+    var r = await cfetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(filas) });
     if (!r.ok) { var e = await r.text(); console.error("sbSaveCartaMuchos:", r.status, e); return e || ("Error " + r.status); }
     return null;
   } catch(e) { return String((e && e.message) || e); }
@@ -130,13 +181,13 @@ async function sbSaveCartaMuchos(filas) {
 async function sbSaveCarta(x) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(x) });
+    var r = await cfetch(SURL + "/rest/v1/carta", { method:"POST", headers:h, body:JSON.stringify(x) });
     if (!r.ok) { var e = await r.text(); console.error("sbSaveCarta:", r.status, e); return e || ("Error " + r.status); }
     return null;
   } catch(e) { return String((e && e.message) || e); }
 }
 async function sbDeleteCarta(id) {
-  try { await fetch(SURL + "/rest/v1/carta?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
+  try { await cfetch(SURL + "/rest/v1/carta?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
 }
 
 // ─── ÍTEMS ────────────────────────────────────────────────────────────────────
@@ -147,7 +198,7 @@ async function sbLoadItems(ids) {
   if (!ids || !ids.length) return [];
   try {
     var lista = ids.join(",");
-    var r = await fetch(SURL + "/rest/v1/comanda_items?comanda_id=in.(" + lista + ")&order=created_at", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/comanda_items?comanda_id=in.(" + lista + ")&order=created_at", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d : [];
   } catch(e) { return []; }
@@ -157,13 +208,13 @@ async function sbLoadItems(ids) {
 async function sbSaveItems(filas) {
   try {
     var h = {...SH, "Prefer":"resolution=merge-duplicates,return=minimal"};
-    var r = await fetch(SURL + "/rest/v1/comanda_items", { method:"POST", headers:h, body:JSON.stringify(filas) });
+    var r = await cfetch(SURL + "/rest/v1/comanda_items", { method:"POST", headers:h, body:JSON.stringify(filas) });
     if (!r.ok) { var e = await r.text(); console.error("sbSaveItems:", r.status, e); return e || ("Error " + r.status); }
     return null;
   } catch(e) { return String((e && e.message) || e); }
 }
 async function sbDeleteItem(id) {
-  try { await fetch(SURL + "/rest/v1/comanda_items?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
+  try { await cfetch(SURL + "/rest/v1/comanda_items?id=eq." + id, { method:"DELETE", headers:SH }); } catch(e) {}
 }
 
 // ─── SECTORES ─────────────────────────────────────────────────────────────────
@@ -1187,6 +1238,21 @@ export default function PanelComandas(p) {
   var [items, setItems] = useState([]);
   var [abiertaId, setAbiertaId] = useState(null);
   var [ahora, setAhora] = useState(Date.now());
+  var [practica, setPractica] = useState(false);
+  // Siempre se sale del simulador al irse de la pantalla: no puede quedar prendido.
+  useEffect(function() { return function() { simTerminar(); }; }, []);
+  function recargarTodo() { setAbiertaId(null); setCobrando(null); return Promise.all([cargar(), cargarCarta()]); }
+  function entrarPractica() {
+    simIniciar().then(function() { setPractica(true); recargarTodo(); });
+  }
+  function salirPractica() {
+    if (!window.confirm("¿Salir de la práctica? Todo lo que probaste se borra y no queda en ningún cierre.")) return;
+    simTerminar(); setPractica(false); recargarTodo();
+  }
+  function reiniciarPractica() {
+    if (!window.confirm("¿Borrar lo practicado y empezar de cero?")) return;
+    simIniciar().then(recargarTodo);
+  }
 
   function cargar() {
     return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
@@ -1391,6 +1457,21 @@ export default function PanelComandas(p) {
         <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5 }}>Módulo</div>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
       </div>
+
+      {practica ? (
+        <div style={{ background:"#2A1F00", border:"2px dashed #D4A017", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:"#D4A017", letterSpacing:1 }}>🎮 MODO PRÁCTICA</div>
+          <div style={{ fontSize:11, color:"#E8D9A0", lineHeight:1.5, margin:"3px 0 8px" }}>Probá abrir mesas, cargar platos y cobrar. Es de mentira: no se guarda nada ni entra al cierre de caja. Las mesas y la carta son las reales.</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <button onClick={reiniciarPractica} style={{ ...GH, padding:"6px 11px", fontSize:11 }}>🔄 Empezar de cero</button>
+            <button onClick={salirPractica} style={{ background:"#D4A017", border:"none", borderRadius:8, color:"#1A1200", padding:"6px 12px", fontSize:11, fontWeight:800, cursor:"pointer" }}>Salir de la práctica</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom:12 }}>
+          <button onClick={entrarPractica} style={{ ...GH, padding:"6px 12px", fontSize:11 }}>🎮 Practicar (simulador)</button>
+        </div>
+      )}
 
       {problemaTabla && (
         <div style={{ background:"#2A0A0A", border:"1px solid #C1440E", borderRadius:10, padding:"11px 13px", marginBottom:12, display:"flex", gap:10, alignItems:"flex-start" }}>

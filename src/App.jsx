@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
-import PanelComandas from "./comandas.jsx";
+import PanelComandas, { MEDIOS_COBRO, cargarPagosComandas } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
@@ -21129,6 +21129,14 @@ function PanelCierre(p) {
   var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
+  // Lo cobrado en las comandas del local ese día, para controlar contra lo que el cajero carga en el cierre.
+  var [pagosCom,setPagosCom]=useState([]);
+  useEffect(function(){
+    if(!showForm||!form.fecha)return;
+    var vivo=true;
+    cargarPagosComandas(localId,form.fecha).then(function(x){ if(vivo)setPagosCom(x); });
+    return function(){ vivo=false; };
+  },[showForm,form.fecha,localId]);
   // El cartel de "verificá el efectivo" se muestra una vez por visita: arranca en false y
   // sólo pasa a true cuando el cajero lo confirma. Al salir de Caja y volver a entrar, el
   // componente se remonta entero y vuelve a pedirlo —es la puerta de entrada, no un tilde
@@ -21516,6 +21524,36 @@ function PanelCierre(p) {
             {!editId&&diaFaltante&&<div style={{fontSize:10,color:"#9A9A9A",marginTop:4}}>Primero hay que cerrar este día. Los demás se habilitan uno por uno.</div>}
             {fechaSospechosa&&<div style={{fontSize:10,color:"#D4A017",marginTop:4}}>⚠️ Hoy es {fmtDate(hoy)} — revisá que esta fecha esté bien antes de guardar.</div>}
           </div>
+          {(function(){
+            if(!pagosCom.length)return null;
+            var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
+            var n=function(k){ return parseFloat(form[k])||0; };
+            // Lo cargado en el cierre por medio: la cuenta principal más las otras cuentas (Mercado Pago, Patagonia) de ese medio.
+            var cargado={efectivo:n("efectivo"),transferencia:n("transferencia")+n("mp_transferencia")+n("pat_transferencia"),debito:n("tarjeta_debito")+n("mp_debito")+n("pat_debito"),credito:n("tarjeta_credito")+n("mp_credito")+n("pat_credito"),qr:n("otros")+n("mp_qr")+n("pat_qr")};
+            var campoDe={efectivo:"efectivo",transferencia:"transferencia",debito:"tarjeta_debito",credito:"tarjeta_credito",qr:"otros"};
+            var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
+            var filasC=MEDIOS_COBRO.filter(function(m){ return (tot[m.id]||0)>0||cargado[m.id]>0; });
+            var totC=MEDIOS_COBRO.reduce(function(a,m){return a+(tot[m.id]||0);},0), totF=MEDIOS_COBRO.reduce(function(a,m){return a+cargado[m.id];},0);
+            function completar(){
+              setForm(function(f){ var o={...f}; MEDIOS_COBRO.forEach(function(m){ var k=campoDe[m.id]; if((tot[m.id]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round((tot[m.id])*100)/100); }); return o; });
+            }
+            return(
+              <div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:12}}>
+                <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontWeight:800}}>🍽️ Lo que dicen las comandas · {pagosCom.length} cobrada{pagosCom.length===1?"":"s"}</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
+                  <thead><tr style={{color:"#7E7E7E",fontSize:9.5,textTransform:"uppercase",letterSpacing:1}}><th style={{textAlign:"left",padding:"2px 0"}}></th><th style={{textAlign:"right"}}>Comandas</th><th style={{textAlign:"right"}}>Cargado</th><th style={{textAlign:"right"}}>Dif.</th></tr></thead>
+                  <tbody>
+                    {filasC.map(function(m){ var d=cargado[m.id]-(tot[m.id]||0); return(
+                      <tr key={m.id} style={{borderTop:"1px solid #1A2A1E"}}><td style={{padding:"5px 0",color:"#C8C8C8"}}>{m.emoji} {m.nombre}</td><td style={{textAlign:"right",color:"#F0EDE8",fontWeight:700}}>{P(tot[m.id]||0)}</td><td style={{textAlign:"right",color:"#C8C8C8"}}>{P(cargado[m.id])}</td><td style={{textAlign:"right",fontWeight:800,color:Math.abs(d)<1?"#4C9A5A":"#E0714A"}}>{Math.abs(d)<1?"✓":(d>0?"+":"−")+P(Math.abs(d)).replace("$","$")}</td></tr>
+                    );})}
+                    <tr style={{borderTop:"2px solid #1E3A24"}}><td style={{padding:"6px 0",fontWeight:800,color:"#F0EDE8"}}>Total</td><td style={{textAlign:"right",fontWeight:800,color:"#F0EDE8"}}>{P(totC)}</td><td style={{textAlign:"right",fontWeight:800,color:"#C8C8C8"}}>{P(totF)}</td><td style={{textAlign:"right",fontWeight:800,color:Math.abs(totF-totC)<1?"#4C9A5A":"#E0714A"}}>{Math.abs(totF-totC)<1?"✓":(totF-totC>0?"+":"−")+P(Math.abs(totF-totC))}</td></tr>
+                  </tbody>
+                </table>
+                <button onClick={completar} style={{marginTop:8,padding:"7px 12px",borderRadius:8,border:"1px solid #3A7D4488",background:"#3A7D4422",color:"#8FD19A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Completar los casilleros vacíos con las comandas</button>
+                <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6,lineHeight:1.4}}>Es un control: no cambia nada solo. Las ventas que no se cargaron como comanda no figuran acá, así que puede haber diferencia.</div>
+              </div>
+            );
+          })()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
             {(function(){
               var campos={
@@ -31079,6 +31117,8 @@ export default function App() {
   // Cocina ve el recetario de su local, en modo lectura. Administración lo carga
   // y lo edita desde el módulo Locales.
   var esCocina=enListaDe(USUARIOS_RECETAS,cu);
+  // Comandas para el servicio: cajeros y mozos (sección Salón o Caja), cada uno en el local que tiene asignado.
+  var puedeComandas=!esSofia&&(infoSeccionesDe(cu).indexOf("cajeros")>=0||infoSeccionesDe(cu).indexOf("salon")>=0);
   // Todos entran por la pantalla de tarjetas: es la puerta a Ideas, que ahora es
   // un módulo principal para cualquiera y no un botón en el encabezado.
   // El despacho sigue siendo de quienes ya lo tenían: sumar cocina al recetario no
@@ -31563,7 +31603,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="comandas"?"🍽️ Comandas":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -31629,6 +31669,7 @@ export default function App() {
                 esSofia?[]:[{id:"fichar",emoji:"🕐",label:"Fichar",desc:"Marcar entrada y salida",color:"#1A8A7B",badge:0},
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"competencia",emoji:"🏆",label:"Competencia",desc:"Cómo va la competencia entre los locales y por qué tiene cada uno su puntaje",color:"#D4A017",badge:0},
+                            ...(puedeComandas?[{id:"comandas",emoji:"🍽️",label:"Comandas",desc:"Mesas, delivery y mostrador de tu local",color:"#C1440E",badge:0}]:[]),
                             ...(esCajero?[{id:"comunidad",emoji:"🌐",label:"Comunidad",desc:"Los clientes de tu local, sus cupones y el canje",color:"#1A8A7B",badge:0}]:[]),
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
                             {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",desc:"Emergencias, service y contactos del local",color:"#4CAF50",badge:0},
@@ -32006,7 +32047,7 @@ export default function App() {
 
           {/* MÓDULO COMANDAS — el plano de mesas, deliverys y mostradores */}
           {esSofia&&modulo==="comandas"&&(
-            <PanelComandas usuario={cu.nombre} menuStock={menuStock}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} diaDeNegocio={diaDeNegocio}/>
           )}
 
           {/* MÓDULO DEPORTES — tenis, pádel y galpón */}
@@ -32547,6 +32588,9 @@ export default function App() {
             <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} vistaCajero={esCajero} cajeroLocal={esCajero?(cu.local||""):""} usuarioCajero={cu.nombre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
+          {subCompras==="comandas"&&puedeComandas&&(
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} diaDeNegocio={diaDeNegocio}/>
+          )}
           {subCompras==="comunidad"&&esCajero&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:800,color:"#F0EDE8",marginBottom:12}}>🌐 Comunidad</div>

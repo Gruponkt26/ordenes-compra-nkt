@@ -14244,7 +14244,9 @@ function PanelFichajes(p){
     var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
     var vacD=diasDeVacaciones(e,mes,p.vacaciones,conMarcas,hoy);   // días de vacaciones (hasta hoy) que cuentan como trabajados
     var vacMin=Object.keys(vacD).reduce(function(a,f){return a+vacD[f];},0);
-    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+vacMin;
+    var justD=diasJustificados(e,mes,p.justificativos,conMarcas,hoy,vacD);   // faltas con justificativo aprobado: cuentan como trabajadas
+    var justMin=sumaDias(justD);
+    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+vacMin+justMin;
     var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
     // Contra la jornada cargada: lo previsto hasta hoy, los días que le tocaban y no marcó,
@@ -14258,14 +14260,14 @@ function PanelFichajes(p){
         if(f===hoy&&!turnoTerminado(t,f))return;                    // el turno de hoy todavía no terminó: no es falta ni horas previstas
         previstas+=t.minutos;
         var deVac=(p.vacaciones||[]).some(function(v){return v.empleado_id===e.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);});
-        if(!conMarcas[f]&&!deVac)faltas.push(f);
+        if(!conMarcas[f]&&!deVac&&justD[f]===undefined)faltas.push(f);
       });
     }
     return {e:e, jor:jor.sort(function(a,b){
       return String((b.entrada||b.salida).momento||"").localeCompare(String((a.entrada||a.salida).momento||""));
-    }), min:min, dias:dias, abiertas:abiertas, vacD:vacD, vacMin:vacMin,
+    }), min:min, dias:dias, abiertas:abiertas, vacD:vacD, vacMin:vacMin, justD:justD, justMin:justMin,
       tieneJornada:tiene, previstas:previstas, faltas:faltas, francosTrabajados:francosTrabajados};
-  }).filter(function(x){return x.jor.length>0||x.faltas.length>0||x.vacMin>0;})
+  }).filter(function(x){return x.jor.length>0||x.faltas.length>0||x.vacMin>0||x.justMin>0;})
     .sort(function(a,b){return b.min-a.min;});
 
   var totalMin=porEmpleado.reduce(function(a,x){return a+x.min;},0);
@@ -14560,6 +14562,7 @@ function PanelFichajes(p){
                 <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:2}}>
                   {x.dias} día{x.dias===1?"":"s"}
                   {x.faltas.length>0?<span style={{color:"#C1440E"}}> · {x.faltas.length} falta{x.faltas.length===1?"":"s"}</span>:null}
+                  {Object.keys(x.justD).length>0?<span style={{color:"#3A9B5A"}}> · ✅ {Object.keys(x.justD).length} falta{Object.keys(x.justD).length===1?"":"s"} aprobada{Object.keys(x.justD).length===1?"":"s"} ({fmtHs(x.justMin)})</span>:null}
                   {Object.keys(x.vacD).length>0?<span style={{color:"#1A8A9B"}}> · 🏖️ {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)})</span>:null}
                   {x.francosTrabajados>0?<span style={{color:"#8B2FC9"}}> · {x.francosTrabajados} en franco</span>:null}
                   {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
@@ -14618,12 +14621,14 @@ function PanelFichajes(p){
                     var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
                     var t=x.tieneJornada?turnoDe(x.e,f):null;
                     var vac=js.length===0&&x.vacD[f]!==undefined;   // de vacaciones: cuenta la jornada como trabajada
-                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0)+(vac?x.vacD[f]:0);
+                    var jus=js.length===0&&!vac&&x.justD[f]!==undefined;   // falta justificada y aprobada: también
+                    var jj=jus?(p.justificativos||[]).find(function(q){return q.empleado_id===x.e.id&&q.fecha===f&&q.estado==="aprobado";}):null;
+                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0)+(vac?x.vacD[f]:0)+(jus?x.justD[f]:0);
                     var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0)&&!(f===hoy&&!turnoTerminado(t,f)))?t.minutos:0;
                     accT+=trab; accP+=prev;
                     var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
-                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem,vac:vac};
-                  }).filter(function(r){return r.js.length>0||r.prev>0||r.vac;});
+                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem,vac:vac,jus:jus,jj:jj};
+                  }).filter(function(r){return r.js.length>0||r.prev>0||r.vac||r.jus;});
                   if(filas.length===0)return null;
                   return(
                     <div>
@@ -14631,19 +14636,21 @@ function PanelFichajes(p){
                         <span style={{width:74,flexShrink:0}}>Día</span><span style={{flex:1,minWidth:150}}>Marcas</span><span style={{width:76,textAlign:"right"}}>Trabajó</span><span style={{width:92,textAlign:"right"}}>Acumulado</span>
                       </div>
                       {filas.map(function(r){
-                        var falta=r.prev>0&&r.js.length===0&&!r.vac;
+                        var falta=r.prev>0&&r.js.length===0&&!r.vac&&!r.jus;
                         return(
-                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":"transparent")}}>
+                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":(r.jus?"#0A1A10":"transparent"))}}>
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
-                              {r.js.length===0?<span style={{color:r.vac?"#1A8A9B":(falta?"#C1440E":"#6E6E6E"),fontWeight:r.vac?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(falta?"no marcó":"—")}</span>:r.js.map(function(j,k){return(
+                              {r.js.length===0?<span style={{color:r.vac?"#1A8A9B":(r.jus?"#3A9B5A":(falta?"#C1440E":"#6E6E6E")),fontWeight:(r.vac||r.jus)?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(r.jus?"✅ "+tipoJust(r.jj)+" · cuenta como trabajado":(falta?"no marcó":"—"))}</span>:r.js.map(function(j,k){return(
                                 <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/>{j.entrada&&inicioContable(j,x.e)>new Date(j.entrada.momento)&&<span title="Marcó antes de su horario: las horas cuentan desde el horario de la jornada" style={{fontSize:10,color:"#7E7E7E"}}>(cuenta desde {horaLocal(inicioContable(j,x.e))})</span>}</span>
                               );})}
+                              {r.jus&&r.jj&&r.jj.motivo&&<span style={{display:"block",fontSize:10.5,color:"#8FD19A",fontStyle:"italic"}}>Motivo: “{r.jj.motivo}”{r.jj.foto_url&&<a href={r.jj.foto_url} target="_blank" rel="noreferrer" style={{color:"#4C9AC4",marginLeft:6,fontStyle:"normal"}}>📎 ver certificado</a>}</span>}
+                              {r.jus&&r.jj&&!r.jj.motivo&&r.jj.foto_url&&<span style={{display:"block",fontSize:10.5}}><a href={r.jj.foto_url} target="_blank" rel="noreferrer" style={{color:"#4C9AC4"}}>📎 ver certificado</a></span>}
                               <span style={{display:"block",fontSize:10,color:r.t&&r.t.franco?"#8B2FC9":"#6E6E6E"}}>
                                 {r.t?(r.t.franco?"franco":"le tocaba "+fmtHs(r.t.minutos)+(r.t.desde?" ("+r.t.desde+"–"+r.t.hasta+")":"")):(x.tieneJornada?"":"sin jornada cargada")}
                               </span>
                             </span>
-                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.vac?"#1A8A9B":(r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E"))}}>
+                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.vac?"#1A8A9B":(r.jus?"#3A9B5A":(r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E")))}}>
                               {r.trab>0?fmtHs(r.trab):(r.js.length>0?"sin cerrar":"0h")}
                             </span>
                             <span style={{width:92,textAlign:"right",fontSize:11,fontVariantNumeric:"tabular-nums",color:"#9A9A9A"}}>
@@ -14653,7 +14660,7 @@ function PanelFichajes(p){
                         );
                       })}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
-                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{Object.keys(x.vacD).length>0?<span style={{display:"block",color:"#1A8A9B",fontSize:11}}>🏖️ + {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)}) que cuentan como trabajados</span>:null}{(function(){
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{Object.keys(x.justD).length>0?<span style={{display:"block",color:"#3A9B5A",fontSize:11}}>✅ + {Object.keys(x.justD).length} día{Object.keys(x.justD).length===1?"":"s"} de falta aprobada o justificada ({fmtHs(x.justMin)}) que cuentan como trabajados</span>:null}{Object.keys(x.vacD).length>0?<span style={{display:"block",color:"#1A8A9B",fontSize:11}}>🏖️ + {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)}) que cuentan como trabajados</span>:null}{(function(){
                           // Igual que en Novedades: solo los días en que se pasó 30 minutos o más, o que trabajó en un franco.
                           var porD={}; x.jor.forEach(function(j){ var f=String((j.entrada||j.salida).fecha).substring(0,10); porD[f]=(porD[f]||0)+minutosFueraDeJornada(j,x.e); });
                           var fu=Math.round(Object.keys(porD).reduce(function(a,f){ var t=turnoDe(x.e,f); return a+((porD[f]>=30||(t&&t.franco&&porD[f]>0))?porD[f]:0); },0)); return fu>0?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
@@ -25172,6 +25179,23 @@ function diasDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
   });
   return out;
 }
+// Faltas con justificativo APROBADO: ese día cuenta como trabajado, con las horas de su jornada, igual que una vacación.
+// Si marcó ese día, cuenta por sus marcas; si ya es un día de vacaciones, no se suma dos veces. Devuelve {fecha: minutos}.
+function diasJustificados(emp, mes, justificativos, conMarcas, hasta, vacD){
+  var out={};
+  if(!emp||!justificativos||!justificativos.length||!jornadaDe(emp))return out;
+  justificativos.forEach(function(j){
+    if(j.empleado_id!==emp.id||j.estado!=="aprobado")return;
+    var f=String(j.fecha||"").substring(0,10);
+    if(f.slice(0,7)!==mes||(hasta&&f>hasta)||(conMarcas&&conMarcas[f])||(vacD&&vacD[f]!==undefined))return;
+    var t=turnoDe(emp,f);
+    if(t&&!t.franco)out[f]=t.minutos||0;
+  });
+  return out;
+}
+// Cómo se justificó: con certificado (foto adjunta) o aprobada por administración por el motivo escrito.
+function tipoJust(j){ return j&&j.foto_url?"Falta justificada con certificado":"Falta aprobada por administración"; }
+function sumaDias(o){ return Object.keys(o||{}).reduce(function(a,f){return a+o[f];},0); }
 function minutosDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
   var d=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hasta);
   return Object.keys(d).reduce(function(a,f){return a+d[f];},0);
@@ -25185,7 +25209,8 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
   var vacD=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hoy), vacMin=Object.keys(vacD).reduce(function(t,f){return t+vacD[f];},0);
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+vacMin;
+  var justD=diasJustificados(emp,mes,justificativos,conMarcas,hoy,vacD), justMin=sumaDias(justD);   // faltas justificadas: cuentan como trabajadas
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+vacMin+justMin;
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){
@@ -25211,7 +25236,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
       faltas.push({fecha:f,estado:j?j.estado:(f<INICIO_JUSTIFICATIVOS?"previa":"sin"),just:j||null});
     });
   }
-  return {vacD:vacD,vacMin:vacMin,tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
+  return {vacD:vacD,vacMin:vacMin,justD:justD,justMin:justMin,tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
 }
 function antiguedadTexto(fechaAlta,hasta){
   if(!fechaAlta)return "";
@@ -25436,6 +25461,9 @@ function FichaLaboral(p){
           })}
         </div>
         {res.vacMin>0&&<div style={{background:"#0A1518",border:"1px solid #1A8A9B55",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#7CC9D4",lineHeight:1.6}}>🏖️ <b>{Object.keys(res.vacD).length} día{Object.keys(res.vacD).length===1?"":"s"} de vacaciones</b> ({Object.keys(res.vacD).sort().map(function(f){return fmtDate(f);}).join(" · ")}): sumaron <b>{fmtHs(res.vacMin)}</b> a tus horas, como si hubieras ido a trabajar.</div>}
+        {res.justMin>0&&<div style={{background:"#0A1A10",border:"1px solid #3A9B5A55",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#8FD19A",lineHeight:1.6}}>✅ <b>{Object.keys(res.justD).length} falta{Object.keys(res.justD).length===1?"":"s"} aprobada{Object.keys(res.justD).length===1?"":"s"}</b>: sumaron <b>{fmtHs(res.justMin)}</b> a tus horas, como si hubieras ido a trabajar.
+          {Object.keys(res.justD).sort().map(function(f){var jj=(justificativos||[]).find(function(q){return q.empleado_id===emp.id&&q.fecha===f&&q.estado==="aprobado";});return <div key={f} style={{fontSize:11,color:"#B8C8BC"}}>· {fmtDate(f)} — {tipoJust(jj)}{jj&&jj.motivo?": “"+jj.motivo+"”":""}</div>;})}
+        </div>}
         {(res.tarde.length>0||res.antes.length>0||res.abiertas>0||res.francosTrabajados>0)&&(
           <div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.7,marginTop:8}}>
             {res.tarde.length>0&&<div>🕒 Llegó tarde: {res.tarde.map(function(x){return fmtDate(x.fecha)+" (+"+x.min+" min)";}).join(" · ")}</div>}
@@ -25774,7 +25802,7 @@ function PanelRecibosFC(p){
   function horasDelFichaje(empId,periodo){
     var e=empleadosTodos.find(function(x){return x.id===empId;}); if(!e)return "";
     var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
-    var min=0, marcados={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo){min+=minutosDe(j,e); marcados[String(ref.fecha).substring(0,10)]=true;} }); min+=minutosDeVacaciones(e,periodo,p.vacaciones,marcados); }catch(err){}
+    var min=0, marcados={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo){min+=minutosDe(j,e); marcados[String(ref.fecha).substring(0,10)]=true;} }); var vd=diasDeVacaciones(e,periodo,p.vacaciones,marcados); min+=sumaDias(vd); min+=sumaDias(diasJustificados(e,periodo,p.justificativos,marcados,undefined,vd)); }catch(err){}
     return min>0?String(Math.round(min/60*100)/100):"";
   }
   function diasDelFichaje(empId,periodo){
@@ -26939,7 +26967,7 @@ function PanelSueldos(p){
       })()}
 
       {/* TAB HISTORIAL */}
-      {tab==="recibos"&&<PanelRecibosFC vacaciones={p.vacaciones||[]} adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
+      {tab==="recibos"&&<PanelRecibosFC vacaciones={p.vacaciones||[]} justificativos={p.justificativos||[]} adelantos={p.adelantos||[]} datosEmp={datosEmp} empleados={empleados} usuario={usuario} sueldos={sueldos} fichajes={p.fichajes} planilla={p.planillaSueldos||[]} onSavePlanilla={p.onSavePlanilla} inicial={reciboInicial} onInicialUsado={function(){setReciboInicial(null);}}/>}
       {tab==="historial"&&(
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {sueldos.filter(function(s){return localFiltro==="all"||s.local===localFiltro;}).map(function(s){

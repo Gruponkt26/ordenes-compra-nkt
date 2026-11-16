@@ -181,6 +181,24 @@ async function sbLeerFaltantes(localId, fecha) {
     return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
   } catch(e) { return []; }
 }
+// Tiempo de entrega que el cajero le promete al cliente en delivery y mostrador. Va en pautas, ámbito "comanda_entrega", un registro por comanda.
+async function sbGuardarEntrega(e) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"centrega_" + e.comanda_id, ambito:"comanda_entrega", texto:JSON.stringify(e), usuario:e.por || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(er) { return false; }
+}
+// Las de hace poco, de todos los pedidos: {comanda_id: {minutos, prometida_at}}.
+async function sbLeerEntregas(desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_entrega&created_at=gte." + (desdeISO || new Date(Date.now() - 3 * 86400000).toISOString()) + "&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(f) { try { var x = JSON.parse(f.texto); if (x && x.comanda_id) o[x.comanda_id] = x; } catch(e) {} });
+    return o;
+  } catch(e) { return {}; }
+}
 // Registro de todo lo que se hace en una cuenta, con la hora: pautas, ámbito "comanda_log", un registro por acción.
 // El id empieza con el de la comanda para poder traer el historial de una sola cuenta.
 async function sbLogAcciones(filas) {
@@ -638,7 +656,8 @@ function InformeTurno(props) {
       }
       var falt = await sbLeerFaltantes(localId, fecha);
       var log = await sbLeerLogDia(localId, fecha);
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log });
+      var ent = await sbLeerEntregas(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -692,7 +711,11 @@ function InformeTurno(props) {
               {ordenadas.concat(filas.filter(function(f) { return f.min === null; })).map(function(f) {
                 var lenta = f.min !== null && prom(conMin) && f.min > prom(conMin) * 1.5;
                 return <tr key={f.c.id} style={{ borderTop:"1px solid #181818" }}>
-                  <td style={{ padding:"6px 0", color:"#DDD" }}>{f.nombre} <span style={{ color:"#555", fontSize:10 }}>#{f.c.numero}</span></td>
+                  <td style={{ padding:"6px 0", color:"#DDD" }}>{f.nombre} <span style={{ color:"#555", fontSize:10 }}>#{f.c.numero}</span>{(function() {
+                    var e = datos.ent && datos.ent[f.c.id]; if (!e || f.c.tipo === "mesa" || !f.c.cerrada_at) return null;
+                    var dif = Math.round((new Date(f.c.cerrada_at) - new Date(e.prometida_at)) / 60000);
+                    return <div style={{ fontSize:10, color: dif > 0 ? "#E0452E" : "#4C9A5A" }}>🕒 prometido {e.minutos} min · {dif > 0 ? "salió " + dif + " min tarde" : "a tiempo"}</div>;
+                  })()}</td>
                   <td style={{ color:"#999" }}>{f.c.mozo || "—"}</td>
                   <td style={{ textAlign:"right", fontWeight:700, color: lenta ? "#C1440E" : "#F0EDE8" }}>{fmtMin(f.min)}{lenta ? " 🐢" : ""}</td>
                   <td style={{ textAlign:"right", color:"#BBB" }}>{pesos(f.pg.total)}</td></tr>;
@@ -777,6 +800,33 @@ function InformeTurno(props) {
     </div>
   );
 }
+
+// Cuánto falta para la hora prometida: texto y color. Pasada la hora, en rojo.
+function estadoEntrega(e, ahoraMs) {
+  if (!e || !e.prometida_at) return null;
+  var d = new Date(e.prometida_at), faltan = Math.ceil((d.getTime() - ahoraMs) / 60000);
+  var hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  if (faltan >= 0) return { txt:"🕒 Entrega " + hh + " · en " + faltan + " min", col: faltan <= 5 ? "#D4A017" : "#4C9A5A" };
+  return { txt:"🕒 Entrega " + hh + " · atrasado " + (-faltan) + " min", col:"#E0452E" };
+}
+var ENTREGA_OPCIONES = [10, 15, 20, 30, 45, 60, 90];
+function ElegirEntrega(props) {
+  var [otro, setOtro] = useState("");
+  return (
+    <div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        {ENTREGA_OPCIONES.map(function(m) {
+          var act = props.valor === m;
+          return <button key={m} onClick={function() { props.onElegir(m); }} style={{ padding:"8px 12px", borderRadius:8, border:"1px solid " + (act ? props.color : "#2A2A2A"), background: act ? props.color + "28" : "#161616", color: act ? props.color : "#CCC", fontSize:13, fontWeight:700, cursor:"pointer" }}>{m} min</button>;
+        })}
+        <input type="number" inputMode="numeric" value={otro} onChange={function(e) { setOtro(e.target.value); }} placeholder="otro" style={{ ...INP, width:70, padding:"8px", fontSize:13 }} />
+        {parseInt(otro, 10) > 0 && <button onClick={function() { var n = parseInt(otro, 10); if (n > 0 && n < 600) { props.onElegir(n); setOtro(""); } }} style={{ padding:"8px 12px", borderRadius:8, border:"none", background:props.color, color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>OK</button>}
+      </div>
+    </div>
+  );
+}
+// El botón de volver: grande y con color, para que se encuentre sin buscarlo.
+function estiloVolver(color) { return { display:"inline-flex", alignItems:"center", gap:6, padding:"11px 18px", borderRadius:10, border:"2px solid " + (color || "#C1440E"), background:(color || "#C1440E") + "26", color:color || "#C1440E", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }; }
 
 // Los mozos de un local: los empleados activos cargados en ese local, de los sectores Salón y Barra.
 var SECTORES_ORDEN = ["Salón", "Barra"];   // solo estos sectores toman pedidos
@@ -916,7 +966,7 @@ function ComandaDetalle(props) {
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:12, flexWrap:"wrap" }}>
-        <button onClick={props.onVolver} style={{ ...GH, padding:"7px 13px", fontSize:12 }}>← Volver</button>
+        <button onClick={props.onVolver} style={estiloVolver(color)}>← Volver</button>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
             <span style={{ background:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color+"26", color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color, border:"1px solid "+(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).emoji} {(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).nombre.toUpperCase()}</span>
@@ -934,6 +984,18 @@ function ComandaDetalle(props) {
           </div>
         </div>
       </div>
+
+      {/* Tiempo de entrega prometido (delivery y mostrador) */}
+      {c.tipo !== "mesa" && (function() {
+        var st = estadoEntrega(props.entrega, props.ahora || Date.now());
+        return (
+          <div style={{ background:"#0F0F0F", border:"1px solid " + (st ? st.col + "66" : "#1E1E1E"), borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
+            <div style={{ fontSize:13, fontWeight:800, color: st ? st.col : "#999", marginBottom:8 }}>{st ? st.txt : "🕒 Sin tiempo de entrega"}</div>
+            <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Poner o cambiar el tiempo (cuenta desde ahora)</div>
+            <ElegirEntrega valor={null} color={color} onElegir={function(m) { props.onEntrega(m); }} />
+          </div>
+        );
+      })()}
 
       {/* Historial de la cuenta: cada acción con su hora */}
       <div style={{ marginBottom:10 }}>
@@ -1572,6 +1634,7 @@ function NuevaComanda(props) {
     var [cliente, setCliente] = useState("");
     var [direccion, setDireccion] = useState("");
     var [telefono, setTelefono] = useState("");
+    var [entregaMin, setEntregaMin] = useState(esDelivery ? 30 : 15);
 
     function crear() {
       if (esDelivery && !direccion.trim()) return;
@@ -1584,6 +1647,7 @@ function NuevaComanda(props) {
         mozo: usuario, cliente: datos.cliente, direccion: datos.direccion, telefono: datos.telefono,
         abierta_at: new Date().toISOString(), usuario: usuario,
       };
+      props.fijarEntrega(nueva, entregaMin, nueva.abierta_at);
       props.registrar(nueva, esDelivery ? "Abrió un delivery" : "Abrió un pedido de mostrador", "Cajero: " + usuario + (datos.cliente ? " · " + datos.cliente : "") + (datos.direccion ? " · " + datos.direccion : ""));
       guardar(nueva);
     }
@@ -1600,6 +1664,8 @@ function NuevaComanda(props) {
         <input value={cliente} onChange={function(e) { setCliente(e.target.value); }} placeholder="Cliente (opcional)" style={{ ...INP, marginBottom:8 }} />
         {esDelivery && <input value={direccion} onChange={function(e) { setDireccion(e.target.value); }} placeholder="Dirección *" style={{ ...INP, marginBottom:8 }} />}
         <input value={telefono} onChange={function(e) { setTelefono(e.target.value); }} placeholder="Teléfono (opcional)" inputMode="tel" style={{ ...INP, marginBottom:10 }} />
+        <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>🕒 {esDelivery ? "Tiempo de entrega" : "Tiempo para retirar"}</div>
+        <div style={{ marginBottom:12 }}><ElegirEntrega valor={entregaMin} color={color} onElegir={setEntregaMin} /></div>
         <div style={{ display:"flex", gap:8 }}>
           <button onClick={crear} disabled={esDelivery && !direccion.trim()}
             style={{ flex:1, padding:"11px", borderRadius:8, border:"none", background:(!esDelivery || direccion.trim())?color:"#1A1A1A", color:(!esDelivery || direccion.trim())?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:(!esDelivery || direccion.trim())?"pointer":"not-allowed" }}>
@@ -1629,6 +1695,7 @@ export default function PanelComandas(p) {
   var [practica, setPractica] = useState(false);
   var mozos = mozosDeLocal(p.empleados, localId);
   var [faltante, setFaltante] = useState(false);
+  var [entregas, setEntregas] = useState({});   // tiempos de entrega prometidos {comanda_id: {...}}
   var [refInforme, setRefInforme] = useState(0);
   var verInforme = !p.soloServicio || !!p.puedeDescuento;   // el informe lo ven administración y cajeros
   var [eligeMozo, setEligeMozo] = useState(null);   // {titulo, alElegir}
@@ -1647,6 +1714,14 @@ export default function PanelComandas(p) {
     }));
   }
   function registrar(c, accion, detalle) { registrarVarias([{ c: c, accion: accion, detalle: detalle }]); }
+  // El cajero le promete un tiempo al cliente (delivery y mostrador): se cuenta desde que lo fija.
+  function fijarEntrega(c, minutos, desdeISO) {
+    var base = desdeISO ? new Date(desdeISO).getTime() : Date.now();
+    var e = { comanda_id: c.id, local: c.local || localId, minutos: minutos, prometida_at: new Date(base + minutos * 60000).toISOString(), por: usuario, at: new Date().toISOString() };
+    setEntregas(function(prev) { return { ...prev, [c.id]: e }; });
+    sbGuardarEntrega(e);
+    registrar(c, "Fijó el tiempo de entrega", minutos + " min (hora prometida " + horaSeg(e.prometida_at).slice(0, 5) + ")");
+  }
   var [posPlano, setPosPlano] = useState({});     // {mesaId: {x, y}} en %
   var [verPlano, setVerPlano] = useState(false);
   var [acomodando, setAcomodando] = useState(false);
@@ -1688,6 +1763,7 @@ export default function PanelComandas(p) {
   }
 
   function cargar() {
+    sbLeerEntregas().then(setEntregas);
     return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
       setMesas(r[0]); setComandas(r[1]); setCargando(false);
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
@@ -2003,11 +2079,12 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (
         <>
-          <button onClick={function() { setConfig(false); }} style={{ ...GH, padding:"7px 13px", fontSize:12, marginBottom:12 }}>← Volver al plano</button>
+          <button onClick={function() { setConfig(false); }} style={{ ...estiloVolver(color), marginBottom:12 }}>← Volver al plano</button>
           <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
       ) : vista === "informe" ? (
@@ -2227,7 +2304,7 @@ export default function PanelComandas(p) {
             <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
             <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
           </div>
-          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} />
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>
@@ -2247,6 +2324,7 @@ export default function PanelComandas(p) {
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
+                        {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px" }}>{st.txt}</div> : null; })()}
                       </div>
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                         <div style={{ fontSize:11, color:color, fontWeight:700 }}>⏱ {hace(c.abierta_at)}</div>

@@ -6816,6 +6816,19 @@ function ResumenVacaciones({empleados, vacaciones, anio}){
   );
 }
 
+// Motivos habituales de licencia con goce de sueldo (días corridos, según la Ley de Contrato de Trabajo art. 158). Sirven para cargarlos rápido:
+// al elegir uno se completa el tipo (paga), el motivo y el "hasta". El convenio de cada actividad puede dar más días: se pueden cambiar a mano.
+var MOTIVOS_LICENCIA_PAGA=[
+  {id:"matrimonio",txt:"Matrimonio",dias:10},
+  {id:"nacimiento",txt:"Nacimiento de hijo",dias:2},
+  {id:"fall_conyuge",txt:"Fallecimiento de cónyuge, hijo o padre/madre",dias:3},
+  {id:"fall_hermano",txt:"Fallecimiento de un hermano",dias:1},
+  {id:"examen",txt:"Examen (enseñanza media o universitaria)",dias:2},
+  {id:"enfermedad",txt:"Enfermedad o accidente con certificado médico",dias:1},
+  {id:"sangre",txt:"Donación de sangre",dias:1},
+  {id:"tramite",txt:"Trámite o citación judicial",dias:1}
+];
+function sumarDiasISO(iso,n){ if(!iso)return ""; var d=new Date(iso+"T12:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
   var [anio,setAnio]=useState(new Date().getFullYear());
   var [mes,setMes]=useState(new Date().getMonth());
@@ -6983,12 +6996,26 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Desde</label>
-                  <input type="date" value={form.fecha_desde} onChange={function(e){setForm(function(f){return{...f,fecha_desde:e.target.value};});}} style={INP}/>
+                  <input type="date" value={form.fecha_desde} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,fecha_desde:v,fecha_hasta:f.motivoDias&&v?sumarDiasISO(v,f.motivoDias-1):f.fecha_hasta};});}} style={INP}/>
                 </div>
                 <div>
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Hasta</label>
                   <input type="date" value={form.fecha_hasta} onChange={function(e){setForm(function(f){return{...f,fecha_hasta:e.target.value};});}} style={INP}/>
                 </div>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo habitual con goce de sueldo (opcional)</label>
+                <select value={form.motivoId||""} onChange={function(e){
+                  var m=MOTIVOS_LICENCIA_PAGA.find(function(x){return x.id===e.target.value;});
+                  setForm(function(f){
+                    if(!m)return{...f,motivoId:"",motivoDias:0};
+                    return{...f,motivoId:m.id,motivoDias:m.dias,tipo:"licencia_paga",notas:m.txt,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};
+                  });
+                }} style={INP}>
+                  <option value="">— Elegir un motivo (o cargarlo a mano abajo) —</option>
+                  {MOTIVOS_LICENCIA_PAGA.map(function(m){return <option key={m.id} value={m.id}>{m.txt} · {m.dias} día{m.dias===1?"":"s"} corrido{m.dias===1?"":"s"}</option>;})}
+                </select>
+                {form.motivoId&&<div style={{fontSize:10,color:"#8FD19A",marginTop:4,lineHeight:1.4}}>Se cargó como licencia paga, con {form.motivoDias} día{form.motivoDias===1?"":"s"} corrido{form.motivoDias===1?"":"s"} desde la fecha de inicio. Si tu convenio da más días, cambiá el «Hasta».</div>}
               </div>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo</label>

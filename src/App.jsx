@@ -6895,6 +6895,8 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>🏖️ Vacaciones y licencias</div>
+      <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12,lineHeight:1.4}}>Cargá las vacaciones y las licencias (pagas o sin goce) de cada colaborador. Al cargar, elegís el tipo.</div>
       {/* Header navegación */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6907,7 +6909,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
             <option value="all">Todos los locales</option>
             {LOCALES.map(function(l){return <option key={l.id} value={l.id}>{l.emoji} {l.nombre}</option>;})}
           </select>
-          <button onClick={function(){setShowForm(true);setEditVac(null);setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""}); }} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Vacaciones</button>
+          <button onClick={function(){setShowForm(true);setEditVac(null);setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""}); }} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#1A6B8A",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Vacaciones o licencia</button>
         </div>
       </div>
 
@@ -6953,7 +6955,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
       {/* Lista vacaciones del mes */}
       {vacMes.length>0&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A22",borderRadius:12,padding:"12px"}}>
-          <div style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>🏖️ Vacaciones en {MESES[mes]}</div>
+          <div style={{fontSize:10,color:"#1A6B8A",textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontWeight:700}}>🏖️ Vacaciones y licencias en {MESES[mes]}</div>
           {vacMes.map(function(v){
             var emp=empleados.find(function(e){return e.id===v.empleado_id;});
             var loc=emp?LOCALES.find(function(l){return l.id===emp.local;}):null;
@@ -6982,7 +6984,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
       {showForm&&(
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000CC",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
           <div style={{background:"#111",borderRadius:14,padding:20,width:"100%",maxWidth:400,border:"1px solid #1A6B8A44"}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#1A6B8A",marginBottom:14}}>🏖️ {editVac?"Editar":"Registrar"} vacaciones</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#1A6B8A",marginBottom:14}}>🏖️ {editVac?"Editar":"Registrar"} vacaciones o licencia</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div>
                 <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Empleado</label>
@@ -17120,7 +17122,7 @@ function PanelNovedades(p){
         </Seccion>
         )}
 
-        <Seccion tab="personal" id="vacas" res={deVacaciones.length+" de licencia · "+vacProximas.length+" se van en dos meses"} titulo="🏖️ Vacaciones" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
+        <Seccion tab="personal" id="vacas" res={deVacaciones.length+" de vacaciones o licencia · "+vacProximas.length+" se van en dos meses"} titulo="🏖️ Vacaciones y licencias" color="#00BCD4" ir={p.irVacaciones} irTxt="Calendario">
           {(deVacaciones.length+vacProximas.length)===0?(
             <div style={vacio}>Nadie de licencia, ni en los próximos dos meses.</div>
           ):(
@@ -26801,7 +26803,7 @@ function PanelSueldos(p){
         var MODULOS=[
           {id:"altas",label:"➕ Altas",subs:[["altas","➕ Altas"]]},
           {id:"bajas",label:"📤 Bajas",subs:[["bajas","📤 Bajas"]]},
-          {id:"vacaciones",label:"🏖️ Vacaciones",subs:[["vacaciones","🏖️ Vacaciones"]]},
+          {id:"vacaciones",label:"🏖️ Vacaciones y licencias",subs:[["vacaciones","🏖️ Vacaciones y licencias"]]},
           {id:"empleados",label:"✏️ Modificar datos",subs:[["empleados","✏️ Modificar datos"]]}
         ].concat(p.onSaveUser?[{id:"accesos",label:"🔑 Accesos",subs:[["accesos","🔑 Accesos"]]}]:[]).concat([
           {id:"sueldos",label:"💰 Sueldos",subs:[["estado","📊 Estado del mes"],["planilla","📅 Planilla anual"],["faltantes","⚠️ Faltantes"],["historial","📋 Historial"],["recibos","🧾 Carga de sueldos"]].concat(p.showCuit?[["cuit","🏛️ F931"]]:[]).concat(p.showInforme?[["informe","📊 Informe"]]:[])}

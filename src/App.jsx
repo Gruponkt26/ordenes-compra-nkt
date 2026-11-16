@@ -6872,6 +6872,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
     if(!form.empleado_id)faltan.push("el empleado");
     if(!form.fecha_desde)faltan.push("la fecha de inicio");
     if(!form.fecha_hasta)faltan.push("la fecha de fin");
+    if((form.tipo==="licencia_paga"||form.tipo==="licencia_sin")&&!String(form.notas||"").trim())faltan.push("el motivo de la licencia");
     if(faltan.length>0){ alert("Falta "+faltan.join(", ")+"."); return; }
     if(form.fecha_hasta<form.fecha_desde){ alert("La fecha de fin es anterior a la de inicio."); return; }
     var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:(form.tipo==="licencia_paga"?"[Licencia paga] ":((form.tipo==="licencia_sin"||form.tipo==="licencia")?"[Licencia sin goce] ":""))+(form.notas||""),created_at:editVac?editVac.created_at:new Date().toISOString()};
@@ -6896,7 +6897,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
       <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:800,color:"#F0EDE8",marginBottom:2}}>🏖️ Vacaciones y licencias</div>
-      <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12,lineHeight:1.4}}>Cargá las vacaciones y las licencias (pagas o sin goce) de cada colaborador. Al cargar, elegís el tipo.</div>
+      <div style={{fontSize:11,color:"#8C8C8C",marginBottom:12,lineHeight:1.4}}>Cargá las vacaciones y las licencias (con o sin goce de sueldo) de cada colaborador. Al cargar, primero elegís el tipo.</div>
       {/* Header navegación */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6971,7 +6972,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4}}>
-                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:notaSinMarca(v.notas),tipo:licenciaPaga(v.notas)?"licencia_paga":(esLicencia(v.notas)?"licencia_sin":"vacaciones")});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:notaSinMarca(v.notas),tipo:licenciaPaga(v.notas)?"licencia_paga":(esLicencia(v.notas)?"licencia_sin":"vacaciones"),motivoId:licenciaPaga(v.notas)?((MOTIVOS_LICENCIA_PAGA.find(function(m){return m.txt===notaSinMarca(v.notas);})||{id:"otro"}).id):"",motivoDias:0});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete&&onDelete(v.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
@@ -6996,6 +6997,49 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   })}
                 </select>
               </div>
+              <div>
+                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>¿Qué vas a cargar?</label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}>
+                  {[["vacaciones","🏖️ Vacaciones tradicionales","Descuentan de los días de vacaciones que le corresponden"],["licencia_paga","📋 Licencia con goce de sueldo","Suma las horas de la jornada · elegís el motivo"],["licencia_sin","📋 Licencia sin goce de sueldo","No suma horas · escribís el motivo"]].map(function(t){
+                    var act=(form.tipo||"vacaciones")===t[0];
+                    return <button key={t[0]} type="button" onClick={function(){setForm(function(f){return{...f,tipo:t[0],motivoId:"",motivoDias:0,notas:(f.tipo||"vacaciones")===t[0]?f.notas:""};});}}
+                      style={{textAlign:"left",padding:"9px 12px",borderRadius:9,border:"1px solid "+(act?"#1A6B8A":"#2A2A2A"),background:act?"#1A6B8A22":"#0F0F0F",color:act?"#5BB8DC":"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:800,cursor:"pointer"}}>
+                      {t[1]}<div style={{fontSize:10,fontWeight:500,color:act?"#8FB8CC":"#6E6E6E",marginTop:1}}>{t[2]}</div>
+                    </button>;
+                  })}
+                </div>
+              </div>
+              {form.tipo==="licencia_paga"&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo de la licencia con goce</label>
+                  <select value={form.motivoId||""} onChange={function(e){
+                    var v=e.target.value, m=MOTIVOS_LICENCIA_PAGA.find(function(x){return x.id===v;});
+                    setForm(function(f){
+                      if(!m)return{...f,motivoId:v,motivoDias:0,notas:""};
+                      return{...f,motivoId:m.id,motivoDias:m.dias,notas:m.txt,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};
+                    });
+                  }} style={INP}>
+                    <option value="">— Elegí el motivo —</option>
+                    {MOTIVOS_LICENCIA_PAGA.filter(function(m){return !m.tipo;}).map(function(m){return <option key={m.id} value={m.id}>{m.txt} · {m.dias} día{m.dias===1?"":"s"} corrido{m.dias===1?"":"s"}</option>;})}
+                    <option value="otro">Otro motivo (lo escribo)</option>
+                  </select>
+                  {form.motivoId==="otro"&&<input value={form.notas} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,notas:v};});}} placeholder="Escribí el motivo" style={{...INP,marginTop:6}}/>}
+                  {form.motivoId&&form.motivoId!=="otro"&&form.motivoDias>0&&<div style={{fontSize:10,color:"#8FD19A",marginTop:4,lineHeight:1.4}}>Se completó con {form.motivoDias} día{form.motivoDias===1?"":"s"} corrido{form.motivoDias===1?"":"s"} desde la fecha de inicio. Si tu convenio da más días, cambiá el «Hasta».</div>}
+                </div>
+              )}
+              {form.tipo==="licencia_sin"&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo de la licencia sin goce</label>
+                  <input value={form.notas} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,notas:v};});}} placeholder="Escribí el motivo (ej: trámite personal, viaje…)" style={INP}/>
+                  <button type="button" onClick={function(){var m=MOTIVOS_LICENCIA_PAGA.find(function(x){return x.id==="maternidad";});setForm(function(f){return{...f,notas:m.txt,motivoId:"maternidad",motivoDias:m.dias,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};});}} style={{...GH,padding:"6px 10px",fontSize:11,marginTop:6}}>👶 Maternidad (90 días, la paga ANSES)</button>
+                </div>
+              )}
+              {(form.tipo||"vacaciones")==="vacaciones"&&(
+                <div>
+                  <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Notas (opcional)</label>
+                  <input value={form.notas} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,notas:v};});}} placeholder="Ej: vacaciones anuales" style={INP}/>
+                </div>
+              )}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Desde</label>
@@ -7005,32 +7049,6 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Hasta</label>
                   <input type="date" value={form.fecha_hasta} onChange={function(e){setForm(function(f){return{...f,fecha_hasta:e.target.value};});}} style={INP}/>
                 </div>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Motivo habitual de licencia (opcional)</label>
-                <select value={form.motivoId||""} onChange={function(e){
-                  var m=MOTIVOS_LICENCIA_PAGA.find(function(x){return x.id===e.target.value;});
-                  setForm(function(f){
-                    if(!m)return{...f,motivoId:"",motivoDias:0};
-                    return{...f,motivoId:m.id,motivoDias:m.dias,tipo:m.tipo||"licencia_paga",notas:m.txt,fecha_hasta:f.fecha_desde?sumarDiasISO(f.fecha_desde,m.dias-1):f.fecha_hasta};
-                  });
-                }} style={INP}>
-                  <option value="">— Elegir un motivo (o cargarlo a mano abajo) —</option>
-                  {MOTIVOS_LICENCIA_PAGA.map(function(m){return <option key={m.id} value={m.id}>{m.txt} · {m.dias} día{m.dias===1?"":"s"} corrido{m.dias===1?"":"s"}</option>;})}
-                </select>
-                {form.motivoId&&<div style={{fontSize:10,color:"#8FD19A",marginTop:4,lineHeight:1.4}}>Se cargó como {form.tipo==="licencia_sin"?"licencia sin goce (no suma horas; el pago no lo hace el local, por ejemplo la asignación por maternidad de ANSES)":"licencia paga"}, con {form.motivoDias} día{form.motivoDias===1?"":"s"} corrido{form.motivoDias===1?"":"s"} desde la fecha de inicio. Si tu convenio da más días, cambiá el «Hasta».</div>}
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo</label>
-                <select value={form.tipo||"vacaciones"} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,tipo:v};});}} style={INP}>
-                  <option value="vacaciones">🏖️ Vacaciones (descuenta de los días que le corresponden)</option>
-                  <option value="licencia_paga">📋 Licencia paga (suma las horas de la jornada, no descuenta vacaciones)</option>
-                  <option value="licencia_sin">📋 Licencia sin goce (no suma horas, no descuenta vacaciones)</option>
-                </select>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Notas (opcional)</label>
-                <input value={form.notas} onChange={function(e){setForm(function(f){return{...f,notas:e.target.value};});}} placeholder="Ej: vacaciones anuales, licencia..." style={INP}/>
               </div>
             </div>
             <div style={{display:"flex",gap:8,marginTop:14}}>

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
-import PanelComandas, { MEDIOS_COBRO, cargarPagosComandas } from "./comandas.jsx";
+import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
@@ -21163,9 +21163,8 @@ function PanelCierre(p) {
   useEffect(function(){
     if(!showForm||editId||!form.fecha||!pagosCom.length||autoCom.current[form.fecha])return;
     autoCom.current[form.fecha]=true;
-    var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
-    var campo={efectivo:"efectivo",transferencia:"transferencia",debito:"tarjeta_debito",credito:"tarjeta_credito",qr:"otros"};
-    setForm(function(f){ var o={...f}; Object.keys(campo).forEach(function(m){ var k=campo[m]; if((tot[m]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round(tot[m]*100)/100); }); return o; });
+    var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
+    setForm(function(f){ var o={...f}; Object.keys(tot).forEach(function(k){ if(tot[k]>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round(tot[k]*100)/100); }); return o; });
   },[showForm,editId,form.fecha,pagosCom]);
   // El cartel de "verificá el efectivo" se muestra una vez por visita: arranca en false y
   // sólo pasa a true cuando el cajero lo confirma. Al salir de Caja y volver a entrar, el
@@ -21454,14 +21453,14 @@ function PanelCierre(p) {
       </div>
 
       {!showForm&&pagosCom.length>0&&(function(){
-        var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
+        var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
         var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
-        var totC=MEDIOS_COBRO.reduce(function(a,m){return a+(tot[m.id]||0);},0);
+        var totC=mediosDeLocal(localId).reduce(function(a,m){return a+(tot[m.id]||0);},0);
         var pt={mesa:[0,0],delivery:[0,0],mostrador:[0,0]}; pagosCom.forEach(function(c){ var k=pt[c.tipo]?c.tipo:"mostrador"; pt[k][0]++; pt[k][1]+=parseFloat(c.total)||0; });
         return(<div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:14}}>
           <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:6}}>🍽️ Cobrado hoy en comandas · {pagosCom.length} · {P(totC)}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {MEDIOS_COBRO.filter(function(m){return (tot[m.id]||0)>0;}).map(function(m){ return <span key={m.id} style={{background:"#1A2A1E",color:"#C8E6CD",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{m.emoji} {m.nombre} {P(tot[m.id])}</span>; })}
+            {mediosDeLocal(localId).filter(function(m){return (tot[m.id]||0)>0;}).map(function(m){ return <span key={m.id} style={{background:"#1A2A1E",color:"#C8E6CD",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{m.emoji} {m.nombre} {P(tot[m.id])}</span>; })}
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
             {[["mesa","🪑 Mesas","#4C9A5A"],["delivery","🛵 Delivery","#3A9BC1"],["mostrador","🥡 Mostrador","#D4A017"]].filter(function(x){return pt[x[0]][0]>0;}).map(function(x){ return <span key={x[0]} style={{border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {pt[x[0]][0]} · {P(pt[x[0]][1])}</span>; })}
@@ -21572,21 +21571,22 @@ function PanelCierre(p) {
           </div>
           {(function(){
             if(!pagosCom.length)return null;
-            var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
+            var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
+            var MEDIOS_L=mediosDeLocal(localId);
             var n=function(k){ return parseFloat(form[k])||0; };
             // Lo cargado en el cierre por medio: la cuenta principal más las otras cuentas (Mercado Pago, Patagonia) de ese medio.
-            var cargado={efectivo:n("efectivo"),transferencia:n("transferencia")+n("mp_transferencia")+n("pat_transferencia"),debito:n("tarjeta_debito")+n("mp_debito")+n("pat_debito"),credito:n("tarjeta_credito")+n("mp_credito")+n("pat_credito"),qr:n("otros")+n("mp_qr")+n("pat_qr")};
-            var campoDe={efectivo:"efectivo",transferencia:"transferencia",debito:"tarjeta_debito",credito:"tarjeta_credito",qr:"otros"};
+            // Cada medio de la comanda es un casillero del cierre: se compara con lo cargado ahí.
+            var cargado={}; MEDIOS_L.forEach(function(m){ cargado[m.id]=n(m.id); });
             var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
-            var filasC=MEDIOS_COBRO.filter(function(m){ return (tot[m.id]||0)>0||cargado[m.id]>0; });
-            var totC=MEDIOS_COBRO.reduce(function(a,m){return a+(tot[m.id]||0);},0), totF=MEDIOS_COBRO.reduce(function(a,m){return a+cargado[m.id];},0);
+            var filasC=MEDIOS_L.filter(function(m){ return (tot[m.id]||0)>0||cargado[m.id]>0; });
+            var totC=MEDIOS_L.reduce(function(a,m){return a+(tot[m.id]||0);},0), totF=MEDIOS_L.reduce(function(a,m){return a+cargado[m.id];},0);
             // Lo cobrado en comandas separado por tipo de pedido: mesas, delivery y mostrador.
             var porTipo={mesa:{n:0,t:0},delivery:{n:0,t:0},mostrador:{n:0,t:0}};
             pagosCom.forEach(function(c){ var k=porTipo[c.tipo]?c.tipo:"mostrador"; porTipo[k].n++; porTipo[k].t+=parseFloat(c.total)||0; });
             var conDesc=pagosCom.filter(function(c){return (parseFloat(c.descuento)||0)>0;}), totDesc=conDesc.reduce(function(a,c){return a+(parseFloat(c.descuento)||0);},0);
             var aFacturar=pagosCom.filter(function(c){return !!c.factura;}), facA=aFacturar.filter(function(c){return c.factura.tipo==="A";}).length;
             function completar(){
-              setForm(function(f){ var o={...f}; MEDIOS_COBRO.forEach(function(m){ var k=campoDe[m.id]; if((tot[m.id]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round((tot[m.id])*100)/100); }); return o; });
+              setForm(function(f){ var o={...f}; MEDIOS_L.forEach(function(m){ if((tot[m.id]||0)>0&&!(parseFloat(o[m.id])>0))o[m.id]=String(Math.round((tot[m.id])*100)/100); }); return o; });
             }
             return(
               <div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:12}}>

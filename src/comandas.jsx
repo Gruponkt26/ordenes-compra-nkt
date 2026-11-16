@@ -94,13 +94,33 @@ var CMD_EXTRAS = [
 // ─── COBRO ────────────────────────────────────────────────────────────
 // Cómo se pagó cada comanda. Se guarda en pautas (ámbito "comanda_pago", un registro por comanda) para no tener que tocar la tabla comandas:
 // {comanda_id, local, fecha (día de negocio), total, pagos:[{medio, monto}], cobro_por, cobrado_at}. El cierre de caja lo lee para controlar.
-export var MEDIOS_COBRO = [
-  { id:"efectivo",      emoji:"💵", nombre:"Efectivo" },
-  { id:"transferencia", emoji:"📲", nombre:"Transferencia" },
-  { id:"debito",        emoji:"💳", nombre:"Débito" },
-  { id:"credito",       emoji:"💳", nombre:"Crédito" },
-  { id:"qr",            emoji:"📱", nombre:"QR / Mercado Pago" },
-];
+// Los medios de cobro son exactamente los casilleros del cierre de caja de cada local: el id de cada medio ES el campo del cierre
+// (efectivo, transferencia, tarjeta_debito, tarjeta_credito, otros, pat_*, mp_*). Así lo cobrado en comandas cae en el casillero correcto sin traducciones.
+export function mediosDeLocal(localId) {
+  var banco = { l1:"Provincia", l2:"Galicia", l3:"Patagonia" }[localId] || "";
+  var sb = banco ? " " + banco : "";
+  var m = [
+    { id:"efectivo",        emoji:"💵", nombre:"Efectivo" },
+    { id:"transferencia",   emoji:"📲", nombre:"Transf." + sb },
+    { id:"tarjeta_debito",  emoji:"💳", nombre:"Débito" + sb },
+    { id:"tarjeta_credito", emoji:"💳", nombre:"Crédito" + sb },
+    { id:"otros",           emoji:localId === "l3" ? "📦" : "📱", nombre:localId === "l3" ? "Otros (ex QR MP)" : "QR" + sb },
+  ];
+  if (localId === "l1") m = m.concat([
+    { id:"pat_transferencia", emoji:"📲", nombre:"Transf. Patagonia" },
+    { id:"pat_qr",            emoji:"📱", nombre:"QR Patagonia" },
+    { id:"pat_debito",        emoji:"💳", nombre:"Débito Patagonia" },
+    { id:"pat_credito",       emoji:"💳", nombre:"Crédito Patagonia" },
+  ]);
+  return m.concat([
+    { id:"mp_transferencia", emoji:"📲", nombre:"Transferencia MP" },
+    { id:"mp_qr",            emoji:"📱", nombre:"QR MP" },
+    { id:"mp_debito",        emoji:"💳", nombre:"Débito MP" },
+    { id:"mp_credito",       emoji:"💳", nombre:"Crédito MP" },
+  ]);
+}
+// Los cobros viejos guardaban ids genéricos (debito, credito, qr): se pasan al casillero del cierre.
+export function normalizarMedio(id) { return { debito:"tarjeta_debito", credito:"tarjeta_credito", qr:"otros" }[id] || id; }
 async function sbGuardarPago(p) {
   try {
     var ahora = new Date().toISOString();
@@ -354,7 +374,7 @@ function Cobro(props) {
           return (
             <div key={i} style={{ display:"flex", gap:7, marginBottom:8, alignItems:"center" }}>
               <select value={l.medio} onChange={function(e) { cambiar(i, "medio", e.target.value); }} style={{ ...INP, flex:1.4, padding:"10px 8px" }}>
-                {MEDIOS_COBRO.map(function(m) { return <option key={m.id} value={m.id}>{m.emoji} {m.nombre}</option>; })}
+                {mediosDeLocal(props.localId).map(function(m) { return <option key={m.id} value={m.id}>{m.emoji} {m.nombre}</option>; })}
               </select>
               <input type="number" inputMode="decimal" value={l.monto} onChange={function(e) { cambiar(i, "monto", e.target.value); }} placeholder="$" style={{ ...INP, flex:1, padding:"10px 8px" }} />
               {lineas.length > 1 && <button onClick={function() { quitar(i); }} style={{ background:"none", border:"none", color:"#888", fontSize:16, cursor:"pointer" }}>✕</button>}
@@ -615,7 +635,7 @@ function InformeTurno(props) {
     var ordenadas = conMin.slice().sort(function(a, b) { return b.min - a.min; });
     var ventas = filas.reduce(function(a, f) { return a + (Number(f.pg.total) || 0); }, 0);
     var desc = filas.reduce(function(a, f) { return a + (Number(f.pg.descuento) || 0); }, 0);
-    var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { porMedio[q.medio] = (porMedio[q.medio] || 0) + (Number(q.monto) || 0); }); });
+    var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { var k = normalizarMedio(q.medio); porMedio[k] = (porMedio[k] || 0) + (Number(q.monto) || 0); }); });
     var porMozo = {}; filas.forEach(function(f) { var k = f.c.mozo || "Sin mozo"; var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
     var itemsT = datos.items.filter(function(i) { return ids[i.comanda_id]; });
     var cocina = itemsT.filter(function(i) { return i.estado === "entregado" && i.enviado_at && i.entregado_at; }).map(function(i) { return { nombre:i.nombre, min:(new Date(i.entregado_at) - new Date(i.enviado_at)) / 60000 }; }).filter(function(x) { return x.min >= 0 && x.min < 240; });
@@ -655,7 +675,7 @@ function InformeTurno(props) {
 
         <div style={card}>
           <div style={h}>💳 Cobrado por medio de pago (esto es lo que va al cierre de caja)</div>
-          {MEDIOS_COBRO.filter(function(m) { return (porMedio[m.id] || 0) > 0; }).map(function(m) {
+          {mediosDeLocal(localId).filter(function(m) { return (porMedio[m.id] || 0) > 0; }).map(function(m) {
             return <div key={m.id} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderTop:"1px solid #181818", fontSize:13 }}><span style={{ color:"#CCC" }}>{m.emoji} {m.nombre}</span><b style={{ color:"#F0EDE8" }}>{pesos(porMedio[m.id])}</b></div>;
           })}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 0", borderTop:"2px solid #222", fontSize:13 }}><b style={{ color:"#F0EDE8" }}>Total</b><b style={{ color:"#4C9A5A" }}>{pesos(Object.keys(porMedio).reduce(function(a, k) { return a + porMedio[k]; }, 0))}</b></div>
@@ -1865,7 +1885,7 @@ export default function PanelComandas(p) {
       {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
         onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
         onCancelar={function() { setEligeMozo(null); }} />}
-      {cobrando && <Cobro total={cobrando.total} subtotal={cobrando.subtotal} descuento={cobrando.desc} factura={(extras[cobrando.c.id] || {}).factura} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
+      {cobrando && <Cobro localId={cobrando.c.local} total={cobrando.total} subtotal={cobrando.subtotal} descuento={cobrando.desc} factura={(extras[cobrando.c.id] || {}).factura} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
       ) : comandaAbierta ? (

@@ -125,14 +125,14 @@ async function sbLeerPlano(localId) {
     var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cplano_" + localId) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
-    return { pos: (o && o.pos) || {}, extras: (o && o.extras) || [] };
-  } catch(e) { return { pos: {}, extras: [] }; }
+    return { pos: (o && o.pos) || {}, extras: (o && o.extras) || [], dims: (o && o.dims) || null };
+  } catch(e) { return { pos: {}, extras: [], dims: null }; }
 }
-async function sbGuardarPlano(localId, pos, extras, usuario) {
+async function sbGuardarPlano(localId, pos, extras, dims, usuario) {
   try {
     var ahora = new Date().toISOString();
     var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
-    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cplano_" + localId, ambito:"comanda_plano", texto:JSON.stringify({ pos:pos, extras:extras || [] }), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cplano_" + localId, ambito:"comanda_plano", texto:JSON.stringify({ pos:pos, extras:extras || [], dims:dims || null }), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
     return r.ok;
   } catch(e) { return false; }
 }
@@ -1268,10 +1268,11 @@ export default function PanelComandas(p) {
   var [verPlano, setVerPlano] = useState(false);
   var [acomodando, setAcomodando] = useState(false);
   var [extrasPlano, setExtrasPlano] = useState([]);   // cuadros decorativos: barra, cocina, etc. {id, tipo, x, y}
+  var [dimsPlano, setDimsPlano] = useState(null);     // {ancho, largo} en metros; null = el lienzo de siempre
   var [arrastre, setArrastre] = useState(null);   // id de la mesa que se está moviendo
   useEffect(function() {
     var vivo = true;
-    sbLeerPlano(localId).then(function(x) { if (vivo) { setPosPlano(x.pos); setExtrasPlano(x.extras); setVerPlano(Object.keys(x.pos).length > 0 || x.extras.length > 0); setAcomodando(false); } });
+    sbLeerPlano(localId).then(function(x) { if (vivo) { setPosPlano(x.pos); setExtrasPlano(x.extras); setDimsPlano(x.dims || (localId === "l1" ? { ancho:4, largo:20 } : null)); setVerPlano(Object.keys(x.pos).length > 0 || x.extras.length > 0); setAcomodando(false); } });
     return function() { vivo = false; };
   }, [localId, practica]);
   // Siempre se sale del simulador al irse de la pantalla: no puede quedar prendido.
@@ -1609,7 +1610,8 @@ export default function PanelComandas(p) {
               )}
             </div>
             {verPlano && (function() {
-              var libres = 0;
+              var dimOk = !!(dimsPlano && Number(dimsPlano.ancho) > 0 && Number(dimsPlano.largo) > 0);
+              var dimRatio = dimOk ? Number(dimsPlano.largo) / Number(dimsPlano.ancho) : 1;
               function posDe(m) {
                 if (posPlano[m.id]) return posPlano[m.id];
                 var i = mesasLocal.filter(function(q) { return !posPlano[q.id]; }).indexOf(m);
@@ -1625,11 +1627,11 @@ export default function PanelComandas(p) {
               }
               function agregarExtra(tipo) {
                 var nuevos = extrasPlano.concat([{ id: "x_" + Date.now(), tipo: tipo, x: 50, y: 50 }]);
-                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, usuario);
+                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
               }
               function quitarExtra(id) {
                 var nuevos = extrasPlano.filter(function(z) { return z.id !== id; });
-                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, usuario);
+                setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
               }
               function soltar() {
                 if (!arrastre) return;
@@ -1637,13 +1639,21 @@ export default function PanelComandas(p) {
                 // Las que nunca se movieron también se fijan donde se ven, para que no salten al mover otra.
                 var fin = {}; mesasLocal.forEach(function(m) { fin[m.id] = posDe(m); });
                 setPosPlano(fin);
-                sbGuardarPlano(localId, fin, extrasPlano, usuario);
+                sbGuardarPlano(localId, fin, extrasPlano, dimsPlano, usuario);
               }
               return (
                 <div>
+                  {dimOk && <div style={{ fontSize:11, color:"#777", textAlign:"center", marginBottom:6 }}>Salón de {Number(dimsPlano.ancho)} m × {Number(dimsPlano.largo)} m</div>}
                   {acomodando && (
                     <div style={{ marginBottom:8 }}>
                       <div style={{ fontSize:11, color:"#D4A017", marginBottom:6 }}>Arrastrá cada mesa a donde corresponde. Se guarda sola.</div>
+                      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8, fontSize:11, color:"#999" }}>
+                        <span>📐 Tamaño del salón:</span>
+                        <input type="number" min="1" max="60" value={dimsPlano ? dimsPlano.ancho : ""} placeholder="ancho" onChange={function(e) { setDimsPlano({ ancho:e.target.value, largo: dimsPlano ? dimsPlano.largo : "" }); }} onBlur={function() { sbGuardarPlano(localId, posPlano, extrasPlano, dimsPlano, usuario); }} style={{ ...INP, width:62, padding:"4px 6px", fontSize:12 }} />
+                        <span>m de ancho ×</span>
+                        <input type="number" min="1" max="60" value={dimsPlano ? dimsPlano.largo : ""} placeholder="largo" onChange={function(e) { setDimsPlano({ ancho: dimsPlano ? dimsPlano.ancho : "", largo:e.target.value }); }} onBlur={function() { sbGuardarPlano(localId, posPlano, extrasPlano, dimsPlano, usuario); }} style={{ ...INP, width:62, padding:"4px 6px", fontSize:12 }} />
+                        <span>m de largo</span>
+                      </div>
                       <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                         {CMD_EXTRAS.map(function(t) {
                           return <button key={t.id} onClick={function() { agregarExtra(t.id); }} style={{ ...GH, padding:"5px 10px", fontSize:11 }}>+ {t.emoji} {t.nombre}</button>;
@@ -1652,7 +1662,7 @@ export default function PanelComandas(p) {
                     </div>
                   )}
                   <div onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}
-                    style={{ position:"relative", width:"100%", height:520, borderRadius:12, border:"1px solid " + (acomodando ? "#D4A017" : "#1E1E1E"), background:"#0A0A0A", backgroundImage:"linear-gradient(#141414 1px, transparent 1px), linear-gradient(90deg, #141414 1px, transparent 1px)", backgroundSize:"10% 10%", overflow:"hidden", touchAction: acomodando ? "none" : "auto" }}>
+                    style={{ position:"relative", width:"100%", maxWidth: dimOk ? (dimRatio > 1.4 ? 300 : 640) : "none", margin:"0 auto", height: dimOk ? "auto" : 520, aspectRatio: dimOk ? (dimsPlano.ancho + " / " + dimsPlano.largo) : "auto", borderRadius:12, border:"1px solid " + (acomodando ? "#D4A017" : "#1E1E1E"), background:"#0A0A0A", backgroundImage:"linear-gradient(#141414 1px, transparent 1px), linear-gradient(90deg, #141414 1px, transparent 1px)", backgroundSize: dimOk ? (100 / Number(dimsPlano.ancho)) + "% " + (100 / Number(dimsPlano.largo)) + "%" : "10% 10%", overflow:"hidden", touchAction: acomodando ? "none" : "auto" }}>
                     {extrasPlano.map(function(z) {
                       var t = CMD_EXTRAS.find(function(e) { return e.id === z.tipo; }) || CMD_EXTRAS[0];
                       return (

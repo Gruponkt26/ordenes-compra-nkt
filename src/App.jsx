@@ -21557,6 +21557,8 @@ function PanelCierre(p) {
             // Lo cobrado en comandas separado por tipo de pedido: mesas, delivery y mostrador.
             var porTipo={mesa:{n:0,t:0},delivery:{n:0,t:0},mostrador:{n:0,t:0}};
             pagosCom.forEach(function(c){ var k=porTipo[c.tipo]?c.tipo:"mostrador"; porTipo[k].n++; porTipo[k].t+=parseFloat(c.total)||0; });
+            var conDesc=pagosCom.filter(function(c){return (parseFloat(c.descuento)||0)>0;}), totDesc=conDesc.reduce(function(a,c){return a+(parseFloat(c.descuento)||0);},0);
+            var aFacturar=pagosCom.filter(function(c){return !!c.factura;}), facA=aFacturar.filter(function(c){return c.factura.tipo==="A";}).length;
             function completar(){
               setForm(function(f){ var o={...f}; MEDIOS_COBRO.forEach(function(m){ var k=campoDe[m.id]; if((tot[m.id]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round((tot[m.id])*100)/100); }); return o; });
             }
@@ -21577,6 +21579,10 @@ function PanelCierre(p) {
                     return <span key={x[0]} style={{background:x[2]+"1F",border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {porTipo[x[0]].n} · {P(porTipo[x[0]].t)}</span>;
                   })}
                 </div>
+                {(conDesc.length>0||aFacturar.length>0)&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                  {conDesc.length>0&&<span style={{background:"#D4A01722",border:"1px solid #D4A01766",color:"#D4A017",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>🏷️ Descuentos: −{P(totDesc)} en {conDesc.length} comanda{conDesc.length===1?"":"s"}</span>}
+                  {aFacturar.length>0&&<span style={{background:"#3A9BC122",border:"1px solid #3A9BC166",color:"#5BB8DC",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>🧾 A facturar: {aFacturar.length}{facA>0?" ("+facA+" factura A)":""}</span>}
+                </div>}
                 <button onClick={completar} style={{marginTop:8,padding:"7px 12px",borderRadius:8,border:"1px solid #3A7D4488",background:"#3A7D4422",color:"#8FD19A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Completar los casilleros vacíos con las comandas</button>
                 <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6,lineHeight:1.4}}>Es un control: no cambia nada solo. Las ventas que no se cargaron como comanda no figuran acá, así que puede haber diferencia.</div>
               </div>
@@ -32617,7 +32623,7 @@ export default function App() {
           )}
 
           {subCompras==="comandas"&&puedeComandas&&(
-            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} diaDeNegocio={diaDeNegocio}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
           )}
           {subCompras==="comunidad"&&esCajero&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>

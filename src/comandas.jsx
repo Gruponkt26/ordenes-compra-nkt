@@ -1140,6 +1140,22 @@ function ConfigMesas(props) {
       sbDeleteMesa(m.id);
     }
 
+    // Mesas con el mismo nombre en el local: se queda una (la que tiene comanda abierta, si hay; si no, la primera) y se sacan las demás.
+    var sobrantes = (function() {
+      var vistas = {}, fuera = [];
+      mesasLocal.slice().sort(function(x, y) { return (comandaDeMesa(y.id) ? 1 : 0) - (comandaDeMesa(x.id) ? 1 : 0); }).forEach(function(m) {
+        var k = String(m.nombre || "").trim().toLowerCase();
+        if (vistas[k]) { if (!comandaDeMesa(m.id)) fuera.push(m); } else vistas[k] = true;
+      });
+      return fuera;
+    })();
+    function borrarRepetidas() {
+      if (!window.confirm("Hay " + sobrantes.length + " mesa" + (sobrantes.length === 1 ? "" : "s") + " con número repetido (" + sobrantes.map(function(m) { return m.nombre; }).join(", ") + ").\n\nSe deja una de cada una y se sacan las demás. ¿Seguimos?")) return;
+      var ids = sobrantes.map(function(m) { return m.id; });
+      setMesas(function(prev) { return prev.filter(function(x) { return ids.indexOf(x.id) < 0; }); });
+      ids.forEach(function(id) { sbDeleteMesa(id); });
+    }
+
     return (
       <div>
         <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"14px", marginBottom:14 }}>
@@ -1176,6 +1192,12 @@ function ConfigMesas(props) {
           </div>
         </div>
 
+        {sobrantes.length > 0 && (
+          <div style={{ background:"#2A1A00", border:"1px solid #D4A017", borderRadius:10, padding:"10px 12px", marginBottom:12, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            <span style={{ fontSize:12, color:"#E8D9A0", flex:1, minWidth:160 }}>⚠️ Hay {sobrantes.length} mesa{sobrantes.length === 1 ? "" : "s"} con el número repetido.</span>
+            <button onClick={borrarRepetidas} style={{ background:"#D4A017", border:"none", borderRadius:8, color:"#1A1200", padding:"7px 12px", fontSize:12, fontWeight:800, cursor:"pointer" }}>🧹 Borrar repetidas</button>
+          </div>
+        )}
         {CMD_SECTORES.map(function(s) {
           var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
           if (!delSector.length) return null;

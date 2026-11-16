@@ -1912,9 +1912,9 @@ export default function PanelComandas(p) {
     sbDeleteItem(id);
   }
 
-  // Sin turno abierto no se toman pedidos nuevos (en el modo práctica no hace falta).
+  // Sin turno abierto no se toman pedidos nuevos. En el modo práctica también: el turno se abre y se cierra de mentira, en memoria.
   function puedeAbrirCuenta() {
-    if (practica || turnoActual) return true;
+    if (turnoActual) return true;
     alert(turnos === null ? "Todavía se está leyendo el turno, probá de nuevo en un segundo." : "El turno está cerrado. Primero hay que abrir el turno.");
     return false;
   }
@@ -2063,16 +2063,16 @@ export default function PanelComandas(p) {
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
       </div>
 
-      {!practica && turnos !== null && (
+      {turnos !== null && (
         turnoActual ? (
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:"#0E1F14", border:"1px solid #3A7D4466", borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
-            <span style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>🟢 Turno abierto</span>
+            <span style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>🟢 Turno abierto{practica ? " (práctica)" : ""}</span>
             <span style={{ fontSize:12, color:"#C8C8C8", flex:1, minWidth:150 }}>Día {turnoActual.fecha.split("-").reverse().join("/")} · desde las {horaSeg(turnoActual.abierto_at).slice(0, 5)} · {turnoActual.abierto_por}</span>
             {verInforme && <button onClick={cerrarTurno} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #C1440E", background:"#C1440E22", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⏹ Cerrar turno</button>}
           </div>
         ) : (
           <div style={{ background:"#2A0E0A", border:"1px solid #C1440E88", borderRadius:10, padding:"11px 12px", marginBottom:10 }}>
-            <div style={{ fontSize:13, fontWeight:800, color:"#E0714A" }}>🔴 Turno cerrado</div>
+            <div style={{ fontSize:13, fontWeight:800, color:"#E0714A" }}>🔴 Turno cerrado{practica ? " (práctica)" : ""}</div>
             <div style={{ fontSize:11.5, color:"#C9A79B", margin:"3px 0 8px" }}>Hay que abrir el turno para tomar pedidos. Las cuentas que ya estaban abiertas se pueden terminar de cobrar.</div>
             {verInforme ? (abriendoTurno ? (
               <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>

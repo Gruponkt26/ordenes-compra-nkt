@@ -111,6 +111,23 @@ async function sbGuardarExtra(id, obj, usuario) {
     return r.ok;
   } catch(e) { return false; }
 }
+// Dónde está cada mesa en el plano del local (x, y en % del lienzo). Va en pautas, ámbito "comanda_plano", un registro por local.
+async function sbLeerPlano(localId) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("cplano_" + localId) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
+    return (o && o.pos) || {};
+  } catch(e) { return {}; }
+}
+async function sbGuardarPlano(localId, pos, usuario) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cplano_" + localId, ambito:"comanda_plano", texto:JSON.stringify({ pos:pos }), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
 // Lo que se descuenta de un subtotal: {tipo:"%"|"$", valor}.
 function montoDescuento(subtotal, d) {
   if (!d || !(Number(d.valor) > 0)) return 0;
@@ -1239,6 +1256,15 @@ export default function PanelComandas(p) {
   var [abiertaId, setAbiertaId] = useState(null);
   var [ahora, setAhora] = useState(Date.now());
   var [practica, setPractica] = useState(false);
+  var [posPlano, setPosPlano] = useState({});     // {mesaId: {x, y}} en %
+  var [verPlano, setVerPlano] = useState(false);
+  var [acomodando, setAcomodando] = useState(false);
+  var [arrastre, setArrastre] = useState(null);   // id de la mesa que se está moviendo
+  useEffect(function() {
+    var vivo = true;
+    sbLeerPlano(localId).then(function(x) { if (vivo) { setPosPlano(x); setVerPlano(Object.keys(x).length > 0); setAcomodando(false); } });
+    return function() { vivo = false; };
+  }, [localId, practica]);
   // Siempre se sale del simulador al irse de la pantalla: no puede quedar prendido.
   useEffect(function() { return function() { simTerminar(); }; }, []);
   function recargarTodo() { setAbiertaId(null); setCobrando(null); return Promise.all([cargar(), cargarCarta()]); }
@@ -1560,7 +1586,61 @@ export default function PanelComandas(p) {
               <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO.mesa.color, letterSpacing:0.5, textTransform:"uppercase" }}>Mesas del salón</span>
               <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO.mesa.color, fontWeight:700 }}>{mesasLocal.filter(function(m) { return !!comandaDeMesa(m.id); }).length} de {mesasLocal.length} ocupadas</span>
             </div>
-            {CMD_SECTORES.map(function(s) {
+            <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+              {[[false, "☰ Lista"], [true, "🗺️ Plano"]].map(function(x) {
+                var act = verPlano === x[0];
+                return <button key={String(x[0])} onClick={function() { setVerPlano(x[0]); if (!x[0]) setAcomodando(false); }}
+                  style={{ padding:"6px 13px", borderRadius:8, border:"1px solid " + (act ? color : "#222"), background: act ? color + "22" : "transparent", color: act ? color : "#777", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:"pointer" }}>{x[1]}</button>;
+              })}
+              {verPlano && (!p.soloServicio || p.puedeEditarPlano) && (
+                <button onClick={function() { setAcomodando(!acomodando); }}
+                  style={{ marginLeft:"auto", padding:"6px 13px", borderRadius:8, border:"1px solid #D4A017", background: acomodando ? "#D4A017" : "transparent", color: acomodando ? "#1A1200" : "#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>
+                  {acomodando ? "✓ Listo" : "✏️ Acomodar mesas"}
+                </button>
+              )}
+            </div>
+            {verPlano && (function() {
+              var libres = 0;
+              function posDe(m) {
+                if (posPlano[m.id]) return posPlano[m.id];
+                var i = mesasLocal.filter(function(q) { return !posPlano[q.id]; }).indexOf(m);
+                return { x: 12 + (i % 5) * 19, y: 10 + Math.floor(i / 5) * 16 };
+              }
+              function mover(e) {
+                if (!arrastre || !acomodando) return;
+                var r = e.currentTarget.getBoundingClientRect();
+                var x = Math.max(5, Math.min(95, Math.round((e.clientX - r.left) / r.width * 50) * 2));
+                var y = Math.max(5, Math.min(95, Math.round((e.clientY - r.top) / r.height * 50) * 2));
+                setPosPlano(function(prev) { var o = { ...prev }; o[arrastre] = { x: x, y: y }; return o; });
+              }
+              function soltar() {
+                if (!arrastre) return;
+                setArrastre(null);
+                // Las que nunca se movieron también se fijan donde se ven, para que no salten al mover otra.
+                var fin = {}; mesasLocal.forEach(function(m) { fin[m.id] = posDe(m); });
+                setPosPlano(fin);
+                sbGuardarPlano(localId, fin, usuario);
+              }
+              return (
+                <div>
+                  {acomodando && <div style={{ fontSize:11, color:"#D4A017", marginBottom:6 }}>Arrastrá cada mesa a donde corresponde. Se guarda sola.</div>}
+                  <div onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}
+                    style={{ position:"relative", width:"100%", height:520, borderRadius:12, border:"1px solid " + (acomodando ? "#D4A017" : "#1E1E1E"), background:"#0A0A0A", backgroundImage:"linear-gradient(#141414 1px, transparent 1px), linear-gradient(90deg, #141414 1px, transparent 1px)", backgroundSize:"10% 10%", overflow:"hidden", touchAction: acomodando ? "none" : "auto" }}>
+                    {mesasLocal.map(function(m) {
+                      var q = posDe(m);
+                      return (
+                        <div key={m.id}
+                          onPointerDown={function(e) { if (!acomodando) return; e.preventDefault(); e.currentTarget.parentNode.setPointerCapture && e.currentTarget.parentNode.setPointerCapture(e.pointerId); setArrastre(m.id); }}
+                          style={{ position:"absolute", left:q.x + "%", top:q.y + "%", transform:"translate(-50%,-50%) scale(0.85)", cursor: acomodando ? "grab" : "default", zIndex: arrastre === m.id ? 5 : 1, outline: acomodando ? "2px dashed #D4A01788" : "none", borderRadius:12 }}>
+                          <div style={{ pointerEvents: acomodando ? "none" : "auto" }}><Mesa mesa={m} /></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+            {!verPlano && CMD_SECTORES.map(function(s) {
               var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
               if (!delSector.length) return null;
               var ocupadasSector = delSector.filter(function(m) { return !!comandaDeMesa(m.id); }).length;

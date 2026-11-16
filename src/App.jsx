@@ -6758,7 +6758,7 @@ function diasTomadosEnAnio(vacaciones, empId, anio){
   var ini=new Date(anio+"-01-01T00:00:00"), fin=new Date(anio+"-12-31T00:00:00"), total=0;
   (vacaciones||[]).forEach(function(v){
     if(v.empleado_id!==empId||!v.fecha_desde||!v.fecha_hasta)return;
-    if(/^\[Licencia\]/.test(String(v.notas||"")))return;   // otra licencia: no es de las vacaciones anuales
+    if(esLicencia(v.notas))return;   // otra licencia: no es de las vacaciones anuales
     var d=new Date(String(v.fecha_desde).substring(0,10)+"T00:00:00"), h=new Date(String(v.fecha_hasta).substring(0,10)+"T00:00:00");
     if(isNaN(d.getTime())||isNaN(h.getTime()))return;
     if(d<ini)d=ini; if(h>fin)h=fin;
@@ -6860,7 +6860,7 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
     if(!form.fecha_hasta)faltan.push("la fecha de fin");
     if(faltan.length>0){ alert("Falta "+faltan.join(", ")+"."); return; }
     if(form.fecha_hasta<form.fecha_desde){ alert("La fecha de fin es anterior a la de inicio."); return; }
-    var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:(form.tipo==="licencia"?"[Licencia] ":"")+(form.notas||""),created_at:editVac?editVac.created_at:new Date().toISOString()};
+    var v={id:editVac?editVac.id:String(Date.now()),empleado_id:form.empleado_id,empleado_nombre:form.empleado_nombre,fecha_desde:form.fecha_desde,fecha_hasta:form.fecha_hasta,notas:(form.tipo==="licencia_paga"?"[Licencia paga] ":((form.tipo==="licencia_sin"||form.tipo==="licencia")?"[Licencia sin goce] ":""))+(form.notas||""),created_at:editVac?editVac.created_at:new Date().toISOString()};
     if(onSave)onSave(v);
     setShowForm(false);setEditVac(null);
     setForm({empleado_id:"",empleado_nombre:"",fecha_desde:"",fecha_hasta:"",notas:""});
@@ -6951,11 +6951,11 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                   <div>
                     <div style={{fontSize:11,color:"#F0EDE8",fontWeight:600}}>{v.empleado_nombre}</div>
                     <div style={{fontSize:9,color:"#8C8C8C"}}>{v.fecha_desde} → {v.fecha_hasta}{loc?" · "+loc.emoji+" "+loc.nombre:""}</div>
-                    {v.notas&&<div style={{fontSize:9,color:"#6E6E6E",fontStyle:"italic"}}>{v.notas}</div>}
+                    {(esLicencia(v.notas)||v.notas)&&<div style={{fontSize:9,color:esLicencia(v.notas)?"#B07CE0":"#6E6E6E",fontStyle:"italic"}}>{esLicencia(v.notas)?(licenciaPaga(v.notas)?"📋 Licencia paga":"📋 Licencia sin goce")+(notaSinMarca(v.notas)?" — "+notaSinMarca(v.notas):""):v.notas}</div>}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4}}>
-                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:String(v.notas||"").replace(/^\[Licencia\] ?/,""),tipo:/^\[Licencia\]/.test(String(v.notas||""))?"licencia":"vacaciones"});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
+                  <button onClick={function(){setEditVac(v);setForm({empleado_id:v.empleado_id,empleado_nombre:v.empleado_nombre,fecha_desde:v.fecha_desde,fecha_hasta:v.fecha_hasta,notas:notaSinMarca(v.notas),tipo:licenciaPaga(v.notas)?"licencia_paga":(esLicencia(v.notas)?"licencia_sin":"vacaciones")});setShowForm(true);}} style={{background:"none",border:"1px solid #2A2A2A",borderRadius:6,padding:"3px 7px",color:"#8C8C8C",fontSize:10,cursor:"pointer"}}>✏️</button>
                   <button onClick={function(){if(window.confirm("¿Eliminar?"))onDelete&&onDelete(v.id);}} style={{background:"none",border:"1px solid #C1440E33",borderRadius:6,padding:"3px 7px",color:"#C1440E",fontSize:10,cursor:"pointer"}}>🗑️</button>
                 </div>
               </div>
@@ -6994,7 +6994,8 @@ function PanelVacaciones({empleados, vacaciones, onSave, onDelete}){
                 <label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Tipo</label>
                 <select value={form.tipo||"vacaciones"} onChange={function(e){var v=e.target.value;setForm(function(f){return{...f,tipo:v};});}} style={INP}>
                   <option value="vacaciones">🏖️ Vacaciones (descuenta de los días que le corresponden)</option>
-                  <option value="licencia">📄 Otra licencia (no descuenta)</option>
+                  <option value="licencia_paga">📋 Licencia paga (suma las horas de la jornada, no descuenta vacaciones)</option>
+                  <option value="licencia_sin">📋 Licencia sin goce (no suma horas, no descuenta vacaciones)</option>
                 </select>
               </div>
               <div>
@@ -14244,9 +14245,11 @@ function PanelFichajes(p){
     var conMarcas={}; jor.forEach(function(j){ conMarcas[(j.entrada||j.salida).fecha]=true; });
     var vacD=diasDeVacaciones(e,mes,p.vacaciones,conMarcas,hoy);   // días de vacaciones (hasta hoy) que cuentan como trabajados
     var vacMin=Object.keys(vacD).reduce(function(a,f){return a+vacD[f];},0);
-    var justD=diasJustificados(e,mes,p.justificativos,conMarcas,hoy,vacD);   // faltas con justificativo aprobado: cuentan como trabajadas
+    var licPD=diasDeAusencia(e,mes,p.vacaciones,conMarcas,hoy,"licPaga",vacD), licPMin=sumaDias(licPD);   // licencia paga: cuenta como trabajada
+    var licSD=diasDeAusencia(e,mes,p.vacaciones,conMarcas,hoy,"licSin",Object.assign({},vacD,licPD));      // licencia sin goce: figura, no suma
+    var justD=diasJustificados(e,mes,p.justificativos,conMarcas,hoy,Object.assign({},vacD,licPD,licSD));   // faltas con justificativo aprobado: cuentan como trabajadas
     var justMin=sumaDias(justD);
-    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+vacMin+justMin;
+    var min=jor.reduce(function(a,j){return a+minutosDe(j,e);},0)+vacMin+licPMin+justMin;
     var dias=Object.keys(conMarcas).length;
     var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
     // Contra la jornada cargada: lo previsto hasta hoy, los días que le tocaban y no marcó,
@@ -14258,16 +14261,16 @@ function PanelFichajes(p){
         if(t.franco){ if(conMarcas[f])francosTrabajados++; return; }
         if(FICHAJE_DESDE&&f<FICHAJE_DESDE&&!conMarcas[f])return;   // antes de usar el sistema no hay faltas
         if(f===hoy&&!turnoTerminado(t,f))return;                    // el turno de hoy todavía no terminó: no es falta ni horas previstas
-        previstas+=t.minutos;
+        if(licSD[f]===undefined)previstas+=t.minutos;   // en licencia sin goce no se esperan horas
         var deVac=(p.vacaciones||[]).some(function(v){return v.empleado_id===e.id&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);});
         if(!conMarcas[f]&&!deVac&&justD[f]===undefined)faltas.push(f);
       });
     }
     return {e:e, jor:jor.sort(function(a,b){
       return String((b.entrada||b.salida).momento||"").localeCompare(String((a.entrada||a.salida).momento||""));
-    }), min:min, dias:dias, abiertas:abiertas, vacD:vacD, vacMin:vacMin, justD:justD, justMin:justMin,
+    }), min:min, dias:dias, abiertas:abiertas, vacD:vacD, vacMin:vacMin, licPD:licPD, licPMin:licPMin, licSD:licSD, justD:justD, justMin:justMin,
       tieneJornada:tiene, previstas:previstas, faltas:faltas, francosTrabajados:francosTrabajados};
-  }).filter(function(x){return x.jor.length>0||x.faltas.length>0||x.vacMin>0||x.justMin>0;})
+  }).filter(function(x){return x.jor.length>0||x.faltas.length>0||x.vacMin>0||x.licPMin>0||Object.keys(x.licSD).length>0||x.justMin>0;})
     .sort(function(a,b){return b.min-a.min;});
 
   var totalMin=porEmpleado.reduce(function(a,x){return a+x.min;},0);
@@ -14563,6 +14566,8 @@ function PanelFichajes(p){
                   {x.dias} día{x.dias===1?"":"s"}
                   {x.faltas.length>0?<span style={{color:"#C1440E"}}> · {x.faltas.length} falta{x.faltas.length===1?"":"s"}</span>:null}
                   {Object.keys(x.justD).length>0?<span style={{color:"#3A9B5A"}}> · ✅ {Object.keys(x.justD).length} falta{Object.keys(x.justD).length===1?"":"s"} aprobada{Object.keys(x.justD).length===1?"":"s"} ({fmtHs(x.justMin)})</span>:null}
+                  {Object.keys(x.licPD).length>0?<span style={{color:"#B07CE0"}}> · 📋 {Object.keys(x.licPD).length} día{Object.keys(x.licPD).length===1?"":"s"} de licencia paga ({fmtHs(x.licPMin)})</span>:null}
+                  {Object.keys(x.licSD).length>0?<span style={{color:"#8C8C8C"}}> · 📋 {Object.keys(x.licSD).length} día{Object.keys(x.licSD).length===1?"":"s"} de licencia sin goce</span>:null}
                   {Object.keys(x.vacD).length>0?<span style={{color:"#1A8A9B"}}> · 🏖️ {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)})</span>:null}
                   {x.francosTrabajados>0?<span style={{color:"#8B2FC9"}}> · {x.francosTrabajados} en franco</span>:null}
                   {x.abiertas>0?<span style={{color:"#D4A017"}}> · {x.abiertas} sin cerrar</span>:null}
@@ -14621,14 +14626,17 @@ function PanelFichajes(p){
                     var js=(porDia[f]||[]).slice().sort(function(a,b){return String((a.entrada||a.salida).momento||"").localeCompare(String((b.entrada||b.salida).momento||""));});
                     var t=x.tieneJornada?turnoDe(x.e,f):null;
                     var vac=js.length===0&&x.vacD[f]!==undefined;   // de vacaciones: cuenta la jornada como trabajada
-                    var jus=js.length===0&&!vac&&x.justD[f]!==undefined;   // falta justificada y aprobada: también
+                    var licP=js.length===0&&!vac&&x.licPD[f]!==undefined;   // licencia paga: también
+                    var licS=js.length===0&&!vac&&!licP&&x.licSD[f]!==undefined;   // licencia sin goce: figura, no suma
+                    var vr=(licP||licS)?ausenciaDe(p.vacaciones,x.e.id,f):null;
+                    var jus=js.length===0&&!vac&&!licP&&!licS&&x.justD[f]!==undefined;   // falta justificada y aprobada: también
                     var jj=jus?(p.justificativos||[]).find(function(q){return q.empleado_id===x.e.id&&q.fecha===f&&q.estado==="aprobado";}):null;
-                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0)+(vac?x.vacD[f]:0)+(jus?x.justD[f]:0);
-                    var prev=(t&&!t.franco&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0)&&!(f===hoy&&!turnoTerminado(t,f)))?t.minutos:0;
+                    var trab=js.reduce(function(a,j){return a+minutosDe(j,x.e);},0)+(vac?x.vacD[f]:0)+(licP?x.licPD[f]:0)+(jus?x.justD[f]:0);
+                    var prev=(t&&!t.franco&&!licS&&!(FICHAJE_DESDE&&f<FICHAJE_DESDE&&js.length===0)&&!(f===hoy&&!turnoTerminado(t,f)))?t.minutos:0;
                     accT+=trab; accP+=prev;
                     var pr=f.split("-"), dsem=DSC[new Date(parseInt(pr[0],10),parseInt(pr[1],10)-1,parseInt(pr[2],10)).getDay()];
-                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem,vac:vac,jus:jus,jj:jj};
-                  }).filter(function(r){return r.js.length>0||r.prev>0||r.vac||r.jus;});
+                    return {f:f,js:js,t:t,trab:trab,prev:prev,accT:accT,accP:accP,dsem:dsem,vac:vac,jus:jus,jj:jj,licP:licP,licS:licS,vr:vr};
+                  }).filter(function(r){return r.js.length>0||r.prev>0||r.vac||r.jus||r.licP||r.licS;});
                   if(filas.length===0)return null;
                   return(
                     <div>
@@ -14636,12 +14644,13 @@ function PanelFichajes(p){
                         <span style={{width:74,flexShrink:0}}>Día</span><span style={{flex:1,minWidth:150}}>Marcas</span><span style={{width:76,textAlign:"right"}}>Trabajó</span><span style={{width:92,textAlign:"right"}}>Acumulado</span>
                       </div>
                       {filas.map(function(r){
-                        var falta=r.prev>0&&r.js.length===0&&!r.vac&&!r.jus;
+                        var falta=r.prev>0&&r.js.length===0&&!r.vac&&!r.jus&&!r.licP&&!r.licS;
                         return(
-                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":(r.jus?"#0A1A10":"transparent"))}}>
+                          <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":((r.licP||r.licS)?"#150F1C":(r.jus?"#0A1A10":"transparent")))}}>
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
-                              {r.js.length===0?<span style={{color:r.vac?"#1A8A9B":(r.jus?"#3A9B5A":(falta?"#C1440E":"#6E6E6E")),fontWeight:(r.vac||r.jus)?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(r.jus?"✅ "+tipoJust(r.jj)+" · cuenta como trabajado":(falta?"no marcó":"—"))}</span>:r.js.map(function(j,k){return(
+                              {r.js.length===0?<><span style={{color:r.vac?"#1A8A9B":(r.licP?"#B07CE0":(r.licS?"#9A9A9A":(r.jus?"#3A9B5A":(falta?"#C1440E":"#6E6E6E")))),fontWeight:(r.vac||r.jus||r.licP||r.licS)?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(r.licP?"📋 Licencia paga · cuenta como trabajado":(r.licS?"📋 Licencia sin goce · no suma horas":(r.jus?"✅ "+tipoJust(r.jj)+" · cuenta como trabajado":(falta?"no marcó":"—"))))}</span>
+                              {(r.licP||r.licS)&&r.vr&&notaSinMarca(r.vr.notas)&&<span style={{display:"block",fontSize:10.5,color:"#B8A8D0",fontStyle:"italic"}}>Motivo: “{notaSinMarca(r.vr.notas)}”</span>}</>:r.js.map(function(j,k){return(
                                 <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/>{j.entrada&&inicioContable(j,x.e)>new Date(j.entrada.momento)&&<span title="Marcó antes de su horario: las horas cuentan desde el horario de la jornada" style={{fontSize:10,color:"#7E7E7E"}}>(cuenta desde {horaLocal(inicioContable(j,x.e))})</span>}</span>
                               );})}
                               {r.jus&&r.jj&&r.jj.motivo&&<span style={{display:"block",fontSize:10.5,color:"#8FD19A",fontStyle:"italic"}}>Motivo: “{r.jj.motivo}”{r.jj.foto_url&&<a href={r.jj.foto_url} target="_blank" rel="noreferrer" style={{color:"#4C9AC4",marginLeft:6,fontStyle:"normal"}}>📎 ver certificado</a>}</span>}
@@ -14650,8 +14659,8 @@ function PanelFichajes(p){
                                 {r.t?(r.t.franco?"franco":"le tocaba "+fmtHs(r.t.minutos)+(r.t.desde?" ("+r.t.desde+"–"+r.t.hasta+")":"")):(x.tieneJornada?"":"sin jornada cargada")}
                               </span>
                             </span>
-                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.vac?"#1A8A9B":(r.jus?"#3A9B5A":(r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E")))}}>
-                              {r.trab>0?fmtHs(r.trab):(r.js.length>0?"sin cerrar":"0h")}
+                            <span style={{width:76,textAlign:"right",fontSize:13,fontWeight:700,fontVariantNumeric:"tabular-nums",color:r.vac?"#1A8A9B":(r.licP?"#B07CE0":(r.licS?"#9A9A9A":(r.jus?"#3A9B5A":(r.trab>0?"#3A7D44":(r.js.length>0?"#D4A017":"#C1440E")))))}}>
+                              {r.trab>0?fmtHs(r.trab):(r.js.length>0?"sin cerrar":(r.licS?"—":"0h"))}
                             </span>
                             <span style={{width:92,textAlign:"right",fontSize:11,fontVariantNumeric:"tabular-nums",color:"#9A9A9A"}}>
                               {fmtHs(r.accT)}{r.accP>0?<span style={{display:"block",fontSize:10,color:r.accT>=r.accP?"#3A7D44":"#C1440E"}}>de {fmtHs(r.accP)}</span>:null}
@@ -14660,7 +14669,7 @@ function PanelFichajes(p){
                         );
                       })}
                       <div style={{display:"flex",justifyContent:"space-between",gap:8,padding:"9px 15px",borderTop:"2px solid #1E1E1E",fontSize:12,flexWrap:"wrap"}}>
-                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{Object.keys(x.justD).length>0?<span style={{display:"block",color:"#3A9B5A",fontSize:11}}>✅ + {Object.keys(x.justD).length} día{Object.keys(x.justD).length===1?"":"s"} de falta aprobada o justificada ({fmtHs(x.justMin)}) que cuentan como trabajados</span>:null}{Object.keys(x.vacD).length>0?<span style={{display:"block",color:"#1A8A9B",fontSize:11}}>🏖️ + {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)}) que cuentan como trabajados</span>:null}{(function(){
+                        <span style={{color:"#8C8C8C"}}>Total del mes · {x.dias} día{x.dias===1?"":"s"} trabajado{x.dias===1?"":"s"}{Object.keys(x.licPD).length>0?<span style={{display:"block",color:"#B07CE0",fontSize:11}}>📋 + {Object.keys(x.licPD).length} día{Object.keys(x.licPD).length===1?"":"s"} de licencia paga ({fmtHs(x.licPMin)}) que cuentan como trabajados</span>:null}{Object.keys(x.licSD).length>0?<span style={{display:"block",color:"#9A9A9A",fontSize:11}}>📋 {Object.keys(x.licSD).length} día{Object.keys(x.licSD).length===1?"":"s"} de licencia sin goce (no suman horas ni cuentan como falta)</span>:null}{Object.keys(x.justD).length>0?<span style={{display:"block",color:"#3A9B5A",fontSize:11}}>✅ + {Object.keys(x.justD).length} día{Object.keys(x.justD).length===1?"":"s"} de falta aprobada o justificada ({fmtHs(x.justMin)}) que cuentan como trabajados</span>:null}{Object.keys(x.vacD).length>0?<span style={{display:"block",color:"#1A8A9B",fontSize:11}}>🏖️ + {Object.keys(x.vacD).length} día{Object.keys(x.vacD).length===1?"":"s"} de vacaciones ({fmtHs(x.vacMin)}) que cuentan como trabajados</span>:null}{(function(){
                           // Igual que en Novedades: solo los días en que se pasó 30 minutos o más, o que trabajó en un franco.
                           var porD={}; x.jor.forEach(function(j){ var f=String((j.entrada||j.salida).fecha).substring(0,10); porD[f]=(porD[f]||0)+minutosFueraDeJornada(j,x.e); });
                           var fu=Math.round(Object.keys(porD).reduce(function(a,f){ var t=turnoDe(x.e,f); return a+((porD[f]>=30||(t&&t.franco&&porD[f]>0))?porD[f]:0); },0)); return fu>0?<span style={{display:"block",color:"#E07B00",fontSize:11}}>⏱️ {fmtHs(fu)} fuera de su jornada declarada</span>:null; })()}</span>
@@ -25161,23 +25170,41 @@ var TOLERANCIA_ATRASO_MIN=10;
 var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
 // Horas que cuentan como trabajadas los días de vacaciones (sin marcar): las de su jornada de ese día, como si hubiera ido.
 // Las licencias ("[Licencia]") no entran. Los francos no suman. Un día con marcas ya cuenta por sus marcas.
-// Devuelve {fecha: minutos} de los días de vacaciones del mes que cuentan como trabajados (hasta "hasta", si se indica).
-function diasDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
+// Licencias: "[Licencia paga]" suma las horas de la jornada como una vacación; "[Licencia sin goce]" figura en la ficha pero no suma.
+// La marca vieja "[Licencia]" (anterior a esta distinción) se trata como sin goce, que es lo que hacía hasta ahora.
+function esLicencia(n){ return /^\[Licencia/.test(String(n||"")); }
+function licenciaPaga(n){ return /^\[Licencia paga\]/.test(String(n||"")); }
+function notaSinMarca(n){ return String(n||"").replace(/^\[Licencia( paga| sin goce)?\] ?/,""); }
+function ausenciaDe(vacaciones,empId,f){
+  return (vacaciones||[]).find(function(v){return v.empleado_id===empId&&f>=String(v.fecha_desde).substring(0,10)&&f<=String(v.fecha_hasta).substring(0,10);})||null;
+}
+// Devuelve {fecha: minutos} de los días del mes, sin marcas y con turno, que caen en: modo "vac" (vacaciones), "licPaga" o "licSin" (sin goce: 0 minutos).
+// "excl" son fechas ya contadas por otro concepto, para no sumar un día dos veces.
+function diasDeAusencia(emp, mes, vacaciones, conMarcas, hasta, modo, excl){
   var out={};
   if(!emp||!vacaciones||!vacaciones.length||!jornadaDe(emp))return out;
   var pr=String(mes).split("-"), ultimo=new Date(parseInt(pr[0],10),parseInt(pr[1],10),0).getDate();
   vacaciones.forEach(function(v){
-    if(v.empleado_id!==emp.id||/^\[Licencia\]/.test(String(v.notas||"")))return;
+    if(v.empleado_id!==emp.id)return;
+    var lic=esLicencia(v.notas), paga=licenciaPaga(v.notas);
+    if(modo==="vac"&&lic)return;
+    if(modo==="licPaga"&&!paga)return;
+    if(modo==="licSin"&&(!lic||paga))return;
     var d=String(v.fecha_desde).substring(0,10), h=String(v.fecha_hasta).substring(0,10);
     for(var i=1;i<=ultimo;i++){
       var f=mes+"-"+String(i).padStart(2,"0");
-      if(f<d||f>h||out[f]!==undefined||(hasta&&f>hasta)||(conMarcas&&conMarcas[f]))continue;
+      if(f<d||f>h||out[f]!==undefined||(hasta&&f>hasta)||(conMarcas&&conMarcas[f])||(excl&&excl[f]!==undefined))continue;
       if(emp.fecha_alta&&f<String(emp.fecha_alta).substring(0,10))continue;
       var t=turnoDe(emp,f);
-      if(t&&!t.franco)out[f]=t.minutos||0;
+      if(t&&!t.franco)out[f]=modo==="licSin"?0:(t.minutos||0);
     }
   });
   return out;
+}
+function diasDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){ return diasDeAusencia(emp,mes,vacaciones,conMarcas,hasta,"vac"); }
+function minutosDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
+  var d=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hasta);
+  return Object.keys(d).reduce(function(a,f){return a+d[f];},0);
 }
 // Faltas con justificativo APROBADO: ese día cuenta como trabajado, con las horas de su jornada, igual que una vacación.
 // Si marcó ese día, cuenta por sus marcas; si ya es un día de vacaciones, no se suma dos veces. Devuelve {fecha: minutos}.
@@ -25196,10 +25223,6 @@ function diasJustificados(emp, mes, justificativos, conMarcas, hasta, vacD){
 // Cómo se justificó: con certificado (foto adjunta) o aprobada por administración por el motivo escrito.
 function tipoJust(j){ return j&&j.foto_url?"Falta justificada con certificado":"Falta aprobada por administración"; }
 function sumaDias(o){ return Object.keys(o||{}).reduce(function(a,f){return a+o[f];},0); }
-function minutosDeVacaciones(emp, mes, vacaciones, conMarcas, hasta){
-  var d=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hasta);
-  return Object.keys(d).reduce(function(a,f){return a+d[f];},0);
-}
 function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   var hoy=fechaLocal();
   var mias=(fichajes||[]).filter(function(f){return f.empleado_id===emp.id;});
@@ -25209,8 +25232,10 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
   });
   var conMarcas={}; jor.forEach(function(j){ conMarcas[String((j.entrada||j.salida).fecha).substring(0,10)]=true; });
   var vacD=diasDeVacaciones(emp,mes,vacaciones,conMarcas,hoy), vacMin=Object.keys(vacD).reduce(function(t,f){return t+vacD[f];},0);
-  var justD=diasJustificados(emp,mes,justificativos,conMarcas,hoy,vacD), justMin=sumaDias(justD);   // faltas justificadas: cuentan como trabajadas
-  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+vacMin+justMin;
+  var licPD=diasDeAusencia(emp,mes,vacaciones,conMarcas,hoy,"licPaga",vacD), licPMin=sumaDias(licPD);   // licencia paga: cuenta como trabajada
+  var licSD=diasDeAusencia(emp,mes,vacaciones,conMarcas,hoy,"licSin",Object.assign({},vacD,licPD));      // licencia sin goce: figura, no suma
+  var justD=diasJustificados(emp,mes,justificativos,conMarcas,hoy,Object.assign({},vacD,licPD,licSD)), justMin=sumaDias(justD);   // faltas justificadas: cuentan como trabajadas
+  var minutos=jor.reduce(function(a,j){return a+minutosDe(j,emp);},0)+vacMin+licPMin+justMin;
   var abiertas=jor.filter(function(j){return !j.entrada||!j.salida;}).length;
   var tarde=[], antes=[], faltas=[], francosTrabajados=0;
   jor.forEach(function(j){
@@ -25236,7 +25261,7 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
       faltas.push({fecha:f,estado:j?j.estado:(f<INICIO_JUSTIFICATIVOS?"previa":"sin"),just:j||null});
     });
   }
-  return {vacD:vacD,vacMin:vacMin,justD:justD,justMin:justMin,tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
+  return {vacD:vacD,vacMin:vacMin,licPD:licPD,licPMin:licPMin,licSD:licSD,justD:justD,justMin:justMin,tieneJornada:tieneJornada,dias:Object.keys(conMarcas).length,minutos:minutos,abiertas:abiertas,tarde:tarde,antes:antes,faltas:faltas,francosTrabajados:francosTrabajados};
 }
 function antiguedadTexto(fechaAlta,hasta){
   if(!fechaAlta)return "";
@@ -25461,6 +25486,8 @@ function FichaLaboral(p){
           })}
         </div>
         {res.vacMin>0&&<div style={{background:"#0A1518",border:"1px solid #1A8A9B55",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#7CC9D4",lineHeight:1.6}}>🏖️ <b>{Object.keys(res.vacD).length} día{Object.keys(res.vacD).length===1?"":"s"} de vacaciones</b> ({Object.keys(res.vacD).sort().map(function(f){return fmtDate(f);}).join(" · ")}): sumaron <b>{fmtHs(res.vacMin)}</b> a tus horas, como si hubieras ido a trabajar.</div>}
+        {Object.keys(res.licPD||{}).length>0&&<div style={{background:"#150F1C",border:"1px solid #B07CE055",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#C8B0E8",lineHeight:1.6}}>📋 <b>{Object.keys(res.licPD).length} día{Object.keys(res.licPD).length===1?"":"s"} de licencia paga</b> ({Object.keys(res.licPD).sort().map(function(f){return fmtDate(f);}).join(" · ")}): sumaron <b>{fmtHs(res.licPMin)}</b> a tus horas.</div>}
+        {Object.keys(res.licSD||{}).length>0&&<div style={{background:"#14141A",border:"1px solid #55556655",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#B8B8C8",lineHeight:1.6}}>📋 <b>{Object.keys(res.licSD).length} día{Object.keys(res.licSD).length===1?"":"s"} de licencia sin goce</b> ({Object.keys(res.licSD).sort().map(function(f){return fmtDate(f);}).join(" · ")}): no suman horas ni cuentan como falta.</div>}
         {res.justMin>0&&<div style={{background:"#0A1A10",border:"1px solid #3A9B5A55",borderRadius:8,padding:"8px 10px",marginTop:8,fontSize:11.5,color:"#8FD19A",lineHeight:1.6}}>✅ <b>{Object.keys(res.justD).length} falta{Object.keys(res.justD).length===1?"":"s"} aprobada{Object.keys(res.justD).length===1?"":"s"}</b>: sumaron <b>{fmtHs(res.justMin)}</b> a tus horas, como si hubieras ido a trabajar.
           {Object.keys(res.justD).sort().map(function(f){var jj=(justificativos||[]).find(function(q){return q.empleado_id===emp.id&&q.fecha===f&&q.estado==="aprobado";});return <div key={f} style={{fontSize:11,color:"#B8C8BC"}}>· {fmtDate(f)} — {tipoJust(jj)}{jj&&jj.motivo?": “"+jj.motivo+"”":""}</div>;})}
         </div>}
@@ -25802,7 +25829,7 @@ function PanelRecibosFC(p){
   function horasDelFichaje(empId,periodo){
     var e=empleadosTodos.find(function(x){return x.id===empId;}); if(!e)return "";
     var mias=(p.fichajes||[]).filter(function(f){return f.empleado_id===empId;});
-    var min=0, marcados={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo){min+=minutosDe(j,e); marcados[String(ref.fecha).substring(0,10)]=true;} }); var vd=diasDeVacaciones(e,periodo,p.vacaciones,marcados); min+=sumaDias(vd); min+=sumaDias(diasJustificados(e,periodo,p.justificativos,marcados,undefined,vd)); }catch(err){}
+    var min=0, marcados={}; try{ jornadasDe(mias).forEach(function(j){ var ref=j.entrada||j.salida; if(ref&&String(ref.fecha||"").substring(0,7)===periodo){min+=minutosDe(j,e); marcados[String(ref.fecha).substring(0,10)]=true;} }); var vd=diasDeVacaciones(e,periodo,p.vacaciones,marcados); min+=sumaDias(vd); var lp=diasDeAusencia(e,periodo,p.vacaciones,marcados,undefined,"licPaga",vd); min+=sumaDias(lp); min+=sumaDias(diasJustificados(e,periodo,p.justificativos,marcados,undefined,Object.assign({},vd,lp))); }catch(err){}
     return min>0?String(Math.round(min/60*100)/100):"";
   }
   function diasDelFichaje(empId,periodo){
@@ -25825,7 +25852,7 @@ function PanelRecibosFC(p){
     if(!y||!m)return {dias:0,tramos:[],fechas:""};
     var ini=new Date(y,m-1,1), fin=new Date(y,m,0), dias=0, tramos=[], cortos=[];
     (p.vacaciones||[]).forEach(function(v){
-      if(v.empleado_id!==empId||String(v.notas||"").indexOf("[Licencia]")===0||!v.fecha_desde||!v.fecha_hasta)return;
+      if(v.empleado_id!==empId||esLicencia(v.notas)||!v.fecha_desde||!v.fecha_hasta)return;
       var a=new Date(v.fecha_desde+"T12:00:00"), b=new Date(v.fecha_hasta+"T12:00:00");
       var d0=a>ini?a:ini, d1=b<fin?b:fin;
       var n=Math.round((d1-d0)/86400000)+1;

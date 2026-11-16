@@ -21151,12 +21151,22 @@ function PanelCierre(p) {
   var [showForm,setShowForm]=useState(false);
   // Lo cobrado en las comandas del local ese día, para controlar contra lo que el cajero carga en el cierre.
   var [pagosCom,setPagosCom]=useState([]);
+  var fechaCom=(showForm&&form.fecha)?form.fecha:hoy;
   useEffect(function(){
-    if(!showForm||!form.fecha)return;
     var vivo=true;
-    cargarPagosComandas(localId,form.fecha).then(function(x){ if(vivo)setPagosCom(x); });
+    cargarPagosComandas(localId,fechaCom).then(function(x){ if(vivo)setPagosCom(x); });
     return function(){ vivo=false; };
-  },[showForm,form.fecha,localId]);
+  },[fechaCom,localId,showForm]);
+  // En la app no hay "caja" aparte: lo cobrado en las comandas entra solo al cierre.
+  // Se completan los casilleros vacíos una vez por fecha, en un cierre nuevo.
+  var autoCom=useRef({});
+  useEffect(function(){
+    if(!showForm||editId||!form.fecha||!pagosCom.length||autoCom.current[form.fecha])return;
+    autoCom.current[form.fecha]=true;
+    var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
+    var campo={efectivo:"efectivo",transferencia:"transferencia",debito:"tarjeta_debito",credito:"tarjeta_credito",qr:"otros"};
+    setForm(function(f){ var o={...f}; Object.keys(campo).forEach(function(m){ var k=campo[m]; if((tot[m]||0)>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round(tot[m]*100)/100); }); return o; });
+  },[showForm,editId,form.fecha,pagosCom]);
   // El cartel de "verificá el efectivo" se muestra una vez por visita: arranca en false y
   // sólo pasa a true cuando el cajero lo confirma. Al salir de Caja y volver a entrar, el
   // componente se remonta entero y vuelve a pedirlo —es la puerta de entrada, no un tilde
@@ -21443,6 +21453,22 @@ function PanelCierre(p) {
         )}
       </div>
 
+      {!showForm&&pagosCom.length>0&&(function(){
+        var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ tot[q.medio]=(tot[q.medio]||0)+(parseFloat(q.monto)||0); }); });
+        var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
+        var totC=MEDIOS_COBRO.reduce(function(a,m){return a+(tot[m.id]||0);},0);
+        var pt={mesa:[0,0],delivery:[0,0],mostrador:[0,0]}; pagosCom.forEach(function(c){ var k=pt[c.tipo]?c.tipo:"mostrador"; pt[k][0]++; pt[k][1]+=parseFloat(c.total)||0; });
+        return(<div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:14}}>
+          <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:6}}>🍽️ Cobrado hoy en comandas · {pagosCom.length} · {P(totC)}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {MEDIOS_COBRO.filter(function(m){return (tot[m.id]||0)>0;}).map(function(m){ return <span key={m.id} style={{background:"#1A2A1E",color:"#C8E6CD",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{m.emoji} {m.nombre} {P(tot[m.id])}</span>; })}
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+            {[["mesa","🪑 Mesas","#4C9A5A"],["delivery","🛵 Delivery","#3A9BC1"],["mostrador","🥡 Mostrador","#D4A017"]].filter(function(x){return pt[x[0]][0]>0;}).map(function(x){ return <span key={x[0]} style={{border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {pt[x[0]][0]} · {P(pt[x[0]][1])}</span>; })}
+          </div>
+          <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6}}>Al abrir el cierre, estos importes ya aparecen cargados.</div>
+        </div>);
+      })()}
       {/* Mientras haya un día atrasado, no se habla de "hoy": no se puede cargar hoy sin
           cerrar antes ese día, así que es lo único que importa mostrar acá arriba. */}
       {diaFaltante&&!showForm&&(
@@ -21583,8 +21609,8 @@ function PanelCierre(p) {
                   {conDesc.length>0&&<span style={{background:"#D4A01722",border:"1px solid #D4A01766",color:"#D4A017",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>🏷️ Descuentos: −{P(totDesc)} en {conDesc.length} comanda{conDesc.length===1?"":"s"}</span>}
                   {aFacturar.length>0&&<span style={{background:"#3A9BC122",border:"1px solid #3A9BC166",color:"#5BB8DC",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>🧾 A facturar: {aFacturar.length}{facA>0?" ("+facA+" factura A)":""}</span>}
                 </div>}
-                <button onClick={completar} style={{marginTop:8,padding:"7px 12px",borderRadius:8,border:"1px solid #3A7D4488",background:"#3A7D4422",color:"#8FD19A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Completar los casilleros vacíos con las comandas</button>
-                <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6,lineHeight:1.4}}>Es un control: no cambia nada solo. Las ventas que no se cargaron como comanda no figuran acá, así que puede haber diferencia.</div>
+                <button onClick={completar} style={{marginTop:8,padding:"7px 12px",borderRadius:8,border:"1px solid #3A7D4488",background:"#3A7D4422",color:"#8FD19A",fontFamily:"'Inter',sans-serif",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Volver a completar los vacíos con las comandas</button>
+                <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6,lineHeight:1.4}}>Los casilleros ya vienen completados con lo cobrado en las comandas. Sumá lo que no pasó por una comanda; si falta algo, se ve en la diferencia.</div>
               </div>
             );
           })()}

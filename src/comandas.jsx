@@ -1722,6 +1722,18 @@ export default function PanelComandas(p) {
                 var nuevos = extrasPlano.map(function(q) { return q.id === z.id ? { ...q, color: CMD_PALETA[(i + 1) % CMD_PALETA.length] } : q; });
                 setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
               }
+              // Empezar de cero: saca todas las mesas del local y todos los recuadros. Se mantiene el tamaño del plano.
+              function borrarTodo() {
+                var abiertas = mesasLocal.filter(function(m) { return !!comandaDeMesa(m.id); });
+                if (abiertas.length) { alert("Hay mesas con comanda abierta (" + abiertas.map(function(m) { return m.nombre; }).join(", ") + "). Cerralas antes de borrar todo."); return; }
+                if (!window.confirm("¿Borrar TODO el plano de " + (local ? local.nombre : "este local") + "?\n\nSe sacan las " + mesas.filter(function(m) { return m.local === localId; }).length + " mesas y todos los recuadros. No se puede deshacer.")) return;
+                if (!window.confirm("Última confirmación: ¿arrancamos el plano de cero?")) return;
+                var ids = mesas.filter(function(m) { return m.local === localId; }).map(function(m) { return m.id; });
+                setMesas(function(prev) { return prev.filter(function(m) { return m.local !== localId; }); });
+                ids.forEach(function(id) { sbDeleteMesa(id); });
+                setPosPlano({}); setExtrasPlano([]);
+                sbGuardarPlano(localId, {}, [], dimsPlano, usuario);
+              }
               function quitarExtra(id) {
                 var nuevos = extrasPlano.filter(function(z) { return z.id !== id; });
                 setExtrasPlano(nuevos); sbGuardarPlano(localId, posPlano, nuevos, dimsPlano, usuario);
@@ -1748,6 +1760,7 @@ export default function PanelComandas(p) {
                         <span>m de largo</span>
                       </div>
                       <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        <button onClick={borrarTodo} style={{ ...GH, padding:"5px 10px", fontSize:11, borderColor:"#C1440E", color:"#C1440E", marginLeft:"auto" }}>🗑️ Borrar todo y empezar de cero</button>
                         <button onClick={nuevaMesa} style={{ ...GH, padding:"5px 10px", fontSize:11, borderColor:color, color:color }}>+ 🪑 Mesa</button>
                         {CMD_EXTRAS.map(function(t) {
                           return <button key={t.id} onClick={function() { agregarExtra(t.id); }} style={{ ...GH, padding:"5px 10px", fontSize:11 }}>+ {t.emoji} {t.nombre}</button>;

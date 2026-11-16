@@ -143,6 +143,23 @@ async function sbGuardarPlano(localId, pos, extras, dims, usuario) {
     return r.ok;
   } catch(e) { return false; }
 }
+// Faltantes de plato: lo avisa el mozo o la cocina. Va en pautas, ámbito "comanda_faltante", un registro por aviso.
+async function sbGuardarFaltante(f) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:f.id, ambito:"comanda_faltante", texto:JSON.stringify(f), usuario:f.por || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function sbLeerFaltantes(localId, fecha) {
+  try {
+    var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_faltante&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=500", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
+  } catch(e) { return []; }
+}
 // Lo que se descuenta de un subtotal: {tipo:"%"|"$", valor}.
 function montoDescuento(subtotal, d) {
   if (!d || !(Number(d.valor) > 0)) return 0;
@@ -150,10 +167,12 @@ function montoDescuento(subtotal, d) {
   return Math.round(m * 100) / 100;
 }
 // Lo cobrado en comandas de un local en un día de negocio, para el cierre de caja.
-export async function cargarPagosComandas(localId, fecha) {
+export async function cargarPagosComandas(localId, fecha) { return cargarPagosGen(localId, fecha, fetch); }
+// El informe usa cfetch (así en el modo práctica lee la práctica); el cierre de caja usa siempre el fetch de verdad.
+async function cargarPagosGen(localId, fecha, ff) {
   try {
     var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
-    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_pago&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await ff(SURL + "/rest/v1/pautas?ambito=eq.comanda_pago&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
   } catch(e) { return []; }
@@ -270,6 +289,7 @@ var CMD_VISTAS = [
   { id:"delivery",  emoji:"🛵", nombre:"Delivery",  tipo:"delivery"  },
   { id:"mostrador", emoji:"🥡", nombre:"Mostrador", tipo:"mostrador" },
   { id:"carta",     emoji:"📖", nombre:"Carta"                       },
+  { id:"informe",   emoji:"📊", nombre:"Informe"                     },
 ];
 
 function pesos(n) { return "$" + Math.round(Number(n) || 0).toLocaleString("es-AR"); }
@@ -510,6 +530,181 @@ function VentanaControl(props) {
       </div>
       <div style={{ fontSize:10.5, color:"#777", marginTop:8 }}>Es un control para el cliente, no una factura.</div>
     </Ventana>
+  );
+}
+
+
+// ─── FALTANTE DE PLATO ────────────────────────────────────────────────
+function VentanaFaltante(props) {
+  var color = props.color;
+  var [plato, setPlato] = useState("");
+  var [avisa, setAvisa] = useState("mozo");
+  var [nota, setNota] = useState("");
+  var sugeridos = (props.carta || []).filter(function(x) { return x.local === props.localId; }).map(function(x) { return x.nombre; });
+  function guardar() {
+    if (!plato.trim()) return;
+    props.onGuardar({ id:"cfalt_" + Date.now(), local:props.localId, fecha:props.fecha, plato:plato.trim(), avisa:avisa, por:props.usuario, nota:nota.trim(), at:new Date().toISOString() });
+  }
+  return (
+    <div onClick={props.onCerrar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid #D4A01788", borderRadius:14, padding:"16px", width:"100%", maxWidth:400 }}>
+        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:12 }}>⚠️ Avisar faltante de plato</div>
+        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Qué plato falta?</label>
+        <input list="cmd-platos" value={plato} onChange={function(e) { setPlato(e.target.value); }} placeholder="Ej: Provoleta, Vino malbec" style={{ ...INP, marginBottom:10 }} />
+        <datalist id="cmd-platos">{sugeridos.map(function(n, i) { return <option key={i} value={n} />; })}</datalist>
+        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Quién avisa?</label>
+        <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+          {[["mozo", "🧑‍🍳 El mozo"], ["cocina", "🍳 La cocina"]].map(function(x) {
+            var act = avisa === x[0];
+            return <button key={x[0]} onClick={function() { setAvisa(x[0]); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "#161616", color: act ? "#D4A017" : "#888", fontSize:12, fontWeight:700, cursor:"pointer" }}>{x[1]}</button>;
+          })}
+        </div>
+        <input value={nota} onChange={function(e) { setNota(e.target.value); }} placeholder="Nota (opcional): se terminó, no llegó el pedido…" style={{ ...INP, marginBottom:12 }} />
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={props.onCerrar} style={{ ...GH, flex:1, padding:"10px", fontSize:12 }}>Cancelar</button>
+          <button onClick={guardar} disabled={!plato.trim()} style={{ flex:2, padding:"10px", borderRadius:8, border:"none", background: plato.trim() ? "#D4A017" : "#1A1A1A", color: plato.trim() ? "#1A1200" : "#444", fontSize:12, fontWeight:800, cursor:"pointer" }}>Avisar faltante</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── INFORME DEL TURNO ────────────────────────────────────────────────
+// Qué pasó en el servicio: cuánto tardó cada mesa, el promedio, la más lenta, la cocina, lo cobrado por medio de pago y los faltantes.
+function turnoDe(iso) { var h = new Date(iso).getHours(); return h >= 5 && h < 17 ? "mediodia" : "noche"; }
+function fmtMin(m) { if (m === null || m === undefined || isNaN(m)) return "—"; m = Math.round(m); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; }
+function InformeTurno(props) {
+  var color = props.color, localId = props.localId;
+  var [fecha, setFecha] = useState(props.diaDeNegocio ? props.diaDeNegocio() : new Date().toISOString().slice(0, 10));
+  var [turno, setTurno] = useState("todo");
+  var [datos, setDatos] = useState(null);
+  useEffect(function() {
+    var vivo = true; setDatos(null);
+    (async function() {
+      var pagos = await cargarPagosGen(localId, fecha, cfetch);
+      var ids = pagos.map(function(x) { return x.comanda_id; });
+      var coms = [], its = [];
+      if (ids.length) {
+        try { var r = await cfetch(SURL + "/rest/v1/comandas?id=in.(" + ids.join(",") + ")", { headers: {...SH, "Cache-Control":"no-cache"} }); var d = await r.json(); coms = Array.isArray(d) ? d : []; } catch(e) {}
+        its = await sbLoadItems(ids);
+      }
+      var falt = await sbLeerFaltantes(localId, fecha);
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt });
+    })();
+    return function() { vivo = false; };
+  }, [fecha, localId, props.refresco]);
+
+  var card = { background:"#0F0F0F", border:"1px solid #1E1E1E", borderRadius:12, padding:"13px 14px", marginBottom:12 };
+  var h = { fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, marginBottom:8, fontWeight:700 };
+
+  function cuerpo() {
+    if (!datos) return <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>Cargando…</div>;
+    var filas = datos.pagos.map(function(pg) {
+      var c = datos.coms.find(function(x) { return x.id === pg.comanda_id; });
+      if (!c) return null;
+      var min = c.abierta_at && c.cerrada_at ? (new Date(c.cerrada_at) - new Date(c.abierta_at)) / 60000 : null;
+      var mesa = (props.mesas || []).find(function(m) { return m.id === c.mesa_id; });
+      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
+      return { c:c, pg:pg, min:(min !== null && min >= 0 && min < 720) ? min : null, nombre:nombre, turno:turnoDe(c.cerrada_at || c.abierta_at) };
+    }).filter(function(x) { return x && (turno === "todo" || x.turno === turno); });
+    if (!filas.length) return <div style={{ textAlign:"center", padding:"30px 0", color:"#555", fontSize:13 }}>No hay comandas cobradas en este día{turno !== "todo" ? " y turno" : ""}.</div>;
+    var ids = {}; filas.forEach(function(f) { ids[f.c.id] = true; });
+    var conMin = filas.filter(function(f) { return f.min !== null; });
+    var mesasMin = conMin.filter(function(f) { return f.c.tipo === "mesa"; });
+    var prom = function(a) { return a.length ? a.reduce(function(s2, f) { return s2 + f.min; }, 0) / a.length : null; };
+    var ordenadas = conMin.slice().sort(function(a, b) { return b.min - a.min; });
+    var ventas = filas.reduce(function(a, f) { return a + (Number(f.pg.total) || 0); }, 0);
+    var desc = filas.reduce(function(a, f) { return a + (Number(f.pg.descuento) || 0); }, 0);
+    var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { porMedio[q.medio] = (porMedio[q.medio] || 0) + (Number(q.monto) || 0); }); });
+    var porMozo = {}; filas.forEach(function(f) { var k = f.c.mozo || "Sin mozo"; var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
+    var itemsT = datos.items.filter(function(i) { return ids[i.comanda_id]; });
+    var cocina = itemsT.filter(function(i) { return i.estado === "entregado" && i.enviado_at && i.entregado_at; }).map(function(i) { return { nombre:i.nombre, min:(new Date(i.entregado_at) - new Date(i.enviado_at)) / 60000 }; }).filter(function(x) { return x.min >= 0 && x.min < 240; });
+    var cocProm = cocina.length ? cocina.reduce(function(a, x) { return a + x.min; }, 0) / cocina.length : null;
+    var porPlato = {}; cocina.forEach(function(x) { var o = porPlato[x.nombre] || (porPlato[x.nombre] = { n:0, t:0 }); o.n++; o.t += x.min; });
+    var lentos = Object.keys(porPlato).map(function(k) { return { nombre:k, prom:porPlato[k].t / porPlato[k].n, n:porPlato[k].n }; }).sort(function(a, b) { return b.prom - a.prom; }).slice(0, 5);
+    var quitados = itemsT.filter(function(i) { return i.estado === "cancelado"; });
+    var falt = datos.falt.filter(function(f) { return turno === "todo" || turnoDe(f.at) === turno; });
+    var kpi = function(t, v, sub, col) { return <div style={{ flex:"1 1 130px", background:"#111", border:"1px solid " + (col || "#222") + "55", borderRadius:10, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#777", textTransform:"uppercase", letterSpacing:1 }}>{t}</div><div style={{ fontSize:20, fontWeight:800, color:col || "#F0EDE8", margin:"2px 0" }}>{v}</div><div style={{ fontSize:10, color:"#666" }}>{sub}</div></div>; };
+    var mas = ordenadas[0], menos = ordenadas[ordenadas.length - 1];
+    return (
+      <div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+          {kpi("Cobrado", pesos(ventas), filas.length + " comanda" + (filas.length === 1 ? "" : "s") + (desc > 0 ? " · desc. " + pesos(desc) : ""), "#4C9A5A")}
+          {kpi("Tardanza promedio", fmtMin(prom(mesasMin)), "por mesa (" + mesasMin.length + ")", color)}
+          {kpi("La que más tardó", mas ? fmtMin(mas.min) : "—", mas ? mas.nombre : "", "#C1440E")}
+          {kpi("La más rápida", menos ? fmtMin(menos.min) : "—", menos ? menos.nombre : "", "#3A9BC1")}
+        </div>
+
+        <div style={card}>
+          <div style={h}>⏱ Cuánto tardó cada una (de la más lenta a la más rápida)</div>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <thead><tr style={{ color:"#666", fontSize:9.5, textTransform:"uppercase" }}><th style={{ textAlign:"left", padding:"3px 0" }}>Mesa / pedido</th><th style={{ textAlign:"left" }}>Mozo</th><th style={{ textAlign:"right" }}>Tiempo</th><th style={{ textAlign:"right" }}>Cuenta</th></tr></thead>
+            <tbody>
+              {ordenadas.concat(filas.filter(function(f) { return f.min === null; })).map(function(f) {
+                var lenta = f.min !== null && prom(conMin) && f.min > prom(conMin) * 1.5;
+                return <tr key={f.c.id} style={{ borderTop:"1px solid #181818" }}>
+                  <td style={{ padding:"6px 0", color:"#DDD" }}>{f.nombre} <span style={{ color:"#555", fontSize:10 }}>#{f.c.numero}</span></td>
+                  <td style={{ color:"#999" }}>{f.c.mozo || "—"}</td>
+                  <td style={{ textAlign:"right", fontWeight:700, color: lenta ? "#C1440E" : "#F0EDE8" }}>{fmtMin(f.min)}{lenta ? " 🐢" : ""}</td>
+                  <td style={{ textAlign:"right", color:"#BBB" }}>{pesos(f.pg.total)}</td></tr>;
+              })}
+            </tbody>
+          </table>
+          <div style={{ fontSize:10, color:"#555", marginTop:6 }}>🐢 = más de una vez y media el promedio. El tiempo va desde que se abre hasta que se cobra.</div>
+        </div>
+
+        <div style={card}>
+          <div style={h}>💳 Cobrado por medio de pago (esto es lo que va al cierre de caja)</div>
+          {MEDIOS_COBRO.filter(function(m) { return (porMedio[m.id] || 0) > 0; }).map(function(m) {
+            return <div key={m.id} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderTop:"1px solid #181818", fontSize:13 }}><span style={{ color:"#CCC" }}>{m.emoji} {m.nombre}</span><b style={{ color:"#F0EDE8" }}>{pesos(porMedio[m.id])}</b></div>;
+          })}
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 0", borderTop:"2px solid #222", fontSize:13 }}><b style={{ color:"#F0EDE8" }}>Total</b><b style={{ color:"#4C9A5A" }}>{pesos(Object.keys(porMedio).reduce(function(a, k) { return a + porMedio[k]; }, 0))}</b></div>
+        </div>
+
+        <div style={card}>
+          <div style={h}>🧑‍🍳 Por mozo</div>
+          {Object.keys(porMozo).sort(function(a, b) { return porMozo[b].v - porMozo[a].v; }).map(function(k) {
+            var o = porMozo[k]; var pm = o.mins.length ? o.mins.reduce(function(a, x) { return a + x; }, 0) / o.mins.length : null;
+            return <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><span style={{ color:"#DDD" }}>{k}</span><span style={{ color:"#999" }}>{o.n} · prom. {fmtMin(pm)} · <b style={{ color:"#F0EDE8" }}>{pesos(o.v)}</b></span></div>;
+          })}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🍳 Cocina: del pedido a la mesa</div>
+          {cocProm === null ? <div style={{ fontSize:12, color:"#555" }}>Todavía no hay platos marcados como entregados en este turno.</div> : (
+            <>
+              <div style={{ fontSize:13, color:"#DDD", marginBottom:6 }}>Promedio por plato: <b style={{ color:"#F0EDE8" }}>{fmtMin(cocProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({cocina.length} platos entregados)</span></div>
+              {lentos.map(function(x) { return <div key={x.nombre} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderTop:"1px solid #181818", fontSize:12 }}><span style={{ color:"#CCC" }}>{x.nombre}</span><span style={{ color:"#999" }}>{fmtMin(x.prom)} <span style={{ color:"#555" }}>×{x.n}</span></span></div>; })}
+              <div style={{ fontSize:10, color:"#555", marginTop:5 }}>Los más lentos arriba. Cuenta desde «Marchar» hasta que se marca entregado.</div>
+            </>
+          )}
+          {quitados.length > 0 && <div style={{ fontSize:11, color:"#D4A017", marginTop:8 }}>🗑 Platos quitados de las cuentas: {quitados.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} ({quitados.slice(0, 6).map(function(i) { return i.nombre + (i.nota ? " — " + i.nota : ""); }).join("; ")}{quitados.length > 6 ? "…" : ""})</div>}
+        </div>
+
+        <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
+          <div style={h}>⚠️ Faltantes de plato</div>
+          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Nadie avisó faltantes en este turno.</div> : falt.map(function(f) {
+            return <div key={f.id} style={{ padding:"6px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
+              <b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}{f.por ? " (" + f.por + ")" : ""}</span> <span style={{ color:"#555" }}>· {fmtHora ? fmtHora(f.at) : String(f.at).slice(11, 16)}</span>
+              {f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}
+            </div>;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
+        <input type="date" value={fecha} onChange={function(e) { setFecha(e.target.value); }} style={{ ...INP, width:"auto", padding:"7px 10px", fontSize:12 }} />
+        {[["todo", "Todo el día"], ["mediodia", "☀️ Mediodía"], ["noche", "🌙 Noche"]].map(function(x) {
+          var act = turno === x[0];
+          return <button key={x[0]} onClick={function() { setTurno(x[0]); }} style={{ padding:"7px 12px", borderRadius:8, border:"1px solid " + (act ? color : "#222"), background: act ? color + "22" : "transparent", color: act ? color : "#777", fontSize:12, fontWeight:700, cursor:"pointer" }}>{x[1]}</button>;
+        })}
+      </div>
+      {cuerpo()}
+    </div>
   );
 }
 
@@ -1345,6 +1540,9 @@ export default function PanelComandas(p) {
   var [ahora, setAhora] = useState(Date.now());
   var [practica, setPractica] = useState(false);
   var mozos = mozosDeLocal(p.empleados, localId);
+  var [faltante, setFaltante] = useState(false);
+  var [refInforme, setRefInforme] = useState(0);
+  var verInforme = !p.soloServicio || !!p.puedeDescuento;   // el informe lo ven administración y cajeros
   var [eligeMozo, setEligeMozo] = useState(null);   // {titulo, alElegir}
   var [ultimoMozo, setUltimoMozo] = useState(null);
   // Pregunta quién toma el pedido; si el local no tiene empleados cargados, sigue con el usuario de siempre.
@@ -1598,6 +1796,12 @@ export default function PanelComandas(p) {
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
       </div>
 
+      <div style={{ marginBottom:10 }}>
+        <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante de plato</button>
+      </div>
+      {faltante && <VentanaFaltante color={color} localId={localId} fecha={p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)} usuario={usuario} carta={carta}
+        onCerrar={function() { setFaltante(false); }}
+        onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
       {practica ? (
         <div style={{ background:"#2A1F00", border:"2px dashed #D4A017", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#D4A017", letterSpacing:1 }}>🎮 MODO PRÁCTICA</div>
@@ -1645,7 +1849,7 @@ export default function PanelComandas(p) {
 
       {/* Mesas / Delivery / Mostrador */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-        {CMD_VISTAS.map(function(v) {
+        {CMD_VISTAS.filter(function(v) { return v.id !== "informe" || verInforme; }).map(function(v) {
           var act = vista === v.id && !config;
           var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
           var colV = v.tipo ? CMD_TIPO[v.tipo].color : color;
@@ -1681,6 +1885,8 @@ export default function PanelComandas(p) {
           <button onClick={function() { setConfig(false); }} style={{ ...GH, padding:"7px 13px", fontSize:12, marginBottom:12 }}>← Volver al plano</button>
           <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
+      ) : vista === "informe" ? (
+        <InformeTurno localId={localId} color={color} mesas={mesas} diaDeNegocio={p.diaDeNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
       ) : vista === "carta" ? (
         (p.soloServicio && !p.puedeEditarCarta)
           ? <CartaConsulta localId={localId} color={color} carta={carta} />

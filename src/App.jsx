@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
-import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas } from "./comandas.jsx";
+import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
@@ -21140,13 +21140,16 @@ function PanelCierresSofia(p) {
 }
 
 // Un día sin ventas se carga como un cierre en $0 con la nota "SIN VENTAS". Cuenta como día cerrado.
+// El turno del cierre va en el id (local_fecha_turno_hora): no hace falta una columna nueva. Los cierres viejos no lo tienen.
+function turnoDeCierre(c){ var m=/_(mediodia|noche)_\d+$/.exec(String((c&&c.id)||"")); return m?m[1]:null; }
 function esSinVentas(c){ return !!c&&!(parseFloat(c.total_ventas||0)>0)&&/^\s*sin ventas/i.test(String(c.notas||"")); }
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
   // Día de negocio, no calendario: un cajero que abre a la noche y cierra pasada la
   // medianoche sigue cargando el cierre de ESE mismo día, no del día siguiente.
   var hoy=diaDeNegocio();
-  var formVacio={fecha:hoy,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
+  var turnoAhora=turnoDeComanda(new Date().toISOString());
+  var formVacio={fecha:hoy,turno:turnoAhora,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",retiro_socio:"",egresos_diarios:"",egresos_nota:"",retiro_caja:"",retiro_caja_nota:"",notas:""};
   var [form,setForm]=useState(formVacio);
   var [showForm,setShowForm]=useState(false);
   // Lo cobrado en las comandas del local ese día, para controlar contra lo que el cajero carga en el cierre.
@@ -21159,13 +21162,15 @@ function PanelCierre(p) {
   },[fechaCom,localId,showForm]);
   // En la app no hay "caja" aparte: lo cobrado en las comandas entra solo al cierre.
   // Se completan los casilleros vacíos una vez por fecha, en un cierre nuevo.
+  // Lo cobrado en comandas de ESTE turno: el cierre se arma por turno (mediodía 5 a 17 h, noche 17 a 5 h).
+  var pagosTurno=pagosCom.filter(function(c){return !form.turno||!c.cobrado_at||turnoDeComanda(c.cobrado_at)===form.turno;});
   var autoCom=useRef({});
   useEffect(function(){
-    if(!showForm||editId||!form.fecha||!pagosCom.length||autoCom.current[form.fecha])return;
-    autoCom.current[form.fecha]=true;
-    var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
+    if(!showForm||editId||!form.fecha||!pagosTurno.length||autoCom.current[form.fecha+form.turno])return;
+    autoCom.current[form.fecha+form.turno]=true;
+    var tot={}; pagosTurno.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
     setForm(function(f){ var o={...f}; Object.keys(tot).forEach(function(k){ if(tot[k]>0&&!(parseFloat(o[k])>0))o[k]=String(Math.round(tot[k]*100)/100); }); return o; });
-  },[showForm,editId,form.fecha,pagosCom]);
+  },[showForm,editId,form.fecha,form.turno,pagosCom]);
   // El cartel de "verificá el efectivo" se muestra una vez por visita: arranca en false y
   // sólo pasa a true cuando el cajero lo confirma. Al salir de Caja y volver a entrar, el
   // componente se remonta entero y vuelve a pedirlo —es la puerta de entrada, no un tilde
@@ -21278,7 +21283,7 @@ function PanelCierre(p) {
   }
 
   function abrirEditar(c){
-    setForm({fecha:c.fecha,efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",mp_transferencia:c.mp_transferencia||"",mp_qr:c.mp_qr||"",mp_debito:c.mp_debito||"",mp_credito:c.mp_credito||"",pat_transferencia:c.pat_transferencia||"",pat_qr:c.pat_qr||"",pat_debito:c.pat_debito||"",pat_credito:c.pat_credito||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
+    setForm({fecha:c.fecha,turno:turnoDeCierre(c)||"",efectivo:c.efectivo||"",transferencia:c.transferencia||"",tarjeta_debito:c.tarjeta_debito||"",tarjeta_credito:c.tarjeta_credito||"",otros:c.otros||"",mp_transferencia:c.mp_transferencia||"",mp_qr:c.mp_qr||"",mp_debito:c.mp_debito||"",mp_credito:c.mp_credito||"",pat_transferencia:c.pat_transferencia||"",pat_qr:c.pat_qr||"",pat_debito:c.pat_debito||"",pat_credito:c.pat_credito||"",retiro_socio:c.retiro_socio||"",egresos_diarios:c.egresos_diarios||"",egresos_nota:c.egresos_nota||"",retiro_caja:c.retiro_caja||"",retiro_caja_nota:c.retiro_caja_nota||"",notas:c.notas||""});
     setEditId(c.id);
     setShowForm(true);
   }
@@ -21303,10 +21308,12 @@ function PanelCierre(p) {
       form={...form,efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:"",
         notas:"SIN VENTAS"+(String(form.notas||"").replace(/^\s*sin ventas\s*·?\s*/i,"").trim()?" · "+String(form.notas||"").replace(/^\s*sin ventas\s*·?\s*/i,"").trim():"")};
     }
+    var tn=form.turno||turnoAhora;
+    if(!editId&&cierresLocal.some(function(c){return c.fecha===form.fecha&&turnoDeCierre(c)===tn&&esCierreReal(c);})&&!window.confirm("Ya hay un cierre del turno "+(tn==="mediodia"?"mediodía":"noche")+" del "+fmtDate(form.fecha)+". ¿Cargar otro igual?"))return;
     var total=calcTotal(form);
     if(total===0&&!sinVentas){alert("Cargá al menos un medio de pago para guardar el cierre, o tocá «Sin ventas» si hoy no se vendió nada.");return;}
     var cierre={
-      id: editId || (localId+"_"+form.fecha+"_"+String(Date.now())),
+      id: editId || (localId+"_"+form.fecha+"_"+(form.turno||turnoAhora)+"_"+String(Date.now())),
       local:localId,
       fecha:form.fecha,
       total_ventas:total,
@@ -21453,19 +21460,31 @@ function PanelCierre(p) {
       </div>
 
       {!showForm&&pagosCom.length>0&&(function(){
-        var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
         var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
-        var totC=mediosDeLocal(localId).reduce(function(a,m){return a+(tot[m.id]||0);},0);
-        var pt={mesa:[0,0],delivery:[0,0],mostrador:[0,0]}; pagosCom.forEach(function(c){ var k=pt[c.tipo]?c.tipo:"mostrador"; pt[k][0]++; pt[k][1]+=parseFloat(c.total)||0; });
+        var turnos=[["mediodia","☀️ Mediodía"],["noche","🌙 Noche"]];
+        var cerrado=function(t){ return cierresLocal.some(function(c){return c.fecha===hoy&&turnoDeCierre(c)===t&&esCierreReal(c);}); };
         return(<div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:14}}>
-          <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:6}}>🍽️ Cobrado hoy en comandas · {pagosCom.length} · {P(totC)}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {mediosDeLocal(localId).filter(function(m){return (tot[m.id]||0)>0;}).map(function(m){ return <span key={m.id} style={{background:"#1A2A1E",color:"#C8E6CD",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{m.emoji} {m.nombre} {P(tot[m.id])}</span>; })}
-          </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
-            {[["mesa","🪑 Mesas","#4C9A5A"],["delivery","🛵 Delivery","#3A9BC1"],["mostrador","🥡 Mostrador","#D4A017"]].filter(function(x){return pt[x[0]][0]>0;}).map(function(x){ return <span key={x[0]} style={{border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {pt[x[0]][0]} · {P(pt[x[0]][1])}</span>; })}
-          </div>
-          <div style={{fontSize:9.5,color:"#5E7A64",marginTop:6}}>Al abrir el cierre, estos importes ya aparecen cargados.</div>
+          <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,fontWeight:800,marginBottom:8}}>🍽️ Cobrado hoy en comandas, por turno</div>
+          {turnos.map(function(t){
+            var ps=pagosCom.filter(function(c){return !c.cobrado_at||turnoDeComanda(c.cobrado_at)===t[0];});
+            if(!ps.length)return null;
+            var tot={}; ps.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
+            var totC=mediosDeLocal(localId).reduce(function(s,m){return s+(tot[m.id]||0);},0);
+            var pt={mesa:[0,0],delivery:[0,0],mostrador:[0,0]}; ps.forEach(function(c){ var k=pt[c.tipo]?c.tipo:"mostrador"; pt[k][0]++; pt[k][1]+=parseFloat(c.total)||0; });
+            return(<div key={t[0]} style={{borderTop:"1px solid #1A2A1E",padding:"8px 0"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                <b style={{fontSize:13,color:"#F0EDE8"}}>{t[1]} · {ps.length} · {P(totC)}</b>
+                <span style={{fontSize:10,fontWeight:700,color:cerrado(t[0])?"#4C9A5A":"#D4A017"}}>{cerrado(t[0])?"✓ cierre cargado":"pendiente de cerrar"}</span>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {mediosDeLocal(localId).filter(function(m){return (tot[m.id]||0)>0;}).map(function(m){ return <span key={m.id} style={{background:"#1A2A1E",color:"#C8E6CD",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{m.emoji} {m.nombre} {P(tot[m.id])}</span>; })}
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:5}}>
+                {[["mesa","🪑 Mesas","#4C9A5A"],["delivery","🛵 Delivery","#3A9BC1"],["mostrador","🥡 Mostrador","#D4A017"]].filter(function(x){return pt[x[0]][0]>0;}).map(function(x){ return <span key={x[0]} style={{border:"1px solid "+x[2]+"55",color:x[2],borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700}}>{x[1]} · {pt[x[0]][0]} · {P(pt[x[0]][1])}</span>; })}
+              </div>
+            </div>);
+          })}
+          <div style={{fontSize:9.5,color:"#5E7A64",marginTop:4}}>Al abrir el cierre de un turno, esos importes ya aparecen cargados.</div>
         </div>);
       })()}
       {/* Mientras haya un día atrasado, no se habla de "hoy": no se puede cargar hoy sin
@@ -21569,9 +21588,19 @@ function PanelCierre(p) {
             {!editId&&diaFaltante&&<div style={{fontSize:10,color:"#9A9A9A",marginTop:4}}>Primero hay que cerrar este día. Los demás se habilitan uno por uno.</div>}
             {fechaSospechosa&&<div style={{fontSize:10,color:"#D4A017",marginTop:4}}>⚠️ Hoy es {fmtDate(hoy)} — revisá que esta fecha esté bien antes de guardar.</div>}
           </div>
+          <div style={{marginBottom:10}}>
+            <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",marginBottom:5}}>Turno que se cierra</label>
+            <div style={{display:"flex",gap:6}}>
+              {[["mediodia","☀️ Mediodía"],["noche","🌙 Noche"]].map(function(t){
+                var act=form.turno===t[0];
+                return <button key={t[0]} type="button" disabled={!!editId} onClick={function(){ if(form.turno===t[0])return; if(calcTotal(form)>0&&!window.confirm("Al cambiar de turno se vuelven a completar los importes con las comandas de ese turno. ¿Seguimos?"))return; autoCom.current[form.fecha+t[0]]=false; setForm(function(f){return{...f,turno:t[0],efectivo:"",transferencia:"",tarjeta_debito:"",tarjeta_credito:"",otros:"",mp_transferencia:"",mp_qr:"",mp_debito:"",mp_credito:"",pat_transferencia:"",pat_qr:"",pat_debito:"",pat_credito:""};}); }} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid "+(act?(local?local.color:"#C1440E"):"#2A2A2A"),background:act?(local?local.color:"#C1440E")+"26":"#0F0F0F",color:act?(local?local.color:"#C1440E"):"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:700,cursor:editId?"default":"pointer"}}>{t[1]}</button>;
+              })}
+            </div>
+            <div style={{fontSize:10,color:"#6A6A6A",marginTop:4}}>Mediodía: de 5 a 17 h · Noche: de 17 a 5 h. Los casilleros se completan con lo cobrado en las comandas de ese turno.</div>
+          </div>
           {(function(){
-            if(!pagosCom.length)return null;
-            var tot={}; pagosCom.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
+            if(!pagosTurno.length)return null;
+            var tot={}; pagosTurno.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
             var MEDIOS_L=mediosDeLocal(localId);
             var n=function(k){ return parseFloat(form[k])||0; };
             // Lo cargado en el cierre por medio: la cuenta principal más las otras cuentas (Mercado Pago, Patagonia) de ese medio.
@@ -21582,15 +21611,15 @@ function PanelCierre(p) {
             var totC=MEDIOS_L.reduce(function(a,m){return a+(tot[m.id]||0);},0), totF=MEDIOS_L.reduce(function(a,m){return a+cargado[m.id];},0);
             // Lo cobrado en comandas separado por tipo de pedido: mesas, delivery y mostrador.
             var porTipo={mesa:{n:0,t:0},delivery:{n:0,t:0},mostrador:{n:0,t:0}};
-            pagosCom.forEach(function(c){ var k=porTipo[c.tipo]?c.tipo:"mostrador"; porTipo[k].n++; porTipo[k].t+=parseFloat(c.total)||0; });
-            var conDesc=pagosCom.filter(function(c){return (parseFloat(c.descuento)||0)>0;}), totDesc=conDesc.reduce(function(a,c){return a+(parseFloat(c.descuento)||0);},0);
-            var aFacturar=pagosCom.filter(function(c){return !!c.factura;}), facA=aFacturar.filter(function(c){return c.factura.tipo==="A";}).length;
+            pagosTurno.forEach(function(c){ var k=porTipo[c.tipo]?c.tipo:"mostrador"; porTipo[k].n++; porTipo[k].t+=parseFloat(c.total)||0; });
+            var conDesc=pagosTurno.filter(function(c){return (parseFloat(c.descuento)||0)>0;}), totDesc=conDesc.reduce(function(a,c){return a+(parseFloat(c.descuento)||0);},0);
+            var aFacturar=pagosTurno.filter(function(c){return !!c.factura;}), facA=aFacturar.filter(function(c){return c.factura.tipo==="A";}).length;
             function completar(){
               setForm(function(f){ var o={...f}; MEDIOS_L.forEach(function(m){ if((tot[m.id]||0)>0&&!(parseFloat(o[m.id])>0))o[m.id]=String(Math.round((tot[m.id])*100)/100); }); return o; });
             }
             return(
               <div style={{background:"#0B1410",border:"1px solid #3A7D4455",borderRadius:10,padding:"11px 12px",marginBottom:12}}>
-                <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontWeight:800}}>🍽️ Lo que dicen las comandas · {pagosCom.length} cobrada{pagosCom.length===1?"":"s"}</div>
+                <div style={{fontSize:10,color:"#4C9A5A",textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontWeight:800}}>🍽️ Lo que dicen las comandas · {form.turno==="noche"?"🌙 noche":form.turno==="mediodia"?"☀️ mediodía":"día"} · {pagosTurno.length} cobrada{pagosTurno.length===1?"":"s"}</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
                   <thead><tr style={{color:"#7E7E7E",fontSize:9.5,textTransform:"uppercase",letterSpacing:1}}><th style={{textAlign:"left",padding:"2px 0"}}></th><th style={{textAlign:"right"}}>Comandas</th><th style={{textAlign:"right"}}>Cargado</th><th style={{textAlign:"right"}}>Dif.</th></tr></thead>
                   <tbody>
@@ -21729,7 +21758,7 @@ function PanelCierre(p) {
                 return(
                   <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div>
-                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{turnoDeCierre(c)&&<span style={{marginLeft:6,fontSize:10,color:"#9A9A9A"}}>{turnoDeCierre(c)==="noche"?"🌙 noche":"☀️ mediodía"}</span>}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
                       <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>por {c.usuario}</div>
                       <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>
                         {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}

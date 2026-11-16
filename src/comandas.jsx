@@ -153,6 +153,12 @@ export var CMD_SECTORES = [
   { id:"barra",  emoji:"🍸", nombre:"Barra"  },
 ];
 
+// Cada tipo de pedido tiene su color y su rótulo en todas las pantallas, para que no se confundan una mesa, un delivery y un pedido de mostrador.
+export var CMD_TIPO = {
+  mesa:      { color:"#4C9A5A", emoji:"🪑", nombre:"Mesa",      plural:"Mesas" },
+  delivery:  { color:"#3A9BC1", emoji:"🛵", nombre:"Delivery",  plural:"Deliverys" },
+  mostrador: { color:"#D4A017", emoji:"🥡", nombre:"Mostrador", plural:"Mostrador" },
+};
 var CMD_VISTAS = [
   { id:"mesas",     emoji:"🪑", nombre:"Mesas",     tipo:"mesa"      },
   { id:"delivery",  emoji:"🛵", nombre:"Delivery",  tipo:"delivery"  },
@@ -214,6 +220,7 @@ function Cobro(props) {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}>
       <div style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:16, padding:"18px", width:"100%", maxWidth:420, maxHeight:"92vh", overflowY:"auto" }}>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800, color:"#F0EDE8" }}>💰 Cobrar · {props.titulo}</div>
+        {props.tipo && CMD_TIPO[props.tipo] && <span style={{ display:"inline-block", marginTop:4, background:CMD_TIPO[props.tipo].color+"26", color:CMD_TIPO[props.tipo].color, border:"1px solid "+CMD_TIPO[props.tipo].color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{CMD_TIPO[props.tipo].emoji} {CMD_TIPO[props.tipo].nombre.toUpperCase()}</span>}
         <div style={{ fontSize:26, fontWeight:800, color:props.color || "#3A7D44", margin:"6px 0 12px" }}>{pesos(total)}</div>
         {lineas.map(function(l, i) {
           return (
@@ -306,7 +313,10 @@ function ComandaDetalle(props) {
       <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:12, flexWrap:"wrap" }}>
         <button onClick={props.onVolver} style={{ ...GH, padding:"7px 13px", fontSize:12 }}>← Volver</button>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:15, fontWeight:800, color:color }}>{props.titulo}</div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span style={{ background:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color+"26", color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color, border:"1px solid "+(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).emoji} {(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).nombre.toUpperCase()}</span>
+            <span style={{ fontSize:15, fontWeight:800, color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color }}>{props.titulo}</span>
+          </div>
           <div style={{ fontSize:10, color:"#555" }}>
             #{c.numero}{c.mozo ? " · " + c.mozo : ""}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""}
           </div>
@@ -455,6 +465,46 @@ function ComandaDetalle(props) {
 // adentro, cada render del panel crea funciones nuevas, React las toma por
 // componentes distintos y los vuelve a montar: con el refresco cada 20 segundos,
 // eso le borra a cualquiera lo que esté tipeando. Cargar 75 precios así es imposible.
+// La carta del local para consultar (cajeros y mozos): categorías, platos y precios. No se edita desde acá.
+function CartaConsulta(props) {
+  var localId = props.localId, color = props.color, carta = props.carta;
+  var [buscar, setBuscar] = useState("");
+  var delLocal = carta.filter(function(x) { return x.local === localId; });
+  var q = buscar.trim().toLowerCase();
+  var minOrden = {};
+  delLocal.forEach(function(x) {
+    var o = x.orden === null || x.orden === undefined ? 9999 : x.orden;
+    if (minOrden[x.categoria] === undefined || o < minOrden[x.categoria]) minOrden[x.categoria] = o;
+  });
+  var categorias = Object.keys(minOrden).sort(function(a, b) { return minOrden[a] !== minOrden[b] ? minOrden[a] - minOrden[b] : a.localeCompare(b); });
+  return (
+    <div>
+      <input value={buscar} onChange={function(e) { setBuscar(e.target.value); }} placeholder="🔎 Buscar un plato…" style={{ ...INP, marginBottom:12 }} />
+      {delLocal.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#666", fontSize:13 }}>Este local todavía no tiene carta cargada.</div>}
+      {categorias.map(function(cat) {
+        var platos = delLocal.filter(function(x) { return x.categoria === cat && (!q || String(x.nombre || "").toLowerCase().indexOf(q) !== -1); })
+          .sort(function(a, b) { return (a.orden || 0) - (b.orden || 0) || String(a.nombre).localeCompare(String(b.nombre)); });
+        if (!platos.length) return null;
+        return (
+          <div key={cat} style={{ marginBottom:14 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:color, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>
+            {platos.map(function(x) {
+              var fuera = x.activo === false;
+              var sinPrecio = x.precio === null || x.precio === undefined || x.precio === "";
+              return (
+                <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:10, padding:"8px 0", borderTop:"1px solid #161616", opacity:fuera ? 0.45 : 1 }}>
+                  <div style={{ fontSize:13.5, color:"#F0EDE8", textDecoration:fuera ? "line-through" : "none" }}>{x.nombre}{fuera && <span style={{ fontSize:10, color:"#E0714A", marginLeft:6 }}>fuera de la carta</span>}</div>
+                  <div style={{ fontSize:13.5, fontWeight:800, color:sinPrecio ? "#555" : "#F0EDE8", whiteSpace:"nowrap" }}>{sinPrecio ? "sin precio" : pesos(x.precio)}</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Carta(props) {
   var localId = props.localId, local = props.local, color = props.color;
   var carta = props.carta, setCarta = props.setCarta, cargarCarta = props.cargarCarta;
@@ -1039,19 +1089,20 @@ export default function PanelComandas(p) {
 
       {/* Mesas / Delivery / Mostrador */}
       <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
-        {CMD_VISTAS.filter(function(v) { return !(p.soloServicio && v.id === "carta"); }).map(function(v) {
+        {CMD_VISTAS.map(function(v) {
           var act = vista === v.id && !config;
           var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
+          var colV = v.tipo ? CMD_TIPO[v.tipo].color : color;
           return (
             <button key={v.id} onClick={function() { setVista(v.id); setConfig(false); }}
-              style={{ flex:1, minWidth:110, padding:"11px 12px", borderRadius:9, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#666", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+              style={{ flex:1, minWidth:110, padding:"11px 12px", borderRadius:9, border:"2px solid "+(act?colV:colV+"33"), background:act?colV+"28":"#111", color:act?colV:colV+"AA", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               {v.emoji} {v.nombre}{cuenta > 0 ? " (" + cuenta + ")" : ""}
             </button>
           );
         })}
       </div>
 
-      {cobrando && <Cobro total={cobrando.total} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
+      {cobrando && <Cobro total={cobrando.total} tipo={cobrando.c.tipo} titulo={tituloDe(cobrando.c)} color={color} onConfirmar={confirmarCobro} onCancelar={function() { setCobrando(null); }} />}
       {cargando ? (
         <div style={{ textAlign:"center", padding:"40px 0", color:"#333" }}>Cargando…</div>
       ) : comandaAbierta ? (
@@ -1069,7 +1120,9 @@ export default function PanelComandas(p) {
           <ConfigMesas localId={localId} local={local} color={color} mesasLocal={mesasLocal} setMesas={setMesas} comandaDeMesa={comandaDeMesa} />
         </>
       ) : vista === "carta" ? (
-        <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
+        p.soloServicio
+          ? <CartaConsulta localId={localId} color={color} carta={carta} />
+          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>
@@ -1084,6 +1137,11 @@ export default function PanelComandas(p) {
           </div>
         ) : (
           <>
+            <div style={{ display:"flex", alignItems:"center", gap:8, background:CMD_TIPO.mesa.color+"1A", border:"1px solid "+CMD_TIPO.mesa.color+"55", borderRadius:10, padding:"9px 12px", marginBottom:12 }}>
+              <span style={{ fontSize:20 }}>{CMD_TIPO.mesa.emoji}</span>
+              <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO.mesa.color, letterSpacing:0.5, textTransform:"uppercase" }}>Mesas del salón</span>
+              <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO.mesa.color, fontWeight:700 }}>{mesasLocal.filter(function(m) { return !!comandaDeMesa(m.id); }).length} de {mesasLocal.length} ocupadas</span>
+            </div>
             {CMD_SECTORES.map(function(s) {
               var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
               if (!delSector.length) return null;
@@ -1104,7 +1162,12 @@ export default function PanelComandas(p) {
         )
       ) : (
         <>
-          <NuevaComanda tipo={vistaActual.tipo} color={color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} />
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:CMD_TIPO[vistaActual.tipo].color+"1A", border:"1px solid "+CMD_TIPO[vistaActual.tipo].color+"55", borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
+            <span style={{ fontSize:20 }}>{CMD_TIPO[vistaActual.tipo].emoji}</span>
+            <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
+            <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
+          </div>
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>
@@ -1115,11 +1178,12 @@ export default function PanelComandas(p) {
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
               {delTipo.map(function(c) {
+                var T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
                 return (
-                  <div key={c.id} style={{ background:"#111", border:"1px solid "+color+"33", borderRadius:10, padding:"12px 13px" }}>
+                  <div key={c.id} style={{ background:"#111", border:"1px solid "+T.color+"44", borderLeft:"6px solid "+T.color, borderRadius:10, padding:"12px 13px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:9 }}>
                       <div style={{ minWidth:0 }}>
-                        <div style={{ fontSize:10, color:"#555", marginBottom:2 }}>{vistaActual.emoji} #{c.numero}</div>
+                        <div style={{ marginBottom:4 }}><span style={{ display:"inline-block", background:T.color+"26", color:T.color, border:"1px solid "+T.color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span></div>
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
@@ -1131,7 +1195,7 @@ export default function PanelComandas(p) {
                     </div>
                     <div style={{ display:"flex", justifyContent:"flex-end", marginTop:9 }}>
                       <button onClick={function() { setAbiertaId(c.id); }}
-                        style={{ padding:"6px 14px", borderRadius:7, border:"1px solid "+color+"55", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                        style={{ padding:"6px 14px", borderRadius:7, border:"1px solid "+T.color+"77", background:T.color+"1A", color:T.color, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, cursor:"pointer" }}>
                         Abrir pedido →
                       </button>
                     </div>

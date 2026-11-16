@@ -879,6 +879,7 @@ function Carta(props) {
               {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}
             </button>
           </div>
+          <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio de un plato para cambiarlo: se guarda solo al salir del campo.</div>
           {sinPrecio > 0 && (
             <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
               Un plato sin precio no se puede cobrar. Se puede mandar igual a la cocina, así que
@@ -931,9 +932,9 @@ function Carta(props) {
                   var faltaPrecio = x.precio === null || x.precio === undefined || x.precio === "";
                   return (
                     <div key={x.id} style={{ display:"flex", gap:7, alignItems:"center", background:"#111", border:"1px solid "+(faltaPrecio?"#D4A01733":"#1A1A1A"), borderRadius:8, padding:"7px 10px", opacity:x.activo===false?0.45:1 }}>
-                      <input defaultValue={x.nombre}
+                      <input defaultValue={x.nombre} title="Tocá el nombre para cambiarlo"
                         onBlur={function(e) { var v = e.target.value.trim(); if (v && v !== x.nombre) guardarPlato({ ...x, nombre:v }); }}
-                        style={{ ...INP, border:"none", background:"none", padding:"3px 0", fontSize:13, flex:1 }} />
+                        style={{ ...INP, border:"1px solid #2A2A2A", background:"#0C0C0C", padding:"6px 9px", fontSize:13, flex:1, minWidth:0 }} />
                       <span style={{ color:"#444", fontSize:12 }}>$</span>
                       <input defaultValue={x.precio === null || x.precio === undefined ? "" : x.precio}
                         onBlur={function(e) {

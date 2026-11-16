@@ -32623,7 +32623,7 @@ export default function App() {
           )}
 
           {subCompras==="comandas"&&puedeComandas&&(
-            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
+            <PanelComandas usuario={cu.nombre} menuStock={menuStock} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarCarta={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
           )}
           {subCompras==="comunidad"&&esCajero&&(
             <div style={{fontFamily:"'Inter',sans-serif"}}>

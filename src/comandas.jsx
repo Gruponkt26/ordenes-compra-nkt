@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from "react";
 import { SURL, SH, LOCALES, getLocal, fmtHora, INP, GH } from "./comun.js";
+import { CARTAS_MAXIREST } from "./cartas_maxirest.js";
 
 // ─── DATOS ────────────────────────────────────────────────────────────────────
 async function sbComandasDisponible() {
@@ -822,6 +823,35 @@ function Carta(props) {
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }); });
       platosCat.forEach(function(x) { sbDeleteCarta(x.id); });
     }
+    // La carta que cada local tiene publicada en Maxirest (Kusama y Colantonio's), con sus precios. Se suma lo que falte, sin tocar lo que ya hay:
+    // un plato se considera repetido si ya existe uno con el mismo nombre, y los ya cargados desde acá conservan lo que se les haya editado.
+    var cartaMx = CARTAS_MAXIREST[localId] || null;
+    var [cargandoMx, setCargandoMx] = useState(false);
+    function cargarDeMaxirest() {
+      if (!cartaMx) return;
+      var nombres = {}, ids = {};
+      delLocal.forEach(function(x) { nombres[String(x.nombre).trim().toLowerCase()] = true; ids[x.id] = true; });
+      var nuevos = [];
+      cartaMx.forEach(function(fila, i) {
+        var id = "cartamx_" + localId + "_" + i;
+        if (ids[id] || nombres[String(fila[1]).trim().toLowerCase()]) return;
+        nuevos.push({ id:id, local:localId, categoria:fila[0], nombre:fila[1], precio:fila[2], activo:true, orden:i });
+      });
+      if (!nuevos.length) { alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cartaMx.length + " platos de Maxirest. No hay nada nuevo para cargar."); return; }
+      if (!window.confirm("¿Cargar la carta de " + ((local && local.nombre) || "este local") + " tal como figura en Maxirest?\n\nSe suman " + nuevos.length + " platos con su precio" + (cartaMx.length - nuevos.length > 0 ? " (otros " + (cartaMx.length - nuevos.length) + " ya estaban y no se tocan)" : "") + ".\n\nDespués los podés editar, sacar o cambiar de categoría.")) return;
+      setCargandoMx(true);
+      setCarta(function(prev) { return prev.concat(nuevos); });
+      sbSaveCartaMuchos(nuevos).then(function(err) {
+        setCargandoMx(false);
+        if (err) {
+          setCarta(function(prev) { return prev.filter(function(x) { return nuevos.indexOf(x) === -1; }); });
+          alert("No se pudo cargar la carta:\n\n" + String(err).slice(0, 250) + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README).");
+          return;
+        }
+        cargarCarta();
+        alert("Listo: se cargaron " + nuevos.length + " platos con su precio.");
+      });
+    }
     // Trae los platos del menú de stock de este local. No pisa lo que ya está: si un
     // plato ya figura en la carta, se saltea, así se puede volver a apretar cuando se
     // agrega algo al menú sin perder los precios cargados.
@@ -874,6 +904,12 @@ function Carta(props) {
                 {sinPrecio > 0 ? " · " + sinPrecio + " sin precio" : delLocal.length ? " · todos con precio" : ""}
               </div>
             </div>
+            {cartaMx && (
+              <button onClick={cargarDeMaxirest} disabled={cargandoMx}
+                style={{ padding:"9px 14px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4422", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:cargandoMx?"wait":"pointer" }}>
+                {cargandoMx ? "Cargando…" : "📥 Cargar la carta de Maxirest (" + cartaMx.length + ")"}
+              </button>
+            )}
             <button onClick={traerDelMenu} disabled={trayendo}
               style={{ padding:"9px 14px", borderRadius:8, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:trayendo?"wait":"pointer" }}>
               {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}

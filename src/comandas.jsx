@@ -178,16 +178,33 @@ async function sbLeerFaltantes(localId, fecha) {
     var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
     var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_faltante&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=500", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
-    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
+    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha && !esComandaPrueba(x.comanda_id); }) : [];
   } catch(e) { return []; }
 }
 // ¿Esta mesa ya se cerró (cobró) desde `desdeISO`? Sirve para preguntar si la que se abre ahora es una mesa nueva.
-async function sbMesaCerradaDesde(mesaId, desdeISO) {
+async function sbMesaCerradaDesde(mesaId, desdeISO, prueba) {
   try {
-    var r = await cfetch(SURL + "/rest/v1/comandas?mesa_id=eq." + encodeURIComponent(mesaId) + "&estado=eq.cerrada&cerrada_at=gte." + desdeISO + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var r = await cfetch(SURL + "/rest/v1/comandas?mesa_id=eq." + encodeURIComponent(mesaId) + "&estado=eq.cerrada&cerrada_at=gte." + desdeISO + "&id=" + (prueba ? "" : "not.") + "like.cmdp_*&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     return Array.isArray(d) && d.length > 0;
   } catch(e) { return false; }
+}
+// Borra TODO lo de la prueba compartida: cuentas, productos, cobros, extras, registro, tiempos de entrega y faltantes de prueba.
+async function sbBorrarPruebas() {
+  var h = SH, ok = true;
+  var pedidos = [
+    ["comanda_items", "comanda_id=like.cmdp_*"],
+    ["comandas", "id=like.cmdp_*"],
+    ["pautas", "id=like.cpago_cmdp_*"],
+    ["pautas", "id=like.cextra_cmdp_*"],
+    ["pautas", "id=like.clog_cmdp_*"],
+    ["pautas", "id=like.centrega_cmdp_*"],
+    ["pautas", "id=like.cfalt_p_*"],
+  ];
+  for (var i = 0; i < pedidos.length; i++) {
+    try { var r = await cfetch(SURL + "/rest/v1/" + pedidos[i][0] + "?" + pedidos[i][1], { method:"DELETE", headers:h }); if (!r.ok) ok = false; } catch(e) { ok = false; }
+  }
+  return ok;
 }
 // Lo extra de las cuentas de los últimos días, todo junto: {comanda_id: {...}} (la pantalla de cocina lo usa para saber si una mesa es nueva).
 async function sbLeerExtrasRecientes() {
@@ -267,7 +284,7 @@ async function sbLeerLogDia(localId, fecha) {
   try {
     var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
     var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_log&created_at=gte." + d0.toISOString() + "&order=created_at.asc&limit=3000", { headers: {...SH, "Cache-Control":"no-cache"} });
-    return leerLog(await r.json()).filter(function(x) { return x.local === localId && x.fecha === fecha; });
+    return leerLog(await r.json()).filter(function(x) { return x.local === localId && x.fecha === fecha && !esComandaPrueba(x.comanda_id); });
   } catch(e) { return []; }
 }
 async function sbLeerLogComanda(cid) {
@@ -283,6 +300,9 @@ function montoDescuento(subtotal, d) {
   var m = d.tipo === "%" ? subtotal * Math.min(100, Number(d.valor)) / 100 : Math.min(subtotal, Number(d.valor));
   return Math.round(m * 100) / 100;
 }
+// Las cuentas de la prueba compartida llevan «cmdp_» en el id: se ven en todos los aparatos (marcadas como PRUEBA) pero no entran
+// al cierre de caja, ni a los informes, ni al registro del día. Se borran todas juntas con el botón de la prueba.
+export function esComandaPrueba(id) { return String(id || "").indexOf("cmdp_") === 0; }
 // Lo cobrado en comandas de un local en un día de negocio, para el cierre de caja.
 export async function cargarPagosComandas(localId, fecha) { return cargarPagosGen(localId, fecha, fetch); }
 // El informe usa cfetch (así en el modo práctica lee la práctica); el cierre de caja usa siempre el fetch de verdad.
@@ -291,7 +311,7 @@ async function cargarPagosGen(localId, fecha, ff) {
     var d0 = new Date(fecha + "T00:00:00"); d0.setDate(d0.getDate() - 1);
     var r = await ff(SURL + "/rest/v1/pautas?ambito=eq.comanda_pago&created_at=gte." + d0.toISOString() + "&order=created_at.desc&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
-    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
+    return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha && !x.prueba; }) : [];
   } catch(e) { return []; }
 }
 async function sbLoadMesas() {
@@ -791,6 +811,7 @@ export function PanelCocina(props) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
+                    {esComandaPrueba(c.id) && <span style={{ display:"inline-block", marginLeft:6, background:"#B07CD833", color:"#B07CD8", border:"1px solid #B07CD8", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900 }}>🧪 PRUEBA</span>}
                     {g.nueva && <span style={{ display:"inline-block", marginLeft:6, background:"#3A7D44", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>🆕 MESA NUEVA</span>}
                     {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
                     <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:4, wordBreak:"break-word" }}>{g.titulo}</div>
@@ -860,7 +881,7 @@ function VentanaFaltante(props) {
   var sugeridos = (props.carta || []).filter(function(x) { return x.local === props.localId; }).map(function(x) { return x.nombre; });
   function guardar() {
     if (!plato.trim()) return;
-    props.onGuardar({ id:"cfalt_" + Date.now(), local:props.localId, fecha:props.fecha, plato:plato.trim(), avisa:avisa, por:props.usuario, nota:nota.trim(), at:new Date().toISOString() });
+    props.onGuardar({ id:(props.prueba ? "cfalt_p_" : "cfalt_") + Date.now(), prueba:!!props.prueba, local:props.localId, fecha:props.fecha, plato:plato.trim(), avisa:avisa, por:props.usuario, nota:nota.trim(), at:new Date().toISOString() });
   }
   return (
     <div onClick={props.onCerrar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
@@ -1250,7 +1271,7 @@ function ComandaDetalle(props) {
             <span style={{ fontSize:15, fontWeight:800, color:(CMD_TIPO[c.tipo] || CMD_TIPO.mesa).color }}>{props.titulo}</span>
           </div>
           <div style={{ fontSize:10, color:"#555" }}>
-            #{c.numero}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""} · {c.tipo === "mesa" ? "Mozo:" : "Cajero:"}{" "}
+            {esComandaPrueba(c.id) && <b style={{ color:"#B07CD8" }}>🧪 PRUEBA · </b>}#{c.numero}{c.abierta_at ? " · abierta hace " + hace(c.abierta_at) : ""} · {c.tipo === "mesa" ? "Mozo:" : "Cajero:"}{" "}
             {c.tipo === "mesa" && props.mozos && props.mozos.length > 0 ? (
               <select value={c.mozo || ""} onChange={function(e) { props.onCambiarMozo(e.target.value); }}
                 style={{ background:"#161616", color:"#DDD", border:"1px solid #2A2A2A", borderRadius:6, fontSize:11, padding:"2px 4px" }}>
@@ -2050,7 +2071,7 @@ function NuevaComanda(props) {
       setCliente(""); setDireccion(""); setTelefono(""); setAbierto(false);
       // Delivery y mostrador los toma siempre el cajero: es quien está logueado, no se pregunta.
       var nueva = {
-        id: "cmd_" + Date.now(),
+        id: props.nuevoId(),
         local: localId, tipo: props.tipo, numero: proximoNumero(), estado: "abierta",
         mozo: usuario, cliente: datos.cliente, direccion: datos.direccion, telefono: datos.telefono,
         abierta_at: new Date().toISOString(), usuario: usuario,
@@ -2104,6 +2125,8 @@ export default function PanelComandas(p) {
   useEffect(function() { setTurnos(null); sbLeerTurnos(localId).then(setTurnos); }, [localId, practica]);
   var mozos = mozosDeLocal(p.empleados, localId);
   var [faltante, setFaltante] = useState(false);
+  var [pruebaVivo, setPruebaVivoS] = useState(function() { try { return sessionStorage.getItem("nkt_prueba_vivo") === "1"; } catch(e) { return false; } });
+  function setPruebaVivo(v) { setPruebaVivoS(v); try { sessionStorage.setItem("nkt_prueba_vivo", v ? "1" : "0"); } catch(e) {} }
   var [verCocina, setVerCocina] = useState(false);   // la pantalla de cocina, a pantalla completa dentro de Comandas
   var [turnos, setTurnos] = useState(null);          // null = todavía no se leyó
   var [abriendoTurno, setAbriendoTurno] = useState(false);
@@ -2166,6 +2189,14 @@ export default function PanelComandas(p) {
   // Siempre se sale del simulador al irse de la pantalla: no puede quedar prendido.
   useEffect(function() { return function() { simTerminar(); }; }, []);
   function recargarTodo() { setAbiertaId(null); setCobrando(null); return Promise.all([cargar(), cargarCarta()]); }
+  // Prueba compartida: las cuentas se guardan de verdad pero marcadas como PRUEBA; se ven en todos los aparatos (también en la cocina).
+  function borrarPruebas() {
+    if (!window.confirm("¿Borrar TODO lo de la prueba (cuentas, productos, cobros y avisos de prueba)? Lo real no se toca.")) return;
+    sbBorrarPruebas().then(function(ok) {
+      setAbiertaId(null); setCobrando(null); cargar(); setRefInforme(function(n) { return n + 1; });
+      alert(ok ? "Listo: se borró todo lo de la prueba." : "Se borró casi todo, pero algo no se pudo borrar. Probá de nuevo.");
+    });
+  }
   function entrarPractica() {
     simIniciar().then(function() { setPractica(true); recargarTodo(); });
   }
@@ -2226,7 +2257,7 @@ export default function PanelComandas(p) {
 
   function proximoNumero() {
     var hoy = new Date().toISOString().slice(0, 10);
-    var nums = comandas.filter(function(c) { return c.local === localId && String(c.abierta_at || "").slice(0, 10) === hoy; })
+    var nums = comandas.filter(function(c) { return c.local === localId && esComandaPrueba(c.id) === pruebaVivo && String(c.abierta_at || "").slice(0, 10) === hoy; })
       .map(function(c) { return parseInt(c.numero, 10) || 0; });
     return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
   }
@@ -2295,7 +2326,7 @@ export default function PanelComandas(p) {
 
   // Sin turno abierto no se toman pedidos nuevos. En el modo práctica también: el turno se abre y se cierra de mentira, en memoria.
   function puedeAbrirCuenta() {
-    if (turnoActual) return true;
+    if (turnoActual || pruebaVivo) return true;
     alert(turnos === null ? "Todavía se está leyendo el turno, probá de nuevo en un segundo." : "El turno está cerrado. Primero hay que abrir el turno.");
     return false;
   }
@@ -2310,7 +2341,7 @@ export default function PanelComandas(p) {
     sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar la apertura del turno."); });
   }
   function cerrarTurno() {
-    var pendientes = comandas.filter(function(c) { return c.local === localId; });
+    var pendientes = comandas.filter(function(c) { return c.local === localId && !esComandaPrueba(c.id); });   // las de prueba no cuentan
     if (pendientes.length) {
       alert("No se puede cerrar el turno: hay " + pendientes.length + " cuenta" + (pendientes.length === 1 ? "" : "s") + " sin cobrar.\n\n" + pendientes.map(function(c) { return "• " + tituloDe(c); }).join("\n") + "\n\nCobralas o cerralas y volvé a intentar.");
       return;
@@ -2330,7 +2361,7 @@ export default function PanelComandas(p) {
     function seguir(esNueva) {
       pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
         var nueva = {
-          id: "cmd_" + Date.now(),
+          id: (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(),
           local: localId, tipo: "mesa", mesa_id: mesa.id,
           numero: proximoNumero(), estado: "abierta",
           mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
@@ -2340,7 +2371,7 @@ export default function PanelComandas(p) {
         Promise.all([guardar(nueva), sbGuardarExtra(nueva.id, { mesa_nueva: esNueva }, usuario)]).then(function(r) { if (!r[0]) setAbiertaId(nueva.id); });
       });
     }
-    sbMesaCerradaDesde(mesa.id, desde).then(function(usada) {
+    sbMesaCerradaDesde(mesa.id, desde, pruebaVivo).then(function(usada) {
       if (usada) setPreguntaNueva({ mesa: mesa, alElegir: seguir });
       else seguir(true);
     });
@@ -2429,6 +2460,7 @@ export default function PanelComandas(p) {
         {/* Una mesa se llama "12", pero también "Reservado": el número entra grande
             y el nombre largo se achica para no desbordar la tarjeta. */}
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
+        {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
         {ocupada ? (
           <>
             <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
@@ -2481,9 +2513,24 @@ export default function PanelComandas(p) {
         {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
         <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante</button>
       </div>
-      {faltante && <VentanaFaltante color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
+      {faltante && <VentanaFaltante prueba={pruebaVivo} color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
         onCerrar={function() { setFaltante(false); }}
         onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
+      {!practica && verInforme && (pruebaVivo ? (
+        <div style={{ background:"#1C1230", border:"2px dashed #B07CD8", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:"#B07CD8", letterSpacing:1 }}>🧪 PRUEBA COMPARTIDA</div>
+          <div style={{ fontSize:11, color:"#CDB8E8", lineHeight:1.5, margin:"3px 0 8px" }}>Las cuentas que abras se guardan, se ven en todos los aparatos (también en la cocina) con el cartel «PRUEBA», y no entran al cierre de caja ni a los informes.</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <button onClick={borrarPruebas} style={{ ...GH, padding:"6px 11px", fontSize:11 }}>🗑️ Borrar todo lo de prueba</button>
+            <button onClick={function() { setPruebaVivo(false); }} style={{ background:"#B07CD8", border:"none", borderRadius:8, color:"#160C26", padding:"6px 12px", fontSize:11, fontWeight:800, cursor:"pointer" }}>Salir de la prueba</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom:12, display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+          <button onClick={function() { setPruebaVivo(true); }} style={{ ...GH, padding:"6px 12px", fontSize:11, borderColor:"#B07CD888", color:"#B07CD8" }}>🧪 Prueba compartida (se ve en todos los aparatos)</button>
+          {comandas.some(function(c) { return c.local === localId && esComandaPrueba(c.id); }) && <button onClick={borrarPruebas} style={{ ...GH, padding:"6px 12px", fontSize:11, color:"#E0714A" }}>🗑️ Hay cuentas de prueba abiertas: borrarlas</button>}
+        </div>
+      ))}
       {practica ? (
         <div style={{ background:"#2A1F00", border:"2px dashed #D4A017", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#D4A017", letterSpacing:1 }}>🎮 MODO PRÁCTICA</div>
@@ -2787,7 +2834,7 @@ export default function PanelComandas(p) {
             <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO[vistaActual.tipo].color, letterSpacing:0.5, textTransform:"uppercase" }}>{CMD_TIPO[vistaActual.tipo].plural}{vistaActual.tipo === "delivery" ? " · se entregan en la dirección" : " · se retira en el local"}</span>
             <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO[vistaActual.tipo].color, fontWeight:700 }}>{delTipo.length} abierto{delTipo.length === 1 ? "" : "s"}</span>
           </div>
-          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} />
+          <NuevaComanda tipo={vistaActual.tipo} color={CMD_TIPO[vistaActual.tipo].color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} nuevoId={function() { return (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(); }} />
           {delTipo.length === 0 ? (
             <div style={{ textAlign:"center", padding:"30px 0", color:"#333" }}>
               <div style={{ fontSize:30, marginBottom:8 }}>{vistaActual.emoji}</div>
@@ -2803,7 +2850,7 @@ export default function PanelComandas(p) {
                   <div key={c.id} style={{ background:"#111", border:"1px solid "+T.color+"44", borderLeft:"6px solid "+T.color, borderRadius:10, padding:"12px 13px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:9 }}>
                       <div style={{ minWidth:0 }}>
-                        <div style={{ marginBottom:4 }}><span style={{ display:"inline-block", background:T.color+"26", color:T.color, border:"1px solid "+T.color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span></div>
+                        <div style={{ marginBottom:4 }}><span style={{ display:"inline-block", background:T.color+"26", color:T.color, border:"1px solid "+T.color+"66", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>{esComandaPrueba(c.id) && <span style={{ marginLeft:6, background:"#B07CD833", color:"#B07CD8", border:"1px solid #B07CD8", borderRadius:6, padding:"2px 8px", fontSize:10.5, fontWeight:900 }}>🧪 PRUEBA</span>}</div>
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}

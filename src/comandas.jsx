@@ -313,6 +313,15 @@ async function sbLeerListosDesde(desdeISO) {
     return o;
   } catch(e) { return {}; }
 }
+// Primera vez que cada cuenta llegó a la cocina desde cierta hora: {comanda_id: primer enviado_at}. Sirve para numerar las comandas por orden de llegada.
+async function sbEnviosDesde(desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/comanda_items?enviado_at=gte." + desdeISO + "&order=enviado_at.asc&limit=3000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(i) { if (i.comanda_id && i.enviado_at && (!o[i.comanda_id] || i.enviado_at < o[i.comanda_id])) o[i.comanda_id] = i.enviado_at; });
+    return o;
+  } catch(e) { return {}; }
+}
 async function sbComandasPorIds(ids) {
   if (!ids || !ids.length) return [];
   try {
@@ -954,8 +963,18 @@ export function PanelCocina(props) {
       var idsRec = {}; recs.forEach(function(x) { idsRec[x.comanda_id] = 1; });
       var faltan = {}; Object.keys(idsRec).forEach(function(id) { if (!coms.some(function(c) { return c.id === id; })) faltan[id] = 1; });
       var todosIds = coms.map(function(c) { return c.id; }).concat(Object.keys(faltan));
-      return Promise.all([sbLoadItems(todosIds), sbComandasPorIds(Object.keys(faltan))]).then(function(rr) {
-        var itsTodos = rr[0], cerradas = rr[1];
+      return Promise.all([sbLoadItems(todosIds), sbComandasPorIds(Object.keys(faltan)), sbEnviosDesde(desde)]).then(async function(rr) {
+        var itsTodos = rr[0], cerradas = rr[1], envios = rr[2];
+        // Número de comanda por orden de llegada a la cocina en el día (las de la prueba compartida se numeran aparte).
+        var conocidas = {}; coms.concat(cerradas).forEach(function(c) { conocidas[c.id] = c; });
+        var desconocidas = Object.keys(envios).filter(function(id) { return !conocidas[id]; });
+        if (desconocidas.length) (await sbComandasPorIds(desconocidas)).forEach(function(c) { conocidas[c.id] = c; });
+        var ordenLlegada = {};
+        [false, true].forEach(function(pr) {
+          Object.keys(envios).filter(function(id) { return conocidas[id] && conocidas[id].local === localId && esComandaPrueba(id) === pr; })
+            .sort(function(a, b) { return envios[a] < envios[b] ? -1 : envios[a] > envios[b] ? 1 : (a < b ? -1 : 1); })
+            .forEach(function(id, k) { ordenLlegada[id] = k + 1; });
+        });
         var its = itsTodos.filter(function(i) { return coms.some(function(c) { return c.id === i.comanda_id; }); });
         function titulo(c) {
           var mesa = mesas.find(function(m) { return m.id === c.mesa_id; });
@@ -983,6 +1002,7 @@ export function PanelCocina(props) {
         var lista = Object.keys(grupos).map(function(k) {
           var g = grupos[k], c = g.comanda || {};
           g.titulo = titulo(c);
+          g.orden = ordenLlegada[c.id] || null;
           g.entrega = entregasP[c.id] || null;
           var ex = extras[c.id] || {};
           g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
@@ -1006,7 +1026,7 @@ export function PanelCocina(props) {
         // Una sola ventana por cuenta: lo que se agrega después a una mesa que ya pidió entra en el mismo ticket, como «agregado».
         var porCom = {};
         lista.forEach(function(g) {
-          var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
+          var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, orden:g.orden, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
           t.tandas.push(g); t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
           var dm = g.desdeMesa || g.desde;
           if (g.items.length && dm && (!t.desde || dm < t.desde)) t.desde = dm;
@@ -1033,7 +1053,7 @@ export function PanelCocina(props) {
           var desde2 = items.reduce(function(a, i) { return i.enviado_at && (!a || i.enviado_at < a) ? i.enviado_at : a; }, null);
           var enMesa = items.every(function(i) { return i.estado === "entregado"; });
           var enMesaAt = enMesa ? items.reduce(function(a, i) { return i.entregado_at && i.entregado_at > a ? i.entregado_at : a; }, "") : null;
-          lista2.push({ clave:rec.comanda_id + "|" + rec.ronda, comanda:c, ronda:rec.ronda || 0, items:items, desde:desde2, listo:rec.listo_at, por:rec.por, enMesa:enMesa, enMesaAt:enMesaAt, titulo:titulo(c) });
+          lista2.push({ clave:rec.comanda_id + "|" + rec.ronda, orden:ordenLlegada[rec.comanda_id] || null, comanda:c, ronda:rec.ronda || 0, items:items, desde:desde2, listo:rec.listo_at, por:rec.por, enMesa:enMesa, enMesaAt:enMesaAt, titulo:titulo(c) });
         });
         setEntregadas(lista2.sort(function(a, b) { return String(b.listo).localeCompare(String(a.listo)); }).slice(0, 80));
         setCargado(true);
@@ -1131,7 +1151,7 @@ export function PanelCocina(props) {
           <div style={{ position:"fixed", inset:0, border:"10px solid #E0452E", pointerEvents:"none", zIndex:700, animation:"nktPulso 1s infinite" }} />
           <div style={{ background:"#E0452E", color:"#fff", borderRadius:14, padding:"16px 18px", marginBottom:14, animation:"nktPulso 1s infinite" }}>
             <div style={{ fontSize:34, fontWeight:900, letterSpacing:1, lineHeight:1.1 }}>🔥 ¡APURAR!</div>
-            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { var m = minutosDesde(g.desde), nv = nivelRetraso(m, LIMITE), venc = g.comanda.tipo !== "mesa" ? minutosVencida(g.entrega, ahora) : null; return g.titulo + " · " + m + " min" + (nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : "") + (venc !== null ? " · pasó la hora prometida +" + venc + " min" : ""); }).join("   |   ")}</div>
+            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { var m = minutosDesde(g.desde), nv = nivelRetraso(m, LIMITE), venc = g.comanda.tipo !== "mesa" ? minutosVencida(g.entrega, ahora) : null; return (g.orden ? "Comanda " + g.orden + " · " : "") + g.titulo + " · " + m + " min" + (nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : "") + (venc !== null ? " · pasó la hora prometida +" + venc + " min" : ""); }).join("   |   ")}</div>
             <div style={{ fontSize:13, fontWeight:700, marginTop:5, opacity:0.95 }}>{lista15.length === 1 ? "Este pedido lleva" : "Estos pedidos llevan"} más de {LIMITE} minutos.</div>
             {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
           </div>
@@ -1161,8 +1181,9 @@ export function PanelCocina(props) {
                 <div key={g.clave} style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderLeft:"8px solid " + T.color, borderRadius:14, padding:"12px 14px", display:"flex", flexDirection:"column", gap:7, opacity:0.95 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
                     <div style={{ minWidth:0 }}>
-                      <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>{badgePrueba(c)}
-                      <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8", marginTop:3 }}>{g.titulo}</div>
+                      <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{T.emoji} {T.nombre.toUpperCase()}</span>{badgePrueba(c)}
+                      <div style={{ fontSize:17, fontWeight:900, color:T.color, marginTop:3 }}>COMANDA {g.orden || "—"}</div>
+                      <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8", marginTop:1 }}>{g.titulo}</div>
                       <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
                     </div>
                     <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
@@ -1223,11 +1244,12 @@ export function PanelCocina(props) {
                 })()}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
-                    <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
+                    <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()}</span>
                     {badgePrueba(c)}
                     {g.nueva && <span style={{ display:"inline-block", marginLeft:6, background:"#3A7D44", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>🆕 MESA NUEVA</span>}
                     {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
-                    <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:4, wordBreak:"break-word" }}>{g.titulo}</div>
+                    <div style={{ fontSize:26, fontWeight:900, color:T.color, marginTop:4, letterSpacing:0.5 }}>COMANDA {g.orden || "—"}</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:1, wordBreak:"break-word" }}>{g.titulo}</div>
                     <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
                   </div>
                   <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>

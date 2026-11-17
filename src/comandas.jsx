@@ -748,6 +748,130 @@ function PreguntaMesaNueva(props) {
   );
 }
 
+// ─── INFORME DE COCINA ────────────────────────────────────────────────
+// Solo tiempos y comida, sin plata: cuánto tardó la cocina, qué se retrasó, qué se pidió más, qué se quitó o cambió y qué faltó.
+function InformeCocina(props) {
+  var localId = props.localId;
+  var [fecha, setFecha] = useState(props.diaDeNegocio ? props.diaDeNegocio() : new Date().toISOString().slice(0, 10));
+  var [datos, setDatos] = useState(null);
+  useEffect(function() {
+    var vivo = true; setDatos(null);
+    (async function() {
+      var ini = new Date(fecha + "T06:00:00"), fin = new Date(ini.getTime() + 86400000);
+      var listos = await sbLeerListosDesde(new Date(ini.getTime() - 86400000).toISOString());
+      var recs = Object.keys(listos).map(function(k) { return listos[k]; }).filter(function(r) { return (!r.local || r.local === localId) && r.listo_at >= ini.toISOString() && r.listo_at < fin.toISOString() && !esComandaPrueba(r.comanda_id); });
+      var ids = []; recs.forEach(function(r) { if (ids.indexOf(r.comanda_id) < 0) ids.push(r.comanda_id); });
+      var coms = await sbComandasPorIds(ids), its = ids.length ? await sbLoadItems(ids) : [];
+      var mesas = await sbLoadMesas();
+      var falt = (await sbLeerFaltantes(localId, fecha));
+      var cfg = await sbLeerConfigCom();
+      if (vivo) setDatos({ recs:recs, coms:coms, items:its, mesas:mesas, falt:falt, cfg:cfg });
+    })();
+    return function() { vivo = false; };
+  }, [fecha, localId]);
+  var card = { background:"#0F0F0F", border:"1px solid #1E1E1E", borderRadius:12, padding:"13px 14px", marginBottom:12 };
+  var h = { fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, marginBottom:8, fontWeight:700 };
+
+  function cuerpo() {
+    if (!datos) return <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>Cargando…</div>;
+    var limite = limiteDe(datos.cfg, localId);
+    var entregas = datos.recs.map(function(r) {
+      var c = datos.coms.find(function(x) { return x.id === r.comanda_id; });
+      var delT = datos.items.filter(function(i) { return i.comanda_id === r.comanda_id && (i.ronda || 0) === (r.ronda || 0) && i.enviado_at && i.estado !== "cancelado"; });
+      if (!c || !delT.length) return null;
+      var desde = delT.reduce(function(a, i) { return i.enviado_at < a ? i.enviado_at : a; }, delT[0].enviado_at);
+      var min = (new Date(r.listo_at) - new Date(desde)) / 60000;
+      if (!(min >= 0 && min < 240)) return null;
+      var mesa = datos.mesas.find(function(m) { return m.id === c.mesa_id; });
+      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
+      var aMesa = delT.every(function(i) { return i.estado === "entregado" && i.entregado_at; }) ? (new Date(delT.reduce(function(a, i) { return i.entregado_at > a ? i.entregado_at : a; }, "")) - new Date(r.listo_at)) / 60000 : null;
+      return { r:r, c:c, items:delT, nombre:nombre, min:min, aMesa:(aMesa !== null && aMesa >= 0 && aMesa < 240) ? aMesa : null, nv:nivelRetraso(min, limite) };
+    }).filter(Boolean);
+    if (!entregas.length) return <div style={{ textAlign:"center", padding:"30px 0", color:"#555", fontSize:13 }}>La cocina todavía no entregó pedidos en este día.</div>;
+    var prom = entregas.reduce(function(a, e) { return a + e.min; }, 0) / entregas.length;
+    var orden = entregas.slice().sort(function(a, b) { return b.min - a.min; });
+    var conMesa = entregas.filter(function(e) { return e.aMesa !== null; });
+    var aMesaProm = conMesa.length ? conMesa.reduce(function(a, e) { return a + e.aMesa; }, 0) / conMesa.length : null;
+    var retr = entregas.filter(function(e) { return e.nv; }), porNivel = { leve:0, medio:0, grave:0 }; retr.forEach(function(e) { porNivel[e.nv.id]++; });
+    // Comida: lo más pedido y lo más lento en salir.
+    var todos = []; entregas.forEach(function(e) { e.items.forEach(function(i) { todos.push({ i:i, min:e.min }); }); });
+    var porPlato = {}; todos.forEach(function(x) { var o = porPlato[x.i.nombre] || (porPlato[x.i.nombre] = { n:0, t:0, v:0 }); o.n += Number(x.i.cant) || 1; o.t += x.min; o.v++; });
+    var masPedidos = Object.keys(porPlato).map(function(k) { return { nombre:k, n:porPlato[k].n, prom:porPlato[k].t / porPlato[k].v }; }).sort(function(a, b) { return b.n - a.n; }).slice(0, 15);
+    var lentos = masPedidos.slice().sort(function(a, b) { return b.prom - a.prom; }).slice(0, 5);
+    var idsE = {}; datos.recs.forEach(function(r) { idsE[r.comanda_id] = 1; });
+    var quitados = datos.items.filter(function(i) { return idsE[i.comanda_id] && i.estado === "cancelado" && i.enviado_at; });
+    var falt = datos.falt;
+    var kpi = function(t, v, sub, col) { return <div style={{ flex:"1 1 130px", background:"#111", border:"1px solid " + (col || "#222") + "55", borderRadius:10, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#777", textTransform:"uppercase", letterSpacing:1 }}>{t}</div><div style={{ fontSize:20, fontWeight:800, color:col || "#F0EDE8", margin:"2px 0" }}>{v}</div><div style={{ fontSize:10, color:"#666" }}>{sub}</div></div>; };
+    return (
+      <div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+          {kpi("Entregas de la cocina", entregas.length, "pedidos o tandas", "#4C9A5A")}
+          {kpi("Tiempo promedio", fmtMin(prom), "de Marchar a listo", "#D4A017")}
+          {kpi("La más lenta", fmtMin(orden[0].min), orden[0].nombre, "#C1440E")}
+          {kpi("La más rápida", fmtMin(orden[orden.length - 1].min), orden[orden.length - 1].nombre, "#3A9BC1")}
+        </div>
+        {aMesaProm !== null && <div style={{ ...card, fontSize:13, color:"#DDD" }}>🍽️ Del listo a la mesa (lo que tarda el mozo o el cajero en llevarlo): <b style={{ color:"#F0EDE8" }}>{fmtMin(aMesaProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({conMesa.length})</span></div>}
+
+        <div style={{ ...card, borderColor: retr.length ? "#E0652E66" : "#1E1E1E" }}>
+          <div style={h}>⏰ Retrasos (más de {limite} min en la cocina)</div>
+          {retr.length === 0 ? <div style={{ fontSize:13, color:"#8FD19A" }}>✅ Ninguna entrega pasó de los {limite} minutos.</div> : (
+            <div>
+              <div style={{ fontSize:13, color:"#DDD", marginBottom:8 }}><b style={{ color:"#F0EDE8" }}>{retr.length}</b> de {entregas.length} entregas se pasaron del límite</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+                {[["leve", "#F0A030", "Leve (hasta +5)"], ["medio", "#E0652E", "Medio (+6 a +10)"], ["grave", "#C1121F", "Grave (más de +10)"]].map(function(x) { return <span key={x[0]} style={{ background:x[1] + "26", border:"1px solid " + x[1], color:x[1], borderRadius:8, padding:"4px 10px", fontSize:12, fontWeight:800 }}>{x[2]}: {porNivel[x[0]]}</span>; })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={h}>⏱ Cuánto tardó cada entrega (de la más lenta a la más rápida)</div>
+          {orden.map(function(e, i) {
+            return <div key={i} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"6px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
+              <div style={{ minWidth:0 }}><div style={{ color:"#DDD" }}>{e.nombre}{e.r.ronda > 1 ? <span style={{ color:"#666" }}> · tanda {e.r.ronda}</span> : null}</div><div style={{ fontSize:11, color:"#777" }}>{e.items.map(function(i) { return (Number(i.cant) || 1) + "× " + i.nombre; }).join(", ")}</div></div>
+              <div style={{ textAlign:"right", whiteSpace:"nowrap" }}><b style={{ color: e.nv ? e.nv.col : "#F0EDE8" }}>{fmtMin(e.min)}</b>{e.nv && <div style={{ fontSize:10.5, fontWeight:800, color:e.nv.col }}>+{e.nv.extra} · {e.nv.txt}</div>}</div>
+            </div>;
+          })}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🍽️ Lo más pedido</div>
+          {masPedidos.map(function(x) { return <div key={x.nombre} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><span style={{ color:"#CCC" }}>{x.nombre}</span><span style={{ color:"#999" }}><b style={{ color:"#F0EDE8" }}>{x.n}</b> · sale en {fmtMin(x.prom)}</span></div>; })}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🐢 Lo que más tarda en salir</div>
+          {lentos.map(function(x) { return <div key={x.nombre} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><span style={{ color:"#CCC" }}>{x.nombre}</span><span style={{ color:"#999" }}>{fmtMin(x.prom)} <span style={{ color:"#555" }}>×{x.n}</span></span></div>; })}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🔄 Cambios y quitados después de marchar</div>
+          {quitados.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>No hubo cambios ni quitados.</div> : quitados.map(function(i) {
+            var cm = /^cambio por (.+)$/.exec(i.nota || "");
+            return <div key={i.id} style={{ fontSize:12.5, color:"#D4A017", padding:"3px 0", borderTop:"1px solid #181818" }}>{cm ? "🔄 " + (Number(i.cant) || 1) + "× " + i.nombre + " → " + cm[1] : "🗑 " + (Number(i.cant) || 1) + "× " + i.nombre + (i.nota ? " — " + i.nota : "")}</div>;
+          })}
+        </div>
+
+        <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
+          <div style={h}>⚠️ Faltantes</div>
+          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Nadie avisó faltantes.</div> : falt.map(function(f) {
+            return <div key={f.id} style={{ padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}</span> <span style={{ color:"#555" }}>· {horaSeg(f.at).slice(0, 5)}</span>{f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}</div>;
+          })}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
+        <input type="date" value={fecha} onChange={function(e) { setFecha(e.target.value); }} style={{ ...INP, width:"auto", padding:"8px 10px", fontSize:13 }} />
+        <span style={{ fontSize:11, color:"#777" }}>Del día de negocio (desde las 6 de la mañana). Solo tiempos y comida.</span>
+      </div>
+      {cuerpo()}
+    </div>
+  );
+}
+
 // ─── PANTALLA DE COCINA ───────────────────────────────────────────────
 // Lo que llega a la cocina: cada vez que el mozo o el cajero toca «Marchar», el pedido aparece acá como un ticket (mesa, delivery o mostrador).
 // La cocina toca «Entregado» cuando lo despacha y el ticket se va; siguen entrando los otros. Se arma con los ítems en estado «enviado».
@@ -987,10 +1111,13 @@ export function PanelCocina(props) {
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
         {pestanaBtn("pend", "🍳 Pendientes (" + tickets.length + ")")}
         {pestanaBtn("entregadas", "✅ Entregadas hoy (" + entregadas.length + ")")}
+        {pestanaBtn("informe", "📊 Informe")}
         {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>🔥 {demorados} para apurar</span>}
       </div>
       {!cargado ? (
         <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
+      ) : pestana === "informe" ? (
+        <InformeCocina localId={localId} diaDeNegocio={props.diaDeNegocio} />
       ) : pestana === "entregadas" ? (
         entregadas.length === 0 ? (
           <div style={{ textAlign:"center", padding:"60px 0", color:"#666", fontSize:14 }}>Todavía no se entregó nada hoy.</div>

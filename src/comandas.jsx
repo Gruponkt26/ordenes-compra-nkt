@@ -886,8 +886,8 @@ function InformeCocina(props) {
         </div>
 
         <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
-          <div style={h}>⚠️ Faltantes</div>
-          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Nadie avisó faltantes.</div> : falt.map(function(f) {
+          <div style={h}>🚫 Discontinuados y faltantes</div>
+          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>No se discontinuó ni faltó nada.</div> : falt.map(function(f) {
             return <div key={f.id} style={{ padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}</span> <span style={{ color:"#555" }}>· {horaSeg(f.at).slice(0, 5)}</span>{f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}</div>;
           })}
         </div>
@@ -905,6 +905,59 @@ function InformeCocina(props) {
   );
 }
 
+// ─── DISCONTINUAR PRODUCTOS ───────────────────────────────────────────
+// La cocina o el cajero sacan de la carta un producto que no hay más (y lo vuelven a poner cuando vuelve). Un producto discontinuado deja de ofrecerse
+// para pedir; las cuentas que ya lo tienen no se tocan. Cada discontinuación queda como aviso de faltante, con la hora y quién fue.
+function VentanaDiscontinuar(props) {
+  var localId = props.localId;
+  var [carta, setCarta] = useState(null);
+  var [ruta, setRuta] = useState([]);
+  var [q, setQ] = useState("");
+  var [colores, setColores] = useState({ cats: {}, platos: {} });
+  useEffect(function() {
+    var vivo = true;
+    sbLoadCarta().then(function(c) { if (vivo) setCarta(c.filter(function(x) { return x.local === localId; })); });
+    sbLeerColoresCarta(localId).then(function(c) { if (vivo) setColores(c); });
+    return function() { vivo = false; };
+  }, [localId]);
+  if (!carta) return <Ventana titulo="🚫 Discontinuar" onCerrar={props.onCerrar}><div style={{ color:"#777", padding:"20px 0", textAlign:"center" }}>Cargando…</div></Ventana>;
+  var cats = []; var minO = {};
+  carta.forEach(function(x) { var o = x.orden === null || x.orden === undefined ? 9999 : x.orden; if (minO[x.categoria] === undefined || o < minO[x.categoria]) minO[x.categoria] = o; });
+  cats = Object.keys(minO).sort(function(a, b) { return minO[a] - minO[b] || a.localeCompare(b); });
+  var qq = q.trim().toLowerCase();
+  var discontinuados = carta.filter(function(x) { return x.activo === false; });
+  function alternar(x) {
+    var sale = x.activo !== false;
+    var nuevo = { ...x, activo: !sale };
+    setCarta(function(prev) { return prev.map(function(y) { return y.id === x.id ? nuevo : y; }); });
+    sbSaveCarta(nuevo).then(function(err) { if (err) { alert("No se pudo guardar el cambio:\n\n" + String(err).slice(0, 200)); } if (props.onCambio) props.onCambio(); });
+    if (sale) {
+      var ahoraISO = new Date().toISOString();
+      sbGuardarFaltante({ id:"cfalt_" + Date.now(), prueba:false, local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), plato:x.nombre, avisa:"cocina", por:props.usuario || "", nota:"Discontinuado", at:ahoraISO });
+    }
+  }
+  function lista(arr) {
+    return <RejillaPlatos alto={360}>{arr.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, colores)} onClick={function() { alternar(x); }} />; })}</RejillaPlatos>;
+  }
+  return (
+    <Ventana titulo="🚫 Discontinuar productos" onCerrar={props.onCerrar}>
+      <div style={{ fontSize:12, color:"#9A9A9A", marginBottom:8, lineHeight:1.5 }}>Tocá un producto para sacarlo de la carta (deja de ofrecerse para pedir). Tocalo de nuevo, atenuado, para volver a ponerlo.</div>
+      {discontinuados.length > 0 && !qq && ruta.length === 0 && (
+        <div style={{ background:"#2A0E0A", border:"1px solid #C1440E66", borderRadius:10, padding:"8px 10px", marginBottom:10 }}>
+          <div style={{ fontSize:11, fontWeight:800, color:"#E0714A", marginBottom:6 }}>🚫 Discontinuados ahora ({discontinuados.length}) · tocá para volver a ponerlos</div>
+          {lista(discontinuados)}
+        </div>
+      )}
+      <input value={q} onChange={function(e) { setQ(e.target.value); }} placeholder="Buscar…" style={{ ...INP, fontSize:12, marginBottom:10 }} />
+      {qq ? lista(carta.filter(function(x) { return String(x.nombre).toLowerCase().indexOf(qq) !== -1; })) : (
+        <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta} colores={colores}
+          contar={function(nodo) { return carta.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
+          renderPlatos={function(nodo) { return lista(carta.filter(function(x) { return x.categoria === nodo; })); }} />
+      )}
+    </Ventana>
+  );
+}
+
 // ─── PANTALLA DE COCINA ───────────────────────────────────────────────
 // Lo que llega a la cocina: cada vez que el mozo o el cajero toca «Marchar», el pedido aparece acá como un ticket (mesa, delivery o mostrador).
 // La cocina toca «Entregado» cuando lo despacha y el ticket se va; siguen entrando los otros. Se arma con los ítems en estado «enviado».
@@ -919,6 +972,7 @@ export function PanelCocina(props) {
   var [ahora, setAhora] = useState(Date.now());
   var [sonido, setSonido] = useState(false);
   var [completa, setCompleta] = useState(false);   // modo pantalla completa: solo el botón de volver y los tickets
+  var [discontinuando, setDiscontinuando] = useState(false);
   // Los avisos de cambio que la cocina ya vio (se recuerdan en esta tablet).
   var [vistos, setVistos] = useState(function() { try { return JSON.parse(localStorage.getItem("nkt_cocina_vistos") || "[]"); } catch(e) { return []; } });
   var sonidoRef = useRef(false); sonidoRef.current = sonido;
@@ -1314,47 +1368,15 @@ export function PanelCocina(props) {
           </select>
         )}
         <button onClick={activarSonido} style={{ ...GH, padding:"9px 13px", fontSize:12, borderColor: sonido ? "#4C9A5A" : "#2A2A2A", color: sonido ? "#4C9A5A" : "#9A9A9A" }}>{sonido ? "🔔 Sonido activado" : "🔕 Activar sonido"}</button>
+        <button onClick={function() { setDiscontinuando(true); }} style={{ ...GH, padding:"9px 13px", fontSize:12, borderColor:"#C1440E88", color:"#E0714A" }}>🚫 Discontinuar</button>
         <button onClick={entrarCompleta} style={{ ...GH, padding:"9px 13px", fontSize:12 }}>⛶ Pantalla completa</button>
       </div>
+      {discontinuando && <VentanaDiscontinuar localId={localId} usuario={usuario} diaDeNegocio={props.diaDeNegocio} onCerrar={function() { setDiscontinuando(false); }} />}
       {cuerpo}
     </div>
   );
 }
 
-// ─── FALTANTE DE PLATO ────────────────────────────────────────────────
-function VentanaFaltante(props) {
-  var color = props.color;
-  var [plato, setPlato] = useState("");
-  var [avisa, setAvisa] = useState("mozo");
-  var [nota, setNota] = useState("");
-  var sugeridos = (props.carta || []).filter(function(x) { return x.local === props.localId; }).map(function(x) { return x.nombre; });
-  function guardar() {
-    if (!plato.trim()) return;
-    props.onGuardar({ id:(props.prueba ? "cfalt_p_" : "cfalt_") + Date.now(), prueba:!!props.prueba, local:props.localId, fecha:props.fecha, plato:plato.trim(), avisa:avisa, por:props.usuario, nota:nota.trim(), at:new Date().toISOString() });
-  }
-  return (
-    <div onClick={props.onCerrar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid #D4A01788", borderRadius:14, padding:"16px", width:"100%", maxWidth:400 }}>
-        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:12 }}>⚠️ Avisar faltante</div>
-        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Qué falta?</label>
-        <input list="cmd-platos" value={plato} onChange={function(e) { setPlato(e.target.value); }} placeholder="Ej: Provoleta, Vino malbec" style={{ ...INP, marginBottom:10 }} />
-        <datalist id="cmd-platos">{sugeridos.map(function(n, i) { return <option key={i} value={n} />; })}</datalist>
-        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Quién avisa?</label>
-        <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-          {[["mozo", "🧑‍🍳 El mozo"], ["cocina", "🍳 La cocina"]].map(function(x) {
-            var act = avisa === x[0];
-            return <button key={x[0]} onClick={function() { setAvisa(x[0]); }} style={{ flex:1, padding:"9px", borderRadius:8, border:"1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "#161616", color: act ? "#D4A017" : "#888", fontSize:12, fontWeight:700, cursor:"pointer" }}>{x[1]}</button>;
-          })}
-        </div>
-        <input value={nota} onChange={function(e) { setNota(e.target.value); }} placeholder="Nota (opcional): se terminó, no llegó el pedido…" style={{ ...INP, marginBottom:12 }} />
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={props.onCerrar} style={{ ...GH, flex:1, padding:"10px", fontSize:12 }}>Cancelar</button>
-          <button onClick={guardar} disabled={!plato.trim()} style={{ flex:2, padding:"10px", borderRadius:8, border:"none", background: plato.trim() ? "#D4A017" : "#1A1A1A", color: plato.trim() ? "#1A1200" : "#444", fontSize:12, fontWeight:800, cursor:"pointer" }}>Avisar faltante</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── INFORME DEL TURNO ────────────────────────────────────────────────
 // Qué pasó en el servicio: cuánto tardó cada mesa, el promedio, la más lenta, la cocina, lo cobrado por medio de pago y los faltantes.
@@ -1558,8 +1580,8 @@ function InformeTurno(props) {
         </div>
 
         <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
-          <div style={h}>⚠️ Faltantes</div>
-          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Nadie avisó faltantes en este turno.</div> : falt.map(function(f) {
+          <div style={h}>🚫 Discontinuados y faltantes</div>
+          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>No se discontinuó ni faltó nada en este turno.</div> : falt.map(function(f) {
             return <div key={f.id} style={{ padding:"6px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
               <b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}{f.por ? " (" + f.por + ")" : ""}</span> <span style={{ color:"#555" }}>· {fmtHora ? fmtHora(f.at) : String(f.at).slice(11, 16)}</span>
               {f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}
@@ -2710,7 +2732,7 @@ export default function PanelComandas(p) {
   var [practica, setPractica] = useState(false);
   useEffect(function() { setTurnos(null); sbLeerTurnos(localId).then(setTurnos); }, [localId, practica]);
   var mozos = mozosDeLocal(p.empleados, localId);
-  var [faltante, setFaltante] = useState(false);
+  var [discontinuando, setDiscontinuando] = useState(false);   // ventana para sacar de la carta un producto que no hay
   var [pruebaVivo, setPruebaVivoS] = useState(function() { try { return sessionStorage.getItem("nkt_prueba_vivo") === "1"; } catch(e) { return false; } });
   function setPruebaVivo(v) { setPruebaVivoS(v); try { sessionStorage.setItem("nkt_prueba_vivo", v ? "1" : "0"); } catch(e) {} }
   var [verCocina, setVerCocina] = useState(false);   // la pantalla de cocina, a pantalla completa dentro de Comandas
@@ -3109,7 +3131,7 @@ export default function PanelComandas(p) {
       )}
       <div style={{ marginBottom:10, display:"flex", gap:8, flexWrap:"wrap" }}>
         {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
-        <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante</button>
+        {verInforme && <button onClick={function() { setDiscontinuando(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #C1440E88", background:"#C1440E15", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>🚫 Discontinuar</button>}
       </div>
       {!p.soloServicio && (
         <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
@@ -3136,9 +3158,7 @@ export default function PanelComandas(p) {
           {!exigirCocina && <span style={{ fontSize:10.5, color:"#D4A017", flex:"1 1 100%" }}>Apagado: se puede marcar «entregar» sin pasar por la pantalla de cocina (para un local que no la usa).</span>}
         </div>
       )}
-      {faltante && <VentanaFaltante prueba={pruebaVivo} color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
-        onCerrar={function() { setFaltante(false); }}
-        onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
+      {discontinuando && <VentanaDiscontinuar localId={localId} usuario={usuario} diaDeNegocio={fechaNegocio} onCambio={function() { cargarCarta(); setRefInforme(function(n) { return n + 1; }); }} onCerrar={function() { setDiscontinuando(false); }} />}
       {(function() {
         // Aviso para el mozo y el cajero: pedidos que llevan más del tiempo elegido en la cocina, y deliverys o mostradores que se pasaron de la hora prometida al cliente.
         var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) }; }).filter(function(x) { return x.min !== null && x.min >= limite; });

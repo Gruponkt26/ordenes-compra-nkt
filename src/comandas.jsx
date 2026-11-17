@@ -1295,6 +1295,7 @@ function Carta(props) {
 
     var [nuevoPlato, setNuevoPlato] = useState({});
     var [nuevaCat, setNuevaCat] = useState("");
+    var [catAbierta, setCatAbierta] = useState(null);   // categoría que se está viendo (null = las ventanas de colores)
     var [trayendo, setTrayendo] = useState(false);
 
     var delLocal = carta.filter(function(x) { return x.local === localId; });
@@ -1347,12 +1348,14 @@ function Carta(props) {
       if (categorias.indexOf(nuevo) !== -1) { alert("Ya existe una categoría que se llama «" + nuevo + "». Para juntarlas, movés los platos de una a la otra."); return; }
       var cambiados = delLocal.filter(function(x) { return x.categoria === cat; }).map(function(x) { return { ...x, categoria:nuevo }; });
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }).concat(cambiados); });
+      if (catAbierta === cat) setCatAbierta(nuevo);
       sbSaveCartaMuchos(cambiados).then(function(err) { if (err) { alert("No se pudo cambiar el nombre:\n\n" + String(err).slice(0, 200)); cargarCarta(); } });
     }
     function borrarCat(cat) {
       var platosCat = delLocal.filter(function(x) { return x.categoria === cat; });
       if (!window.confirm("¿Borrar la categoría «" + cat + "» con sus " + platosCat.length + " plato" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un plato de lugar, usá la flecha ↪ de cada plato.")) return;
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }); });
+      setCatAbierta(null);
       platosCat.forEach(function(x) { sbDeleteCarta(x.id); });
     }
     // La carta que cada local tiene publicada en Maxirest (Kusama y Colantonio's), con sus precios. Se suma lo que falte, sin tocar lo que ya hay:
@@ -1480,7 +1483,9 @@ function Carta(props) {
               arriba y completá los precios: es mucho menos trabajo que escribirlos de nuevo.
             </div>
           </div>
-        ) : categorias.map(function(cat) {
+        ) : (!catAbierta || categorias.indexOf(catAbierta) < 0) ? (
+          <VentanasCategorias categorias={categorias} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat; }).length; }} onElegir={setCatAbierta} />
+        ) : categorias.filter(function(c) { return c === catAbierta; }).map(function(cat) {
           // Dentro de cada categoría, el orden del menú; lo agregado a mano al final.
           var platos = delLocal.filter(function(x) { return x.categoria === cat; })
             .sort(function(a, b) {
@@ -1490,8 +1495,12 @@ function Carta(props) {
             });
           return (
             <div key={cat} style={{ marginBottom:16 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, padding:"10px 12px", borderRadius:12, border:"2px solid " + colorCategoria(categorias, cat) + "88", background:colorCategoria(categorias, cat) + "1A" }}>
+                <button onClick={function() { setCatAbierta(null); }} style={estiloVolver(colorCategoria(categorias, cat))}>← Volver</button>
+                <span style={{ fontSize:16, fontWeight:800, color:colorCategoria(categorias, cat) }}>{cat}</span>
+              </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7 }}>
-                <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, flex:1 }}>{cat} ({platos.length})</div>
+                <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, flex:1 }}>{platos.length} plato{platos.length === 1 ? "" : "s"}</div>
                 <button onClick={function() { renombrarCat(cat); }} title="Cambiarle el nombre a la categoría" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
                 <button onClick={function() { borrarCat(cat); }} title="Borrar la categoría entera" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️</button>
               </div>

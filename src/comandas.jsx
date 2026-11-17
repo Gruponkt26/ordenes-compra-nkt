@@ -1334,9 +1334,18 @@ export function PanelCocina(props) {
                     <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
                   </div>
                   <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
-                    <div style={{ fontSize:26, fontWeight:900, color:col }}>{min === null ? "—" : min + " min"}</div>
-                    <div style={{ fontSize:10, color:"#666" }}>desde {horaSeg(g.desde).slice(0, 5)}</div>
-                    {g.desdeMesa && g.desdeMesa < g.desde && minutosDesde(g.desdeMesa) - minutosDesde(g.desde) >= 2 && <div style={{ fontSize:11, color:"#8C8C8C", marginTop:2 }}>mesa: {minutosDesde(g.desdeMesa)} min en total</div>}
+                    {(function() {
+                      // Arriba, el contador ORIGINAL de la mesa (desde el primer pedido, no se reinicia); si hay algo agregado, abajo va el de lo agregado, que es el que avisa según el tiempo elegido.
+                      var minMesa = minutosDesde(g.desdeMesa || g.desde);
+                      var conAgregado = minMesa !== null && min !== null && minMesa - min >= 1;
+                      return (
+                        <div>
+                          <div style={{ fontSize:26, fontWeight:900, color: conAgregado ? "#F0EDE8" : col }}>{(conAgregado ? minMesa : min) === null ? "—" : (conAgregado ? minMesa : min) + " min"}</div>
+                          <div style={{ fontSize:10, color:"#666" }}>{conAgregado ? "la mesa · desde " + horaSeg(g.desdeMesa).slice(0, 5) : "desde " + horaSeg(g.desde).slice(0, 5)}</div>
+                          {conAgregado && <div style={{ marginTop:4, fontSize:19, fontWeight:900, color:col }}>➕ {min} min<div style={{ fontSize:10, fontWeight:600, color:"#777" }}>lo agregado · desde {horaSeg(g.desde).slice(0, 5)}</div></div>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 {st && <div style={{ fontSize:13, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:8, padding:"4px 9px" }}>{st.txt}</div>}

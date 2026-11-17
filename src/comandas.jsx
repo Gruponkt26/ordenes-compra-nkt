@@ -1123,6 +1123,7 @@ export function PanelCocina(props) {
           var ex = extras[c.id] || {};
           g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
           g.misma = c.tipo === "mesa" && ex.mesa_nueva === false;
+          g.salida = (ex.salidas || {})[g.ronda] || null;   // lo que eligió el mozo o el cajero al agregar: «junto» u «orden»
           // Cambios de cantidad o de nota en lo que ya se mandó, desde que se mandó.
           g.cambios = log.filter(function(l) {
             return l.comanda_id === c.id && l.at > String(g.desde) && (l.accion === "Cambió la cantidad" || l.accion === "Anotó una nota")
@@ -1143,7 +1144,8 @@ export function PanelCocina(props) {
         var porCom = {};
         lista.forEach(function(g) {
           var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, orden:g.orden, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
-          t.tandas.push(g); t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
+          t.tandas.push(g); if (g.salida && g.items.length) t.salida = g.salida;
+          t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
           // El contador del ticket es el de lo más viejo que sigue pendiente; cada parte agregada tiene el suyo, y se guarda aparte desde cuándo está la mesa.
           if (g.items.length && !g.espera && g.desde && (!t.desde || g.desde < t.desde)) t.desde = g.desde;
           if (!t.desde && g.desde) t.desde = g.desde;
@@ -1385,6 +1387,12 @@ export function PanelCocina(props) {
                     {nv && <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>+{nv.extra} min de retraso · {nv.txt}</div>}
                   </div>;
                 })()}
+                {g.salida && (
+                  <div style={{ background: g.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:10, padding:"10px 12px", border:"2px solid #fff" }}>
+                    <div style={{ fontSize:20, fontWeight:900, letterSpacing:0.5 }}>{g.salida === "junto" ? "🔥 SALE TODO JUNTO" : "📋 SALE POR ORDEN DE COMANDA"}</div>
+                    <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{g.salida === "junto" ? "Lo agregado va junto con lo que ya está en la cocina." : "Lo agregado sale después de lo anterior."} <span style={{ opacity:0.85 }}>(lo eligió {c.tipo === "mesa" ? "el mozo" : "el cajero"})</span></div>
+                  </div>
+                )}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()}</span>
@@ -1420,7 +1428,7 @@ export function PanelCocina(props) {
                     var mt = t.espera ? null : minutosDesde(t.desde);
                     return (
                       <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: (agregado || t.curso) ? "6px 8px 8px" : 0, borderRadius:9, background: t.curso === "entrada" ? "#4C9A5A14" : t.curso === "principal" ? "#3A9BC114" : agregado ? "#D4A01712" : "transparent", border: t.curso === "entrada" ? "1px solid #4C9A5A66" : t.curso === "principal" ? "1px solid #3A9BC166" : agregado ? "1px solid #D4A01766" : "none" }}>
-                        {(multiple || agregado || t.curso) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ espera que salga la entrada</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
+                        {(multiple || agregado || t.curso) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ espera que salga la entrada</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
                         {t.items.map(function(i) {
                           return (
                             <div key={i.id} style={{ padding:"4px 0" }}>
@@ -1916,12 +1924,17 @@ function ComandaDetalle(props) {
     props.onGuardarItems([{ ...i, estado: "cancelado", nota: "cambio por " + plato.nombre }, nuevo]);
     setCambiando(null);
   }
-  function mandar() {
+  // ¿Hay algo todavía en la cocina de esta mesa? Entonces, al mandar más, se pregunta cómo tiene que salir lo nuevo.
+  var hayEnCocina = mandados.some(function(i) { return i.estado === "enviado"; });
+  var [preguntaSalida, setPreguntaSalida] = useState(false);
+  function mandar(salida) {
     if (!pendientes.length) return;
     var ronda = mandados.reduce(function(a, i) { return Math.max(a, Number(i.ronda) || 0); }, 0) + 1;
     var ahora = new Date().toISOString();
     // Lo marcado como entrada sale como una tanda y el resto como la siguiente (el principal): las dos con la misma hora de «Marchar».
     var hayEntrada = pendientes.some(esEntrada), hayResto = pendientes.some(function(i) { return !esEntrada(i); });
+    var rondasNuevas = hayEntrada && hayResto ? [ronda, ronda + 1] : [ronda];
+    if (salida && props.onSalida) props.onSalida(rondasNuevas, salida);
     props.onGuardarItems(pendientes.map(function(i) {
       return { ...i, estado:"enviado", ronda: hayEntrada && hayResto && !esEntrada(i) ? ronda + 1 : ronda, enviado_at:ahora };
     }));
@@ -2056,7 +2069,7 @@ function ComandaDetalle(props) {
               </div>
             );
           })}
-          <button onClick={mandar}
+          <button onClick={function() { if (hayEnCocina) setPreguntaSalida(true); else mandar(); }}
             style={{ width:"100%", marginTop:8, padding:"12px", borderRadius:9, border:"none", background:color, color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }}>
             🔔 Mandar a la cocina ({pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)})
           </button>
@@ -2133,7 +2146,7 @@ function ComandaDetalle(props) {
                     var tardo = entregada && fin && ini ? Math.round((new Date(fin) - new Date(ini)) / 60000) : null;
                     var nombreTanda = inf.curso === "entrada" ? "🥗 Entrada" : inf.curso === "principal" ? "🍽️ Principal" : ((r.ronda || 0) > 1 ? "➕ " : "") + "Tanda " + r.ronda;
                     return <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, margin:"6px 0 2px", fontSize:10, fontWeight:800, letterSpacing:0.8, textTransform:"uppercase", color: inf.curso === "entrada" ? "#8FD19A" : inf.curso === "principal" ? "#7CC4E4" : (r.ronda || 0) > 1 ? "#D4A017" : "#6E6E6E" }}>
-                      <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}</span>
+                      <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}{props.extra && props.extra.salidas && props.extra.salidas[r.ronda || 0] && <span style={{ marginLeft:6, color:"#fff", background: props.extra.salidas[r.ronda || 0] === "junto" ? "#E0652E" : "#3A9BC1", borderRadius:5, padding:"0 6px", fontSize:10 }}>{props.extra.salidas[r.ronda || 0] === "junto" ? "🔥 todo junto" : "📋 por orden"}</span>}</span>
                       <span style={{ fontSize:12, color: entregada ? "#4C9A5A" : inf.espera ? "#D4A017" : minR !== null ? colorDemora(minR, props.limite) : "#4C9A5A", textTransform:"none", letterSpacing:0 }}>
                         {entregada ? "✅ entregada" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? "⏳ espera que salga la entrada" : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
                       </span>
@@ -2188,6 +2201,14 @@ function ComandaDetalle(props) {
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
       {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
+      {preguntaSalida && (
+        <Ventana titulo="¿Cómo sale lo nuevo?" onCerrar={function() { setPreguntaSalida(false); }}>
+          <div style={{ fontSize:13, color:"#C8C8C8", lineHeight:1.5, marginBottom:12 }}>Esta mesa ya tiene pedidos en la cocina. Lo que estás mandando ahora, ¿sale <b>todo junto</b> con lo anterior o <b>por orden de comanda</b>? La cocina lo ve bien resaltado.</div>
+          <button onClick={function() { setPreguntaSalida(false); mandar("junto"); }} style={{ width:"100%", padding:"16px", borderRadius:11, border:"none", background:"#E0652E", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:900, cursor:"pointer", marginBottom:8 }}>🔥 TODO JUNTO<div style={{ fontSize:11, fontWeight:600, opacity:0.9 }}>sale con lo que ya está en la cocina</div></button>
+          <button onClick={function() { setPreguntaSalida(false); mandar("orden"); }} style={{ width:"100%", padding:"16px", borderRadius:11, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:900, cursor:"pointer", marginBottom:8 }}>📋 POR ORDEN DE COMANDA<div style={{ fontSize:11, fontWeight:600, opacity:0.9 }}>sale después de lo anterior</div></button>
+          <button onClick={function() { setPreguntaSalida(false); }} style={{ ...GH, width:"100%", padding:"10px", fontSize:12 }}>Cancelar</button>
+        </Ventana>
+      )}
       {cambiando && <VentanaCambiar item={cambiando} cats={cats} delLocal={delLocal} colores={props.colores} onElegir={function(pl) { cambiarPor(cambiando, pl); }} onCerrar={function() { setCambiando(null); }} />}
       {ventana === "descuento" && <VentanaDescuento subtotal={subtotal} descuento={extra.descuento} onCerrar={function() { setVentana(null); }} onGuardar={function(d) { var e = { ...extra }; if (d) e.descuento = { ...d, por:props.usuario || "" }; else delete e.descuento; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
       {ventana === "factura" && <VentanaFactura factura={extra.factura} onCerrar={function() { setVentana(null); }} onGuardar={function(f) { var e = { ...extra }; if (f) e.factura = f; else delete e.factura; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
@@ -3120,6 +3141,15 @@ export default function PanelComandas(p) {
     sbLeerExtra(abiertaId).then(function(e) { if (vivo) setExtras(function(prev) { return { ...prev, [abiertaId]: e }; }); });
     return function() { vivo = false; };
   }, [abiertaId]);
+  // Cómo sale lo que se agrega a una mesa que ya tiene pedidos en la cocina: «junto» u «orden». Se guarda con la cuenta y la cocina lo muestra resaltado.
+  function guardarSalida(comandaId, rondas, salida) {
+    var antes = extras[comandaId] || {}, cx = comandas.find(function(x) { return x.id === comandaId; });
+    var nuevo = { ...antes, salidas: { ...(antes.salidas || {}) } };
+    rondas.forEach(function(r) { nuevo.salidas[r] = salida; });
+    setExtras(function(prev) { return { ...prev, [comandaId]: nuevo }; });
+    sbGuardarExtra(comandaId, nuevo, usuario);
+    if (cx) registrar(cx, "Eligió cómo sale lo agregado", salida === "junto" ? "Todo junto con lo anterior" : "Por orden de comanda");
+  }
   function guardarExtra(id, e) {
     var antes = extras[id] || {}, cx = comandas.find(function(x) { return x.id === id; });
     if (cx) {
@@ -3390,7 +3420,7 @@ export default function PanelComandas(p) {
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
           entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
-          colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap}
+          colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (

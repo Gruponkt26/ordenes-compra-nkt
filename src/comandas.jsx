@@ -813,7 +813,21 @@ export function PanelCocina(props) {
           else if (lista.some(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE && !pasados.current[g.clave]; })) pitar(520, 3);
         }
         var cv = {}; lista.forEach(function(g) { cv[g.clave] = 1; }); conocidos.current = cv;
-        var np = {}; lista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
+        // Una sola ventana por cuenta: lo que se agrega después a una mesa que ya pidió entra en el mismo ticket, como «agregado».
+        var porCom = {};
+        lista.forEach(function(g) {
+          var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
+          t.tandas.push(g); t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
+          if (g.items.length && g.desde && (!t.desde || g.desde < t.desde)) t.desde = g.desde;
+          if (!t.desde && g.desde) t.desde = g.desde;
+        });
+        var unidas = Object.keys(porCom).map(function(k) { var t = porCom[k]; t.tandas.sort(function(a, b) { return a.ronda - b.ronda; }); return t; });
+        unidas.sort(function(a, b) {
+          if (a.nueva !== b.nueva) return a.nueva ? -1 : 1;
+          return String(a.desde).localeCompare(String(b.desde));
+        });
+        var tandasLista = lista; lista = unidas;
+        var np = {}; tandasLista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
         setTickets(lista);
         // Lo que la cocina ya le entregó al mozo o al cajero hoy (aunque la cuenta ya esté cobrada), el más reciente primero.
         var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
@@ -990,11 +1004,21 @@ export function PanelCocina(props) {
                 </div>
                 {st && <div style={{ fontSize:13, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:8, padding:"4px 9px" }}>{st.txt}</div>}
                 <div style={{ borderTop:"1px solid #222", paddingTop:7 }}>
-                  {g.items.map(function(i) {
+                  {g.tandas.filter(function(t) { return t.items.length > 0; }).map(function(t, ti, arr) {
+                    var multiple = arr.length > 1, agregado = multiple && ti > 0;
+                    var mt = minutosDesde(t.desde);
                     return (
-                      <div key={i.id} style={{ padding:"4px 0" }}>
-                        <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8" }}><span style={{ color:col }}>{Number(i.cant) || 1}×</span> {i.nombre}</div>
-                        {i.nota && <div style={{ fontSize:14, color:"#D4A017", fontWeight:700 }}>📝 {i.nota}</div>}
+                      <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: agregado ? "6px 8px 8px" : 0, borderRadius:9, background: agregado ? "#D4A01712" : "transparent", border: agregado ? "1px solid #D4A01766" : "none" }}>
+                        {multiple && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{agregado ? "➕ AGREGADO " + horaSeg(t.desde).slice(0, 5) + (mt !== null ? " · hace " + mt + " min" : "") : "PEDIDO ORIGINAL " + horaSeg(t.desde).slice(0, 5)}</div>}
+                        {t.items.map(function(i) {
+                          return (
+                            <div key={i.id} style={{ padding:"4px 0" }}>
+                              <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8" }}><span style={{ color: agregado ? "#D4A017" : col }}>{Number(i.cant) || 1}×</span> {i.nombre}</div>
+                              {i.nota && <div style={{ fontSize:14, color:"#D4A017", fontWeight:700 }}>📝 {i.nota}</div>}
+                            </div>
+                          );
+                        })}
+                        <button onClick={function() { entregar(t); }} style={{ marginTop:6, width:"100%", padding: multiple ? "11px" : "15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize: multiple ? 15 : 17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>{(c.tipo === "mesa" ? "✓ ENTREGADO AL MOZO" : "✓ ENTREGADO AL CAJERO") + (multiple ? (agregado ? " · lo agregado" : " · el pedido") : "")}</button>
                       </div>
                     );
                   })}
@@ -1003,7 +1027,6 @@ export function PanelCocina(props) {
                   })}
                   {g.items.length === 0 && <div style={{ fontSize:14, fontWeight:900, color:"#E0452E" }}>PEDIDO ANULADO: no hay nada para preparar.</div>}
                 </div>
-                {g.items.length > 0 && <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>{c.tipo === "mesa" ? "✓ ENTREGADO AL MOZO" : "✓ ENTREGADO AL CAJERO"}</button>}
               </div>
             );
           })}

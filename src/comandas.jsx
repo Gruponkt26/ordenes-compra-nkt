@@ -1122,17 +1122,13 @@ function ComandaDetalle(props) {
             <input value={busqueda} onChange={function(e) { setBusqueda(e.target.value); }} placeholder="Buscar un plato…" style={{ ...INP, fontSize:12 }} />
             <button onClick={function() { setAgregando(false); setBusqueda(""); }} style={{ ...GH, padding:"8px 13px", fontSize:12 }}>Listo</button>
           </div>
-          {!q && (
-            <div style={{ display:"flex", gap:5, marginBottom:9, flexWrap:"wrap" }}>
-              {cats.map(function(cat) {
-                var act = categoria === cat;
-                return (
-                  <button key={cat} onClick={function() { setCategoria(act ? null : cat); }}
-                    style={{ padding:"6px 11px", borderRadius:7, border:"1px solid "+(act?color:"#1E1E1E"), background:act?color+"22":"#111", color:act?color:"#666", fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                    {cat}
-                  </button>
-                );
-              })}
+          {!q && !categoria && cats.length > 0 && (
+            <VentanasCategorias categorias={cats} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat && x.activo !== false; }).length; }} onElegir={setCategoria} />
+          )}
+          {!q && categoria && (
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, padding:"9px 11px", borderRadius:12, border:"2px solid " + colorCategoria(cats, categoria) + "88", background:colorCategoria(cats, categoria) + "1A" }}>
+              <button onClick={function() { setCategoria(null); }} style={estiloVolver(colorCategoria(cats, categoria))}>← Categorías</button>
+              <span style={{ fontSize:15, fontWeight:800, color:colorCategoria(cats, categoria) }}>{categoria}</span>
             </div>
           )}
           {delLocal.length === 0 ? (
@@ -1140,7 +1136,7 @@ function ComandaDetalle(props) {
               Este local todavía no tiene carta cargada. Se carga en la pestaña 📖 Carta.
             </div>
           ) : (!categoria && !q) ? (
-            <div style={{ fontSize:11, color:"#444" }}>Elegí una categoría o buscá un plato.</div>
+            <div style={{ fontSize:11, color:"#666", marginTop:8 }}>Tocá una categoría para ver sus platos, o buscá uno por el nombre.</div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
               {platos.map(function(x) {
@@ -1223,9 +1219,30 @@ function ComandaDetalle(props) {
 // componentes distintos y los vuelve a montar: con el refresco cada 20 segundos,
 // eso le borra a cualquiera lo que esté tipeando. Cargar 75 precios así es imposible.
 // La carta del local para consultar (cajeros y mozos): categorías, platos y precios. No se edita desde acá.
+// Cada categoría de la carta es una ventana de su propio color: se toca y se abre con todos sus platos.
+var COLORES_CATEGORIA = ["#E0714A", "#4C9A5A", "#3A9BC1", "#D4A017", "#B07CD8", "#E0527A", "#2FB5A0", "#8FA3B0", "#C77DA8", "#A98B62", "#6C8CE0", "#9ACD32"];
+function colorCategoria(cats, cat) { var i = cats.indexOf(cat); return COLORES_CATEGORIA[(i < 0 ? 0 : i) % COLORES_CATEGORIA.length]; }
+function VentanasCategorias(props) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:9 }}>
+      {props.categorias.map(function(cat) {
+        var col = colorCategoria(props.categorias, cat), n = props.conteo(cat);
+        return (
+          <button key={cat} onClick={function() { props.onElegir(cat); }}
+            style={{ textAlign:"left", minHeight:84, padding:"13px 13px", borderRadius:12, border:"2px solid " + col + "88", background:"linear-gradient(145deg, " + col + "30, " + col + "10)", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", cursor:"pointer", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:8 }}>
+            <span style={{ fontSize:15, fontWeight:800, lineHeight:1.2, color:col, wordBreak:"break-word" }}>{cat}</span>
+            <span style={{ fontSize:11.5, color:"#C8C8C8" }}>{n} plato{n === 1 ? "" : "s"} ›</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function CartaConsulta(props) {
   var localId = props.localId, color = props.color, carta = props.carta;
   var [buscar, setBuscar] = useState("");
+  var [catAbierta, setCatAbierta] = useState(null);
   var delLocal = carta.filter(function(x) { return x.local === localId; });
   var q = buscar.trim().toLowerCase();
   var minOrden = {};
@@ -1238,7 +1255,16 @@ function CartaConsulta(props) {
     <div>
       <input value={buscar} onChange={function(e) { setBuscar(e.target.value); }} placeholder="🔎 Buscar un plato…" style={{ ...INP, marginBottom:12 }} />
       {delLocal.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#666", fontSize:13 }}>Este local todavía no tiene carta cargada.</div>}
-      {categorias.map(function(cat) {
+      {!q && !catAbierta && delLocal.length > 0 && (
+        <VentanasCategorias categorias={categorias} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat && x.activo !== false; }).length; }} onElegir={setCatAbierta} />
+      )}
+      {!q && catAbierta && (
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, padding:"10px 12px", borderRadius:12, border:"2px solid " + colorCategoria(categorias, catAbierta) + "88", background:colorCategoria(categorias, catAbierta) + "1A" }}>
+          <button onClick={function() { setCatAbierta(null); }} style={estiloVolver(colorCategoria(categorias, catAbierta))}>← Volver</button>
+          <span style={{ fontSize:16, fontWeight:800, color:colorCategoria(categorias, catAbierta) }}>{catAbierta}</span>
+        </div>
+      )}
+      {(q || catAbierta) && categorias.filter(function(cat) { return !catAbierta || q || cat === catAbierta; }).map(function(cat) {
         var platos = delLocal.filter(function(x) { return x.categoria === cat && (!q || String(x.nombre || "").toLowerCase().indexOf(q) !== -1); })
           .sort(function(a, b) { return (a.orden || 0) - (b.orden || 0) || String(a.nombre).localeCompare(String(b.nombre)); });
         if (!platos.length) return null;

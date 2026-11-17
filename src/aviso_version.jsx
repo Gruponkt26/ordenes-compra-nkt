@@ -3,24 +3,27 @@
 import React, { useState, useEffect } from "react";
 
 var ACTUAL = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "";
+// Se intenta actualizar solo una vez por versión, para que nunca quede recargando en bucle.
+function autoPermitido(id) {
+  try { if (sessionStorage.getItem("nkt_auto_ver") === id) return false; sessionStorage.setItem("nkt_auto_ver", id); } catch (e) {}
+  return true;
+}
 
 export default function AvisoVersion() {
   var [nueva, setNueva] = useState(false);
   useEffect(function () {
     if (!ACTUAL) return;
     var vivo = true, ocultoDesde = null;
+    var versionNueva = null;
     // Al volver a la app después de un rato (celular bloqueado, otra aplicación, tablet dormida) se actualiza sola: es un momento seguro, no hay nada a medio escribir.
     // Se intenta una sola vez por versión, para que nunca se quede recargando en bucle.
-    function autoPermitido(id) {
-      try { if (sessionStorage.getItem("nkt_auto_ver") === id) return false; sessionStorage.setItem("nkt_auto_ver", id); } catch (e) {}
-      return true;
-    }
     var minimo = typeof window.__NKT_AUTO_MS === "number" ? window.__NKT_AUTO_MS : 60000;
     function mirar(auto) {
       fetch("/version.json?t=" + Date.now(), { cache: "no-store" })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
           if (!vivo || !d || !d.id || d.id === ACTUAL) return;
+          versionNueva = d.id;
           if (auto === true && autoPermitido(d.id)) { window.location.reload(); return; }
           setNueva(true);
         })
@@ -34,9 +37,13 @@ export default function AvisoVersion() {
       mirar(estuvo >= minimo);
     }
     function alEnfocar() { mirar(false); }
+    // La pantalla de cocina está siempre a la vista: se actualiza sola cuando no tiene pedidos pendientes (mira cada 10 segundos).
+    var libre = setInterval(function () {
+      if (versionNueva && window.__NKT_LIBRE === true && autoPermitido(versionNueva)) window.location.reload();
+    }, 10000);
     document.addEventListener("visibilitychange", alCambiar);
     window.addEventListener("focus", alEnfocar);
-    return function () { vivo = false; clearInterval(t); document.removeEventListener("visibilitychange", alCambiar); window.removeEventListener("focus", alEnfocar); };
+    return function () { vivo = false; clearInterval(t); clearInterval(libre); document.removeEventListener("visibilitychange", alCambiar); window.removeEventListener("focus", alEnfocar); };
   }, []);
   if (!nueva) return null;
   return (

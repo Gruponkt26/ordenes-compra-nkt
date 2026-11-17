@@ -1185,6 +1185,11 @@ export function PanelCocina(props) {
     var reloj = setInterval(function() { if (vivo) setAhora(Date.now()); }, 15000);
     return function() { vivo = false; clearInterval(t); clearInterval(reloj); };
   }, [localId]);
+  // Avisa al resto de la app cuándo la cocina está libre (sin pedidos pendientes): es el momento seguro para actualizarse sola a una versión nueva.
+  useEffect(function() {
+    window.__NKT_LIBRE = cargado && tickets.length === 0 && !discontinuando;
+    return function() { window.__NKT_LIBRE = false; };
+  }, [cargado, tickets.length, discontinuando]);
   // La pantalla no se apaga mientras se está mirando (si el navegador lo permite).
   useEffect(function() {
     var lock = null;
@@ -1301,7 +1306,7 @@ export function PanelCocina(props) {
                       <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{T.emoji} {T.nombre.toUpperCase()}</span>{badgePrueba(c)}
                       <div style={{ fontSize:17, fontWeight:900, color:T.color, marginTop:3 }}>COMANDA {g.orden || "—"}</div>
                       <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8", marginTop:1 }}>{g.titulo}</div>
-                      <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
+                      <div style={{ marginTop:5 }}><span style={{ display:"inline-block", background:"#D4A01722", border:"1px solid #D4A017", color:"#FFD36B", borderRadius:8, padding:"3px 10px", fontSize:17, fontWeight:900, letterSpacing:0.3 }}>{c.tipo === "mesa" ? "🧑‍🍳 Mozo" : "🧾 Cajero"}: {c.mozo || "—"}</span>{g.ronda > 1 && <span style={{ fontSize:11, color:"#777", marginLeft:6 }}>tanda {g.ronda}</span>}</div>
                     </div>
                     <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                       <div style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>✅ al {quien} {horaSeg(g.listo).slice(0, 5)}</div>
@@ -1367,7 +1372,7 @@ export function PanelCocina(props) {
                     {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
                     <div style={{ fontSize:26, fontWeight:900, color:T.color, marginTop:4, letterSpacing:0.5 }}>COMANDA {g.orden || "—"}</div>
                     <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:1, wordBreak:"break-word" }}>{g.titulo}</div>
-                    <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
+                    <div style={{ marginTop:5 }}><span style={{ display:"inline-block", background:"#D4A01722", border:"1px solid #D4A017", color:"#FFD36B", borderRadius:8, padding:"3px 10px", fontSize:17, fontWeight:900, letterSpacing:0.3 }}>{c.tipo === "mesa" ? "🧑‍🍳 Mozo" : "🧾 Cajero"}: {c.mozo || "—"}</span>{g.ronda > 1 && <span style={{ fontSize:11, color:"#777", marginLeft:6 }}>tanda {g.ronda}</span>}</div>
                   </div>
                   <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                     {(function() {

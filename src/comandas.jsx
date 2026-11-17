@@ -527,8 +527,11 @@ function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[loc
 // La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
 // color de la mesa: si hay tres rondas, la que importa es la que más espera.
 function demoraDe(itemsComanda) {
-  var enviados = (itemsComanda || []).filter(function(i) { return i.estado === "enviado" && i.enviado_at; });
-  if (!enviados.length) return null;
+  var todos = itemsComanda || [];
+  // Si todavía hay algo en cocina, el contador de la mesa cuenta desde el PRIMER pedido de la cuenta: lo que se agrega después no lo reinicia.
+  // Solo arranca de cero con una cuenta nueva (mesa cerrada y vuelta a abrir).
+  if (!todos.some(function(i) { return i.estado === "enviado" && i.enviado_at; })) return null;
+  var enviados = todos.filter(function(i) { return i.enviado_at && i.estado !== "cancelado"; });
   var viejo = enviados.reduce(function(a, b) { return a.enviado_at < b.enviado_at ? a : b; });
   return minutosDesde(viejo.enviado_at);
 }
@@ -936,7 +939,7 @@ export function PanelCocina(props) {
   // Un pedido «pasado» es el que lleva más del tiempo límite en la cocina o, si es delivery o mostrador, el que se pasó de la hora prometida al cliente.
   function pasadaK(g, lim) {
     if (!g.items.length) return false;
-    var m = minutosDesde(g.desde);
+    var m = minutosDesde(g.desdeMesa || g.desde);
     return (m !== null && m >= lim) || (g.comanda.tipo !== "mesa" && minutosVencida(g.entrega, Date.now()) !== null);
   }
   // El día de negocio de la cocina arranca a las 6 de la mañana: lo entregado desde ahí queda para revisar.
@@ -960,10 +963,13 @@ export function PanelCocina(props) {
           return c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") + (sec ? " · " + sec.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
         }
         // Pendientes: los ítems marchados y todavía no entregados, una tarjeta por tanda.
+        // El contador de la mesa sigue desde el primer pedido de la cuenta, aunque lo primero ya se haya entregado.
+        var primerEnvio = {};
+        its.forEach(function(i) { if (i.enviado_at && i.estado !== "cancelado" && (!primerEnvio[i.comanda_id] || i.enviado_at < primerEnvio[i.comanda_id])) primerEnvio[i.comanda_id] = i.enviado_at; });
         var grupos = {};
         function grupo(i) {
           var k = i.comanda_id + "|" + (i.ronda || 0);
-          return grupos[k] || (grupos[k] = { clave:k, comanda:coms.find(function(c) { return c.id === i.comanda_id; }), ronda:i.ronda || 0, items:[], quitados:[], desde:i.enviado_at });
+          return grupos[k] || (grupos[k] = { clave:k, comanda:coms.find(function(c) { return c.id === i.comanda_id; }), ronda:i.ronda || 0, items:[], quitados:[], desde:i.enviado_at, desdeMesa:primerEnvio[i.comanda_id] || i.enviado_at });
         }
         its.filter(function(i) { return i.estado === "enviado"; }).forEach(function(i) {
           var g = grupo(i); g.items.push(i);
@@ -1002,10 +1008,11 @@ export function PanelCocina(props) {
         lista.forEach(function(g) {
           var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
           t.tandas.push(g); t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
-          if (g.items.length && g.desde && (!t.desde || g.desde < t.desde)) t.desde = g.desde;
-          if (!t.desde && g.desde) t.desde = g.desde;
+          var dm = g.desdeMesa || g.desde;
+          if (g.items.length && dm && (!t.desde || dm < t.desde)) t.desde = dm;
+          if (!t.desde && dm) t.desde = dm;
         });
-        var unidas = Object.keys(porCom).map(function(k) { var t = porCom[k]; t.tandas.sort(function(a, b) { return a.ronda - b.ronda; }); return t; });
+        var unidas = Object.keys(porCom).map(function(k) { var t = porCom[k]; t.tandas.sort(function(a, b) { return a.ronda - b.ronda; }); t.desdeMesa = t.desde; return t; });
         unidas.sort(function(a, b) {
           if (a.nueva !== b.nueva) return a.nueva ? -1 : 1;
           return String(a.desde).localeCompare(String(b.desde));
@@ -1225,17 +1232,18 @@ export function PanelCocina(props) {
                   </div>
                   <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                     <div style={{ fontSize:26, fontWeight:900, color:col }}>{min === null ? "—" : min + " min"}</div>
-                    <div style={{ fontSize:10, color:"#666" }}>desde {horaSeg(g.desde).slice(0, 5)}</div>
+                    <div style={{ fontSize:10, color:"#666" }}>desde {horaSeg(g.desde).slice(0, 5)}{(g.tandas.filter(function(t) { return t.items.length > 0; }).length > 1 || (g.tandas.some(function(t) { return t.items.length > 0 && String(t.desde) > String(g.desde); }))) ? " (primer pedido)" : ""}</div>
                   </div>
                 </div>
                 {st && <div style={{ fontSize:13, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:8, padding:"4px 9px" }}>{st.txt}</div>}
                 <div style={{ borderTop:"1px solid #222", paddingTop:7 }}>
                   {g.tandas.filter(function(t) { return t.items.length > 0; }).map(function(t, ti, arr) {
-                    var multiple = arr.length > 1, agregado = multiple && ti > 0;
+                    // «Agregado»: una tanda posterior a la primera, aunque lo de antes ya se haya entregado.
+                    var multiple = arr.length > 1, agregado = (multiple && ti > 0) || (t.ronda || 0) > 1;
                     var mt = minutosDesde(t.desde);
                     return (
                       <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: agregado ? "6px 8px 8px" : 0, borderRadius:9, background: agregado ? "#D4A01712" : "transparent", border: agregado ? "1px solid #D4A01766" : "none" }}>
-                        {multiple && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{agregado ? "➕ AGREGADO " + horaSeg(t.desde).slice(0, 5) + (mt !== null ? " · hace " + mt + " min" : "") : "PEDIDO ORIGINAL " + horaSeg(t.desde).slice(0, 5)}</div>}
+                        {(multiple || agregado) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{agregado ? "➕ AGREGADO " + horaSeg(t.desde).slice(0, 5) + (mt !== null ? " · hace " + mt + " min" : "") : "PEDIDO ORIGINAL " + horaSeg(t.desde).slice(0, 5)}</div>}
                         {t.items.map(function(i) {
                           return (
                             <div key={i.id} style={{ padding:"4px 0" }}>

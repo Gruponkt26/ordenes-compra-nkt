@@ -294,12 +294,24 @@ async function sbLeerLogDesde(localId, desdeISO) {
     return leerLog(await r.json()).filter(function(x) { return x.local === localId; });
   } catch(e) { return []; }
 }
-// Lo que la cocina ya entregó desde cierta hora (aunque la cuenta ya esté cobrada), para poder revisarlo.
-async function sbItemsEntregadosDesde(desdeISO) {
+// Cuando la cocina termina un pedido y se lo entrega al mozo o al cajero queda un registro por tanda (pautas, ámbito "cocina_listo").
+// Los productos pasan a «listo»; recién cuando el mozo o el cajero los lleva a la mesa pasan a «entregado».
+async function sbGuardarListo(rec) {
   try {
-    var r = await cfetch(SURL + "/rest/v1/comanda_items?estado=eq.entregado&entregado_at=gte." + desdeISO + "&order=entregado_at.desc&limit=600", { headers: {...SH, "Cache-Control":"no-cache"} });
-    var d = await r.json(); return Array.isArray(d) ? d : [];
-  } catch(e) { return []; }
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"clisto_" + rec.comanda_id + "_" + rec.ronda, ambito:"cocina_listo", texto:JSON.stringify(rec), usuario:rec.por || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+// {"comanda|ronda": {comanda_id, ronda, listo_at, por, local}} de los últimos días desde `desdeISO`.
+async function sbLeerListosDesde(desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.cocina_listo&created_at=gte." + desdeISO + "&order=created_at.desc&limit=600", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(f) { try { var x = JSON.parse(f.texto); if (x && x.comanda_id) o[x.comanda_id + "|" + (x.ronda || 0)] = x; } catch(e) {} });
+    return o;
+  } catch(e) { return {}; }
 }
 async function sbComandasPorIds(ids) {
   if (!ids || !ids.length) return [];
@@ -749,12 +761,16 @@ export function PanelCocina(props) {
   function inicioDia() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); d.setHours(6, 0, 0, 0); return d.toISOString(); }
   function cargar() {
     var desde = inicioDia();
-    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbItemsEntregadosDesde(desde), sbLeerLogDesde(localId, desde)]).then(function(r) {
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbLeerListosDesde(desde), sbLeerLogDesde(localId, desde)]).then(function(r) {
       var coms = r[0].filter(function(c) { return c.local === localId; });
-      var mesas = r[1], entregasP = r[2], extras = r[3], entregados = r[4], log = r[5];
-      var faltan = {}; entregados.forEach(function(i) { if (!coms.some(function(c) { return c.id === i.comanda_id; })) faltan[i.comanda_id] = 1; });
-      return Promise.all([sbLoadItems(coms.map(function(c) { return c.id; })), sbComandasPorIds(Object.keys(faltan))]).then(function(rr) {
-        var its = rr[0], cerradas = rr[1];
+      var mesas = r[1], entregasP = r[2], extras = r[3], listos = r[4], log = r[5];
+      var recs = Object.keys(listos).map(function(k) { return listos[k]; }).filter(function(x) { return !x.local || x.local === localId; });
+      var idsRec = {}; recs.forEach(function(x) { idsRec[x.comanda_id] = 1; });
+      var faltan = {}; Object.keys(idsRec).forEach(function(id) { if (!coms.some(function(c) { return c.id === id; })) faltan[id] = 1; });
+      var todosIds = coms.map(function(c) { return c.id; }).concat(Object.keys(faltan));
+      return Promise.all([sbLoadItems(todosIds), sbComandasPorIds(Object.keys(faltan))]).then(function(rr) {
+        var itsTodos = rr[0], cerradas = rr[1];
+        var its = itsTodos.filter(function(i) { return coms.some(function(c) { return c.id === i.comanda_id; }); });
         function titulo(c) {
           var mesa = mesas.find(function(m) { return m.id === c.mesa_id; });
           return c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
@@ -799,18 +815,19 @@ export function PanelCocina(props) {
         var cv = {}; lista.forEach(function(g) { cv[g.clave] = 1; }); conocidos.current = cv;
         var np = {}; lista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
         setTickets(lista);
-        // Entregadas de hoy (aunque la cuenta ya esté cobrada): una tarjeta por tanda, la más reciente primero.
+        // Lo que la cocina ya le entregó al mozo o al cajero hoy (aunque la cuenta ya esté cobrada), el más reciente primero.
         var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
-        var ge = {};
-        entregados.forEach(function(i) {
-          var c = comPorId[i.comanda_id]; if (!c || c.local !== localId) return;
-          var k = i.comanda_id + "|" + (i.ronda || 0);
-          var g = ge[k] || (ge[k] = { clave:k, comanda:c, ronda:i.ronda || 0, items:[], desde:i.enviado_at, entregado:i.entregado_at, titulo:titulo(c) });
-          g.items.push(i);
-          if (i.entregado_at > g.entregado) g.entregado = i.entregado_at;
-          if (i.enviado_at && (!g.desde || i.enviado_at < g.desde)) g.desde = i.enviado_at;
+        var lista2 = [];
+        recs.forEach(function(rec) {
+          var c = comPorId[rec.comanda_id]; if (!c || c.local !== localId) return;
+          var items = itsTodos.filter(function(i) { return i.comanda_id === rec.comanda_id && (i.ronda || 0) === (rec.ronda || 0) && (i.estado === "listo" || i.estado === "entregado"); });
+          if (!items.length) return;
+          var desde2 = items.reduce(function(a, i) { return i.enviado_at && (!a || i.enviado_at < a) ? i.enviado_at : a; }, null);
+          var enMesa = items.every(function(i) { return i.estado === "entregado"; });
+          var enMesaAt = enMesa ? items.reduce(function(a, i) { return i.entregado_at && i.entregado_at > a ? i.entregado_at : a; }, "") : null;
+          lista2.push({ clave:rec.comanda_id + "|" + rec.ronda, comanda:c, ronda:rec.ronda || 0, items:items, desde:desde2, listo:rec.listo_at, por:rec.por, enMesa:enMesa, enMesaAt:enMesaAt, titulo:titulo(c) });
         });
-        setEntregadas(Object.keys(ge).map(function(k) { return ge[k]; }).sort(function(a, b) { return String(b.entregado).localeCompare(String(a.entregado)); }).slice(0, 80));
+        setEntregadas(lista2.sort(function(a, b) { return String(b.listo).localeCompare(String(a.listo)); }).slice(0, 80));
         setCargado(true);
       });
     }).catch(function() { setCargado(true); });
@@ -853,22 +870,28 @@ export function PanelCocina(props) {
     vistosRef.current = nuevo; setVistos(nuevo); try { localStorage.setItem("nkt_cocina_vistos", JSON.stringify(nuevo)); } catch(e) {}
     cargar();
   }
+  // La cocina termina y se lo entrega al mozo (mesa) o al cajero (delivery y mostrador). Llegar a la mesa lo marca después quien lo lleva.
   function entregar(g) {
     var ahoraISO = new Date().toISOString();
-    var filas = g.items.map(function(i) { return { ...i, estado:"entregado", entregado_at:ahoraISO }; });
+    var filas = g.items.map(function(i) { return { ...i, estado:"listo" }; });
     setTickets(function(prev) { return prev.filter(function(x) { return x.clave !== g.clave; }); });
     if (conocidos.current) delete conocidos.current[g.clave];
-    sbSaveItems(filas).then(function(err) { if (err) { alert("No se pudo marcar como entregado:\n\n" + String(err).slice(0, 200)); cargar(); } else cargar(); });
+    var quien = g.comanda.tipo === "mesa" ? "al mozo" : "al cajero";
+    Promise.all([sbSaveItems(filas), sbGuardarListo({ comanda_id:g.comanda.id, ronda:g.ronda, local:localId, listo_at:ahoraISO, por:usuario })]).then(function(r) {
+      if (r[0]) { alert("No se pudo marcar como entregado:\n\n" + String(r[0]).slice(0, 200)); }
+      cargar();
+    });
     var fecha = props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10);
-    sbLogAcciones([{ local:localId, fecha:fecha, comanda_id:g.comanda.id, titulo:g.titulo, accion:"Entregó a la mesa", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
+    sbLogAcciones([{ local:localId, fecha:fecha, comanda_id:g.comanda.id, titulo:g.titulo, accion:"Cocina entregó " + quien, detalle:g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
   // Por si se marcó por error: la tanda vuelve a pendientes.
   function deshacer(g) {
     if (!window.confirm("¿Volver a poner «" + g.titulo + "» en pendientes?")) return;
     var filas = g.items.map(function(i) { return { ...i, estado:"enviado", entregado_at:null }; });
     sbSaveItems(filas).then(function() { cargar(); });
+    // Si estaba entregado a la mesa, se avisa en el registro.
     var ahoraISO = new Date().toISOString();
-    sbLogAcciones([{ local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), comanda_id:g.comanda.id, titulo:g.titulo, accion:"Desmarcó la entrega", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
+    sbLogAcciones([{ local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), comanda_id:g.comanda.id, titulo:g.titulo, accion:"Volvió a la cocina", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
 
   var demorados = tickets.filter(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE; }).length;
@@ -896,7 +919,9 @@ export function PanelCocina(props) {
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(290px, 1fr))", gap:12 }}>
             {entregadas.map(function(g) {
               var c = g.comanda, T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
-              var tardo = g.desde && g.entregado ? Math.round((new Date(g.entregado) - new Date(g.desde)) / 60000) : null;
+              var tardo = g.desde && g.listo ? Math.round((new Date(g.listo) - new Date(g.desde)) / 60000) : null;
+              var aMesa = g.enMesa && g.enMesaAt && g.listo ? Math.round((new Date(g.enMesaAt) - new Date(g.listo)) / 60000) : null;
+              var quien = c.tipo === "mesa" ? "mozo" : "cajero";
               return (
                 <div key={g.clave} style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderLeft:"8px solid " + T.color, borderRadius:14, padding:"12px 14px", display:"flex", flexDirection:"column", gap:7, opacity:0.95 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
@@ -906,9 +931,12 @@ export function PanelCocina(props) {
                       <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
                     </div>
                     <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
-                      <div style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>✅ {horaSeg(g.entregado).slice(0, 5)}</div>
-                      <div style={{ fontSize:11, color: tardo !== null && tardo >= LIMITE ? "#E0452E" : "#777", fontWeight: tardo !== null && tardo >= LIMITE ? 800 : 400 }}>{tardo === null ? "" : "tardó " + tardo + " min"}</div>
+                      <div style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>✅ al {quien} {horaSeg(g.listo).slice(0, 5)}</div>
+                      <div style={{ fontSize:11, color: tardo !== null && tardo >= LIMITE ? "#E0452E" : "#777", fontWeight: tardo !== null && tardo >= LIMITE ? 800 : 400 }}>{tardo === null ? "" : "la cocina tardó " + tardo + " min"}</div>
                     </div>
+                  </div>
+                  <div style={{ fontSize:12, fontWeight:700, color: g.enMesa ? "#8FD19A" : "#D4A017", background: g.enMesa ? "#3A7D4422" : "#D4A01722", borderRadius:7, padding:"4px 9px" }}>
+                    {g.enMesa ? "🍽️ Llegó a la mesa a las " + horaSeg(g.enMesaAt).slice(0, 5) + (aMesa !== null ? " · " + aMesa + " min después de estar listo" : "") : "⏳ Todavía no lo llevaron a la mesa"}
                   </div>
                   <div style={{ borderTop:"1px solid #1E1E1E", paddingTop:6 }}>
                     {g.items.map(function(i) { return <div key={i.id} style={{ fontSize:15, color:"#CFCFCF", padding:"2px 0" }}><span style={{ color:"#4C9A5A", fontWeight:800 }}>{Number(i.cant) || 1}×</span> {i.nombre}{i.nota ? <span style={{ color:"#D4A017" }}> · 📝 {i.nota}</span> : null}</div>; })}
@@ -975,7 +1003,7 @@ export function PanelCocina(props) {
                   })}
                   {g.items.length === 0 && <div style={{ fontSize:14, fontWeight:900, color:"#E0452E" }}>PEDIDO ANULADO: no hay nada para preparar.</div>}
                 </div>
-                {g.items.length > 0 && <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>✓ ENTREGADO</button>}
+                {g.items.length > 0 && <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>{c.tipo === "mesa" ? "✓ ENTREGADO AL MOZO" : "✓ ENTREGADO AL CAJERO"}</button>}
               </div>
             );
           })}
@@ -1082,7 +1110,8 @@ function InformeTurno(props) {
       var falt = await sbLeerFaltantes(localId, fecha);
       var log = await sbLeerLogDia(localId, fecha);
       var ent = await sbLeerEntregas(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent });
+      var listos = await sbLeerListosDesde(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -1111,7 +1140,16 @@ function InformeTurno(props) {
     var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { var k = normalizarMedio(q.medio); porMedio[k] = (porMedio[k] || 0) + (Number(q.monto) || 0); }); });
     var porMozo = {}; filas.forEach(function(f) { var k = f.c.tipo === "mesa" ? (f.c.mozo || "Sin mozo") : "🧾 Cajero: " + (f.c.mozo || "—"); var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
     var itemsT = datos.items.filter(function(i) { return ids[i.comanda_id]; });
-    var cocina = itemsT.filter(function(i) { return i.estado === "entregado" && i.enviado_at && i.entregado_at; }).map(function(i) { return { nombre:i.nombre, min:(new Date(i.entregado_at) - new Date(i.enviado_at)) / 60000 }; }).filter(function(x) { return x.min >= 0 && x.min < 240; });
+    // Cocina: desde «Marchar» hasta que queda listo (se lo entrega al mozo o al cajero). Los pedidos viejos, sin ese registro, se miden hasta la entrega a la mesa.
+    var listos = datos.listos || {};
+    function listoDe(i) { var r = listos[i.comanda_id + "|" + (i.ronda || 0)]; return r ? r.listo_at : null; }
+    var cocina = itemsT.filter(function(i) { return (i.estado === "entregado" || i.estado === "listo") && i.enviado_at; }).map(function(i) {
+      var l = listoDe(i) || (i.estado === "entregado" ? i.entregado_at : null);
+      return l ? { nombre:i.nombre, min:(new Date(l) - new Date(i.enviado_at)) / 60000 } : null;
+    }).filter(function(x) { return x && x.min >= 0 && x.min < 240; });
+    // Del «listo» hasta que el mozo o el cajero lo lleva a la mesa.
+    var aMesaMin = itemsT.filter(function(i) { return i.estado === "entregado" && i.entregado_at && listoDe(i); }).map(function(i) { return (new Date(i.entregado_at) - new Date(listoDe(i))) / 60000; }).filter(function(m) { return m >= 0 && m < 240; });
+    var aMesaProm = aMesaMin.length ? aMesaMin.reduce(function(a, m) { return a + m; }, 0) / aMesaMin.length : null;
     var cocProm = cocina.length ? cocina.reduce(function(a, x) { return a + x.min; }, 0) / cocina.length : null;
     var porPlato = {}; cocina.forEach(function(x) { var o = porPlato[x.nombre] || (porPlato[x.nombre] = { n:0, t:0 }); o.n++; o.t += x.min; });
     var lentos = Object.keys(porPlato).map(function(k) { return { nombre:k, prom:porPlato[k].t / porPlato[k].n, n:porPlato[k].n }; }).sort(function(a, b) { return b.prom - a.prom; }).slice(0, 5);
@@ -1167,12 +1205,13 @@ function InformeTurno(props) {
         </div>
 
         <div style={card}>
-          <div style={h}>🍳 Cocina: del pedido a la mesa</div>
+          <div style={h}>🍳 Cocina: del pedido a que queda listo</div>
           {cocProm === null ? <div style={{ fontSize:12, color:"#555" }}>Todavía no hay pedidos marcados como entregados en este turno.</div> : (
             <>
+              {aMesaProm !== null && <div style={{ fontSize:13, color:"#DDD", marginBottom:6 }}>Del listo a la mesa (lo que tarda el mozo o el cajero en llevarlo): <b style={{ color:"#F0EDE8" }}>{fmtMin(aMesaProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({aMesaMin.length})</span></div>}
               <div style={{ fontSize:13, color:"#DDD", marginBottom:6 }}>Promedio por pedido: <b style={{ color:"#F0EDE8" }}>{fmtMin(cocProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({cocina.length} entregados)</span></div>
               {lentos.map(function(x) { return <div key={x.nombre} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderTop:"1px solid #181818", fontSize:12 }}><span style={{ color:"#CCC" }}>{x.nombre}</span><span style={{ color:"#999" }}>{fmtMin(x.prom)} <span style={{ color:"#555" }}>×{x.n}</span></span></div>; })}
-              <div style={{ fontSize:10, color:"#555", marginTop:5 }}>Los más lentos arriba. Cuenta desde «Marchar» hasta que se marca entregado.</div>
+              <div style={{ fontSize:10, color:"#555", marginTop:5 }}>Los más lentos arriba. Cuenta desde «Marchar» hasta que la cocina lo entrega al mozo o al cajero.</div>
             </>
           )}
           {quitados.length > 0 && <div style={{ fontSize:11, color:"#D4A017", marginTop:8 }}>🗑 Quitado de las cuentas: {quitados.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} ({quitados.slice(0, 6).map(function(i) { return i.nombre + (i.nota ? " — " + i.nota : ""); }).join("; ")}{quitados.length > 6 ? "…" : ""})</div>}
@@ -1560,18 +1599,19 @@ function ComandaDetalle(props) {
         var min = r.items.some(function(i) { return i.estado === "enviado"; }) ? minutosDesde(r.enviado_at) : null;
         var col = min === null ? "#3A7D44" : colorDemora(min);
         var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
+        var hayListo = r.items.some(function(i) { return i.estado === "listo"; });   // la cocina ya lo dejó listo: falta llevarlo a la mesa
         return (
-          <div key={r.ronda} style={{ background:"#111", border:"1px solid "+col+"33", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+          <div key={r.ronda} style={{ background: hayListo ? "#0B1F12" : "#111", border: hayListo ? "2px solid #4C9A5A" : "1px solid "+col+"33", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:9 }}>
               <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>
                 Tanda {r.ronda}{r.enviado_at ? " · " + fmtHora(r.enviado_at) : ""}
               </div>
               <div style={{ fontSize:12, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
-                {entregada ? "✅ entregada" : min === null ? "" : "⏱ " + min + " min"}
+                {entregada ? "✅ entregada a la mesa" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : min === null ? "" : "⏱ " + min + " min"}
               </div>
             </div>
             {r.items.map(function(i) {
-              var listo = i.estado === "entregado";
+              var listo = i.estado === "entregado", enBarra = i.estado === "listo";
               return (
                 <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 0", opacity:listo?0.5:1 }}>
                   <span style={{ fontSize:13, fontWeight:800, color:"#888", minWidth:24 }}>{i.cant}x</span>
@@ -1581,11 +1621,12 @@ function ComandaDetalle(props) {
                   </div>
                   {PrecioItem({ i:i, chico:true })}
                   <button onClick={function() {
-                      props.onGuardarItems([{ ...i, estado: listo ? "enviado" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
+                      // enviado/listo → entregado a la mesa; si ya estaba entregado, vuelve a «listo» (la cocina ya lo había despachado).
+                      props.onGuardarItems([{ ...i, estado: listo ? "listo" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
                     }}
-                    title={listo ? "Marcar como no entregado" : "Marcar como entregado"}
-                    style={{ background:"none", border:"1px solid "+(listo?"#2A2A2A":col+"55"), borderRadius:6, padding:"3px 9px", color:listo?"#444":col, fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>
-                    {listo ? "✓" : "entregar"}
+                    title={listo ? "Marcar como no entregado a la mesa" : "Marcar como entregado a la mesa"}
+                    style={{ background: enBarra ? "#3A7D44" : "none", border:"1px solid "+(listo?"#2A2A2A":enBarra?"#4C9A5A":col+"55"), borderRadius:6, padding: enBarra ? "6px 11px" : "3px 9px", color:listo?"#444":enBarra?"#fff":col, fontSize: enBarra ? 12 : 11, fontWeight: enBarra ? 800 : 400, cursor:"pointer", whiteSpace:"nowrap" }}>
+                    {listo ? "✓" : enBarra ? "🍽️ a la mesa" : "entregar"}
                   </button>
                 </div>
               );
@@ -2372,7 +2413,7 @@ export default function PanelComandas(p) {
     // mesa y el encargado tiene que verla sin apretar nada. Refrescar solo cada 20
     // segundos es lo mínimo para que no sea una foto vieja. Lo correcto sería
     // Supabase Realtime, que además necesita abrir el CSP a wss://.
-    var t = setInterval(function() { if (vivo) { cargar(); setAhora(Date.now()); } }, 20000);
+    var t = setInterval(function() { if (vivo) { cargar(); setAhora(Date.now()); } }, 8000);
     // El reloj de "hace cuánto" corre aparte, más seguido y sin pegarle a la base.
     var reloj = setInterval(function() { if (vivo) setAhora(Date.now()); }, 30000);
     return function() { vivo = false; clearInterval(t); clearInterval(reloj); };
@@ -2435,7 +2476,7 @@ export default function PanelComandas(p) {
       var det = (Number(f.cant) || 1) + "x " + f.nombre, acc = null;
       if (!prev) { acc = f.estado === "cancelado" ? "Quitó de la cuenta" : "Agregó a la cuenta"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; }
       else if (prev.estado !== f.estado) {
-        acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : "Marchó a la cocina") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó de la cuenta" : "Volvió a pendiente";
+        acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : prev.estado === "listo" ? "Volvió a la cocina" : "Marchó a la cocina") : f.estado === "listo" ? (prev.estado === "entregado" ? "Desmarcó la entrega a la mesa" : "Cocina dejó listo") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó de la cuenta" : "Volvió a pendiente";
         if (f.estado === "cancelado" && f.nota) det += " — " + f.nota;
       }
       else if (Number(prev.cant) !== Number(f.cant)) { acc = "Cambió la cantidad"; det = f.nombre + ": " + prev.cant + " → " + f.cant; }
@@ -2603,6 +2644,7 @@ export default function PanelComandas(p) {
             y el nombre largo se achica para no desbordar la tarjeta. */}
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
+        {ocupada && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
         {ocupada ? (
           <>
             <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
@@ -2621,10 +2663,11 @@ export default function PanelComandas(p) {
 
 
   // ─── PANTALLA ──────────────────────────────────────────────────────────────
-  if (verCocina) return <PanelCocina usuario={usuario} localFijo={localFijo} localInicial={localId} diaDeNegocio={fechaNegocio} onVolver={function() { setVerCocina(false); }} />;
+  if (verCocina) return <PanelCocina usuario={usuario} localFijo={localFijo} localInicial={localId} diaDeNegocio={fechaNegocio} onVolver={function() { setVerCocina(false); cargar(); }} />;
 
   return (
     <div style={{ fontFamily:"'Inter',sans-serif" }}>
+      <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5 }}>Módulo</div>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
@@ -2996,6 +3039,7 @@ export default function PanelComandas(p) {
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
+                        {items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ display:"inline-block", marginTop:5, marginRight:6, fontSize:12, fontWeight:900, color:"#4C9A5A", background:"#3A7D4426", border:"1px solid #4C9A5A", borderRadius:6, padding:"2px 8px", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA ENTREGAR</div>}
                         {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px" }}>{st.txt}</div> : null; })()}
                       </div>
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>

@@ -940,7 +940,7 @@ export function PanelCocina(props) {
   var demorados = lista15.length;
   // Mientras haya pedidos pasados de 15 minutos: el título de la pestaña avisa, y con el sonido activado se repite cada minuto (y vibra, si la tablet puede).
   useEffect(function() {
-    try { document.title = demorados > 0 ? "⏰ " + demorados + " demorado" + (demorados === 1 ? "" : "s") + " · Cocina" : "GrupoNkt"; } catch(e) {}
+    try { document.title = demorados > 0 ? "🔥 ¡APURAR! " + demorados + " · Cocina" : "GrupoNkt"; } catch(e) {}
   }, [demorados]);
   useEffect(function() {
     if (!demorados) return;
@@ -961,16 +961,20 @@ export function PanelCocina(props) {
     <div>
       <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
       {lista15.length > 0 && (
-        <div style={{ background:"#E0452E", color:"#fff", borderRadius:12, padding:"12px 14px", marginBottom:12, animation:"nktPulso 1.2s infinite" }}>
-          <div style={{ fontSize:18, fontWeight:900, letterSpacing:0.5 }}>⏰ {lista15.length === 1 ? "UN PEDIDO LLEVA" : lista15.length + " PEDIDOS LLEVAN"} MÁS DE {LIMITE} MINUTOS</div>
-          <div style={{ fontSize:15, fontWeight:700, marginTop:3 }}>{lista15.map(function(g) { return g.titulo + " (" + minutosDesde(g.desde) + " min)"; }).join(" · ")}</div>
-          {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
+        <div>
+          <div style={{ position:"fixed", inset:0, border:"10px solid #E0452E", pointerEvents:"none", zIndex:700, animation:"nktPulso 1s infinite" }} />
+          <div style={{ background:"#E0452E", color:"#fff", borderRadius:14, padding:"16px 18px", marginBottom:14, animation:"nktPulso 1s infinite" }}>
+            <div style={{ fontSize:34, fontWeight:900, letterSpacing:1, lineHeight:1.1 }}>🔥 ¡APURAR!</div>
+            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { return g.titulo + " · " + minutosDesde(g.desde) + " min"; }).join("   |   ")}</div>
+            <div style={{ fontSize:13, fontWeight:700, marginTop:5, opacity:0.95 }}>{lista15.length === 1 ? "Este pedido lleva" : "Estos pedidos llevan"} más de {LIMITE} minutos.</div>
+            {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
+          </div>
         </div>
       )}
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
         {pestanaBtn("pend", "🍳 Pendientes (" + tickets.length + ")")}
         {pestanaBtn("entregadas", "✅ Entregadas hoy (" + entregadas.length + ")")}
-        {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>⏰ {demorados} con más de {LIMITE} min</span>}
+        {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>🔥 {demorados} para apurar</span>}
       </div>
       {!cargado ? (
         <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
@@ -1038,7 +1042,7 @@ export function PanelCocina(props) {
                       style={{ marginTop:8, width:"100%", padding:"9px", borderRadius:8, border:"2px solid #fff", background:"transparent", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✓ VISTO</button>
                   </div>
                 )}
-                {tarde && <div style={{ background:"#E0452E22", border:"1px solid #E0452E", color:"#FF8A70", borderRadius:8, padding:"5px 10px", fontSize:14, fontWeight:900, animation:"nktPulso 1.4s infinite" }}>⏰ DEMORADO: {min} min (pasó los {LIMITE})</div>}
+                {tarde && <div style={{ background:"#E0452E", color:"#fff", borderRadius:9, padding:"8px 12px", fontSize:24, fontWeight:900, letterSpacing:0.5, animation:"nktPulso 1s infinite" }}>🔥 ¡APURAR! · {min} min</div>}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>

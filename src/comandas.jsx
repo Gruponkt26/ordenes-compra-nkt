@@ -678,6 +678,7 @@ export function PanelCocina(props) {
   var [cargado, setCargado] = useState(false);
   var [ahora, setAhora] = useState(Date.now());
   var [sonido, setSonido] = useState(false);
+  var [completa, setCompleta] = useState(false);   // modo pantalla completa: solo el botón de volver y los tickets
   var sonidoRef = useRef(false); sonidoRef.current = sonido;
   var ctxRef = useRef(null);
   var vistos = useRef(null);
@@ -745,9 +746,20 @@ export function PanelCocina(props) {
     try { if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)(); ctxRef.current.resume && ctxRef.current.resume(); } catch(e) {}
     var nuevo = !sonido; setSonido(nuevo); if (nuevo) pitar();
   }
-  function pantallaCompleta() {
-    try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch(e) {}
+  function entrarCompleta() {
+    setCompleta(true);
+    try { if (!document.fullscreenElement) { var r = document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(function() {}); } } catch(e) {}
   }
+  function salirCompleta() {
+    setCompleta(false);
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch(e) {}
+  }
+  // Si salen de la pantalla completa del navegador (tecla Esc, gesto de la tablet), también se sale de este modo.
+  useEffect(function() {
+    function cambio() { if (!document.fullscreenElement) setCompleta(false); }
+    document.addEventListener("fullscreenchange", cambio);
+    return function() { document.removeEventListener("fullscreenchange", cambio); };
+  }, []);
   function entregar(g) {
     var ahoraISO = new Date().toISOString();
     var filas = g.items.map(function(i) { return { ...i, estado:"entregado", entregado_at:ahoraISO }; });
@@ -758,22 +770,8 @@ export function PanelCocina(props) {
     sbLogAcciones([{ local:localId, fecha:fecha, comanda_id:g.comanda.id, titulo:g.titulo, accion:"Entregó a la mesa", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
 
-  return (
-    <div style={{ fontFamily:"'Inter',sans-serif" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:14 }}>
-        {props.onVolver && <button onClick={props.onVolver} style={estiloVolver(local ? local.color : "#C1440E")}>← Volver</button>}
-        <div style={{ flex:1, minWidth:180 }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:800, color:"#F0EDE8" }}>👨‍🍳 Cocina {local ? "· " + local.nombre : ""}</div>
-          <div style={{ fontSize:12, color:"#8C8C8C" }}>{tickets.length === 0 ? "Sin pedidos pendientes" : tickets.length + " pedido" + (tickets.length === 1 ? "" : "s") + " para entregar"} · se actualiza solo</div>
-        </div>
-        {!props.localFijo && (
-          <select value={localId} onChange={function(e) { setLocalId(e.target.value); }} style={{ ...INP, width:"auto", padding:"9px 10px", fontSize:13 }}>
-            {LOCALES.filter(function(l) { return l.id !== "l4"; }).map(function(l) { return <option key={l.id} value={l.id}>{l.nombre}</option>; })}
-          </select>
-        )}
-        <button onClick={activarSonido} style={{ ...GH, padding:"9px 13px", fontSize:12, borderColor: sonido ? "#4C9A5A" : "#2A2A2A", color: sonido ? "#4C9A5A" : "#9A9A9A" }}>{sonido ? "🔔 Sonido activado" : "🔕 Activar sonido"}</button>
-        <button onClick={pantallaCompleta} style={{ ...GH, padding:"9px 13px", fontSize:12 }}>⛶ Pantalla completa</button>
-      </div>
+  var cuerpo = (
+    <div>
       {!cargado ? (
         <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
       ) : tickets.length === 0 ? (
@@ -820,6 +818,35 @@ export function PanelCocina(props) {
           })}
         </div>
       )}
+    </div>
+  );
+
+  if (completa) {
+    return (
+      <div style={{ position:"fixed", inset:0, zIndex:500, background:"#0D0D0D", overflowY:"auto", padding:"12px 14px 20px", fontFamily:"'Inter',sans-serif" }}>
+        <div style={{ marginBottom:12 }}><button onClick={salirCompleta} style={estiloVolver(local ? local.color : "#C1440E")}>← Volver</button></div>
+        {cuerpo}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:14 }}>
+        {props.onVolver && <button onClick={props.onVolver} style={estiloVolver(local ? local.color : "#C1440E")}>← Volver</button>}
+        <div style={{ flex:1, minWidth:180 }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:800, color:"#F0EDE8" }}>👨‍🍳 Cocina {local ? "· " + local.nombre : ""}</div>
+          <div style={{ fontSize:12, color:"#8C8C8C" }}>{tickets.length === 0 ? "Sin pedidos pendientes" : tickets.length + " pedido" + (tickets.length === 1 ? "" : "s") + " para entregar"} · se actualiza solo</div>
+        </div>
+        {!props.localFijo && (
+          <select value={localId} onChange={function(e) { setLocalId(e.target.value); }} style={{ ...INP, width:"auto", padding:"9px 10px", fontSize:13 }}>
+            {LOCALES.filter(function(l) { return l.id !== "l4"; }).map(function(l) { return <option key={l.id} value={l.id}>{l.nombre}</option>; })}
+          </select>
+        )}
+        <button onClick={activarSonido} style={{ ...GH, padding:"9px 13px", fontSize:12, borderColor: sonido ? "#4C9A5A" : "#2A2A2A", color: sonido ? "#4C9A5A" : "#9A9A9A" }}>{sonido ? "🔔 Sonido activado" : "🔕 Activar sonido"}</button>
+        <button onClick={entrarCompleta} style={{ ...GH, padding:"9px 13px", fontSize:12 }}>⛶ Pantalla completa</button>
+      </div>
+      {cuerpo}
     </div>
   );
 }

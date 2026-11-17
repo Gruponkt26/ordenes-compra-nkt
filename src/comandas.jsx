@@ -1297,7 +1297,17 @@ export function PanelCocina(props) {
   }
   // Todas las partes de una comanda, en el orden en que se mandaron: lo ya entregado y lo que sigue pendiente.
   function seccionesDe(g) {
-    return g.tandas.filter(function(t) { return t.items.length > 0; }).map(function(t) { return { ronda:t.ronda || 0, t:t }; })
+    // «Todo junto»: lo agregado que el mozo/cajero pidió que salga junto se une en un solo bloque con lo pendiente anterior, con un solo contador (el del más viejo).
+    var pend = [];
+    g.tandas.filter(function(t) { return t.items.length > 0; }).forEach(function(t) {
+      var ant = pend.length ? pend[pend.length - 1] : null;
+      if (ant && t.salida === "junto" && !t.curso && !ant.t.curso && !t.espera && !ant.t.espera) {
+        var partes = ant.t.partes || [ant.t];
+        var m = { ...ant.t, items:ant.t.items.concat(t.items), partes:partes.concat([t]), juntoCon:true, salida:ant.t.salida || "junto", desde: (t.desde && ant.t.desde && t.desde < ant.t.desde) ? t.desde : ant.t.desde };
+        pend[pend.length - 1] = { ronda:ant.ronda, t:m };
+      } else pend.push({ ronda:t.ronda || 0, t:t });
+    });
+    return pend
       .concat((g.hechas || []).map(function(h) { return { ronda:h.ronda, h:h }; })).sort(function(a, b) { return a.ronda - b.ronda; });
   }
 
@@ -1428,7 +1438,7 @@ export function PanelCocina(props) {
                     var mt = t.espera ? null : minutosDesde(t.desde);
                     return (
                       <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: (agregado || t.curso) ? "6px 8px 8px" : 0, borderRadius:9, background: t.curso === "entrada" ? "#4C9A5A14" : t.curso === "principal" ? "#3A9BC114" : agregado ? "#D4A01712" : "transparent", border: t.curso === "entrada" ? "1px solid #4C9A5A66" : t.curso === "principal" ? "1px solid #3A9BC166" : agregado ? "1px solid #D4A01766" : "none" }}>
-                        {(multiple || agregado || t.curso) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ espera que salga la entrada</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
+                        {(multiple || agregado || t.curso || t.juntoCon) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ espera que salga la entrada</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
                         {t.items.map(function(i) {
                           return (
                             <div key={i.id} style={{ padding:"4px 0" }}>
@@ -1437,7 +1447,7 @@ export function PanelCocina(props) {
                             </div>
                           );
                         })}
-                        <button onClick={function() { entregar(t); }} style={{ marginTop:6, width:"100%", padding: multiple ? "11px" : "15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize: multiple ? 15 : 17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>{(c.tipo === "mesa" ? "✓ ENTREGADO AL MOZO" : "✓ ENTREGADO AL CAJERO") + (t.curso === "entrada" ? " · la entrada" : t.curso === "principal" ? " · lo principal" : multiple ? (agregado ? " · lo agregado" : " · el pedido") : "")}</button>
+                        <button onClick={function() { (t.partes || [t]).forEach(entregar); }} style={{ marginTop:6, width:"100%", padding: multiple ? "11px" : "15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize: multiple ? 15 : 17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>{(c.tipo === "mesa" ? "✓ ENTREGADO AL MOZO" : "✓ ENTREGADO AL CAJERO") + (t.curso === "entrada" ? " · la entrada" : t.curso === "principal" ? " · lo principal" : multiple ? (agregado ? " · lo agregado" : " · el pedido") : "")}</button>
                       </div>
                     );
                   })}

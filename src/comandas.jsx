@@ -1201,9 +1201,10 @@ export function PanelCocina(props) {
   }, [localId]);
   // Avisa al resto de la app cuándo la cocina está libre (sin pedidos pendientes): es el momento seguro para actualizarse sola a una versión nueva.
   useEffect(function() {
-    window.__NKT_LIBRE = cargado && tickets.length === 0 && !discontinuando;
+    // En el aparato fijo de la cocina se actualiza apenas hay una versión nueva, aunque haya pedidos: los pedidos están guardados y vuelven a cargarse solos.
+    window.__NKT_LIBRE = cargado && (tickets.length === 0 || !!props.fija) && !discontinuando;
     return function() { window.__NKT_LIBRE = false; };
-  }, [cargado, tickets.length, discontinuando]);
+  }, [cargado, tickets.length, discontinuando, !!props.fija]);
   // La pantalla no se apaga mientras se está mirando (si el navegador lo permite).
   useEffect(function() {
     var lock = null;

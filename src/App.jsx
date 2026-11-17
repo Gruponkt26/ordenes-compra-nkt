@@ -30639,6 +30639,21 @@ export default function App() {
     if(!cu)return;
     try{ if(window.sessionStorage.getItem("nkt_fich_pend")&&PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())===-1)setSubCompras("fichar"); }catch(e){}
   },[cu&&cu.id]);
+  // Pantalla de cocina fija: se abre con la dirección ...?cocina (queda guardado en ese aparato) y apenas se inicia sesión muestra solo la cocina.
+  // Para sacarla de ese modo: ...?cocina=0
+  useEffect(function(){
+    try{
+      var q=new URLSearchParams(window.location.search);
+      if(q.has("cocina")){
+        if(q.get("cocina")==="0")window.localStorage.removeItem("nkt_cocina_fija"); else window.localStorage.setItem("nkt_cocina_fija","1");
+        window.history.replaceState({},"",window.location.pathname);
+      }
+    }catch(e){}
+  },[]);
+  useEffect(function(){
+    if(!cu)return;
+    try{ if(window.localStorage.getItem("nkt_cocina_fija")==="1"&&(cu.rol==="cocina"||infoSeccionesDe(cu).indexOf("cocina")>=0||esCocina))setSubCompras("cocina_pantalla"); }catch(e){}
+  },[cu&&cu.id]);
   // Default admin vista
   var [vista,setVista]=useState("despacho");
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
@@ -32706,7 +32721,7 @@ export default function App() {
           )}
 
           {subCompras==="cocina_pantalla"&&(esCocina||infoSeccionesDe(cu).indexOf("cocina")>=0)&&(
-            <PanelCocina usuario={cu.nombre} localFijo={cu.local||null} diaDeNegocio={diaDeNegocio}/>
+            <PanelCocina usuario={cu.nombre} localFijo={cu.local||null} diaDeNegocio={diaDeNegocio} fija={(function(){ try{ return window.localStorage.getItem("nkt_cocina_fija")==="1"; }catch(e){ return false; } })()}/>
           )}
           {subCompras==="comandas"&&puedeComandas&&(
             <PanelComandas usuario={cu.nombre} menuStock={menuStock} empleados={empleados} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarCarta={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarPlano={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>

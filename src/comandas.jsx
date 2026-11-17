@@ -12,7 +12,7 @@
 // un JSON adentro de la comanda. No es un detalle: si dos mozos tocan la misma mesa
 // y cada uno guarda la comanda entera, el último pisa lo que agregó el otro.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SURL, SH, LOCALES, getLocal, fmtHora, INP, GH } from "./comun.js";
 import { CARTAS_MAXIREST } from "./cartas_maxirest.js";
 
@@ -633,6 +633,154 @@ function VentanaControl(props) {
   );
 }
 
+
+// ─── PANTALLA DE COCINA ───────────────────────────────────────────────
+// Lo que llega a la cocina: cada vez que el mozo o el cajero toca «Marchar», el pedido aparece acá como un ticket (mesa, delivery o mostrador).
+// La cocina toca «Entregado» cuando lo despacha y el ticket se va; siguen entrando los otros. Se arma con los ítems en estado «enviado».
+// Un ticket es una tanda de una cuenta: si a la misma mesa le agregan algo después, sale como un ticket nuevo.
+export function PanelCocina(props) {
+  var usuario = props.usuario || "";
+  var [localId, setLocalId] = useState(props.localFijo || props.localInicial || "l1");
+  var [tickets, setTickets] = useState([]);
+  var [cargado, setCargado] = useState(false);
+  var [ahora, setAhora] = useState(Date.now());
+  var [sonido, setSonido] = useState(false);
+  var sonidoRef = useRef(false); sonidoRef.current = sonido;
+  var ctxRef = useRef(null);
+  var vistos = useRef(null);
+  var local = getLocal(localId);
+
+  function pitar() {
+    try {
+      var c = ctxRef.current; if (!c) return;
+      [0, 0.28].forEach(function(t) {
+        var o = c.createOscillator(), g = c.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(c.destination);
+        g.gain.setValueAtTime(0.25, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.22);
+        o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.24);
+      });
+    } catch(e) {}
+  }
+  function cargar() {
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas()]).then(function(r) {
+      var coms = r[0].filter(function(c) { return c.local === localId; });
+      return sbLoadItems(coms.map(function(c) { return c.id; })).then(function(its) {
+        var grupos = {};
+        its.filter(function(i) { return i.estado === "enviado"; }).forEach(function(i) {
+          var k = i.comanda_id + "|" + (i.ronda || 0);
+          var g = grupos[k] || (grupos[k] = { clave:k, comanda:coms.find(function(c) { return c.id === i.comanda_id; }), ronda:i.ronda || 0, items:[], desde:i.enviado_at });
+          g.items.push(i);
+          if (i.enviado_at && (!g.desde || i.enviado_at < g.desde)) g.desde = i.enviado_at;
+        });
+        var lista = Object.keys(grupos).map(function(k) {
+          var g = grupos[k], c = g.comanda || {};
+          var mesa = r[1].find(function(m) { return m.id === c.mesa_id; });
+          g.titulo = c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
+          g.entrega = r[2][c.id] || null;
+          return g;
+        }).filter(function(g) { return g.comanda; }).sort(function(a, b) { return String(a.desde).localeCompare(String(b.desde)); });
+        // Aviso sonoro: solo para tickets que no estaban en la lectura anterior (la primera lectura no suena).
+        if (vistos.current && sonidoRef.current && lista.some(function(g) { return !vistos.current[g.clave]; })) pitar();
+        var v = {}; lista.forEach(function(g) { v[g.clave] = 1; }); vistos.current = v;
+        setTickets(lista); setCargado(true);
+      });
+    }).catch(function() { setCargado(true); });
+  }
+  useEffect(function() {
+    vistos.current = null; setCargado(false);
+    var vivo = true;
+    cargar();
+    var t = setInterval(function() { if (vivo) cargar(); }, 5000);
+    var reloj = setInterval(function() { if (vivo) setAhora(Date.now()); }, 15000);
+    return function() { vivo = false; clearInterval(t); clearInterval(reloj); };
+  }, [localId]);
+  // La pantalla no se apaga mientras se está mirando (si el navegador lo permite).
+  useEffect(function() {
+    var lock = null;
+    try { if (navigator.wakeLock) navigator.wakeLock.request("screen").then(function(l) { lock = l; }).catch(function() {}); } catch(e) {}
+    return function() { try { if (lock) lock.release(); } catch(e) {} };
+  }, []);
+
+  function activarSonido() {
+    try { if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)(); ctxRef.current.resume && ctxRef.current.resume(); } catch(e) {}
+    var nuevo = !sonido; setSonido(nuevo); if (nuevo) pitar();
+  }
+  function pantallaCompleta() {
+    try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch(e) {}
+  }
+  function entregar(g) {
+    var ahoraISO = new Date().toISOString();
+    var filas = g.items.map(function(i) { return { ...i, estado:"entregado", entregado_at:ahoraISO }; });
+    setTickets(function(prev) { return prev.filter(function(x) { return x.clave !== g.clave; }); });
+    if (vistos.current) delete vistos.current[g.clave];
+    sbSaveItems(filas).then(function(err) { if (err) { alert("No se pudo marcar como entregado:\n\n" + String(err).slice(0, 200)); cargar(); } });
+    var fecha = props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10);
+    sbLogAcciones([{ local:localId, fecha:fecha, comanda_id:g.comanda.id, titulo:g.titulo, accion:"Entregó a la mesa", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
+  }
+
+  return (
+    <div style={{ fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:14 }}>
+        {props.onVolver && <button onClick={props.onVolver} style={estiloVolver(local ? local.color : "#C1440E")}>← Volver</button>}
+        <div style={{ flex:1, minWidth:180 }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:800, color:"#F0EDE8" }}>👨‍🍳 Cocina {local ? "· " + local.nombre : ""}</div>
+          <div style={{ fontSize:12, color:"#8C8C8C" }}>{tickets.length === 0 ? "Sin pedidos pendientes" : tickets.length + " pedido" + (tickets.length === 1 ? "" : "s") + " para entregar"} · se actualiza solo</div>
+        </div>
+        {!props.localFijo && (
+          <select value={localId} onChange={function(e) { setLocalId(e.target.value); }} style={{ ...INP, width:"auto", padding:"9px 10px", fontSize:13 }}>
+            {LOCALES.filter(function(l) { return l.id !== "l4"; }).map(function(l) { return <option key={l.id} value={l.id}>{l.nombre}</option>; })}
+          </select>
+        )}
+        <button onClick={activarSonido} style={{ ...GH, padding:"9px 13px", fontSize:12, borderColor: sonido ? "#4C9A5A" : "#2A2A2A", color: sonido ? "#4C9A5A" : "#9A9A9A" }}>{sonido ? "🔔 Sonido activado" : "🔕 Activar sonido"}</button>
+        <button onClick={pantallaCompleta} style={{ ...GH, padding:"9px 13px", fontSize:12 }}>⛶ Pantalla completa</button>
+      </div>
+      {!cargado ? (
+        <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
+      ) : tickets.length === 0 ? (
+        <div style={{ textAlign:"center", padding:"70px 0" }}>
+          <div style={{ fontSize:54, marginBottom:10 }}>✅</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, color:"#4C9A5A" }}>Todo entregado</div>
+          <div style={{ fontSize:13, color:"#666", marginTop:6 }}>Cuando el mozo o el cajero mande un pedido a la cocina, aparece acá.</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(290px, 1fr))", gap:12 }}>
+          {tickets.map(function(g) {
+            var c = g.comanda, T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
+            var min = minutosDesde(g.desde), col = min === null ? "#3A7D44" : colorDemora(min);
+            var st = c.tipo !== "mesa" ? estadoEntrega(g.entrega, ahora) : null;
+            return (
+              <div key={g.clave} style={{ background:"#111", border:"2px solid " + col, borderLeft:"10px solid " + T.color, borderRadius:14, padding:"13px 14px", display:"flex", flexDirection:"column", gap:9 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                  <div style={{ minWidth:0 }}>
+                    <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
+                    <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:4, wordBreak:"break-word" }}>{g.titulo}</div>
+                    <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
+                  </div>
+                  <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
+                    <div style={{ fontSize:26, fontWeight:900, color:col }}>{min === null ? "—" : min + " min"}</div>
+                    <div style={{ fontSize:10, color:"#666" }}>desde {horaSeg(g.desde).slice(0, 5)}</div>
+                  </div>
+                </div>
+                {st && <div style={{ fontSize:13, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:8, padding:"4px 9px" }}>{st.txt}</div>}
+                <div style={{ borderTop:"1px solid #222", paddingTop:7 }}>
+                  {g.items.map(function(i) {
+                    return (
+                      <div key={i.id} style={{ padding:"4px 0" }}>
+                        <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8" }}><span style={{ color:col }}>{Number(i.cant) || 1}×</span> {i.nombre}</div>
+                        {i.nota && <div style={{ fontSize:14, color:"#D4A017", fontWeight:700 }}>📝 {i.nota}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>✓ ENTREGADO</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── FALTANTE DE PLATO ────────────────────────────────────────────────
 function VentanaFaltante(props) {
@@ -1887,6 +2035,7 @@ export default function PanelComandas(p) {
   useEffect(function() { setTurnos(null); sbLeerTurnos(localId).then(setTurnos); }, [localId, practica]);
   var mozos = mozosDeLocal(p.empleados, localId);
   var [faltante, setFaltante] = useState(false);
+  var [verCocina, setVerCocina] = useState(false);   // la pantalla de cocina, a pantalla completa dentro de Comandas
   var [turnos, setTurnos] = useState(null);          // null = todavía no se leyó
   var [abriendoTurno, setAbriendoTurno] = useState(false);
   var [fechaTurno, setFechaTurno] = useState("");
@@ -2219,6 +2368,8 @@ export default function PanelComandas(p) {
 
 
   // ─── PANTALLA ──────────────────────────────────────────────────────────────
+  if (verCocina) return <PanelCocina usuario={usuario} localFijo={localFijo} localInicial={localId} diaDeNegocio={fechaNegocio} onVolver={function() { setVerCocina(false); }} />;
+
   return (
     <div style={{ fontFamily:"'Inter',sans-serif" }}>
       <div style={{ marginBottom:14 }}>
@@ -2247,7 +2398,8 @@ export default function PanelComandas(p) {
           </div>
         )
       )}
-      <div style={{ marginBottom:10 }}>
+      <div style={{ marginBottom:10, display:"flex", gap:8, flexWrap:"wrap" }}>
+        {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
         <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante</button>
       </div>
       {faltante && <VentanaFaltante color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}

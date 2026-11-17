@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
-import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
+import PanelComandas, { PanelCocina, mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
 import NovedadesApp from "./novedadesapp.jsx";
 import { PanelCompetencia } from "./opiniones.jsx";
@@ -31719,7 +31719,7 @@ export default function App() {
                   style={{padding:"5px 11px",borderRadius:8,border:"1px solid #1E1E1E",background:"#111",color:"#9A9A9A",fontFamily:"'Inter',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>{esSofia?"← Compras":"← Inicio"}</button>
               )}
               <span style={{fontSize:10,color:"#6E6E6E",letterSpacing:2,textTransform:"uppercase"}}>
-                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="comandas"?"🍽️ Comandas":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
+                {subCompras==="proveedores"?"🏭 Proveedores":subCompras==="comparador"?"⚖️ Comparador de precios":subCompras==="caja"?"🧾 Caja":subCompras==="fichar"?"🕐 Fichar":subCompras==="competencia"?"🏆 Competencia":subCompras==="comunidad"?"🌐 Comunidad":subCompras==="comandas"?"🍽️ Comandas":subCompras==="cocina_pantalla"?"👨‍🍳 Cocina":subCompras==="mificha"?"📋 Mi ficha":subCompras==="recetas"?"🍳 Recetas":subCompras==="ideas"?"💡 Ideas":subCompras==="info_general"?"ℹ️ Info general":subCompras==="telefonos"?"☎️ Teléfonos útiles":subCompras==="info"?"ℹ️ Info de "+(INFO_SECCIONES.find(function(t){return t.id===infoSeccionesDe(cu)[0];})||{nombre:""}).nombre:"🛒 Compras"+(subCompras==="ordenes"?" · Órdenes de compra":subCompras==="stock"?" · Stock":"")}
               </span>
             </div>
           )}
@@ -31786,6 +31786,7 @@ export default function App() {
                             {id:"mificha",emoji:"📋",label:"Mi ficha",desc:"Tu horario, tus horas, tus faltas y justificativos",color:"#4CAF50",badge:0},
                             {id:"competencia",emoji:"🏆",label:"Competencia",desc:"Cómo va la competencia entre los locales y por qué tiene cada uno su puntaje",color:"#D4A017",badge:0},
                             ...(puedeComandas?[{id:"comandas",emoji:"🍽️",label:"Comandas",desc:"Mesas, delivery y mostrador de tu local",color:"#C1440E",badge:0}]:[]),
+                            ...((esCocina||infoSeccionesDe(cu).indexOf("cocina")>=0)?[{id:"cocina_pantalla",emoji:"👨‍🍳",label:"Pantalla de cocina",desc:"Los pedidos que llegan a la cocina: se marcan al entregarlos",color:"#3A7D44",badge:0}]:[]),
                             ...(esCajero?[{id:"comunidad",emoji:"🌐",label:"Comunidad",desc:"Los clientes de tu local, sus cupones y el canje",color:"#1A8A7B",badge:0}]:[]),
                             {id:"ideas",emoji:"💡",label:"Ideas",desc:"Proponer y seguir ideas para el grupo",color:"#E07B00",badge:0},
                             {id:"telefonos",emoji:"☎️",label:"Teléfonos útiles",desc:"Emergencias, service y contactos del local",color:"#4CAF50",badge:0},
@@ -32704,6 +32705,9 @@ export default function App() {
             <PanelCompetencia ventasDeCierre={ventasDeCierre} soloLectura={true} vistaCajero={esCajero} cajeroLocal={esCajero?(cu.local||""):""} usuarioCajero={cu.nombre} fichajeDesde={FICHAJE_DESDE} cierres={cierres} avisosCaja={avisosCaja} empleados={empleados} vacaciones={vacaciones} abreEseDia={abreEseDia} turnoDe={turnoDe}/>
           )}
 
+          {subCompras==="cocina_pantalla"&&(esCocina||infoSeccionesDe(cu).indexOf("cocina")>=0)&&(
+            <PanelCocina usuario={cu.nombre} localFijo={cu.local||null} diaDeNegocio={diaDeNegocio}/>
+          )}
           {subCompras==="comandas"&&puedeComandas&&(
             <PanelComandas usuario={cu.nombre} menuStock={menuStock} empleados={empleados} localFijo={cu.local||null} soloServicio={true} puedeDescuento={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarCarta={infoSeccionesDe(cu).indexOf("cajeros")>=0} puedeEditarPlano={infoSeccionesDe(cu).indexOf("cajeros")>=0} diaDeNegocio={diaDeNegocio}/>
           )}

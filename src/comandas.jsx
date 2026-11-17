@@ -1977,23 +1977,34 @@ function ComandaDetalle(props) {
         </div>
       )}
 
-      {/* Lo que ya está en la cocina, por tanda */}
-      {rondas.map(function(r) {
-        var min = r.items.some(function(i) { return i.estado === "enviado"; }) ? minutosDesde(r.enviado_at) : null;
+      {/* Lo que ya está en la cocina: una sola ventana por mesa, con lo que ya salió tachado y lo nuevo abajo. El contador sigue desde el primer pedido. */}
+      {rondas.length > 0 && (function() {
+        var rondasAsc = rondas.slice().sort(function(x, y) { return (x.ronda || 0) - (y.ronda || 0); });
+        var primero = mandados.reduce(function(a, i) { return i.enviado_at && (!a || i.enviado_at < a) ? i.enviado_at : a; }, null);
+        var hayEnviado = mandados.some(function(i) { return i.estado === "enviado"; });
+        var min = hayEnviado ? minutosDesde(primero) : null;
         var col = min === null ? "#3A7D44" : colorDemora(min, props.limite);
-        var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
-        var hayListo = r.items.some(function(i) { return i.estado === "listo"; });   // la cocina ya lo dejó listo: falta llevarlo a la mesa
+        var todoEntregado = mandados.every(function(i) { return i.estado === "entregado"; });
+        var hayListo = mandados.some(function(i) { return i.estado === "listo"; });   // la cocina ya dejó algo listo: falta llevarlo a la mesa
         return (
-          <div key={r.ronda} style={{ background: hayListo ? "#0B1F12" : "#111", border: hayListo ? "2px solid #4C9A5A" : "1px solid "+col+"33", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+          <div style={{ background: hayListo ? "#0B1F12" : "#111", border: hayListo ? "2px solid #4C9A5A" : "1px solid "+col+"55", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:9 }}>
-              <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1 }}>
-                Tanda {r.ronda}{r.enviado_at ? " · " + fmtHora(r.enviado_at) : ""}
+              <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1 }}>
+                Pedido{primero ? " · desde " + fmtHora(primero) : ""}
               </div>
-              <div style={{ fontSize:12, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
-                {entregada ? "✅ entregada a la mesa" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : min === null ? "" : "⏱ " + min + " min"}
+              <div style={{ fontSize:13, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
+                {todoEntregado ? "✅ entregada a la mesa" : hayEnviado ? "⏱ " + min + " min" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : ""}
               </div>
             </div>
-            {r.items.map(function(i) {
+            {rondasAsc.map(function(r) {
+              var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
+              var listoR = r.items.some(function(i) { return i.estado === "listo"; });
+              return (
+                <div key={r.ronda} style={{ marginBottom:6 }}>
+                  {rondasAsc.length > 1 && <div style={{ fontSize:10, fontWeight:800, letterSpacing:0.8, color: (r.ronda || 0) > 1 ? "#D4A017" : "#6E6E6E", textTransform:"uppercase", margin:"4px 0 2px" }}>
+                    {(r.ronda || 0) > 1 ? "➕ " : ""}Tanda {r.ronda}{r.enviado_at ? " · " + fmtHora(r.enviado_at) : ""}{entregada ? " · ✅ entregada" : listoR ? " · 🍽️ lista para llevar" : " · en cocina"}
+                  </div>}
+                  {r.items.map(function(i) {
               var listo = i.estado === "entregado", enBarra = i.estado === "listo";
               return (
                 <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 0", opacity:listo?0.5:1 }}>
@@ -2018,10 +2029,13 @@ function ComandaDetalle(props) {
                   )}
                 </div>
               );
+                  })}
+                </div>
+              );
             })}
           </div>
         );
-      })}
+      })()}
 
       {/* Total y cierre */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, marginTop:14, padding:"12px 13px", background:"#0F0F0F", border:"1px solid #1A1A1A", borderRadius:10 }}>

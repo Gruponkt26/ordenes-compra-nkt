@@ -31230,6 +31230,18 @@ export default function App() {
     }}/>;
   }
 
+  // Pantalla de cocina fija (aparato dedicado, abierto con ?cocina): solo la cocina, sin el resto de la app. Se sale con la contraseña del usuario.
+  var cocinaFija=false; try{ cocinaFija=window.localStorage.getItem("nkt_cocina_fija")==="1"; }catch(e){}
+  if(cocinaFija&&PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())===-1&&(enListaDe(USUARIOS_RECETAS,cu)||infoSeccionesDe(cu).indexOf("cocina")>=0)){
+    return <PanelCocina usuario={cu.nombre} localFijo={cu.local||null} diaDeNegocio={diaDeNegocio} fija={true} alSalir={function(){
+      var pw=window.prompt("Para salir de la pantalla de cocina fija, escribí tu contraseña:");
+      if(pw===null)return;
+      if(pw!==cu.password){ alert("Contraseña incorrecta."); return; }
+      try{ window.localStorage.removeItem("nkt_cocina_fija"); }catch(e){}
+      salir();
+    }}/>;
+  }
+
   var esAdmin=cu.rol==="admin";
   var esSofia=PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())!==-1;   // el panel completo: Sofía y Belen
   var esCajero=cu.rol==="cajero";

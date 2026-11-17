@@ -1029,7 +1029,7 @@ export function PanelCocina(props) {
   var [cargado, setCargado] = useState(false);
   var [ahora, setAhora] = useState(Date.now());
   var [sonido, setSonido] = useState(false);
-  var [completa, setCompleta] = useState(false);   // modo pantalla completa: solo el botón de volver y los tickets
+  var [completa, setCompleta] = useState(!!props.fija);   // modo pantalla completa: solo el botón de volver y los tickets
   var [discontinuando, setDiscontinuando] = useState(false);
   // Los avisos de cambio que la cocina ya vio (se recuerdan en esta tablet).
   var [vistos, setVistos] = useState(function() { try { return JSON.parse(localStorage.getItem("nkt_cocina_vistos") || "[]"); } catch(e) { return []; } });
@@ -1211,6 +1211,14 @@ export function PanelCocina(props) {
     return function() { try { if (lock) lock.release(); } catch(e) {} };
   }, []);
 
+  // Aparato fijo de la cocina: que la pantalla no se apague sola.
+  useEffect(function() {
+    if (!props.fija) return;
+    var lock = null, vivo = true;
+    function pedir() { try { if (navigator.wakeLock && document.visibilityState === "visible") navigator.wakeLock.request("screen").then(function(l) { if (vivo) lock = l; else l.release(); }).catch(function() {}); } catch(e) {} }
+    pedir(); document.addEventListener("visibilitychange", pedir);
+    return function() { vivo = false; document.removeEventListener("visibilitychange", pedir); try { if (lock) lock.release(); } catch(e) {} };
+  }, [!!props.fija]);
   function activarSonido() {
     try { if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)(); ctxRef.current.resume && ctxRef.current.resume(); } catch(e) {}
     var nuevo = !sonido; setSonido(nuevo); if (nuevo) pitar(880, 2);

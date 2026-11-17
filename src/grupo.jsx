@@ -112,6 +112,23 @@ export async function registrarApp(wsp, nombre, evento) {
     await guardarFila(id, "comunidad_app", o);
   } catch (e) {}
 }
+// Los cupones canjeados en un local (sin los de prueba), para el cierre de caja: cada uno con el día de negocio en que se canjeó.
+// El canje guarda el NOMBRE del local, por eso se compara por nombre.
+export async function cuponesCanjeadosLocal(localId) {
+  var nom = (LOCALES_GRUPO.find(function (l) { return l.id === localId; }) || {}).nombre || "";
+  if (!nom) return [];
+  try {
+    var patron = encodeURIComponent('*"estado":"usado"*');
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.cupon&texto=like." + patron + "&order=created_at.desc&limit=2000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return (Array.isArray(d) ? d : []).map(function (f) { try { return JSON.parse(f.texto); } catch (e) { return null; } })
+      .filter(function (c) { return c && !c.prueba && c.estado === "usado" && c.usado_at && c.usado_local === nom; })
+      .map(function (c) {
+        var x = new Date(c.usado_at); if (x.getHours() < 6) x = new Date(x.getTime() - 86400000);   // antes de las 6 h sigue siendo el día anterior (el mismo corte del día de negocio de la app)
+        return { ...c, dia: x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0") };
+      });
+  } catch (e) { return []; }
+}
 function estadoCupon(c) {
   if (!c) return "no existe";
   if (c.estado === "usado") return "usado";

@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas, { mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -21142,6 +21142,21 @@ function PanelCierresSofia(p) {
 // Un día sin ventas se carga como un cierre en $0 con la nota "SIN VENTAS". Cuenta como día cerrado.
 // El turno del cierre va en el id (local_fecha_turno_hora): no hace falta una columna nueva. Los cierres viejos no lo tienen.
 function turnoDeCierre(c){ var m=/_(mediodia|noche)_\d+$/.exec(String((c&&c.id)||"")); return m?m[1]:null; }
+function CuponesDelDia(p){
+  var l=p.lista||[];
+  return(
+    <div style={{background:"#14100A",border:"1px solid #D4A01755",borderRadius:10,padding:"10px 12px",marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:800,color:"#D4A017"}}>🎟️ Cupones de la comunidad canjeados {p.cuando}: <span style={{color:"#F0EDE8"}}>{l.length}</span></div>
+      {l.length>0&&<div style={{marginTop:6}}>
+        {l.slice().sort(function(a,b){return String(a.usado_at).localeCompare(String(b.usado_at));}).map(function(c){
+          return <div key={c.codigo} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:"#C8C8C8",padding:"3px 0",borderTop:"1px solid #2A2310"}}><span>{c.nombre} · {c.codigo}</span><span>{c.beneficio||(c.pct+"%")} · {new Date(c.usado_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false})}{c.usado_por?" · "+c.usado_por:""}</span></div>;
+        })}
+      </div>}
+      {l.length===0&&<div style={{fontSize:11,color:"#8C7A4A",marginTop:3}}>Ningún cliente canjeó cupón {p.cuando}.</div>}
+    </div>
+  );
+}
+
 function esSinVentas(c){ return !!c&&!(parseFloat(c.total_ventas||0)>0)&&/^\s*sin ventas/i.test(String(c.notas||"")); }
 function PanelCierre(p) {
   var localId=p.localId, localNombre=p.localNombre, usuario=p.usuario, cierres=p.cierres, onSave=p.onSave, onDelete=p.onDelete;
@@ -21155,6 +21170,14 @@ function PanelCierre(p) {
   var [showForm,setShowForm]=useState(false);
   // Lo cobrado en las comandas del local ese día, para controlar contra lo que el cajero carga en el cierre.
   var [pagosCom,setPagosCom]=useState([]);
+  // Cupones de la comunidad canjeados en este local (para anotar cuántos hubo en cada cierre).
+  var [cuponesUsados,setCuponesUsados]=useState([]);
+  useEffect(function(){
+    var vivo=true;
+    cuponesCanjeadosLocal(localId).then(function(x){ if(vivo)setCuponesUsados(x); });
+    return function(){ vivo=false; };
+  },[localId,showForm]);
+  function cuponesDe(fecha){ return cuponesUsados.filter(function(c){return c.dia===fecha;}); }
   var fechaCom=(showForm&&form.fecha)?form.fecha:hoy;
   useEffect(function(){
     var vivo=true;
@@ -21460,6 +21483,7 @@ function PanelCierre(p) {
         )}
       </div>
 
+      {!showForm&&<CuponesDelDia lista={cuponesDe(hoy)} cuando="hoy"/>}
       {!showForm&&pagosCom.length>0&&(function(){
         var P=function(v){ return "$"+Math.round(v).toLocaleString("es-AR"); };
         var turnos=turnosL.map(function(t){return [t.id,t.nombre+(unSoloTurno?" (desde las "+t.desde+")":"")];});
@@ -21600,6 +21624,7 @@ function PanelCierre(p) {
             </div>}
             {!unSoloTurno&&<div style={{fontSize:10,color:"#6A6A6A",marginTop:4}}>Mediodía: de 5 a 17 h · Noche: de 17 a 5 h. Los casilleros se completan con lo cobrado en las comandas de ese turno.</div>}
           </div>
+          {form.fecha&&<CuponesDelDia lista={cuponesDe(form.fecha)} cuando={"el "+fmtDate(form.fecha)}/>}
           {(function(){
             if(!pagosTurno.length)return null;
             var tot={}; pagosTurno.forEach(function(c){ (c.pagos||[]).forEach(function(q){ var k=normalizarMedio(q.medio); tot[k]=(tot[k]||0)+(parseFloat(q.monto)||0); }); });
@@ -21760,7 +21785,7 @@ function PanelCierre(p) {
                 return(
                   <div key={c.id} style={{background:"#111",border:"1px solid "+(esHoy?"#3A7D4422":"#1A1A1A"),borderRadius:10,padding:"11px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div>
-                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{turnoDeCierre(c)&&<span style={{marginLeft:6,fontSize:10,color:"#9A9A9A"}}>{turnoDeCierre(c)==="noche"?"🌙 noche":"☀️ mediodía"}</span>}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>{fmtDate(c.fecha)}{cuponesDe(c.fecha).length>0&&<span style={{marginLeft:6,fontSize:10,color:"#D4A017"}}>🎟️ {cuponesDe(c.fecha).length} cupón{cuponesDe(c.fecha).length===1?"":"es"}</span>}{turnoDeCierre(c)&&<span style={{marginLeft:6,fontSize:10,color:"#9A9A9A"}}>{turnoDeCierre(c)==="noche"?"🌙 noche":"☀️ mediodía"}</span>}{esHoy&&<span style={{marginLeft:6,fontSize:10,color:"#3A7D44"}}>● hoy</span>}</div>
                       <div style={{fontSize:10,color:"#8C8C8C",marginTop:2}}>por {c.usuario}</div>
                       <div style={{fontSize:10,color:"#7E7E7E",marginTop:2}}>
                         {c.efectivo>0&&"💵 "+parseFloat(c.efectivo).toLocaleString("es-AR")+" "}

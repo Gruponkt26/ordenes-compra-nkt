@@ -797,7 +797,8 @@ function InformeCocina(props) {
       var plano = await sbLeerPlano(localId);
       var falt = (await sbLeerFaltantes(localId, fecha));
       var cfg = await sbLeerConfigCom();
-      if (vivo) setDatos({ recs:recs, coms:coms, items:its, mesas:mesas, falt:falt, cfg:cfg, plano:plano });
+      var cartaK = (await sbLoadCarta()).filter(function(x) { return x.local === localId; });
+      if (vivo) setDatos({ recs:recs, coms:coms, items:its, mesas:mesas, falt:falt, cfg:cfg, plano:plano, carta:cartaK });
     })();
     return function() { vivo = false; };
   }, [fecha, localId]);
@@ -885,12 +886,7 @@ function InformeCocina(props) {
           })}
         </div>
 
-        <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
-          <div style={h}>🚫 Discontinuados y faltantes</div>
-          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>No se discontinuó ni faltó nada.</div> : falt.map(function(f) {
-            return <div key={f.id} style={{ padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}</span> <span style={{ color:"#555" }}>· {horaSeg(f.at).slice(0, 5)}</span>{f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}</div>;
-          })}
-        </div>
+        <TarjetasDiscontinuados falt={falt} carta={datos.carta} card={card} h={h} />
       </div>
     );
   }
@@ -901,6 +897,40 @@ function InformeCocina(props) {
         <span style={{ fontSize:11, color:"#777" }}>Del día de negocio (desde las 6 de la mañana). Solo tiempos y comida.</span>
       </div>
       {cuerpo()}
+    </div>
+  );
+}
+
+// Tarjetas de los informes: qué se discontinuó (y qué volvió a la carta) en el día, qué sigue discontinuado ahora y los otros faltantes.
+var NOTA_DISC = "Discontinuado", NOTA_VUELTO = "Vuelto a la carta";
+function TarjetasDiscontinuados(props) {
+  var falt = props.falt || [], card = props.card, h = props.h;
+  var movs = falt.filter(function(f) { return f.nota === NOTA_DISC || f.nota === NOTA_VUELTO; }).sort(function(a, b) { return String(a.at).localeCompare(String(b.at)); });
+  var otros = falt.filter(function(f) { return f.nota !== NOTA_DISC && f.nota !== NOTA_VUELTO; });
+  var ahora = (props.carta || []).filter(function(x) { return x.activo === false; });
+  return (
+    <div>
+      <div style={{ ...card, borderColor: (movs.length || ahora.length) ? "#C1440E66" : "#1E1E1E" }}>
+        <div style={h}>🚫 Productos discontinuados</div>
+        <div style={{ fontSize:11, color:"#8C8C8C", margin:"0 0 6px" }}>Lo que se sacó de la carta (y lo que volvió) durante el servicio:</div>
+        {movs.length === 0 ? <div style={{ fontSize:12, color:"#555", marginBottom:8 }}>No se discontinuó nada en este día.</div> : movs.map(function(f) {
+          var vuelve = f.nota === NOTA_VUELTO;
+          return <div key={f.id} style={{ display:"flex", gap:8, padding:"4px 0", borderTop:"1px solid #181818", fontSize:12.5, alignItems:"baseline" }}>
+            <span style={{ color:"#4C9A5A", minWidth:44, fontVariantNumeric:"tabular-nums" }}>{horaSeg(f.at).slice(0, 5)}</span>
+            <span style={{ flex:1, color:"#DDD" }}><b>{f.plato}</b> <span style={{ color: vuelve ? "#8FD19A" : "#E0714A" }}>{vuelve ? "↩ volvió a la carta" : "🚫 discontinuado"}</span>{f.por ? <span style={{ color:"#666" }}> ({f.por})</span> : null}</span>
+          </div>;
+        })}
+        <div style={{ fontSize:11, fontWeight:800, color:"#E0714A", margin:"8px 0 4px" }}>Siguen discontinuados ahora ({ahora.length})</div>
+        {ahora.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Todo está disponible.</div> : <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{ahora.map(function(x) { return <span key={x.id} style={{ background:"#C1440E22", border:"1px solid #C1440E66", color:"#E8A08C", borderRadius:7, padding:"3px 9px", fontSize:12, fontWeight:700 }}>{x.nombre}</span>; })}</div>}
+      </div>
+      {otros.length > 0 && (
+        <div style={{ ...card, borderColor:"#D4A01766" }}>
+          <div style={h}>⚠️ Faltantes avisados</div>
+          {otros.map(function(f) {
+            return <div key={f.id} style={{ padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}{f.por ? " (" + f.por + ")" : ""}</span> <span style={{ color:"#555" }}>· {horaSeg(f.at).slice(0, 5)}</span>{f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}</div>;
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -931,10 +961,8 @@ function VentanaDiscontinuar(props) {
     var nuevo = { ...x, activo: !sale };
     setCarta(function(prev) { return prev.map(function(y) { return y.id === x.id ? nuevo : y; }); });
     sbSaveCarta(nuevo).then(function(err) { if (err) { alert("No se pudo guardar el cambio:\n\n" + String(err).slice(0, 200)); } if (props.onCambio) props.onCambio(); });
-    if (sale) {
-      var ahoraISO = new Date().toISOString();
-      sbGuardarFaltante({ id:"cfalt_" + Date.now(), prueba:false, local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), plato:x.nombre, avisa:"cocina", por:props.usuario || "", nota:"Discontinuado", at:ahoraISO });
-    }
+    var ahoraISO = new Date().toISOString();
+    sbGuardarFaltante({ id:"cfalt_" + Date.now(), prueba:false, local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), plato:x.nombre, avisa:"cocina", por:props.usuario || "", nota: sale ? NOTA_DISC : NOTA_VUELTO, at:ahoraISO });
   }
   function lista(arr) {
     return <RejillaPlatos alto={360}>{arr.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, colores)} onClick={function() { alternar(x); }} />; })}</RejillaPlatos>;
@@ -1414,7 +1442,8 @@ function InformeTurno(props) {
       var listos = await sbLeerListosDesde(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var cfgC = await sbLeerConfigCom();
       var planoI = await sbLeerPlano(localId);
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC, plano:planoI });
+      var cartaI = (await sbLoadCarta()).filter(function(x) { return x.local === localId; });
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC, plano:planoI, carta:cartaI });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -1579,15 +1608,7 @@ function InformeTurno(props) {
           )}
         </div>
 
-        <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
-          <div style={h}>🚫 Discontinuados y faltantes</div>
-          {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>No se discontinuó ni faltó nada en este turno.</div> : falt.map(function(f) {
-            return <div key={f.id} style={{ padding:"6px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
-              <b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}{f.por ? " (" + f.por + ")" : ""}</span> <span style={{ color:"#555" }}>· {fmtHora ? fmtHora(f.at) : String(f.at).slice(11, 16)}</span>
-              {f.nota && <div style={{ fontSize:11, color:"#888" }}>{f.nota}</div>}
-            </div>;
-          })}
-        </div>
+        <TarjetasDiscontinuados falt={falt} carta={datos.carta} card={card} h={h} />
 
         <div style={card}>
           <div style={h}>🕒 Registro de acciones (con la hora de cada una)</div>

@@ -287,6 +287,27 @@ async function sbLeerLogDia(localId, fecha) {
     return leerLog(await r.json()).filter(function(x) { return x.local === localId && x.fecha === fecha && !esComandaPrueba(x.comanda_id); });
   } catch(e) { return []; }
 }
+// Para la pantalla de cocina: lo anotado en las cuentas desde cierta hora (incluye las de prueba), sin importar la fecha del turno.
+async function sbLeerLogDesde(localId, desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_log&created_at=gte." + desdeISO + "&order=created_at.asc&limit=3000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    return leerLog(await r.json()).filter(function(x) { return x.local === localId; });
+  } catch(e) { return []; }
+}
+// Lo que la cocina ya entregó desde cierta hora (aunque la cuenta ya esté cobrada), para poder revisarlo.
+async function sbItemsEntregadosDesde(desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/comanda_items?estado=eq.entregado&entregado_at=gte." + desdeISO + "&order=entregado_at.desc&limit=600", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(); return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
+async function sbComandasPorIds(ids) {
+  if (!ids || !ids.length) return [];
+  try {
+    var r = await cfetch(SURL + "/rest/v1/comandas?id=in.(" + ids.join(",") + ")", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(); return Array.isArray(d) ? d : [];
+  } catch(e) { return []; }
+}
 async function sbLeerLogComanda(cid) {
   try {
     var r = await cfetch(SURL + "/rest/v1/pautas?id=like." + encodeURIComponent("clog_" + cid + "_") + "*&order=created_at.asc&limit=300", { headers: {...SH, "Cache-Control":"no-cache"} });
@@ -695,60 +716,107 @@ export function PanelCocina(props) {
   var usuario = props.usuario || "";
   var [localId, setLocalId] = useState(props.localFijo || props.localInicial || "l1");
   var [tickets, setTickets] = useState([]);
+  var [entregadas, setEntregadas] = useState([]);
+  var [pestana, setPestana] = useState("pend");      // pend | entregadas
   var [cargado, setCargado] = useState(false);
   var [ahora, setAhora] = useState(Date.now());
   var [sonido, setSonido] = useState(false);
   var [completa, setCompleta] = useState(false);   // modo pantalla completa: solo el botón de volver y los tickets
+  // Los avisos de cambio que la cocina ya vio (se recuerdan en esta tablet).
+  var [vistos, setVistos] = useState(function() { try { return JSON.parse(localStorage.getItem("nkt_cocina_vistos") || "[]"); } catch(e) { return []; } });
   var sonidoRef = useRef(false); sonidoRef.current = sonido;
+  var vistosRef = useRef(vistos); vistosRef.current = vistos;
   var ctxRef = useRef(null);
-  var vistos = useRef(null);
+  var conocidos = useRef(null);      // tickets que ya estaban en la lectura anterior
+  var pasados = useRef({});          // tickets que ya avisaron que pasaron los 15 minutos
   var local = getLocal(localId);
+  var LIMITE = 15;                   // minutos: pasado este tiempo el ticket avisa en rojo
 
-  function pitar() {
+  function pitar(freq, veces) {
     try {
       var c = ctxRef.current; if (!c) return;
-      [0, 0.28].forEach(function(t) {
-        var o = c.createOscillator(), g = c.createGain();
-        o.frequency.value = 880; o.connect(g); g.connect(c.destination);
-        g.gain.setValueAtTime(0.25, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.22);
-        o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.24);
-      });
+      for (var k = 0; k < (veces || 2); k++) {
+        (function(t) {
+          var o = c.createOscillator(), g = c.createGain();
+          o.frequency.value = freq || 880; o.connect(g); g.connect(c.destination);
+          g.gain.setValueAtTime(0.25, c.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.22);
+          o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.24);
+        })(k * 0.28);
+      }
     } catch(e) {}
   }
+  // El día de negocio de la cocina arranca a las 6 de la mañana: lo entregado desde ahí queda para revisar.
+  function inicioDia() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); d.setHours(6, 0, 0, 0); return d.toISOString(); }
   function cargar() {
-    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes()]).then(function(r) {
+    var desde = inicioDia();
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbItemsEntregadosDesde(desde), sbLeerLogDesde(localId, desde)]).then(function(r) {
       var coms = r[0].filter(function(c) { return c.local === localId; });
-      return sbLoadItems(coms.map(function(c) { return c.id; })).then(function(its) {
+      var mesas = r[1], entregasP = r[2], extras = r[3], entregados = r[4], log = r[5];
+      var faltan = {}; entregados.forEach(function(i) { if (!coms.some(function(c) { return c.id === i.comanda_id; })) faltan[i.comanda_id] = 1; });
+      return Promise.all([sbLoadItems(coms.map(function(c) { return c.id; })), sbComandasPorIds(Object.keys(faltan))]).then(function(rr) {
+        var its = rr[0], cerradas = rr[1];
+        function titulo(c) {
+          var mesa = mesas.find(function(m) { return m.id === c.mesa_id; });
+          return c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
+        }
+        // Pendientes: los ítems marchados y todavía no entregados, una tarjeta por tanda.
         var grupos = {};
-        its.filter(function(i) { return i.estado === "enviado"; }).forEach(function(i) {
+        function grupo(i) {
           var k = i.comanda_id + "|" + (i.ronda || 0);
-          var g = grupos[k] || (grupos[k] = { clave:k, comanda:coms.find(function(c) { return c.id === i.comanda_id; }), ronda:i.ronda || 0, items:[], desde:i.enviado_at });
-          g.items.push(i);
+          return grupos[k] || (grupos[k] = { clave:k, comanda:coms.find(function(c) { return c.id === i.comanda_id; }), ronda:i.ronda || 0, items:[], quitados:[], desde:i.enviado_at });
+        }
+        its.filter(function(i) { return i.estado === "enviado"; }).forEach(function(i) {
+          var g = grupo(i); g.items.push(i);
           if (i.enviado_at && (!g.desde || i.enviado_at < g.desde)) g.desde = i.enviado_at;
+        });
+        // Lo que quitaron después de marchar: se avisa en rojo (también si la tanda entera se anuló).
+        its.filter(function(i) { return i.estado === "cancelado" && i.enviado_at; }).forEach(function(i) {
+          if (vistosRef.current.indexOf("q|" + i.id) >= 0) return;
+          var g = grupo(i); g.quitados.push(i); if (!g.desde || i.enviado_at < g.desde) g.desde = i.enviado_at;
         });
         var lista = Object.keys(grupos).map(function(k) {
           var g = grupos[k], c = g.comanda || {};
-          var mesa = r[1].find(function(m) { return m.id === c.mesa_id; });
-          g.titulo = c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
-          g.entrega = r[2][c.id] || null;
-          var ex = r[3][c.id] || {};
+          g.titulo = titulo(c);
+          g.entrega = entregasP[c.id] || null;
+          var ex = extras[c.id] || {};
           g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
           g.misma = c.tipo === "mesa" && ex.mesa_nueva === false;
+          // Cambios de cantidad o de nota en lo que ya se mandó, desde que se mandó.
+          g.cambios = log.filter(function(l) {
+            return l.comanda_id === c.id && l.at > String(g.desde) && (l.accion === "Cambió la cantidad" || l.accion === "Anotó una nota")
+              && g.items.some(function(i) { return String(l.detalle).indexOf(i.nombre) === 0; });
+          });
           return g;
-        }).filter(function(g) { return g.comanda; }).sort(function(a, b) {
-          // Primero las mesas nuevas; dentro de cada grupo, el pedido más viejo primero.
+        }).filter(function(g) { return g.comanda && (g.items.length || g.quitados.length); }).sort(function(a, b) {
           if (a.nueva !== b.nueva) return a.nueva ? -1 : 1;
           return String(a.desde).localeCompare(String(b.desde));
         });
-        // Aviso sonoro: solo para tickets que no estaban en la lectura anterior (la primera lectura no suena).
-        if (vistos.current && sonidoRef.current && lista.some(function(g) { return !vistos.current[g.clave]; })) pitar();
-        var v = {}; lista.forEach(function(g) { v[g.clave] = 1; }); vistos.current = v;
-        setTickets(lista); setCargado(true);
+        // Sonidos: ticket nuevo, y ticket que recién pasó los 15 minutos. La primera lectura no suena.
+        if (conocidos.current && sonidoRef.current) {
+          if (lista.some(function(g) { return !conocidos.current[g.clave]; })) pitar(880, 2);
+          else if (lista.some(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE && !pasados.current[g.clave]; })) pitar(520, 3);
+        }
+        var cv = {}; lista.forEach(function(g) { cv[g.clave] = 1; }); conocidos.current = cv;
+        var np = {}; lista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
+        setTickets(lista);
+        // Entregadas de hoy (aunque la cuenta ya esté cobrada): una tarjeta por tanda, la más reciente primero.
+        var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
+        var ge = {};
+        entregados.forEach(function(i) {
+          var c = comPorId[i.comanda_id]; if (!c || c.local !== localId) return;
+          var k = i.comanda_id + "|" + (i.ronda || 0);
+          var g = ge[k] || (ge[k] = { clave:k, comanda:c, ronda:i.ronda || 0, items:[], desde:i.enviado_at, entregado:i.entregado_at, titulo:titulo(c) });
+          g.items.push(i);
+          if (i.entregado_at > g.entregado) g.entregado = i.entregado_at;
+          if (i.enviado_at && (!g.desde || i.enviado_at < g.desde)) g.desde = i.enviado_at;
+        });
+        setEntregadas(Object.keys(ge).map(function(k) { return ge[k]; }).sort(function(a, b) { return String(b.entregado).localeCompare(String(a.entregado)); }).slice(0, 80));
+        setCargado(true);
       });
     }).catch(function() { setCargado(true); });
   }
   useEffect(function() {
-    vistos.current = null; setCargado(false);
+    conocidos.current = null; pasados.current = {}; setCargado(false);
     var vivo = true;
     cargar();
     var t = setInterval(function() { if (vivo) cargar(); }, 5000);
@@ -764,7 +832,7 @@ export function PanelCocina(props) {
 
   function activarSonido() {
     try { if (!ctxRef.current) ctxRef.current = new (window.AudioContext || window.webkitAudioContext)(); ctxRef.current.resume && ctxRef.current.resume(); } catch(e) {}
-    var nuevo = !sonido; setSonido(nuevo); if (nuevo) pitar();
+    var nuevo = !sonido; setSonido(nuevo); if (nuevo) pitar(880, 2);
   }
   function entrarCompleta() {
     setCompleta(true);
@@ -780,38 +848,108 @@ export function PanelCocina(props) {
     document.addEventListener("fullscreenchange", cambio);
     return function() { document.removeEventListener("fullscreenchange", cambio); };
   }, []);
+  function marcarVisto(clave) {
+    var nuevo = vistosRef.current.concat(clave).slice(-500);
+    vistosRef.current = nuevo; setVistos(nuevo); try { localStorage.setItem("nkt_cocina_vistos", JSON.stringify(nuevo)); } catch(e) {}
+    cargar();
+  }
   function entregar(g) {
     var ahoraISO = new Date().toISOString();
     var filas = g.items.map(function(i) { return { ...i, estado:"entregado", entregado_at:ahoraISO }; });
     setTickets(function(prev) { return prev.filter(function(x) { return x.clave !== g.clave; }); });
-    if (vistos.current) delete vistos.current[g.clave];
-    sbSaveItems(filas).then(function(err) { if (err) { alert("No se pudo marcar como entregado:\n\n" + String(err).slice(0, 200)); cargar(); } });
+    if (conocidos.current) delete conocidos.current[g.clave];
+    sbSaveItems(filas).then(function(err) { if (err) { alert("No se pudo marcar como entregado:\n\n" + String(err).slice(0, 200)); cargar(); } else cargar(); });
     var fecha = props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10);
     sbLogAcciones([{ local:localId, fecha:fecha, comanda_id:g.comanda.id, titulo:g.titulo, accion:"Entregó a la mesa", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
+  // Por si se marcó por error: la tanda vuelve a pendientes.
+  function deshacer(g) {
+    if (!window.confirm("¿Volver a poner «" + g.titulo + "» en pendientes?")) return;
+    var filas = g.items.map(function(i) { return { ...i, estado:"enviado", entregado_at:null }; });
+    sbSaveItems(filas).then(function() { cargar(); });
+    var ahoraISO = new Date().toISOString();
+    sbLogAcciones([{ local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), comanda_id:g.comanda.id, titulo:g.titulo, accion:"Desmarcó la entrega", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
+  }
+
+  var demorados = tickets.filter(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE; }).length;
+  function claveCambio(l) { return "l|" + l.comanda_id + "|" + l.at; }
+  var pestanaBtn = function(id, txt) {
+    var act = pestana === id;
+    return <button onClick={function() { setPestana(id); }} style={{ padding:"10px 16px", borderRadius:10, border:"2px solid " + (act ? "#3A7D44" : "#2A2A2A"), background: act ? "#3A7D4426" : "#111", color: act ? "#8FD19A" : "#9A9A9A", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }}>{txt}</button>;
+  };
+  var badgePrueba = function(c) { return esComandaPrueba(c.id) ? <span style={{ display:"inline-block", marginLeft:6, background:"#B07CD833", color:"#B07CD8", border:"1px solid #B07CD8", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900 }}>🧪 PRUEBA</span> : null; };
 
   var cuerpo = (
     <div>
+      <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
+      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+        {pestanaBtn("pend", "🍳 Pendientes (" + tickets.length + ")")}
+        {pestanaBtn("entregadas", "✅ Entregadas hoy (" + entregadas.length + ")")}
+        {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>⏰ {demorados} con más de {LIMITE} min</span>}
+      </div>
       {!cargado ? (
         <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
+      ) : pestana === "entregadas" ? (
+        entregadas.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"60px 0", color:"#666", fontSize:14 }}>Todavía no se entregó nada hoy.</div>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(290px, 1fr))", gap:12 }}>
+            {entregadas.map(function(g) {
+              var c = g.comanda, T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
+              var tardo = g.desde && g.entregado ? Math.round((new Date(g.entregado) - new Date(g.desde)) / 60000) : null;
+              return (
+                <div key={g.clave} style={{ background:"#0F0F0F", border:"1px solid #2A2A2A", borderLeft:"8px solid " + T.color, borderRadius:14, padding:"12px 14px", display:"flex", flexDirection:"column", gap:7, opacity:0.95 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+                    <div style={{ minWidth:0 }}>
+                      <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>{badgePrueba(c)}
+                      <div style={{ fontSize:19, fontWeight:800, color:"#F0EDE8", marginTop:3 }}>{g.titulo}</div>
+                      <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
+                    </div>
+                    <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>✅ {horaSeg(g.entregado).slice(0, 5)}</div>
+                      <div style={{ fontSize:11, color: tardo !== null && tardo >= LIMITE ? "#E0452E" : "#777", fontWeight: tardo !== null && tardo >= LIMITE ? 800 : 400 }}>{tardo === null ? "" : "tardó " + tardo + " min"}</div>
+                    </div>
+                  </div>
+                  <div style={{ borderTop:"1px solid #1E1E1E", paddingTop:6 }}>
+                    {g.items.map(function(i) { return <div key={i.id} style={{ fontSize:15, color:"#CFCFCF", padding:"2px 0" }}><span style={{ color:"#4C9A5A", fontWeight:800 }}>{Number(i.cant) || 1}×</span> {i.nombre}{i.nota ? <span style={{ color:"#D4A017" }}> · 📝 {i.nota}</span> : null}</div>; })}
+                  </div>
+                  <button onClick={function() { deshacer(g); }} style={{ ...GH, padding:"8px", fontSize:12 }}>↩ Volver a pendientes</button>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : tickets.length === 0 ? (
         <div style={{ textAlign:"center", padding:"70px 0" }}>
           <div style={{ fontSize:54, marginBottom:10 }}>✅</div>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, color:"#4C9A5A" }}>Todo entregado</div>
-          <div style={{ fontSize:13, color:"#666", marginTop:6 }}>Cuando el mozo o el cajero mande un pedido a la cocina, aparece acá.</div>
+          <div style={{ fontSize:13, color:"#666", marginTop:6 }}>Cuando el mozo o el cajero mande un pedido a la cocina, aparece acá. Lo ya entregado está en «Entregadas hoy».</div>
         </div>
       ) : (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(290px, 1fr))", gap:12 }}>
           {tickets.map(function(g) {
             var c = g.comanda, T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
-            var min = minutosDesde(g.desde), col = min === null ? "#3A7D44" : colorDemora(min);
+            var min = minutosDesde(g.desde), col = min === null ? "#3A7D44" : (min >= LIMITE ? "#E0452E" : min >= 10 ? "#D4A017" : "#3A7D44");
             var st = c.tipo !== "mesa" ? estadoEntrega(g.entrega, ahora) : null;
+            var cambios = (g.cambios || []).filter(function(l) { return vistos.indexOf(claveCambio(l)) < 0; });
+            var hayAlerta = cambios.length > 0 || g.quitados.length > 0;
+            var tarde = g.items.length > 0 && min !== null && min >= LIMITE;
             return (
-              <div key={g.clave} style={{ background:"#111", border:"2px solid " + col, borderLeft:"10px solid " + T.color, borderRadius:14, padding:"13px 14px", display:"flex", flexDirection:"column", gap:9 }}>
+              <div key={g.clave} style={{ background:"#111", border:"3px solid " + (hayAlerta ? "#E0452E" : col), borderLeft:"10px solid " + T.color, borderRadius:14, padding:"13px 14px", display:"flex", flexDirection:"column", gap:9, boxShadow: hayAlerta || tarde ? "0 0 0 2px #E0452E55" : "none" }}>
+                {hayAlerta && (
+                  <div style={{ background:"#E0452E", color:"#fff", borderRadius:9, padding:"9px 11px", animation:"nktPulso 1.1s infinite" }}>
+                    <div style={{ fontSize:15, fontWeight:900, letterSpacing:0.5 }}>⚠️ CAMBIO EN ESTE PEDIDO</div>
+                    {g.quitados.map(function(i) { return <div key={i.id} style={{ fontSize:14, fontWeight:700, marginTop:3 }}>QUITARON: {Number(i.cant) || 1}× {i.nombre}{i.nota ? " — " + i.nota : ""}</div>; })}
+                    {cambios.map(function(l) { return <div key={claveCambio(l)} style={{ fontSize:14, fontWeight:700, marginTop:3 }}>{l.accion.toUpperCase()}: {l.detalle}</div>; })}
+                    <button onClick={function() { g.quitados.forEach(function(i) { marcarVisto("q|" + i.id); }); cambios.forEach(function(l) { marcarVisto(claveCambio(l)); }); }}
+                      style={{ marginTop:8, width:"100%", padding:"9px", borderRadius:8, border:"2px solid #fff", background:"transparent", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✓ VISTO</button>
+                  </div>
+                )}
+                {tarde && <div style={{ background:"#E0452E22", border:"1px solid #E0452E", color:"#FF8A70", borderRadius:8, padding:"5px 10px", fontSize:14, fontWeight:900, animation:"nktPulso 1.4s infinite" }}>⏰ DEMORADO: {min} min (pasó los {LIMITE})</div>}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
-                    {esComandaPrueba(c.id) && <span style={{ display:"inline-block", marginLeft:6, background:"#B07CD833", color:"#B07CD8", border:"1px solid #B07CD8", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900 }}>🧪 PRUEBA</span>}
+                    {badgePrueba(c)}
                     {g.nueva && <span style={{ display:"inline-block", marginLeft:6, background:"#3A7D44", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>🆕 MESA NUEVA</span>}
                     {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
                     <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:4, wordBreak:"break-word" }}>{g.titulo}</div>
@@ -832,8 +970,12 @@ export function PanelCocina(props) {
                       </div>
                     );
                   })}
+                  {g.quitados.map(function(i) {
+                    return <div key={i.id} style={{ padding:"4px 0", fontSize:16, fontWeight:700, color:"#E0452E", textDecoration:"line-through" }}>{Number(i.cant) || 1}× {i.nombre}</div>;
+                  })}
+                  {g.items.length === 0 && <div style={{ fontSize:14, fontWeight:900, color:"#E0452E" }}>PEDIDO ANULADO: no hay nada para preparar.</div>}
                 </div>
-                <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>✓ ENTREGADO</button>
+                {g.items.length > 0 && <button onClick={function() { entregar(g); }} style={{ marginTop:2, padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer", letterSpacing:0.5 }}>✓ ENTREGADO</button>}
               </div>
             );
           })}

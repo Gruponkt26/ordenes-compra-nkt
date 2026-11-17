@@ -181,6 +181,23 @@ async function sbLeerFaltantes(localId, fecha) {
     return Array.isArray(d) ? d.map(function(f) { try { return JSON.parse(f.texto); } catch(e) { return null; } }).filter(function(x) { return x && x.local === localId && x.fecha === fecha; }) : [];
   } catch(e) { return []; }
 }
+// ¿Esta mesa ya se cerró (cobró) desde `desdeISO`? Sirve para preguntar si la que se abre ahora es una mesa nueva.
+async function sbMesaCerradaDesde(mesaId, desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/comandas?mesa_id=eq." + encodeURIComponent(mesaId) + "&estado=eq.cerrada&cerrada_at=gte." + desdeISO + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) && d.length > 0;
+  } catch(e) { return false; }
+}
+// Lo extra de las cuentas de los últimos días, todo junto: {comanda_id: {...}} (la pantalla de cocina lo usa para saber si una mesa es nueva).
+async function sbLeerExtrasRecientes() {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.comanda_extra&created_at=gte." + new Date(Date.now() - 2 * 86400000).toISOString() + "&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(f) { try { o[String(f.id).replace(/^cextra_/, "")] = JSON.parse(f.texto) || {}; } catch(e) {} });
+    return o;
+  } catch(e) { return {}; }
+}
 // Tiempo de entrega que el cajero le promete al cliente en delivery y mostrador. Va en pautas, ámbito "comanda_entrega", un registro por comanda.
 async function sbGuardarEntrega(e) {
   try {
@@ -634,6 +651,22 @@ function VentanaControl(props) {
 }
 
 
+// Una mesa que ya se cerró hoy se vuelve a abrir: ¿es gente nueva o sigue la misma? De eso depende la prioridad en la cocina.
+function PreguntaMesaNueva(props) {
+  return (
+    <div onClick={props.onCancelar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid #D4A01788", borderRadius:16, padding:"18px", width:"100%", maxWidth:400 }}>
+        <div style={{ fontSize:17, fontWeight:800, color:"#F0EDE8", marginBottom:4 }}>{props.titulo} ya se cerró hoy</div>
+        <div style={{ fontSize:15, fontWeight:700, color:"#D4A017", marginBottom:6 }}>¿Es una mesa nueva?</div>
+        <div style={{ fontSize:12, color:"#9A9A9A", lineHeight:1.5, marginBottom:14 }}>Esto le dice a la cocina qué atender primero: una mesa nueva va antes que una mesa que sigue pidiendo.</div>
+        <button onClick={function() { props.onElegir(true); }} style={{ width:"100%", padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:900, cursor:"pointer", marginBottom:8 }}>🆕 Sí, es una mesa nueva</button>
+        <button onClick={function() { props.onElegir(false); }} style={{ width:"100%", padding:"15px", borderRadius:11, border:"1px solid #D4A017", background:"#D4A01722", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, cursor:"pointer", marginBottom:8 }}>↩ No, es la misma mesa que sigue</button>
+        <button onClick={props.onCancelar} style={{ ...GH, width:"100%", padding:"10px", fontSize:12 }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── PANTALLA DE COCINA ───────────────────────────────────────────────
 // Lo que llega a la cocina: cada vez que el mozo o el cajero toca «Marchar», el pedido aparece acá como un ticket (mesa, delivery o mostrador).
 // La cocina toca «Entregado» cuando lo despacha y el ticket se va; siguen entrando los otros. Se arma con los ítems en estado «enviado».
@@ -662,7 +695,7 @@ export function PanelCocina(props) {
     } catch(e) {}
   }
   function cargar() {
-    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas()]).then(function(r) {
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes()]).then(function(r) {
       var coms = r[0].filter(function(c) { return c.local === localId; });
       return sbLoadItems(coms.map(function(c) { return c.id; })).then(function(its) {
         var grupos = {};
@@ -677,8 +710,15 @@ export function PanelCocina(props) {
           var mesa = r[1].find(function(m) { return m.id === c.mesa_id; });
           g.titulo = c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
           g.entrega = r[2][c.id] || null;
+          var ex = r[3][c.id] || {};
+          g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
+          g.misma = c.tipo === "mesa" && ex.mesa_nueva === false;
           return g;
-        }).filter(function(g) { return g.comanda; }).sort(function(a, b) { return String(a.desde).localeCompare(String(b.desde)); });
+        }).filter(function(g) { return g.comanda; }).sort(function(a, b) {
+          // Primero las mesas nuevas; dentro de cada grupo, el pedido más viejo primero.
+          if (a.nueva !== b.nueva) return a.nueva ? -1 : 1;
+          return String(a.desde).localeCompare(String(b.desde));
+        });
         // Aviso sonoro: solo para tickets que no estaban en la lectura anterior (la primera lectura no suena).
         if (vistos.current && sonidoRef.current && lista.some(function(g) { return !vistos.current[g.clave]; })) pitar();
         var v = {}; lista.forEach(function(g) { v[g.clave] = 1; }); vistos.current = v;
@@ -753,6 +793,8 @@ export function PanelCocina(props) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
+                    {g.nueva && <span style={{ display:"inline-block", marginLeft:6, background:"#3A7D44", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>🆕 MESA NUEVA</span>}
+                    {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
                     <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:4, wordBreak:"break-word" }}>{g.titulo}</div>
                     <div style={{ fontSize:11, color:"#777" }}>{c.tipo === "mesa" ? "Mozo" : "Cajero"}: {c.mozo || "—"}{g.ronda > 1 ? " · tanda " + g.ronda : ""}</div>
                   </div>
@@ -2251,19 +2293,29 @@ export default function PanelComandas(p) {
     setTurnos(function(prev) { return (prev || []).map(function(x) { return x.fecha === t.fecha ? t : x; }); });
     sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar el cierre del turno."); });
   }
+  // Si la mesa ya se cerró durante este turno (o en las últimas 12 horas), se pregunta si es una mesa nueva; si es la primera vez que se usa, es nueva.
+  var [preguntaNueva, setPreguntaNueva] = useState(null);   // {mesa, alElegir}
   function abrirMesa(mesa) {
     var ya = comandaDeMesa(mesa.id);
     if (ya) { setAbiertaId(ya.id); return; }
     if (!puedeAbrirCuenta()) return;
-    pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
-      var nueva = {
-        id: "cmd_" + Date.now(),
-        local: localId, tipo: "mesa", mesa_id: mesa.id,
-        numero: proximoNumero(), estado: "abierta",
-        mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
-      };
-      registrar(nueva, "Abrió la mesa", "Mozo: " + mozo);
-      guardar(nueva).then(function(err) { if (!err) setAbiertaId(nueva.id); });
+    var desde = turnoActual ? turnoActual.abierto_at : new Date(Date.now() - 12 * 3600000).toISOString();
+    function seguir(esNueva) {
+      pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
+        var nueva = {
+          id: "cmd_" + Date.now(),
+          local: localId, tipo: "mesa", mesa_id: mesa.id,
+          numero: proximoNumero(), estado: "abierta",
+          mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
+        };
+        registrar(nueva, "Abrió la mesa", "Mozo: " + mozo + (esNueva ? " · mesa nueva" : " · misma mesa que seguía"));
+        setExtras(function(prev) { return { ...prev, [nueva.id]: { mesa_nueva: esNueva } }; });
+        Promise.all([guardar(nueva), sbGuardarExtra(nueva.id, { mesa_nueva: esNueva }, usuario)]).then(function(r) { if (!r[0]) setAbiertaId(nueva.id); });
+      });
+    }
+    sbMesaCerradaDesde(mesa.id, desde).then(function(usada) {
+      if (usada) setPreguntaNueva({ mesa: mesa, alElegir: seguir });
+      else seguir(true);
     });
   }
   var [cobrando, setCobrando] = useState(null);   // {c, total}: la comanda que se está cobrando
@@ -2465,6 +2517,7 @@ export default function PanelComandas(p) {
         })}
       </div>
 
+      {preguntaNueva && <PreguntaMesaNueva titulo={"🪑 Mesa " + (preguntaNueva.mesa.nombre || "")} onElegir={function(esNueva) { var f = preguntaNueva.alElegir; setPreguntaNueva(null); f(esNueva); }} onCancelar={function() { setPreguntaNueva(null); }} />}
       {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
         onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
         onCancelar={function() { setEligeMozo(null); }} />}

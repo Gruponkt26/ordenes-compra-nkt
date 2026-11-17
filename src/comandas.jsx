@@ -503,8 +503,8 @@ async function sbLeerConfigCom() {
     var r = await cfetch(SURL + "/rest/v1/pautas?id=eq.ccfg&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
-    return { limites: (o && o.limites) || {} };
-  } catch(e) { return { limites: {} }; }
+    return { limites: (o && o.limites) || {}, exigir: (o && o.exigir) || {} };
+  } catch(e) { return { limites: {}, exigir: {} }; }
 }
 async function sbGuardarConfigCom(cfg) {
   try {
@@ -521,6 +521,8 @@ function nivelRetraso(minutos, limite) {
   var n = extra <= 5 ? { id:"leve", txt:"LEVE", col:"#F0A030" } : extra <= 10 ? { id:"medio", txt:"MEDIO", col:"#E0652E" } : { id:"grave", txt:"GRAVE", col:"#C1121F" };
   return { ...n, extra:extra };
 }
+// ¿Hay que esperar a que la cocina entregue antes de llevar a la mesa? Sí, salvo que administración lo apague para ese local.
+function exigeCocina(cfg, localId) { return ((cfg || {}).exigir || {})[localId] !== false; }
 function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[localId]); return n > 0 ? n : LIMITE_DEFECTO; }
 // La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
 // color de la mesa: si hay tres rondas, la que importa es la que más espera.
@@ -1972,6 +1974,9 @@ function ComandaDetalle(props) {
                   </div>
                   {PrecioItem({ i:i, chico:true })}
                   {i.estado === "enviado" && <button onClick={function() { setCambiando(i); }} title="Cambiar por otro producto" style={{ background:"none", border:"1px solid #D4A01766", borderRadius:6, padding:"3px 8px", color:"#D4A017", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>🔄 cambiar</button>}
+                  {i.estado === "enviado" && props.exigirCocina ? (
+                    <span title="La cocina todavía no lo entregó" style={{ border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 9px", color:"#777", fontSize:11, whiteSpace:"nowrap" }}>⏳ en cocina</span>
+                  ) : (
                   <button onClick={function() {
                       // enviado/listo → entregado a la mesa; si ya estaba entregado, vuelve a «listo» (la cocina ya lo había despachado).
                       props.onGuardarItems([{ ...i, estado: listo ? "listo" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
@@ -1980,6 +1985,7 @@ function ComandaDetalle(props) {
                     style={{ background: enBarra ? "#3A7D44" : "none", border:"1px solid "+(listo?"#2A2A2A":enBarra?"#4C9A5A":col+"55"), borderRadius:6, padding: enBarra ? "6px 11px" : "3px 9px", color:listo?"#444":enBarra?"#fff":col, fontSize: enBarra ? 12 : 11, fontWeight: enBarra ? 800 : 400, cursor:"pointer", whiteSpace:"nowrap" }}>
                     {listo ? "✓" : enBarra ? "🍽️ a la mesa" : "entregar"}
                   </button>
+                  )}
                 </div>
               );
             })}
@@ -2753,8 +2759,9 @@ export default function PanelComandas(p) {
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
-  var [cfgCom, setCfgCom] = useState({ limites: {} });
+  var [cfgCom, setCfgCom] = useState({ limites: {}, exigir: {} });
   useEffect(function() { sbLeerConfigCom().then(setCfgCom); }, [practica]);
+  var exigirCocina = exigeCocina(cfgCom, localId);   // el mozo o el cajero solo lleva a la mesa lo que la cocina ya entregó
   var limite = limiteDe(cfgCom, localId);   // minutos: pasado este tiempo la mesa y el pedido avisan en rojo
   var [coloresCarta, setColoresCarta] = useState({ cats: {}, platos: {} });
   useEffect(function() { sbLeerColoresCarta(localId).then(setColoresCarta); }, [localId, practica]);
@@ -3074,6 +3081,15 @@ export default function PanelComandas(p) {
           </select>
           <span style={{ fontSize:12, color:"#C8C8C8" }}>en la cocina · {local ? local.nombre : ""}</span>
           <span style={{ fontSize:10.5, color:"#6A6A6A", flex:"1 1 100%" }}>Cuenta en las mesas, en la franja roja de aviso y en la pantalla de cocina (donde también suena si el sonido está activado). Cada local tiene el suyo.</span>
+          <label style={{ display:"flex", alignItems:"center", gap:8, flex:"1 1 100%", fontSize:12, color:"#C8C8C8", cursor:"pointer", marginTop:4 }}>
+            <input type="checkbox" checked={exigirCocina} onChange={function(e) {
+                var nuevo = { ...cfgCom, exigir: { ...cfgCom.exigir, [localId]: e.target.checked } };
+                setCfgCom(nuevo);
+                sbGuardarConfigCom(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar el cambio."); });
+              }} />
+            ✋ El mozo o el cajero solo puede llevar a la mesa lo que la cocina ya entregó
+          </label>
+          {!exigirCocina && <span style={{ fontSize:10.5, color:"#D4A017", flex:"1 1 100%" }}>Apagado: se puede marcar «entregar» sin pasar por la pantalla de cocina (para un local que no la usa).</span>}
         </div>
       )}
       {faltante && <VentanaFaltante prueba={pruebaVivo} color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
@@ -3191,7 +3207,7 @@ export default function PanelComandas(p) {
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
           entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
-          colores={coloresCarta} limite={limite}
+          colores={coloresCarta} limite={limite} exigirCocina={exigirCocina}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (

@@ -217,6 +217,23 @@ async function sbLeerTurnos(localId) {
       .sort(function(a, b) { return String(b.abierto_at).localeCompare(String(a.abierto_at)); });
   } catch(e) { return []; }
 }
+// Colores elegidos para la carta de cada local: de categorías (por camino) y de platos (por id). Va en pautas, ámbito "carta_color".
+async function sbLeerColoresCarta(localId) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("ccolor_" + localId) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
+    return { cats: (o && o.cats) || {}, platos: (o && o.platos) || {} };
+  } catch(e) { return { cats: {}, platos: {} }; }
+}
+async function sbGuardarColoresCarta(localId, col) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"ccolor_" + localId, ambito:"carta_color", texto:JSON.stringify(col), usuario:"", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
 // Registro de todo lo que se hace en una cuenta, con la hora: pautas, ámbito "comanda_log", un registro por acción.
 // El id empieza con el de la comanda para poder traer el historial de una sola cuenta.
 async function sbLogAcciones(filas) {
@@ -1142,16 +1159,16 @@ function ComandaDetalle(props) {
             </div>
           ) : q ? (
             <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
-              <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={colorCategoria(hijosDe(cats, []), x.categoria.split(NIV)[0])} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>
+              <RejillaPlatos>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, props.colores)} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>
               {platos.length === 0 && <div style={{ fontSize:11, color:"#444", padding:"6px 0" }}>Nada con ese nombre.</div>}
             </div>
           ) : (
             <div>
               {ruta.length === 0 && <div style={{ fontSize:11, color:"#666", marginBottom:8 }}>Tocá una categoría para ver lo que hay adentro, o buscá un plato por el nombre.</div>}
-              <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta}
+              <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta} colores={props.colores}
                 contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
                 renderPlatos={function(nodo, col) {
-                  return <RejillaPlatos alto={440}>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>;
+                  return <RejillaPlatos alto={440}>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, props.colores)} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>;
                 }} />
             </div>
           )}
@@ -1230,7 +1247,7 @@ function VentanasCategorias(props) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:9 }}>
       {props.categorias.map(function(cat) {
-        var col = colorCategoria(props.categorias, cat), n = props.conteo(cat);
+        var col = props.colorDe ? props.colorDe(cat) : colorCategoria(props.categorias, cat), n = props.conteo(cat);
         return (
           <button key={cat} onClick={function() { props.onElegir(cat); }}
             style={{ textAlign:"left", minHeight:84, padding:"13px 13px", borderRadius:12, border:"2px solid " + col + "88", background:"linear-gradient(145deg, " + col + "30, " + col + "10)", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", cursor:"pointer", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:8 }}>
@@ -1257,6 +1274,14 @@ function VentanaPlato(props) {
     </Tag>
   );
 }
+// El color de la ventana de un plato: el que se le eligió; si no, el de su categoría si se la pintó; y si no, uno de la paleta que va rotando,
+// para que las ventanas se distingan una de otra.
+function colorDePlato(x, i, colores, base) {
+  var c = colores || { cats: {}, platos: {} };
+  if (c.platos[x.id]) return c.platos[x.id];
+  if (c.cats[x.categoria]) return c.cats[x.categoria];
+  return COLORES_CATEGORIA[((i || 0) + (base || 0)) % COLORES_CATEGORIA.length];
+}
 function RejillaPlatos(props) {
   return <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:9, maxHeight:props.alto || "none", overflowY: props.alto ? "auto" : "visible", paddingRight: props.alto ? 2 : 0 }}>{props.children}</div>;
 }
@@ -1275,9 +1300,15 @@ function dentroDe(cat, nodo) { return cat === nodo || String(cat).indexOf(nodo +
 // Navega los niveles: ventanas de colores con lo que hay adentro y, si ese nivel tiene platos propios, la lista de platos.
 // props: cats (caminos completos), ruta/setRuta, contar(nodo), renderPlatos(nodo), extra(nodo) (controles propios del nivel).
 function ArbolCarta(props) {
-  var cats = props.cats, ruta = props.ruta, setRuta = props.setRuta;
-  var hijos = hijosDe(cats, ruta), nodo = ruta.join(NIV), roots = hijosDe(cats, []);
-  var col = ruta.length ? colorCategoria(roots, ruta[0]) : "#999";
+  var cats = props.cats, ruta = props.ruta, setRuta = props.setRuta, colores = props.colores || { cats: {}, platos: {} };
+  var hijos = hijosDe(cats, ruta), nodo = ruta.join(NIV);
+  // El color de un nivel: el que se le eligió o, si no, uno de la paleta según su lugar entre los de su mismo nivel.
+  function colorDe(path) {
+    if (colores.cats[path]) return colores.cats[path];
+    var partes = path.split(NIV);
+    return colorCategoria(hijosDe(cats, partes.slice(0, -1)), partes[partes.length - 1]);
+  }
+  var col = ruta.length ? colorDe(nodo) : "#999";
   return (
     <div>
       {ruta.length > 0 && (
@@ -1286,11 +1317,11 @@ function ArbolCarta(props) {
           <span style={{ fontSize:16, fontWeight:800, color:col, flex:1, minWidth:0, wordBreak:"break-word" }}>{ruta.join(" › ")}</span>
         </div>
       )}
-      {ruta.length > 0 && props.extra && props.extra(nodo)}
+      {ruta.length > 0 && props.extra && props.extra(nodo, col)}
       {hijos.length > 0 && (
         <div style={{ marginBottom:12 }}>
           {ruta.length > 0 && <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>Subcategorías</div>}
-          <VentanasCategorias categorias={hijos} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
+          <VentanasCategorias categorias={hijos} colorDe={function(nom) { return colorDe(nodo ? nodo + NIV + nom : nom); }} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
         </div>
       )}
       {ruta.length > 0 && cats.indexOf(nodo) >= 0 && props.renderPlatos(nodo, col)}
@@ -1299,7 +1330,7 @@ function ArbolCarta(props) {
 }
 
 function CartaConsulta(props) {
-  var localId = props.localId, color = props.color, carta = props.carta;
+  var localId = props.localId, color = props.color, carta = props.carta, colores = props.colores || { cats: {}, platos: {} };
   var [buscar, setBuscar] = useState("");
   var [ruta, setRuta] = useState([]);
   var delLocal = carta.filter(function(x) { return x.local === localId; });
@@ -1318,7 +1349,7 @@ function CartaConsulta(props) {
     return (
       <div key={cat} style={{ marginBottom:14 }}>
         {conTitulo && <div style={{ fontSize:11, fontWeight:800, color:col, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>}
-        <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} />; })}</RejillaPlatos>
+        <RejillaPlatos>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, colores)} />; })}</RejillaPlatos>
       </div>
     );
   }
@@ -1328,7 +1359,7 @@ function CartaConsulta(props) {
       {delLocal.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#666", fontSize:13 }}>Este local todavía no tiene carta cargada.</div>}
       {q && categorias.map(function(cat) { return bloque(cat, true); })}
       {!q && delLocal.length > 0 && (
-        <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+        <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta} colores={colores}
           contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo) && x.activo !== false; }).length; }}
           renderPlatos={function(nodo) { return bloque(nodo, false); }} />
       )}
@@ -1340,6 +1371,13 @@ function Carta(props) {
   var localId = props.localId, local = props.local, color = props.color;
   var carta = props.carta, setCarta = props.setCarta, cargarCarta = props.cargarCarta;
   var p = { menuStock: props.menuStock };
+  var colores = props.colores || { cats: {}, platos: {} }, setColores = props.setColores || function() {};
+  // Elegir (o quitar) el color de una categoría (por camino) o de un plato (por id).
+  function ponerColor(tipo, clave, color) {
+    var nuevo = { cats: { ...colores.cats }, platos: { ...colores.platos } };
+    if (color) nuevo[tipo][clave] = color; else delete nuevo[tipo][clave];
+    setColores(nuevo); sbGuardarColoresCarta(localId, nuevo);
+  }
 
     var [nuevoPlato, setNuevoPlato] = useState({});
     var [nuevaCat, setNuevaCat] = useState("");
@@ -1400,6 +1438,8 @@ function Carta(props) {
       if (categorias.some(function(c) { return dentroDe(c, nuevoNodo); })) { alert("Ya existe «" + nuevo + "» en ese lugar. Para juntarlas, movés los platos de una a la otra."); return; }
       var cambiados = delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).map(function(x) { return { ...x, categoria:nuevoNodo + x.categoria.slice(nodo.length) }; });
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && dentroDe(y.categoria, nodo)); }).concat(cambiados); });
+      var remap = {}; Object.keys(colores.cats).forEach(function(k) { remap[dentroDe(k, nodo) ? nuevoNodo + k.slice(nodo.length) : k] = colores.cats[k]; });
+      if (JSON.stringify(remap) !== JSON.stringify(colores.cats)) { var nc = { cats: remap, platos: colores.platos }; setColores(nc); sbGuardarColoresCarta(localId, nc); }
       if (ruta.join(NIV) === nodo || ruta.join(NIV).indexOf(nodo + NIV) === 0) setRuta(nuevoNodo.split(NIV).concat(ruta.slice(partes.length)));
       sbSaveCartaMuchos(cambiados).then(function(err) { if (err) { alert("No se pudo cambiar el nombre:\n\n" + String(err).slice(0, 200)); cargarCarta(); } });
     }
@@ -1518,6 +1558,12 @@ function Carta(props) {
                         }}
                         placeholder="0" inputMode="decimal"
                         style={{ ...INP, width:88, flex:"none", textAlign:"right", fontSize:13, padding:"5px 8px", border:"1px solid "+(faltaPrecio?"#D4A01744":"#2A2A2A") }} />
+                      <button onClick={function() {
+                          var cur = colores.platos[x.id], idx = cur ? COLORES_CATEGORIA.indexOf(cur) : -1;
+                          ponerColor("platos", x.id, idx + 1 < COLORES_CATEGORIA.length ? COLORES_CATEGORIA[idx + 1] : null);
+                        }}
+                        title="Color de la ventana de este plato (tocá para cambiarlo)"
+                        style={{ width:22, height:22, borderRadius:11, border:"2px solid #2A2A2A", background: colores.platos[x.id] || "transparent", cursor:"pointer", padding:0, flex:"none" }} />
                       <button onClick={function() { guardarPlato({ ...x, activo:x.activo===false }); }}
                         title={x.activo===false ? "Está fuera de la carta — tocar para volver a ofrecerlo" : "Sacar de la carta por un tiempo"}
                         style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:x.activo===false?"#555":"#3A7D44", fontSize:11, cursor:"pointer" }}>
@@ -1615,15 +1661,22 @@ function Carta(props) {
             </div>
           </div>
         ) : (
-          <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+          <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta} colores={colores}
             contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
-            extra={function(nodo) {
+            extra={function(nodo, colNodo) {
               return (
+                <div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", alignItems:"center", marginBottom:10 }}>
+                  <span style={{ fontSize:11, color:"#888", marginRight:2 }}>🎨 Color:</span>
+                  {COLORES_CATEGORIA.map(function(c) { return <button key={c} onClick={function() { ponerColor("cats", nodo, c); }} title="Pintar este nivel de este color" style={{ width:24, height:24, borderRadius:12, background:c, border: colNodo === c ? "3px solid #fff" : "2px solid #0D0D0D", cursor:"pointer", padding:0 }} />; })}
+                  <button onClick={function() { ponerColor("cats", nodo, null); }} style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>automático</button>
+                </div>
                 <div style={{ display:"flex", gap:7, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
                   <button onClick={function() { renombrarCat(nodo); }} title="Cambiarle el nombre" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
                   <button onClick={function() { borrarCat(nodo); }} title="Borrar este nivel con todo lo que tiene adentro" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️ Borrar</button>
                   <input value={nuevaSub} onChange={function(e) { setNuevaSub(e.target.value); }} placeholder="Subcategoría nueva…" style={{ ...INP, fontSize:12, padding:"6px 9px", width:170, flex:"none" }} />
                   <button onClick={function() { crearSub(nodo); }} disabled={!nuevaSub.trim()} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:nuevaSub.trim() ? color : "#1A1A1A", color:nuevaSub.trim() ? "#fff" : "#444", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Subcategoría</button>
+                </div>
                 </div>
               );
             }}
@@ -1909,6 +1962,8 @@ export default function PanelComandas(p) {
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
+  var [coloresCarta, setColoresCarta] = useState({ cats: {}, platos: {} });
+  useEffect(function() { sbLeerColoresCarta(localId).then(setColoresCarta); }, [localId, practica]);
   function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
 
   useEffect(function() {
@@ -2269,6 +2324,7 @@ export default function PanelComandas(p) {
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
           entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
+          colores={coloresCarta}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (
@@ -2280,8 +2336,8 @@ export default function PanelComandas(p) {
         <InformeTurno localId={localId} color={color} mesas={mesas} diaDeNegocio={fechaNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
       ) : vista === "carta" ? (
         (p.soloServicio && !p.puedeEditarCarta)
-          ? <CartaConsulta localId={localId} color={color} carta={carta} />
-          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
+          ? <CartaConsulta localId={localId} color={color} carta={carta} colores={coloresCarta} />
+          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} colores={coloresCarta} setColores={setColoresCarta} />
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>

@@ -740,7 +740,8 @@ export function PanelCocina(props) {
   var vistosRef = useRef(vistos); vistosRef.current = vistos;
   var ctxRef = useRef(null);
   var conocidos = useRef(null);      // tickets que ya estaban en la lectura anterior
-  var pasados = useRef({});          // tickets que ya avisaron que pasaron los 15 minutos
+  var pasados = useRef({});
+  var alertasRef = useRef(null);   // avisos de cambio ya conocidos: uno nuevo hace sonar la tablet          // tickets que ya avisaron que pasaron los 15 minutos
   var local = getLocal(localId);
   var LIMITE = 15;                   // minutos: pasado este tiempo el ticket avisa en rojo
 
@@ -827,6 +828,9 @@ export function PanelCocina(props) {
           return String(a.desde).localeCompare(String(b.desde));
         });
         var tandasLista = lista; lista = unidas;
+        var clavesAv = {}; unidas.forEach(function(t) { t.quitados.forEach(function(i) { clavesAv["q|" + i.id] = 1; }); t.cambios.forEach(function(l) { clavesAv[claveCambio(l)] = 1; }); });
+        if (alertasRef.current && sonidoRef.current && Object.keys(clavesAv).some(function(k) { return !alertasRef.current[k]; })) pitar(300, 3);
+        alertasRef.current = clavesAv;
         var np = {}; tandasLista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
         setTickets(lista);
         // Lo que la cocina ya le entregó al mozo o al cajero hoy (aunque la cuenta ya esté cobrada), el más reciente primero.
@@ -847,7 +851,7 @@ export function PanelCocina(props) {
     }).catch(function() { setCargado(true); });
   }
   useEffect(function() {
-    conocidos.current = null; pasados.current = {}; setCargado(false);
+    conocidos.current = null; pasados.current = {}; alertasRef.current = null; setCargado(false);
     var vivo = true;
     cargar();
     var t = setInterval(function() { if (vivo) cargar(); }, 5000);
@@ -981,7 +985,10 @@ export function PanelCocina(props) {
                 {hayAlerta && (
                   <div style={{ background:"#E0452E", color:"#fff", borderRadius:9, padding:"9px 11px", animation:"nktPulso 1.1s infinite" }}>
                     <div style={{ fontSize:15, fontWeight:900, letterSpacing:0.5 }}>⚠️ CAMBIO EN ESTE PEDIDO</div>
-                    {g.quitados.map(function(i) { return <div key={i.id} style={{ fontSize:14, fontWeight:700, marginTop:3 }}>QUITARON: {Number(i.cant) || 1}× {i.nombre}{i.nota ? " — " + i.nota : ""}</div>; })}
+                    {g.quitados.map(function(i) {
+                      var cm = /^cambio por (.+)$/.exec(i.nota || "");
+                      return <div key={i.id} style={{ fontSize:15, fontWeight:800, marginTop:3 }}>{cm ? "🔄 CAMBIARON: " + (Number(i.cant) || 1) + "× " + i.nombre + " → " + cm[1] : "QUITARON: " + (Number(i.cant) || 1) + "× " + i.nombre + (i.nota ? " — " + i.nota : "")}</div>;
+                    })}
                     {cambios.map(function(l) { return <div key={claveCambio(l)} style={{ fontSize:14, fontWeight:700, marginTop:3 }}>{l.accion.toUpperCase()}: {l.detalle}</div>; })}
                     <button onClick={function() { g.quitados.forEach(function(i) { marcarVisto("q|" + i.id); }); cambios.forEach(function(l) { marcarVisto(claveCambio(l)); }); }}
                       style={{ marginTop:8, width:"100%", padding:"9px", borderRadius:8, border:"2px solid #fff", background:"transparent", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✓ VISTO</button>
@@ -1359,6 +1366,29 @@ function ElegirMozo(props) {
   );
 }
 
+// Cambiar un producto ya mandado por otro: se elige el nuevo de la carta (con las mismas ventanas de colores).
+function VentanaCambiar(props) {
+  var [ruta, setRuta] = useState([]);
+  var cats = props.cats, delLocal = props.delLocal, colores = props.colores;
+  var [q, setQ] = useState("");
+  var qq = q.trim().toLowerCase();
+  var platos = delLocal.filter(function(x) { return qq ? String(x.nombre).toLowerCase().indexOf(qq) !== -1 : x.categoria === ruta.join(NIV); });
+  function lista(arr) {
+    return <RejillaPlatos alto={380}>{arr.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, colores)} onClick={function() { props.onElegir(x); }} />; })}</RejillaPlatos>;
+  }
+  return (
+    <Ventana titulo={"🔄 Cambiar «" + props.item.nombre + "»"} onCerrar={props.onCerrar}>
+      <div style={{ fontSize:12, color:"#9A9A9A", marginBottom:8, lineHeight:1.5 }}>Elegí lo que va en su lugar. Se manda a la cocina de una vez y ella ve el aviso del cambio.</div>
+      <input value={q} onChange={function(e) { setQ(e.target.value); }} placeholder="Buscar…" style={{ ...INP, fontSize:12, marginBottom:10 }} />
+      {qq ? lista(platos) : (
+        <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta} colores={colores}
+          contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
+          renderPlatos={function() { return lista(platos); }} />
+      )}
+    </Ventana>
+  );
+}
+
 function PlatoParaAgregar(props) {
   var x = props.x;
   return (
@@ -1374,6 +1404,7 @@ function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
   var [historial, setHistorial] = useState(null);   // null = cerrado; lista = abierto
+  var [cambiando, setCambiando] = useState(null);   // el producto ya mandado que se está cambiando por otro
   var [ruta, setRuta] = useState([]);   // por qué niveles de la carta se va navegando
   var [busqueda, setBusqueda] = useState("");
   var [notaDe, setNotaDe] = useState(null);
@@ -1439,6 +1470,19 @@ function ComandaDetalle(props) {
       { ...i, cant:n - sacar },
       { ...i, id:"it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7), cant:sacar, estado:"cancelado", nota:notaQ },
     ]);
+  }
+  // Cambio de un producto ya mandado: el viejo se tacha con «cambio por …» y el nuevo entra marchado en la misma tanda, con la aclaración
+  // «reemplaza a …»; la cocina ve un solo aviso rojo («CAMBIARON: A → B») y no depende de que el mozo se acuerde de marchar.
+  function cambiarPor(i, plato) {
+    var ahora = new Date().toISOString();
+    var nuevo = {
+      id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      comanda_id: c.id, nombre: plato.nombre, cant: Number(i.cant) || 1, precio: plato.precio,
+      nota: "🔄 reemplaza a " + i.nombre, estado: "enviado", ronda: i.ronda, enviado_at: ahora, entregado_at: null,
+      usuario: props.usuario || "", created_at: ahora,
+    };
+    props.onGuardarItems([{ ...i, estado: "cancelado", nota: "cambio por " + plato.nombre }, nuevo]);
+    setCambiando(null);
   }
   function mandar() {
     if (!pendientes.length) return;
@@ -1643,6 +1687,7 @@ function ComandaDetalle(props) {
                     {i.nota && <div style={{ fontSize:11, color:"#D4A017" }}>▸ {i.nota}</div>}
                   </div>
                   {PrecioItem({ i:i, chico:true })}
+                  {i.estado === "enviado" && <button onClick={function() { setCambiando(i); }} title="Cambiar por otro producto" style={{ background:"none", border:"1px solid #D4A01766", borderRadius:6, padding:"3px 8px", color:"#D4A017", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>🔄 cambiar</button>}
                   <button onClick={function() {
                       // enviado/listo → entregado a la mesa; si ya estaba entregado, vuelve a «listo» (la cocina ya lo había despachado).
                       props.onGuardarItems([{ ...i, estado: listo ? "listo" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
@@ -1673,6 +1718,7 @@ function ComandaDetalle(props) {
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
       {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
+      {cambiando && <VentanaCambiar item={cambiando} cats={cats} delLocal={delLocal} colores={props.colores} onElegir={function(pl) { cambiarPor(cambiando, pl); }} onCerrar={function() { setCambiando(null); }} />}
       {ventana === "descuento" && <VentanaDescuento subtotal={subtotal} descuento={extra.descuento} onCerrar={function() { setVentana(null); }} onGuardar={function(d) { var e = { ...extra }; if (d) e.descuento = { ...d, por:props.usuario || "" }; else delete e.descuento; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
       {ventana === "factura" && <VentanaFactura factura={extra.factura} onCerrar={function() { setVentana(null); }} onGuardar={function(f) { var e = { ...extra }; if (f) e.factura = f; else delete e.factura; if (props.onExtra) props.onExtra(e); setVentana(null); }} />}
     </div>
@@ -2497,10 +2543,11 @@ export default function PanelComandas(p) {
     filas.forEach(function(f) {
       var prev = items.find(function(x) { return x.id === f.id; });
       var det = (Number(f.cant) || 1) + "x " + f.nombre, acc = null;
-      if (!prev) { acc = f.estado === "cancelado" ? "Quitó de la cuenta" : "Agregó a la cuenta"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; }
+      if (!prev) { acc = f.estado === "cancelado" ? "Quitó de la cuenta" : "Agregó a la cuenta"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; if (String(f.nota || "").indexOf("🔄 reemplaza a ") === 0) acc = null; }
       else if (prev.estado !== f.estado) {
         acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : prev.estado === "listo" ? "Volvió a la cocina" : "Marchó a la cocina") : f.estado === "listo" ? (prev.estado === "entregado" ? "Desmarcó la entrega a la mesa" : "Cocina dejó listo") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó de la cuenta" : "Volvió a pendiente";
         if (f.estado === "cancelado" && f.nota) det += " — " + f.nota;
+        if (f.estado === "cancelado" && String(f.nota || "").indexOf("cambio por ") === 0) { acc = "Cambió un producto"; det = (Number(f.cant) || 1) + "x " + f.nombre + " → " + String(f.nota).slice(11); }
       }
       else if (Number(prev.cant) !== Number(f.cant)) { acc = "Cambió la cantidad"; det = f.nombre + ": " + prev.cant + " → " + f.cant; }
       else if (Number(prev.precio) !== Number(f.precio)) { acc = "Puso precio"; det = f.nombre + ": " + pesos(f.precio); }

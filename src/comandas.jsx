@@ -473,10 +473,31 @@ function minutosDesde(iso) {
 }
 // Verde hasta 10, amarillo hasta 20, rojo después. Son los tiempos con los que se
 // mira una cocina: a los veinte minutos sin salir, alguien tiene que ir a ver.
-function colorDemora(min) {
+// El límite lo elige administración (por defecto 15): verde hasta dos tercios del límite, amarillo hasta el límite y rojo desde ahí.
+var LIMITE_DEFECTO = 15;
+function colorDemora(min, limite) {
   if (min === null) return "#555";
-  return min < 10 ? "#3A7D44" : min < 20 ? "#D4A017" : "#C1440E";
+  var L = limite || LIMITE_DEFECTO;
+  return min >= L ? "#C1440E" : min >= Math.round(L * 2 / 3) ? "#D4A017" : "#3A7D44";
 }
+// Tiempo de aviso por local, que se elige en administración. Va en pautas (ámbito "comandas_config"), sin cambios de base.
+async function sbLeerConfigCom() {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq.ccfg&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
+    return { limites: (o && o.limites) || {} };
+  } catch(e) { return { limites: {} }; }
+}
+async function sbGuardarConfigCom(cfg) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"ccfg", ambito:"comandas_config", texto:JSON.stringify(cfg), usuario:"", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[localId]); return n > 0 ? n : LIMITE_DEFECTO; }
 // La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
 // color de la mesa: si hay tres rondas, la que importa es la que más espera.
 function demoraDe(itemsComanda) {
@@ -743,7 +764,9 @@ export function PanelCocina(props) {
   var pasados = useRef({});
   var alertasRef = useRef(null);   // avisos de cambio ya conocidos: uno nuevo hace sonar la tablet          // tickets que ya avisaron que pasaron los 15 minutos
   var local = getLocal(localId);
-  var LIMITE = 15;                   // minutos: pasado este tiempo el ticket avisa en rojo
+  var [limite, setLimite] = useState(LIMITE_DEFECTO);   // minutos: pasado este tiempo el ticket avisa en rojo (lo elige administración)
+  var limiteRef = useRef(LIMITE_DEFECTO);
+  var LIMITE = limite;
 
   function pitar(freq, veces) {
     try {
@@ -762,7 +785,8 @@ export function PanelCocina(props) {
   function inicioDia() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); d.setHours(6, 0, 0, 0); return d.toISOString(); }
   function cargar() {
     var desde = inicioDia();
-    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbLeerListosDesde(desde), sbLeerLogDesde(localId, desde)]).then(function(r) {
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbLeerListosDesde(desde), sbLeerLogDesde(localId, desde), sbLeerConfigCom()]).then(function(r) {
+      var lim = limiteDe(r[6], localId); limiteRef.current = lim; setLimite(lim);
       var coms = r[0].filter(function(c) { return c.local === localId; });
       var mesas = r[1], entregasP = r[2], extras = r[3], listos = r[4], log = r[5];
       var recs = Object.keys(listos).map(function(k) { return listos[k]; }).filter(function(x) { return !x.local || x.local === localId; });
@@ -811,7 +835,7 @@ export function PanelCocina(props) {
         // Sonidos: ticket nuevo, y ticket que recién pasó los 15 minutos. La primera lectura no suena.
         if (conocidos.current && sonidoRef.current) {
           if (lista.some(function(g) { return !conocidos.current[g.clave]; })) pitar(880, 2);
-          else if (lista.some(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE && !pasados.current[g.clave]; })) pitar(520, 3);
+          else if (lista.some(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= limiteRef.current && !pasados.current[g.clave]; })) pitar(520, 3);
         }
         var cv = {}; lista.forEach(function(g) { cv[g.clave] = 1; }); conocidos.current = cv;
         // Una sola ventana por cuenta: lo que se agrega después a una mesa que ya pidió entra en el mismo ticket, como «agregado».
@@ -831,7 +855,7 @@ export function PanelCocina(props) {
         var clavesAv = {}; unidas.forEach(function(t) { t.quitados.forEach(function(i) { clavesAv["q|" + i.id] = 1; }); t.cambios.forEach(function(l) { clavesAv[claveCambio(l)] = 1; }); });
         if (alertasRef.current && sonidoRef.current && Object.keys(clavesAv).some(function(k) { return !alertasRef.current[k]; })) pitar(300, 3);
         alertasRef.current = clavesAv;
-        var np = {}; tandasLista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= LIMITE) np[g.clave] = 1; }); pasados.current = np;
+        var np = {}; tandasLista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= limiteRef.current) np[g.clave] = 1; }); pasados.current = np;
         setTickets(lista);
         // Lo que la cocina ya le entregó al mozo o al cajero hoy (aunque la cuenta ya esté cobrada), el más reciente primero.
         var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
@@ -995,7 +1019,7 @@ export function PanelCocina(props) {
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(290px, 1fr))", gap:12 }}>
           {tickets.map(function(g) {
             var c = g.comanda, T = CMD_TIPO[c.tipo] || CMD_TIPO.mostrador;
-            var min = minutosDesde(g.desde), col = min === null ? "#3A7D44" : (min >= LIMITE ? "#E0452E" : min >= 10 ? "#D4A017" : "#3A7D44");
+            var min = minutosDesde(g.desde), col = min === null ? "#3A7D44" : (min >= LIMITE ? "#E0452E" : min >= Math.round(LIMITE * 2 / 3) ? "#D4A017" : "#3A7D44");
             var st = c.tipo !== "mesa" ? estadoEntrega(g.entrega, ahora) : null;
             var cambios = (g.cambios || []).filter(function(l) { return vistos.indexOf(claveCambio(l)) < 0; });
             var hayAlerta = cambios.length > 0 || g.quitados.length > 0;
@@ -1684,7 +1708,7 @@ function ComandaDetalle(props) {
       {/* Lo que ya está en la cocina, por tanda */}
       {rondas.map(function(r) {
         var min = r.items.some(function(i) { return i.estado === "enviado"; }) ? minutosDesde(r.enviado_at) : null;
-        var col = min === null ? "#3A7D44" : colorDemora(min);
+        var col = min === null ? "#3A7D44" : colorDemora(min, props.limite);
         var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
         var hayListo = r.items.some(function(i) { return i.estado === "listo"; });   // la cocina ya lo dejó listo: falta llevarlo a la mesa
         return (
@@ -2489,6 +2513,9 @@ export default function PanelComandas(p) {
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
+  var [cfgCom, setCfgCom] = useState({ limites: {} });
+  useEffect(function() { sbLeerConfigCom().then(setCfgCom); }, [practica]);
+  var limite = limiteDe(cfgCom, localId);   // minutos: pasado este tiempo la mesa y el pedido avisan en rojo
   var [coloresCarta, setColoresCarta] = useState({ cats: {}, platos: {} });
   useEffect(function() { sbLeerColoresCarta(localId).then(setColoresCarta); }, [localId, practica]);
   function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
@@ -2718,7 +2745,7 @@ export default function PanelComandas(p) {
     // es un problema, y una con una tanda de hace media hora sí. Por eso mientras no
     // haya nada en cocina va en el color del local, y cuando hay, en el de la demora.
     var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) : null;
-    var col = demora === null ? color : colorDemora(demora);
+    var col = demora === null ? color : colorDemora(demora, limite);
     return (
       <button onClick={function() { ocupada ? setAbiertaId(c.id) : abrirMesa(m); }}
         title={ocupada ? "Abierta hace " + hace(c.abierta_at) : "Tocar para abrir"}
@@ -2734,7 +2761,7 @@ export default function PanelComandas(p) {
             y el nombre largo se achica para no desbordar la tarjeta. */}
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
-        {ocupada && demora !== null && demora >= 15 && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +15 min</div>}
+        {ocupada && demora !== null && demora >= limite && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +{limite} min</div>}
         {ocupada && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
         {ocupada ? (
           <>
@@ -2789,16 +2816,32 @@ export default function PanelComandas(p) {
         {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
         <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante</button>
       </div>
+      {!p.soloServicio && (
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
+          <span style={{ fontSize:12, color:"#C8C8C8" }}>⏱ Avisar cuando un pedido lleve más de</span>
+          <select value={limite} onChange={function(e) {
+              var n = parseInt(e.target.value, 10);
+              var nuevo = { ...cfgCom, limites: { ...cfgCom.limites, [localId]: n } };
+              setCfgCom(nuevo);
+              sbGuardarConfigCom(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar el tiempo de aviso."); });
+            }}
+            style={{ ...INP, width:"auto", padding:"6px 8px", fontSize:13, fontWeight:800 }}>
+            {[5, 10, 15, 20, 25, 30, 40, 45, 60].concat([limite]).filter(function(v, i, a2) { return a2.indexOf(v) === i; }).sort(function(x, y) { return x - y; }).map(function(v) { return <option key={v} value={v}>{v} min</option>; })}
+          </select>
+          <span style={{ fontSize:12, color:"#C8C8C8" }}>en la cocina · {local ? local.nombre : ""}</span>
+          <span style={{ fontSize:10.5, color:"#6A6A6A", flex:"1 1 100%" }}>Cuenta en las mesas, en la franja roja de aviso y en la pantalla de cocina (donde también suena si el sonido está activado). Cada local tiene el suyo.</span>
+        </div>
+      )}
       {faltante && <VentanaFaltante prueba={pruebaVivo} color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
         onCerrar={function() { setFaltante(false); }}
         onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
       {(function() {
-        // Pedidos que llevan más de 15 minutos en la cocina: aviso para el mozo y el cajero.
-        var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) }; }).filter(function(x) { return x.min !== null && x.min >= 15; });
+        // Pedidos que llevan más del tiempo elegido en la cocina: aviso para el mozo y el cajero.
+        var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) }; }).filter(function(x) { return x.min !== null && x.min >= limite; });
         if (!tarde.length) return null;
         return (
           <div style={{ background:"#E0452E", color:"#fff", borderRadius:10, padding:"10px 12px", marginBottom:10, animation:"nktPulso 1.3s infinite" }}>
-            <div style={{ fontSize:14, fontWeight:900 }}>⏰ {tarde.length === 1 ? "1 pedido lleva" : tarde.length + " pedidos llevan"} más de 15 minutos en la cocina</div>
+            <div style={{ fontSize:14, fontWeight:900 }}>⏰ {tarde.length === 1 ? "1 pedido lleva" : tarde.length + " pedidos llevan"} más de {limite} minutos en la cocina</div>
             <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{tarde.map(function(x) { return tituloDe(x.c) + " (" + x.min + " min)"; }).join(" · ")}</div>
           </div>
         );
@@ -2896,7 +2939,7 @@ export default function PanelComandas(p) {
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
           entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
-          colores={coloresCarta}
+          colores={coloresCarta} limite={limite}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (

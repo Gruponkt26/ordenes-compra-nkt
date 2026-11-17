@@ -497,6 +497,13 @@ async function sbGuardarConfigCom(cfg) {
     return r.ok;
   } catch(e) { return false; }
 }
+// Cuánto se retrasó una mesa o pedido pasado el tiempo límite, en tres niveles: leve (hasta 5 min de más), medio (hasta 10) y grave (más de 10).
+function nivelRetraso(minutos, limite) {
+  var extra = Math.round(minutos - limite);
+  if (!(extra > 0)) return null;
+  var n = extra <= 5 ? { id:"leve", txt:"LEVE", col:"#F0A030" } : extra <= 10 ? { id:"medio", txt:"MEDIO", col:"#E0652E" } : { id:"grave", txt:"GRAVE", col:"#C1121F" };
+  return { ...n, extra:extra };
+}
 function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[localId]); return n > 0 ? n : LIMITE_DEFECTO; }
 // La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
 // color de la mesa: si hay tres rondas, la que importa es la que más espera.
@@ -940,7 +947,7 @@ export function PanelCocina(props) {
   var demorados = lista15.length;
   // Mientras haya pedidos pasados de 15 minutos: el título de la pestaña avisa, y con el sonido activado se repite cada minuto (y vibra, si la tablet puede).
   useEffect(function() {
-    try { document.title = demorados > 0 ? "⏰ " + demorados + " demorado" + (demorados === 1 ? "" : "s") + " · Cocina" : "GrupoNkt"; } catch(e) {}
+    try { document.title = demorados > 0 ? "🔥 ¡APURAR! " + demorados + " · Cocina" : "GrupoNkt"; } catch(e) {}
   }, [demorados]);
   useEffect(function() {
     if (!demorados) return;
@@ -961,16 +968,20 @@ export function PanelCocina(props) {
     <div>
       <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
       {lista15.length > 0 && (
-        <div style={{ background:"#E0452E", color:"#fff", borderRadius:12, padding:"12px 14px", marginBottom:12, animation:"nktPulso 1.2s infinite" }}>
-          <div style={{ fontSize:18, fontWeight:900, letterSpacing:0.5 }}>⏰ {lista15.length === 1 ? "UN PEDIDO LLEVA" : lista15.length + " PEDIDOS LLEVAN"} MÁS DE {LIMITE} MINUTOS</div>
-          <div style={{ fontSize:15, fontWeight:700, marginTop:3 }}>{lista15.map(function(g) { return g.titulo + " (" + minutosDesde(g.desde) + " min)"; }).join(" · ")}</div>
-          {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
+        <div>
+          <div style={{ position:"fixed", inset:0, border:"10px solid #E0452E", pointerEvents:"none", zIndex:700, animation:"nktPulso 1s infinite" }} />
+          <div style={{ background:"#E0452E", color:"#fff", borderRadius:14, padding:"16px 18px", marginBottom:14, animation:"nktPulso 1s infinite" }}>
+            <div style={{ fontSize:34, fontWeight:900, letterSpacing:1, lineHeight:1.1 }}>🔥 ¡APURAR!</div>
+            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { var m = minutosDesde(g.desde), nv = nivelRetraso(m, LIMITE); return g.titulo + " · " + m + " min" + (nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : ""); }).join("   |   ")}</div>
+            <div style={{ fontSize:13, fontWeight:700, marginTop:5, opacity:0.95 }}>{lista15.length === 1 ? "Este pedido lleva" : "Estos pedidos llevan"} más de {LIMITE} minutos.</div>
+            {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
+          </div>
         </div>
       )}
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
         {pestanaBtn("pend", "🍳 Pendientes (" + tickets.length + ")")}
         {pestanaBtn("entregadas", "✅ Entregadas hoy (" + entregadas.length + ")")}
-        {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>⏰ {demorados} con más de {LIMITE} min</span>}
+        {demorados > 0 && <span style={{ alignSelf:"center", background:"#E0452E", color:"#fff", borderRadius:8, padding:"6px 12px", fontSize:13, fontWeight:900, animation:"nktPulso 1.2s infinite" }}>🔥 {demorados} para apurar</span>}
       </div>
       {!cargado ? (
         <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
@@ -994,7 +1005,7 @@ export function PanelCocina(props) {
                     </div>
                     <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                       <div style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>✅ al {quien} {horaSeg(g.listo).slice(0, 5)}</div>
-                      <div style={{ fontSize:11, color: tardo !== null && tardo >= LIMITE ? "#E0452E" : "#777", fontWeight: tardo !== null && tardo >= LIMITE ? 800 : 400 }}>{tardo === null ? "" : "la cocina tardó " + tardo + " min"}</div>
+                      <div style={{ fontSize:11, color: tardo !== null && tardo >= LIMITE ? "#E0452E" : "#777", fontWeight: tardo !== null && tardo >= LIMITE ? 800 : 400 }}>{tardo === null ? "" : "la cocina tardó " + tardo + " min" + (nivelRetraso(tardo, LIMITE) ? " · +" + nivelRetraso(tardo, LIMITE).extra + " de retraso (" + nivelRetraso(tardo, LIMITE).txt.toLowerCase() + ")" : "")}</div>
                     </div>
                   </div>
                   <div style={{ fontSize:12, fontWeight:700, color: g.enMesa ? "#8FD19A" : "#D4A017", background: g.enMesa ? "#3A7D4422" : "#D4A01722", borderRadius:7, padding:"4px 9px" }}>
@@ -1038,7 +1049,7 @@ export function PanelCocina(props) {
                       style={{ marginTop:8, width:"100%", padding:"9px", borderRadius:8, border:"2px solid #fff", background:"transparent", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✓ VISTO</button>
                   </div>
                 )}
-                {tarde && <div style={{ background:"#E0452E22", border:"1px solid #E0452E", color:"#FF8A70", borderRadius:8, padding:"5px 10px", fontSize:14, fontWeight:900, animation:"nktPulso 1.4s infinite" }}>⏰ DEMORADO: {min} min (pasó los {LIMITE})</div>}
+                {tarde && (function() { var nv = nivelRetraso(min, LIMITE); return <div style={{ background: nv ? nv.col : "#E0452E", color:"#fff", borderRadius:9, padding:"8px 12px", animation:"nktPulso 1s infinite" }}><div style={{ fontSize:24, fontWeight:900, letterSpacing:0.5 }}>🔥 ¡APURAR! · {min} min</div>{nv && <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>+{nv.extra} min de retraso · {nv.txt}</div>}</div>; })()}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
@@ -1185,7 +1196,8 @@ function InformeTurno(props) {
       var log = await sbLeerLogDia(localId, fecha);
       var ent = await sbLeerEntregas(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var listos = await sbLeerListosDesde(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos });
+      var cfgC = await sbLeerConfigCom();
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -1225,6 +1237,25 @@ function InformeTurno(props) {
     var aMesaMin = itemsT.filter(function(i) { return i.estado === "entregado" && i.entregado_at && listoDe(i); }).map(function(i) { return (new Date(i.entregado_at) - new Date(listoDe(i))) / 60000; }).filter(function(m) { return m >= 0 && m < 240; });
     var aMesaProm = aMesaMin.length ? aMesaMin.reduce(function(a, m) { return a + m; }, 0) / aMesaMin.length : null;
     var cocProm = cocina.length ? cocina.reduce(function(a, x) { return a + x.min; }, 0) / cocina.length : null;
+    // Retrasos de cocina: cada entrega de la cocina (mesa o pedido) que tardó más del tiempo límite, clasificada por cuánto se pasó.
+    var limiteK = limiteDe(datos.cfg, localId);
+    var retrasos = [], totalEntregas = 0;
+    Object.keys(listos).forEach(function(k) {
+      var rec = listos[k];
+      if (!ids[rec.comanda_id]) return;
+      var delTanda = itemsT.filter(function(i) { return i.comanda_id === rec.comanda_id && (i.ronda || 0) === (rec.ronda || 0) && i.enviado_at; });
+      if (!delTanda.length) return;
+      var desde = delTanda.reduce(function(a, i) { return i.enviado_at < a ? i.enviado_at : a; }, delTanda[0].enviado_at);
+      var min = (new Date(rec.listo_at) - new Date(desde)) / 60000;
+      if (!(min >= 0 && min < 240)) return;
+      totalEntregas++;
+      var nv = nivelRetraso(min, limiteK);
+      var fila = filas.find(function(f) { return f.c.id === rec.comanda_id; });
+      if (nv) retrasos.push({ nombre: fila ? fila.nombre : rec.comanda_id, ronda: rec.ronda || 0, min: Math.round(min), nv: nv });
+    });
+    retrasos.sort(function(a, b) { return b.nv.extra - a.nv.extra; });
+    var porNivel = { leve:0, medio:0, grave:0 }; retrasos.forEach(function(r) { porNivel[r.nv.id]++; });
+    var retrasoProm = retrasos.length ? retrasos.reduce(function(a, r) { return a + r.nv.extra; }, 0) / retrasos.length : null;
     var porPlato = {}; cocina.forEach(function(x) { var o = porPlato[x.nombre] || (porPlato[x.nombre] = { n:0, t:0 }); o.n++; o.t += x.min; });
     var lentos = Object.keys(porPlato).map(function(k) { return { nombre:k, prom:porPlato[k].t / porPlato[k].n, n:porPlato[k].n }; }).sort(function(a, b) { return b.prom - a.prom; }).slice(0, 5);
     var quitados = itemsT.filter(function(i) { return i.estado === "cancelado"; });
@@ -1289,6 +1320,29 @@ function InformeTurno(props) {
             </>
           )}
           {quitados.length > 0 && <div style={{ fontSize:11, color:"#D4A017", marginTop:8 }}>🗑 Quitado de las cuentas: {quitados.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} ({quitados.slice(0, 6).map(function(i) { return i.nombre + (i.nota ? " — " + i.nota : ""); }).join("; ")}{quitados.length > 6 ? "…" : ""})</div>}
+        </div>
+
+        <div style={{ ...card, borderColor: retrasos.length ? "#E0652E66" : "#1E1E1E" }}>
+          <div style={h}>⏰ Retrasos de cocina (más de {limiteK} min)</div>
+          {totalEntregas === 0 ? <div style={{ fontSize:12, color:"#555" }}>Todavía no hay entregas de la cocina registradas en este turno.</div> : retrasos.length === 0 ? (
+            <div style={{ fontSize:13, color:"#8FD19A" }}>✅ Ninguna entrega pasó de los {limiteK} minutos ({totalEntregas} entregas).</div>
+          ) : (
+            <div>
+              <div style={{ fontSize:13, color:"#DDD", marginBottom:8 }}><b style={{ color:"#F0EDE8" }}>{retrasos.length}</b> de {totalEntregas} entregas se pasaron del límite · retraso promedio <b style={{ color:"#F0EDE8" }}>+{Math.round(retrasoProm)} min</b></div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+                {[["leve", "#F0A030", "Leve (hasta +5)"], ["medio", "#E0652E", "Medio (+6 a +10)"], ["grave", "#C1121F", "Grave (más de +10)"]].map(function(x) {
+                  return <span key={x[0]} style={{ background:x[1] + "26", border:"1px solid " + x[1], color:x[1], borderRadius:8, padding:"4px 10px", fontSize:12, fontWeight:800 }}>{x[2]}: {porNivel[x[0]]}</span>;
+                })}
+              </div>
+              {retrasos.map(function(r, i) {
+                return <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
+                  <span style={{ color:"#DDD" }}>{r.nombre}{r.ronda > 1 ? <span style={{ color:"#666" }}> · tanda {r.ronda}</span> : null}</span>
+                  <span style={{ whiteSpace:"nowrap" }}><span style={{ color:"#999" }}>{r.min} min · </span><b style={{ color:r.nv.col }}>+{r.nv.extra} min · {r.nv.txt}</b></span>
+                </div>;
+              })}
+              <div style={{ fontSize:10, color:"#555", marginTop:6 }}>El tiempo de cocina va desde «Marchar» hasta que la cocina lo entrega al mozo o al cajero. El límite se elige en Comandas (administración).</div>
+            </div>
+          )}
         </div>
 
         <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>

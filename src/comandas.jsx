@@ -900,11 +900,22 @@ function ElegirMozo(props) {
   );
 }
 
+function PlatoParaAgregar(props) {
+  var x = props.x;
+  return (
+    <button onClick={function() { props.onAgregar(x); }}
+      style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, padding:"9px 11px", borderRadius:8, border:"1px solid #1A1A1A", background:"#111", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:13, cursor:"pointer", textAlign:"left" }}>
+      <span style={{ flex:1, minWidth:0 }}>{x.nombre}</span>
+      <span style={{ color:x.precio ? "#666" : "#D4A017", whiteSpace:"nowrap" }}>{x.precio ? pesos(x.precio) : "sin precio"}</span>
+    </button>
+  );
+}
+
 function ComandaDetalle(props) {
   var c = props.comanda, items = props.items, carta = props.carta, color = props.color;
   var [agregando, setAgregando] = useState(false);
   var [historial, setHistorial] = useState(null);   // null = cerrado; lista = abierto
-  var [categoria, setCategoria] = useState(null);
+  var [ruta, setRuta] = useState([]);   // por qué niveles de la carta se va navegando
   var [busqueda, setBusqueda] = useState("");
   var [notaDe, setNotaDe] = useState(null);
   var [ventana, setVentana] = useState(null);   // opciones de la mesa: "quitar" | "control" | "descuento" | "factura"
@@ -938,7 +949,7 @@ function ComandaDetalle(props) {
   var q = busqueda.trim().toLowerCase();
   var platos = delLocal.filter(function(x) {
     if (q) return String(x.nombre).toLowerCase().indexOf(q) !== -1;
-    return !categoria || x.categoria === categoria;
+    return x.categoria === ruta.join(NIV);
   }).sort(function(a, b) { return (a.orden || 0) - (b.orden || 0); });
 
   function agregar(plato) {
@@ -1122,33 +1133,27 @@ function ComandaDetalle(props) {
             <input value={busqueda} onChange={function(e) { setBusqueda(e.target.value); }} placeholder="Buscar un plato…" style={{ ...INP, fontSize:12 }} />
             <button onClick={function() { setAgregando(false); setBusqueda(""); }} style={{ ...GH, padding:"8px 13px", fontSize:12 }}>Listo</button>
           </div>
-          {!q && !categoria && cats.length > 0 && (
-            <VentanasCategorias categorias={cats} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat && x.activo !== false; }).length; }} onElegir={setCategoria} />
-          )}
-          {!q && categoria && (
-            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, padding:"9px 11px", borderRadius:12, border:"2px solid " + colorCategoria(cats, categoria) + "88", background:colorCategoria(cats, categoria) + "1A" }}>
-              <button onClick={function() { setCategoria(null); }} style={estiloVolver(colorCategoria(cats, categoria))}>← Categorías</button>
-              <span style={{ fontSize:15, fontWeight:800, color:colorCategoria(cats, categoria) }}>{categoria}</span>
-            </div>
-          )}
           {delLocal.length === 0 ? (
             <div style={{ fontSize:12, color:"#8A6055", lineHeight:1.6 }}>
               Este local todavía no tiene carta cargada. Se carga en la pestaña 📖 Carta.
             </div>
-          ) : (!categoria && !q) ? (
-            <div style={{ fontSize:11, color:"#666", marginTop:8 }}>Tocá una categoría para ver sus platos, o buscá uno por el nombre.</div>
-          ) : (
+          ) : q ? (
             <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
-              {platos.map(function(x) {
-                return (
-                  <button key={x.id} onClick={function() { agregar(x); }}
-                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:9, padding:"9px 11px", borderRadius:8, border:"1px solid #1A1A1A", background:"#111", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:12, cursor:"pointer", textAlign:"left" }}>
-                    <span style={{ flex:1, minWidth:0 }}>{x.nombre}</span>
-                    <span style={{ color:x.precio ? "#666" : "#D4A017", whiteSpace:"nowrap" }}>{x.precio ? pesos(x.precio) : "sin precio"}</span>
-                  </button>
-                );
-              })}
+              {platos.map(function(x) { return <PlatoParaAgregar key={x.id} x={x} onAgregar={agregar} />; })}
               {platos.length === 0 && <div style={{ fontSize:11, color:"#444", padding:"6px 0" }}>Nada con ese nombre.</div>}
+            </div>
+          ) : (
+            <div>
+              {ruta.length === 0 && <div style={{ fontSize:11, color:"#666", marginBottom:8 }}>Tocá una categoría para ver lo que hay adentro, o buscá un plato por el nombre.</div>}
+              <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta}
+                contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
+                renderPlatos={function() {
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
+                      {platos.map(function(x) { return <PlatoParaAgregar key={x.id} x={x} onAgregar={agregar} />; })}
+                    </div>
+                  );
+                }} />
             </div>
           )}
         </div>
@@ -1239,10 +1244,48 @@ function VentanasCategorias(props) {
   );
 }
 
+// Niveles de la carta: una categoría puede tener subcategorías, y estas otras, sin límite. El camino se guarda en el mismo campo
+// `categoria` separado con « › » (ej: «Pizzas › Especiales»), así no hace falta ninguna columna nueva y todo lo que ya existía sigue igual.
+var NIV = " › ";
+function hijosDe(cats, ruta) {
+  var pref = ruta.length ? ruta.join(NIV) + NIV : "", out = [];
+  cats.forEach(function(c) {
+    if (c.indexOf(pref) === 0 && c.length > pref.length) { var nom = c.slice(pref.length).split(NIV)[0]; if (out.indexOf(nom) < 0) out.push(nom); }
+  });
+  return out;
+}
+// ¿Esta categoría es `nodo` o está adentro de él?
+function dentroDe(cat, nodo) { return cat === nodo || String(cat).indexOf(nodo + NIV) === 0; }
+// Navega los niveles: ventanas de colores con lo que hay adentro y, si ese nivel tiene platos propios, la lista de platos.
+// props: cats (caminos completos), ruta/setRuta, contar(nodo), renderPlatos(nodo), extra(nodo) (controles propios del nivel).
+function ArbolCarta(props) {
+  var cats = props.cats, ruta = props.ruta, setRuta = props.setRuta;
+  var hijos = hijosDe(cats, ruta), nodo = ruta.join(NIV), roots = hijosDe(cats, []);
+  var col = ruta.length ? colorCategoria(roots, ruta[0]) : "#999";
+  return (
+    <div>
+      {ruta.length > 0 && (
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, padding:"10px 12px", borderRadius:12, border:"2px solid " + col + "88", background:col + "1A", flexWrap:"wrap" }}>
+          <button onClick={function() { setRuta(ruta.slice(0, -1)); }} style={estiloVolver(col)}>← Volver</button>
+          <span style={{ fontSize:16, fontWeight:800, color:col, flex:1, minWidth:0, wordBreak:"break-word" }}>{ruta.join(" › ")}</span>
+        </div>
+      )}
+      {ruta.length > 0 && props.extra && props.extra(nodo)}
+      {hijos.length > 0 && (
+        <div style={{ marginBottom:12 }}>
+          {ruta.length > 0 && <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>Subcategorías</div>}
+          <VentanasCategorias categorias={hijos} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
+        </div>
+      )}
+      {ruta.length > 0 && cats.indexOf(nodo) >= 0 && props.renderPlatos(nodo)}
+    </div>
+  );
+}
+
 function CartaConsulta(props) {
   var localId = props.localId, color = props.color, carta = props.carta;
   var [buscar, setBuscar] = useState("");
-  var [catAbierta, setCatAbierta] = useState(null);
+  var [ruta, setRuta] = useState([]);
   var delLocal = carta.filter(function(x) { return x.local === localId; });
   var q = buscar.trim().toLowerCase();
   var minOrden = {};
@@ -1251,39 +1294,36 @@ function CartaConsulta(props) {
     if (minOrden[x.categoria] === undefined || o < minOrden[x.categoria]) minOrden[x.categoria] = o;
   });
   var categorias = Object.keys(minOrden).sort(function(a, b) { return minOrden[a] !== minOrden[b] ? minOrden[a] - minOrden[b] : a.localeCompare(b); });
+  function bloque(cat, conTitulo) {
+    var platos = delLocal.filter(function(x) { return x.categoria === cat && (!q || String(x.nombre || "").toLowerCase().indexOf(q) !== -1); })
+      .sort(function(a, b) { return (a.orden || 0) - (b.orden || 0) || String(a.nombre).localeCompare(String(b.nombre)); });
+    if (!platos.length) return null;
+    return (
+      <div key={cat} style={{ marginBottom:14 }}>
+        {conTitulo && <div style={{ fontSize:11, fontWeight:800, color:color, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>}
+        {platos.map(function(x) {
+          var fuera = x.activo === false;
+          var sinPrecio = x.precio === null || x.precio === undefined || x.precio === "";
+          return (
+            <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:10, padding:"8px 0", borderTop:"1px solid #161616", opacity:fuera ? 0.45 : 1 }}>
+              <div style={{ fontSize:13.5, color:"#F0EDE8", textDecoration:fuera ? "line-through" : "none" }}>{x.nombre}{fuera && <span style={{ fontSize:10, color:"#E0714A", marginLeft:6 }}>fuera de la carta</span>}</div>
+              <div style={{ fontSize:13.5, fontWeight:800, color:sinPrecio ? "#555" : "#F0EDE8", whiteSpace:"nowrap" }}>{sinPrecio ? "sin precio" : pesos(x.precio)}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div>
       <input value={buscar} onChange={function(e) { setBuscar(e.target.value); }} placeholder="🔎 Buscar un plato…" style={{ ...INP, marginBottom:12 }} />
       {delLocal.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#666", fontSize:13 }}>Este local todavía no tiene carta cargada.</div>}
-      {!q && !catAbierta && delLocal.length > 0 && (
-        <VentanasCategorias categorias={categorias} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat && x.activo !== false; }).length; }} onElegir={setCatAbierta} />
+      {q && categorias.map(function(cat) { return bloque(cat, true); })}
+      {!q && delLocal.length > 0 && (
+        <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+          contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo) && x.activo !== false; }).length; }}
+          renderPlatos={function(nodo) { return bloque(nodo, false); }} />
       )}
-      {!q && catAbierta && (
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, padding:"10px 12px", borderRadius:12, border:"2px solid " + colorCategoria(categorias, catAbierta) + "88", background:colorCategoria(categorias, catAbierta) + "1A" }}>
-          <button onClick={function() { setCatAbierta(null); }} style={estiloVolver(colorCategoria(categorias, catAbierta))}>← Volver</button>
-          <span style={{ fontSize:16, fontWeight:800, color:colorCategoria(categorias, catAbierta) }}>{catAbierta}</span>
-        </div>
-      )}
-      {(q || catAbierta) && categorias.filter(function(cat) { return !catAbierta || q || cat === catAbierta; }).map(function(cat) {
-        var platos = delLocal.filter(function(x) { return x.categoria === cat && (!q || String(x.nombre || "").toLowerCase().indexOf(q) !== -1); })
-          .sort(function(a, b) { return (a.orden || 0) - (b.orden || 0) || String(a.nombre).localeCompare(String(b.nombre)); });
-        if (!platos.length) return null;
-        return (
-          <div key={cat} style={{ marginBottom:14 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:color, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>
-            {platos.map(function(x) {
-              var fuera = x.activo === false;
-              var sinPrecio = x.precio === null || x.precio === undefined || x.precio === "";
-              return (
-                <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:10, padding:"8px 0", borderTop:"1px solid #161616", opacity:fuera ? 0.45 : 1 }}>
-                  <div style={{ fontSize:13.5, color:"#F0EDE8", textDecoration:fuera ? "line-through" : "none" }}>{x.nombre}{fuera && <span style={{ fontSize:10, color:"#E0714A", marginLeft:6 }}>fuera de la carta</span>}</div>
-                  <div style={{ fontSize:13.5, fontWeight:800, color:sinPrecio ? "#555" : "#F0EDE8", whiteSpace:"nowrap" }}>{sinPrecio ? "sin precio" : pesos(x.precio)}</div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -1295,7 +1335,8 @@ function Carta(props) {
 
     var [nuevoPlato, setNuevoPlato] = useState({});
     var [nuevaCat, setNuevaCat] = useState("");
-    var [catAbierta, setCatAbierta] = useState(null);   // categoría que se está viendo (null = las ventanas de colores)
+    var [ruta, setRuta] = useState([]);   // por qué niveles de la carta se va navegando (vacío = las ventanas de arriba)
+    var [nuevaSub, setNuevaSub] = useState("");
     var [trayendo, setTrayendo] = useState(false);
 
     var delLocal = carta.filter(function(x) { return x.local === localId; });
@@ -1340,23 +1381,36 @@ function Carta(props) {
       sbDeleteCarta(x.id);
     }
     // Categorías: cambiarles el nombre (se les cambia a todos sus platos) o borrarlas enteras, con sus platos.
-    function renombrarCat(cat) {
-      var nuevo = window.prompt("Nuevo nombre para la categoría «" + cat + "»:", cat);
+    // Renombrar o borrar un nivel afecta también a todo lo que tiene adentro (subcategorías y platos).
+    function renombrarCat(nodo) {
+      var partes = nodo.split(NIV), ultimo = partes[partes.length - 1];
+      var nuevo = window.prompt("Nuevo nombre para «" + ultimo + "»:", ultimo);
       if (nuevo === null) return;
-      nuevo = nuevo.trim();
-      if (!nuevo || nuevo === cat) return;
-      if (categorias.indexOf(nuevo) !== -1) { alert("Ya existe una categoría que se llama «" + nuevo + "». Para juntarlas, movés los platos de una a la otra."); return; }
-      var cambiados = delLocal.filter(function(x) { return x.categoria === cat; }).map(function(x) { return { ...x, categoria:nuevo }; });
-      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }).concat(cambiados); });
-      if (catAbierta === cat) setCatAbierta(nuevo);
+      nuevo = nuevo.replace(/ › /g, " - ").trim();
+      if (!nuevo || nuevo === ultimo) return;
+      var nuevoNodo = partes.slice(0, -1).concat([nuevo]).join(NIV);
+      if (categorias.some(function(c) { return dentroDe(c, nuevoNodo); })) { alert("Ya existe «" + nuevo + "» en ese lugar. Para juntarlas, movés los platos de una a la otra."); return; }
+      var cambiados = delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).map(function(x) { return { ...x, categoria:nuevoNodo + x.categoria.slice(nodo.length) }; });
+      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && dentroDe(y.categoria, nodo)); }).concat(cambiados); });
+      if (ruta.join(NIV) === nodo || ruta.join(NIV).indexOf(nodo + NIV) === 0) setRuta(nuevoNodo.split(NIV).concat(ruta.slice(partes.length)));
       sbSaveCartaMuchos(cambiados).then(function(err) { if (err) { alert("No se pudo cambiar el nombre:\n\n" + String(err).slice(0, 200)); cargarCarta(); } });
     }
-    function borrarCat(cat) {
-      var platosCat = delLocal.filter(function(x) { return x.categoria === cat; });
-      if (!window.confirm("¿Borrar la categoría «" + cat + "» con sus " + platosCat.length + " plato" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un plato de lugar, usá la flecha ↪ de cada plato.")) return;
-      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && y.categoria === cat); }); });
-      setCatAbierta(null);
+    function borrarCat(nodo) {
+      var platosCat = delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); });
+      var subs = hijosDe(categorias, nodo.split(NIV)).length;
+      if (!window.confirm("¿Borrar «" + nodo.split(NIV).pop() + "»" + (subs ? " con sus " + subs + " subcategoría" + (subs === 1 ? "" : "s") : "") + " y sus " + platosCat.length + " plato" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un plato de lugar, usá la flecha ↪ del plato. No se puede deshacer.")) return;
+      setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && dentroDe(y.categoria, nodo)); }); });
+      setRuta(nodo.split(NIV).slice(0, -1));
       platosCat.forEach(function(x) { sbDeleteCarta(x.id); });
+    }
+    // Una subcategoría nace con un plato de ejemplo, igual que una categoría nueva: la carta guarda platos, no categorías vacías.
+    function crearSub(nodo) {
+      var nom = nuevaSub.replace(/ › /g, " - ").trim();
+      if (!nom) return;
+      var camino = nodo + NIV + nom;
+      if (categorias.some(function(c) { return dentroDe(c, camino); })) { alert("Ya hay una subcategoría «" + nom + "» acá."); return; }
+      guardarPlato({ id:"carta_" + localId + "_" + Date.now(), local:localId, categoria:camino, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
+      setNuevaSub(""); setRuta(nodo.split(NIV).concat([nom]));
     }
     // La carta que cada local tiene publicada en Maxirest (Kusama y Colantonio's), con sus precios. Se suma lo que falte, sin tocar lo que ya hay:
     // un plato se considera repetido si ya existe uno con el mismo nombre, y los ya cargados desde acá conservan lo que se les haya editado.
@@ -1428,65 +1482,8 @@ function Carta(props) {
       });
     }
 
-    return (
-      <div>
-        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"13px", marginBottom:14 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:9 }}>
-            <div>
-              <div style={{ fontSize:13, fontWeight:800, color:color }}>Carta de {local && local.nombre}</div>
-              <div style={{ fontSize:11, color:"#555", marginTop:3 }}>
-                {delLocal.length} plato{delLocal.length === 1 ? "" : "s"}
-                {sinPrecio > 0 ? " · " + sinPrecio + " sin precio" : delLocal.length ? " · todos con precio" : ""}
-              </div>
-            </div>
-            {cartaMx && (
-              <button onClick={cargarDeMaxirest} disabled={cargandoMx}
-                style={{ padding:"9px 14px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4422", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:cargandoMx?"wait":"pointer" }}>
-                {cargandoMx ? "Cargando…" : "📥 Cargar la carta de Maxirest (" + cartaMx.length + ")"}
-              </button>
-            )}
-            <button onClick={traerDelMenu} disabled={trayendo}
-              style={{ padding:"9px 14px", borderRadius:8, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:trayendo?"wait":"pointer" }}>
-              {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}
-            </button>
-          </div>
-          <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio de un plato para cambiarlo: se guarda solo al salir del campo.</div>
-          {sinPrecio > 0 && (
-            <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
-              Un plato sin precio no se puede cobrar. Se puede mandar igual a la cocina, así que
-              sirve para empezar, pero conviene completarlos antes de usar la cuenta.
-            </div>
-          )}
-        </div>
-
-        {/* Categoría nueva */}
-        <div style={{ display:"flex", gap:7, marginBottom:14 }}>
-          <input value={nuevaCat} onChange={function(e) { setNuevaCat(e.target.value); }}
-            placeholder="Categoría nueva (Bebidas, Postres...)" style={{ ...INP, fontSize:12 }} />
-          <button onClick={function() {
-              var cat = nuevaCat.trim();
-              if (!cat || categorias.indexOf(cat) !== -1) return;
-              guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
-              setNuevaCat("");
-            }} disabled={!nuevaCat.trim()}
-            style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nuevaCat.trim()?color:"#1A1A1A", color:nuevaCat.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nuevaCat.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
-            + Categoría
-          </button>
-        </div>
-
-        {delLocal.length === 0 ? (
-          <div style={{ textAlign:"center", padding:"30px 0" }}>
-            <div style={{ fontSize:30, marginBottom:8 }}>📖</div>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:6 }}>La carta está vacía</div>
-            <div style={{ fontSize:11, color:"#444", maxWidth:360, margin:"0 auto", lineHeight:1.6 }}>
-              Los platos de este local ya están cargados en el menú de stock. Traelos con el botón de
-              arriba y completá los precios: es mucho menos trabajo que escribirlos de nuevo.
-            </div>
-          </div>
-        ) : (!catAbierta || categorias.indexOf(catAbierta) < 0) ? (
-          <VentanasCategorias categorias={categorias} conteo={function(cat) { return delLocal.filter(function(x) { return x.categoria === cat; }).length; }} onElegir={setCatAbierta} />
-        ) : categorias.filter(function(c) { return c === catAbierta; }).map(function(cat) {
-          // Dentro de cada categoría, el orden del menú; lo agregado a mano al final.
+    // Los platos de un nivel (los que están justo en esa categoría), editables.
+    function bloqueEditor(cat) {
           var platos = delLocal.filter(function(x) { return x.categoria === cat; })
             .sort(function(a, b) {
               var oa = a.orden === null || a.orden === undefined ? 999 : a.orden;
@@ -1495,15 +1492,6 @@ function Carta(props) {
             });
           return (
             <div key={cat} style={{ marginBottom:16 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, padding:"10px 12px", borderRadius:12, border:"2px solid " + colorCategoria(categorias, cat) + "88", background:colorCategoria(categorias, cat) + "1A" }}>
-                <button onClick={function() { setCatAbierta(null); }} style={estiloVolver(colorCategoria(categorias, cat))}>← Volver</button>
-                <span style={{ fontSize:16, fontWeight:800, color:colorCategoria(categorias, cat) }}>{cat}</span>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7 }}>
-                <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, flex:1 }}>{platos.length} plato{platos.length === 1 ? "" : "s"}</div>
-                <button onClick={function() { renombrarCat(cat); }} title="Cambiarle el nombre a la categoría" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
-                <button onClick={function() { borrarCat(cat); }} title="Borrar la categoría entera" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"2px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️</button>
-              </div>
               <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                 {platos.map(function(x) {
                   var faltaPrecio = x.precio === null || x.precio === undefined || x.precio === "";
@@ -1561,7 +1549,78 @@ function Carta(props) {
               </div>
             </div>
           );
-        })}
+    }
+
+    return (
+      <div>
+        <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"13px", marginBottom:14 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:9 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:800, color:color }}>Carta de {local && local.nombre}</div>
+              <div style={{ fontSize:11, color:"#555", marginTop:3 }}>
+                {delLocal.length} plato{delLocal.length === 1 ? "" : "s"}
+                {sinPrecio > 0 ? " · " + sinPrecio + " sin precio" : delLocal.length ? " · todos con precio" : ""}
+              </div>
+            </div>
+            {cartaMx && (
+              <button onClick={cargarDeMaxirest} disabled={cargandoMx}
+                style={{ padding:"9px 14px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4422", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:cargandoMx?"wait":"pointer" }}>
+                {cargandoMx ? "Cargando…" : "📥 Cargar la carta de Maxirest (" + cartaMx.length + ")"}
+              </button>
+            )}
+            <button onClick={traerDelMenu} disabled={trayendo}
+              style={{ padding:"9px 14px", borderRadius:8, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:trayendo?"wait":"pointer" }}>
+              {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}
+            </button>
+          </div>
+          <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio de un plato para cambiarlo: se guarda solo al salir del campo.</div>
+          {sinPrecio > 0 && (
+            <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
+              Un plato sin precio no se puede cobrar. Se puede mandar igual a la cocina, así que
+              sirve para empezar, pero conviene completarlos antes de usar la cuenta.
+            </div>
+          )}
+        </div>
+
+        {/* Categoría nueva */}
+        <div style={{ display:"flex", gap:7, marginBottom:14 }}>
+          <input value={nuevaCat} onChange={function(e) { setNuevaCat(e.target.value); }}
+            placeholder="Categoría nueva (Bebidas, Postres...)" style={{ ...INP, fontSize:12 }} />
+          <button onClick={function() {
+              var cat = nuevaCat.replace(/ › /g, " - ").trim();
+              if (!cat || categorias.some(function(c) { return dentroDe(c, cat); })) return;
+              guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
+              setNuevaCat("");
+            }} disabled={!nuevaCat.trim()}
+            style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nuevaCat.trim()?color:"#1A1A1A", color:nuevaCat.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nuevaCat.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
+            + Categoría
+          </button>
+        </div>
+
+        {delLocal.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"30px 0" }}>
+            <div style={{ fontSize:30, marginBottom:8 }}>📖</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:6 }}>La carta está vacía</div>
+            <div style={{ fontSize:11, color:"#444", maxWidth:360, margin:"0 auto", lineHeight:1.6 }}>
+              Los platos de este local ya están cargados en el menú de stock. Traelos con el botón de
+              arriba y completá los precios: es mucho menos trabajo que escribirlos de nuevo.
+            </div>
+          </div>
+        ) : (
+          <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+            contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
+            extra={function(nodo) {
+              return (
+                <div style={{ display:"flex", gap:7, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
+                  <button onClick={function() { renombrarCat(nodo); }} title="Cambiarle el nombre" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
+                  <button onClick={function() { borrarCat(nodo); }} title="Borrar este nivel con todo lo que tiene adentro" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️ Borrar</button>
+                  <input value={nuevaSub} onChange={function(e) { setNuevaSub(e.target.value); }} placeholder="Subcategoría nueva…" style={{ ...INP, fontSize:12, padding:"6px 9px", width:170, flex:"none" }} />
+                  <button onClick={function() { crearSub(nodo); }} disabled={!nuevaSub.trim()} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:nuevaSub.trim() ? color : "#1A1A1A", color:nuevaSub.trim() ? "#fff" : "#444", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Subcategoría</button>
+                </div>
+              );
+            }}
+            renderPlatos={function(cat) { return bloqueEditor(cat); }} />
+        )}
       </div>
     );
   }

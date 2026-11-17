@@ -912,7 +912,20 @@ export function PanelCocina(props) {
     sbLogAcciones([{ local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), comanda_id:g.comanda.id, titulo:g.titulo, accion:"Volvió a la cocina", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
 
-  var demorados = tickets.filter(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE; }).length;
+  var lista15 = tickets.filter(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE; });
+  var demorados = lista15.length;
+  // Mientras haya pedidos pasados de 15 minutos: el título de la pestaña avisa, y con el sonido activado se repite cada minuto (y vibra, si la tablet puede).
+  useEffect(function() {
+    try { document.title = demorados > 0 ? "⏰ " + demorados + " demorado" + (demorados === 1 ? "" : "s") + " · Cocina" : "GrupoNkt"; } catch(e) {}
+  }, [demorados]);
+  useEffect(function() {
+    if (!demorados) return;
+    var t = setInterval(function() {
+      if (sonidoRef.current) pitar(520, 3);
+      try { if (navigator.vibrate) navigator.vibrate([300, 150, 300]); } catch(e) {}
+    }, 60000);
+    return function() { clearInterval(t); };
+  }, [demorados > 0]);
   function claveCambio(l) { return "l|" + l.comanda_id + "|" + l.at; }
   var pestanaBtn = function(id, txt) {
     var act = pestana === id;
@@ -923,6 +936,13 @@ export function PanelCocina(props) {
   var cuerpo = (
     <div>
       <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
+      {lista15.length > 0 && (
+        <div style={{ background:"#E0452E", color:"#fff", borderRadius:12, padding:"12px 14px", marginBottom:12, animation:"nktPulso 1.2s infinite" }}>
+          <div style={{ fontSize:18, fontWeight:900, letterSpacing:0.5 }}>⏰ {lista15.length === 1 ? "UN PEDIDO LLEVA" : lista15.length + " PEDIDOS LLEVAN"} MÁS DE {LIMITE} MINUTOS</div>
+          <div style={{ fontSize:15, fontWeight:700, marginTop:3 }}>{lista15.map(function(g) { return g.titulo + " (" + minutosDesde(g.desde) + " min)"; }).join(" · ")}</div>
+          {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
+        </div>
+      )}
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
         {pestanaBtn("pend", "🍳 Pendientes (" + tickets.length + ")")}
         {pestanaBtn("entregadas", "✅ Entregadas hoy (" + entregadas.length + ")")}
@@ -1478,7 +1498,7 @@ function ComandaDetalle(props) {
     var nuevo = {
       id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
       comanda_id: c.id, nombre: plato.nombre, cant: Number(i.cant) || 1, precio: plato.precio,
-      nota: "🔄 reemplaza a " + i.nombre, estado: "enviado", ronda: i.ronda, enviado_at: ahora, entregado_at: null,
+      nota: "🔄 reemplaza a " + i.nombre, estado: "enviado", ronda: i.ronda, enviado_at: i.enviado_at || ahora, entregado_at: null,   // hereda la hora del que reemplaza: el tiempo en cocina sigue corriendo, no arranca de cero
       usuario: props.usuario || "", created_at: ahora,
     };
     props.onGuardarItems([{ ...i, estado: "cancelado", nota: "cambio por " + plato.nombre }, nuevo]);
@@ -2714,6 +2734,7 @@ export default function PanelComandas(p) {
             y el nombre largo se achica para no desbordar la tarjeta. */}
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
+        {ocupada && demora !== null && demora >= 15 && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +15 min</div>}
         {ocupada && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
         {ocupada ? (
           <>
@@ -2771,6 +2792,17 @@ export default function PanelComandas(p) {
       {faltante && <VentanaFaltante prueba={pruebaVivo} color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
         onCerrar={function() { setFaltante(false); }}
         onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
+      {(function() {
+        // Pedidos que llevan más de 15 minutos en la cocina: aviso para el mozo y el cajero.
+        var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) }; }).filter(function(x) { return x.min !== null && x.min >= 15; });
+        if (!tarde.length) return null;
+        return (
+          <div style={{ background:"#E0452E", color:"#fff", borderRadius:10, padding:"10px 12px", marginBottom:10, animation:"nktPulso 1.3s infinite" }}>
+            <div style={{ fontSize:14, fontWeight:900 }}>⏰ {tarde.length === 1 ? "1 pedido lleva" : tarde.length + " pedidos llevan"} más de 15 minutos en la cocina</div>
+            <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{tarde.map(function(x) { return tituloDe(x.c) + " (" + x.min + " min)"; }).join(" · ")}</div>
+          </div>
+        );
+      })()}
       {!practica && verInforme && (pruebaVivo ? (
         <div style={{ background:"#1C1230", border:"2px dashed #B07CD8", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#B07CD8", letterSpacing:1 }}>🧪 PRUEBA COMPARTIDA</div>

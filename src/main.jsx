@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { Opinar } from "./opiniones.jsx";
 import { GrupoNkt } from "./grupo.jsx";
+import AvisoVersion from "./aviso_version.jsx";
 
 // El QR de las mesas abre una pantalla pública (sin usuario ni clave) para dejar una opinión.
 var esOpinion = new URLSearchParams(window.location.search).has("opinar");
@@ -12,5 +13,6 @@ var esGrupo = /^\/grupo(\/|$)/.test(window.location.pathname) || new URLSearchPa
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     {esOpinion ? <Opinar /> : esGrupo ? <GrupoNkt /> : <App />}
+    <AvisoVersion />
   </React.StrictMode>
 );

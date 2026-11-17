@@ -19,6 +19,22 @@ function paginaGrupo() {
   };
 }
 
+// Cada publicación lleva un identificador (el commit de Vercel, o la hora del armado). Va adentro de la app y en /version.json:
+// si no coinciden, la app abierta sabe que hay una versión nueva y se lo avisa a quien la está usando.
+var BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || String(Date.now());
+function versionJson() {
+  return {
+    name: "version-json",
+    apply: "build",
+    closeBundle() {
+      var dist = path.resolve("dist");
+      if (!fs.existsSync(dist)) return;
+      fs.writeFileSync(path.join(dist, "version.json"), JSON.stringify({ id: BUILD_ID }));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), paginaGrupo()],
+  plugins: [react(), paginaGrupo(), versionJson()],
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
 });

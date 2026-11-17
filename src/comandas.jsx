@@ -1462,9 +1462,10 @@ export function PanelCocina(props) {
       <div style={{ position:"fixed", inset:0, zIndex:500, background:"#0D0D0D", overflowY:"auto", padding:"12px 14px 20px", fontFamily:"'Inter',sans-serif" }}>
         {/* Aparato fijo de la cocina: no hay «Volver» ni nada de la app; solo un candado discreto para salir con contraseña. */}
         {props.fija
-          ? (props.alSalir && <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:4 }}><button onClick={activarSonido} title="Sonido de avisos" style={{ background:"transparent", border:"none", color: sonido ? "#8FD19A" : "#777", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>{sonido ? "🔔" : "🔕 activar sonido"}</button><button onClick={props.alSalir} title="Salir de la pantalla fija" style={{ background:"transparent", border:"none", color:"#444", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>🔒</button></div>)
+          ? (props.alSalir && <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:6, marginBottom:4 }}><button onClick={function() { setDiscontinuando(true); }} style={{ ...GH, padding:"6px 11px", fontSize:12, borderColor:"#C1440E88", color:"#E0714A" }}>🚫 Discontinuar</button><button onClick={activarSonido} title="Sonido de avisos" style={{ background:"transparent", border:"none", color: sonido ? "#8FD19A" : "#777", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>{sonido ? "🔔" : "🔕 activar sonido"}</button><button onClick={props.alSalir} title="Salir de la pantalla fija" style={{ background:"transparent", border:"none", color:"#444", fontSize:14, cursor:"pointer", padding:"2px 6px" }}>🔒</button></div>)
           : <div style={{ marginBottom:12 }}><button onClick={salirCompleta} style={estiloVolver(local ? local.color : "#C1440E")}>← Volver</button></div>}
         {cuerpo}
+        {discontinuando && <VentanaDiscontinuar localId={localId} usuario={usuario} diaDeNegocio={props.diaDeNegocio} onCerrar={function() { setDiscontinuando(false); }} />}
       </div>
     );
   }

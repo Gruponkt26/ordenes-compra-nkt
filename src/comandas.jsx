@@ -788,6 +788,12 @@ export function PanelCocina(props) {
       }
     } catch(e) {}
   }
+  // Un pedido «pasado» es el que lleva más del tiempo límite en la cocina o, si es delivery o mostrador, el que se pasó de la hora prometida al cliente.
+  function pasadaK(g, lim) {
+    if (!g.items.length) return false;
+    var m = minutosDesde(g.desde);
+    return (m !== null && m >= lim) || (g.comanda.tipo !== "mesa" && minutosVencida(g.entrega, Date.now()) !== null);
+  }
   // El día de negocio de la cocina arranca a las 6 de la mañana: lo entregado desde ahí queda para revisar.
   function inicioDia() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); d.setHours(6, 0, 0, 0); return d.toISOString(); }
   function cargar() {
@@ -842,7 +848,7 @@ export function PanelCocina(props) {
         // Sonidos: ticket nuevo, y ticket que recién pasó los 15 minutos. La primera lectura no suena.
         if (conocidos.current && sonidoRef.current) {
           if (lista.some(function(g) { return !conocidos.current[g.clave]; })) pitar(880, 2);
-          else if (lista.some(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= limiteRef.current && !pasados.current[g.clave]; })) pitar(520, 3);
+          else if (lista.some(function(g) { return pasadaK(g, limiteRef.current) && !pasados.current[g.clave]; })) pitar(520, 3);
         }
         var cv = {}; lista.forEach(function(g) { cv[g.clave] = 1; }); conocidos.current = cv;
         // Una sola ventana por cuenta: lo que se agrega después a una mesa que ya pidió entra en el mismo ticket, como «agregado».
@@ -862,7 +868,7 @@ export function PanelCocina(props) {
         var clavesAv = {}; unidas.forEach(function(t) { t.quitados.forEach(function(i) { clavesAv["q|" + i.id] = 1; }); t.cambios.forEach(function(l) { clavesAv[claveCambio(l)] = 1; }); });
         if (alertasRef.current && sonidoRef.current && Object.keys(clavesAv).some(function(k) { return !alertasRef.current[k]; })) pitar(300, 3);
         alertasRef.current = clavesAv;
-        var np = {}; tandasLista.forEach(function(g) { var m = minutosDesde(g.desde); if (g.items.length && m !== null && m >= limiteRef.current) np[g.clave] = 1; }); pasados.current = np;
+        var np = {}; tandasLista.forEach(function(g) { if (pasadaK(g, limiteRef.current)) np[g.clave] = 1; }); pasados.current = np;
         setTickets(lista);
         // Lo que la cocina ya le entregó al mozo o al cajero hoy (aunque la cuenta ya esté cobrada), el más reciente primero.
         var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
@@ -943,7 +949,7 @@ export function PanelCocina(props) {
     sbLogAcciones([{ local:localId, fecha:props.diaDeNegocio ? props.diaDeNegocio() : ahoraISO.slice(0, 10), comanda_id:g.comanda.id, titulo:g.titulo, accion:"Volvió a la cocina", detalle:"Desde la pantalla de cocina: " + g.items.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "), por:usuario, at:ahoraISO }]);
   }
 
-  var lista15 = tickets.filter(function(g) { var m = minutosDesde(g.desde); return g.items.length && m !== null && m >= LIMITE; });
+  var lista15 = tickets.filter(function(g) { return pasadaK(g, LIMITE); });
   var demorados = lista15.length;
   // Mientras haya pedidos pasados de 15 minutos: el título de la pestaña avisa, y con el sonido activado se repite cada minuto (y vibra, si la tablet puede).
   useEffect(function() {
@@ -972,7 +978,7 @@ export function PanelCocina(props) {
           <div style={{ position:"fixed", inset:0, border:"10px solid #E0452E", pointerEvents:"none", zIndex:700, animation:"nktPulso 1s infinite" }} />
           <div style={{ background:"#E0452E", color:"#fff", borderRadius:14, padding:"16px 18px", marginBottom:14, animation:"nktPulso 1s infinite" }}>
             <div style={{ fontSize:34, fontWeight:900, letterSpacing:1, lineHeight:1.1 }}>🔥 ¡APURAR!</div>
-            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { var m = minutosDesde(g.desde), nv = nivelRetraso(m, LIMITE); return g.titulo + " · " + m + " min" + (nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : ""); }).join("   |   ")}</div>
+            <div style={{ fontSize:22, fontWeight:900, marginTop:6, lineHeight:1.25 }}>{lista15.map(function(g) { var m = minutosDesde(g.desde), nv = nivelRetraso(m, LIMITE), venc = g.comanda.tipo !== "mesa" ? minutosVencida(g.entrega, ahora) : null; return g.titulo + " · " + m + " min" + (nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : "") + (venc !== null ? " · pasó la hora prometida +" + venc + " min" : ""); }).join("   |   ")}</div>
             <div style={{ fontSize:13, fontWeight:700, marginTop:5, opacity:0.95 }}>{lista15.length === 1 ? "Este pedido lleva" : "Estos pedidos llevan"} más de {LIMITE} minutos.</div>
             {!sonido && <div style={{ fontSize:12, marginTop:5, opacity:0.95 }}>🔕 El sonido está apagado: tocá «Activar sonido» para que también suene.</div>}
           </div>
@@ -1034,7 +1040,8 @@ export function PanelCocina(props) {
             var st = c.tipo !== "mesa" ? estadoEntrega(g.entrega, ahora) : null;
             var cambios = (g.cambios || []).filter(function(l) { return vistos.indexOf(claveCambio(l)) < 0; });
             var hayAlerta = cambios.length > 0 || g.quitados.length > 0;
-            var tarde = g.items.length > 0 && min !== null && min >= LIMITE;
+            var venc = c.tipo !== "mesa" ? minutosVencida(g.entrega, ahora) : null;   // minutos pasados de la hora prometida (delivery y mostrador)
+            var tarde = pasadaK(g, LIMITE);
             return (
               <div key={g.clave} style={{ background:"#111", border:"3px solid " + (hayAlerta ? "#E0452E" : col), borderLeft:"10px solid " + T.color, borderRadius:14, padding:"13px 14px", display:"flex", flexDirection:"column", gap:9, boxShadow: hayAlerta || tarde ? "0 0 0 2px #E0452E55" : "none" }}>
                 {hayAlerta && (
@@ -1049,7 +1056,15 @@ export function PanelCocina(props) {
                       style={{ marginTop:8, width:"100%", padding:"9px", borderRadius:8, border:"2px solid #fff", background:"transparent", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✓ VISTO</button>
                   </div>
                 )}
-                {tarde && (function() { var nv = nivelRetraso(min, LIMITE); return <div style={{ background: nv ? nv.col : "#E0452E", color:"#fff", borderRadius:9, padding:"8px 12px", animation:"nktPulso 1s infinite" }}><div style={{ fontSize:24, fontWeight:900, letterSpacing:0.5 }}>🔥 ¡APURAR! · {min} min</div>{nv && <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>+{nv.extra} min de retraso · {nv.txt}</div>}</div>; })()}
+                {tarde && (function() {
+                  var a = min !== null ? nivelRetraso(min, LIMITE) : null, b = venc !== null ? nivelRetraso(venc, 0) : null;
+                  var nv = a && b ? (b.extra > a.extra ? b : a) : (a || b);
+                  return <div style={{ background: nv ? nv.col : "#E0452E", color:"#fff", borderRadius:9, padding:"8px 12px", animation:"nktPulso 1s infinite" }}>
+                    <div style={{ fontSize:24, fontWeight:900, letterSpacing:0.5 }}>🔥 ¡APURAR! · {min} min</div>
+                    {venc !== null && <div style={{ fontSize:15, fontWeight:900, marginTop:2 }}>⏰ Se pasó la hora prometida ({horaSeg(g.entrega.prometida_at).slice(0, 5)}) · +{venc} min</div>}
+                    {nv && <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>+{nv.extra} min de retraso · {nv.txt}</div>}
+                  </div>;
+                })()}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
                   <div style={{ minWidth:0 }}>
                     <span style={{ display:"inline-block", background:T.color + "26", color:T.color, border:"1px solid " + T.color + "66", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>{T.emoji} {T.nombre.toUpperCase()} #{c.numero}</span>
@@ -1401,6 +1416,12 @@ function estadoEntrega(e, ahoraMs) {
   var hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
   if (faltan >= 0) return { txt:"🕒 Entrega " + hh + " · en " + faltan + " min", col: faltan <= 5 ? "#D4A017" : "#4C9A5A" };
   return { txt:"🕒 Entrega " + hh + " · atrasado " + (-faltan) + " min", col:"#E0452E" };
+}
+// Minutos que pasaron de la hora prometida al cliente (delivery y mostrador); null si todavía está a tiempo o no hay hora.
+function minutosVencida(e, ahoraMs) {
+  if (!e || !e.prometida_at) return null;
+  var dif = ahoraMs - new Date(e.prometida_at).getTime();
+  return dif > 0 ? Math.max(1, Math.ceil(dif / 60000)) : null;
 }
 var ENTREGA_OPCIONES = [10, 15, 20, 30, 45, 60, 90];
 function ElegirEntrega(props) {
@@ -2890,13 +2911,21 @@ export default function PanelComandas(p) {
         onCerrar={function() { setFaltante(false); }}
         onGuardar={function(f) { sbGuardarFaltante(f).then(function(ok) { if (!ok) alert("No se pudo guardar el aviso."); else { setFaltante(false); setRefInforme(function(n) { return n + 1; }); alert("Listo: quedó avisado el faltante de " + f.plato + "."); } }); }} />}
       {(function() {
-        // Pedidos que llevan más del tiempo elegido en la cocina: aviso para el mozo y el cajero.
+        // Aviso para el mozo y el cajero: pedidos que llevan más del tiempo elegido en la cocina, y deliverys o mostradores que se pasaron de la hora prometida al cliente.
         var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; })) }; }).filter(function(x) { return x.min !== null && x.min >= limite; });
-        if (!tarde.length) return null;
+        var vencidas = abiertas.filter(function(c) { return c.tipo !== "mesa"; }).map(function(c) { return { c:c, over:minutosVencida(entregas[c.id], Date.now()) }; })
+          .filter(function(x) { return x.over !== null && items.some(function(i) { return i.comanda_id === x.c.id && (i.estado === "enviado" || i.estado === "listo"); }); });
+        if (!tarde.length && !vencidas.length) return null;
         return (
           <div style={{ background:"#E0452E", color:"#fff", borderRadius:10, padding:"10px 12px", marginBottom:10, animation:"nktPulso 1.3s infinite" }}>
-            <div style={{ fontSize:14, fontWeight:900 }}>⏰ {tarde.length === 1 ? "1 pedido lleva" : tarde.length + " pedidos llevan"} más de {limite} minutos en la cocina</div>
-            <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{tarde.map(function(x) { return tituloDe(x.c) + " (" + x.min + " min)"; }).join(" · ")}</div>
+            {tarde.length > 0 && <div>
+              <div style={{ fontSize:14, fontWeight:900 }}>⏰ {tarde.length === 1 ? "1 pedido lleva" : tarde.length + " pedidos llevan"} más de {limite} minutos en la cocina</div>
+              <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{tarde.map(function(x) { return tituloDe(x.c) + " (" + x.min + " min)"; }).join(" · ")}</div>
+            </div>}
+            {vencidas.length > 0 && <div style={{ marginTop: tarde.length ? 8 : 0 }}>
+              <div style={{ fontSize:14, fontWeight:900 }}>🕒 {vencidas.length === 1 ? "1 pedido se pasó" : vencidas.length + " pedidos se pasaron"} de la hora prometida al cliente</div>
+              <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{vencidas.map(function(x) { var st = estadoEntrega(entregas[x.c.id], Date.now()); return tituloDe(x.c) + " (+" + x.over + " min" + (st ? " · prometido " + horaSeg(entregas[x.c.id].prometida_at).slice(0, 5) : "") + ")"; }).join(" · ")}</div>
+            </div>}
           </div>
         );
       })()}
@@ -3239,7 +3268,7 @@ export default function PanelComandas(p) {
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
                         {items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ display:"inline-block", marginTop:5, marginRight:6, fontSize:12, fontWeight:900, color:"#4C9A5A", background:"#3A7D4426", border:"1px solid #4C9A5A", borderRadius:6, padding:"2px 8px", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA ENTREGAR</div>}
-                        {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px" }}>{st.txt}</div> : null; })()}
+                        {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px", animation: st.col === "#E0452E" ? "nktPulso 1.2s infinite" : "none" }}>{st.txt}</div> : null; })()}
                       </div>
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                         <div style={{ fontSize:11, color:color, fontWeight:700 }}>⏱ {hace(c.abierta_at)}</div>

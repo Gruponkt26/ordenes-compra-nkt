@@ -448,6 +448,23 @@ export var CMD_SECTORES = [
   { id:"barra",  emoji:"🍸", nombre:"Barra"  },
 ];
 
+// ¿De qué sector es una mesa? Se mira dónde está dibujada en el plano: si cae adentro de un recuadro Salón, Patio, Vereda o Barra, es de ese sector;
+// si no, vale el sector con el que se cargó. `plano` = {pos, extras} del local.
+function sectorDeMesa(m, plano) {
+  var pl = plano || {}, q = pl.pos && pl.pos[m.id];
+  var base = CMD_SECTORES.find(function(x) { return x.id === m.sector; }) || null;
+  if (!q) return base;
+  var mejor = null, areaMejor = 1e9;
+  (pl.extras || []).forEach(function(z) {
+    if (!z.w || !z.h) return;
+    var nom = String(z.nombre || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    var id = ["salon", "patio", "vereda", "barra"].indexOf(z.tipo) >= 0 ? z.tipo : (["patio", "vereda", "salon", "barra"].filter(function(k) { return nom.indexOf(k) >= 0; })[0] || null);
+    if (!id) return;
+    if (Math.abs(q.x - z.x) <= z.w / 2 && Math.abs(q.y - z.y) <= z.h / 2 && z.w * z.h < areaMejor) { areaMejor = z.w * z.h; mejor = id; }
+  });
+  return mejor ? CMD_SECTORES.find(function(x) { return x.id === mejor; }) : base;
+}
+
 // Cada tipo de pedido tiene su color y su rótulo en todas las pantallas, para que no se confundan una mesa, un delivery y un pedido de mostrador.
 export var CMD_TIPO = {
   mesa:      { color:"#4C9A5A", emoji:"🪑", nombre:"Mesa",      plural:"Mesas" },
@@ -763,9 +780,10 @@ function InformeCocina(props) {
       var ids = []; recs.forEach(function(r) { if (ids.indexOf(r.comanda_id) < 0) ids.push(r.comanda_id); });
       var coms = await sbComandasPorIds(ids), its = ids.length ? await sbLoadItems(ids) : [];
       var mesas = await sbLoadMesas();
+      var plano = await sbLeerPlano(localId);
       var falt = (await sbLeerFaltantes(localId, fecha));
       var cfg = await sbLeerConfigCom();
-      if (vivo) setDatos({ recs:recs, coms:coms, items:its, mesas:mesas, falt:falt, cfg:cfg });
+      if (vivo) setDatos({ recs:recs, coms:coms, items:its, mesas:mesas, falt:falt, cfg:cfg, plano:plano });
     })();
     return function() { vivo = false; };
   }, [fecha, localId]);
@@ -783,7 +801,8 @@ function InformeCocina(props) {
       var min = (new Date(r.listo_at) - new Date(desde)) / 60000;
       if (!(min >= 0 && min < 240)) return null;
       var mesa = datos.mesas.find(function(m) { return m.id === c.mesa_id; });
-      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
+      var sec = mesa ? sectorDeMesa(mesa, datos.plano) : null;
+      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") + (sec ? " · " + sec.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
       var aMesa = delT.every(function(i) { return i.estado === "entregado" && i.entregado_at; }) ? (new Date(delT.reduce(function(a, i) { return i.entregado_at > a ? i.entregado_at : a; }, "")) - new Date(r.listo_at)) / 60000 : null;
       return { r:r, c:c, items:delT, nombre:nombre, min:min, aMesa:(aMesa !== null && aMesa >= 0 && aMesa < 240) ? aMesa : null, nv:nivelRetraso(min, limite) };
     }).filter(Boolean);
@@ -922,7 +941,7 @@ export function PanelCocina(props) {
   function inicioDia() { var d = new Date(); if (d.getHours() < 6) d.setDate(d.getDate() - 1); d.setHours(6, 0, 0, 0); return d.toISOString(); }
   function cargar() {
     var desde = inicioDia();
-    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbLeerListosDesde(desde), sbLeerLogDesde(localId, desde), sbLeerConfigCom()]).then(function(r) {
+    return Promise.all([sbLoadComandas(), sbLoadMesas(), sbLeerEntregas(), sbLeerExtrasRecientes(), sbLeerListosDesde(desde), sbLeerLogDesde(localId, desde), sbLeerConfigCom(), sbLeerPlano(localId)]).then(function(r) {
       var lim = limiteDe(r[6], localId); limiteRef.current = lim; setLimite(lim);
       var coms = r[0].filter(function(c) { return c.local === localId; });
       var mesas = r[1], entregasP = r[2], extras = r[3], listos = r[4], log = r[5];
@@ -935,7 +954,8 @@ export function PanelCocina(props) {
         var its = itsTodos.filter(function(i) { return coms.some(function(c) { return c.id === i.comanda_id; }); });
         function titulo(c) {
           var mesa = mesas.find(function(m) { return m.id === c.mesa_id; });
-          return c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
+          var sec = mesa ? sectorDeMesa(mesa, r[7]) : null;
+          return c.tipo === "mesa" ? "Mesa " + (mesa ? mesa.nombre : "") + (sec ? " · " + sec.nombre : "") : (c.tipo === "delivery" ? "Delivery" : "Mostrador") + (c.cliente ? " · " + c.cliente : "");
         }
         // Pendientes: los ítems marchados y todavía no entregados, una tarjeta por tanda.
         var grupos = {};
@@ -1339,7 +1359,8 @@ function InformeTurno(props) {
       var ent = await sbLeerEntregas(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var listos = await sbLeerListosDesde(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var cfgC = await sbLeerConfigCom();
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC });
+      var planoI = await sbLeerPlano(localId);
+      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC, plano:planoI });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -1354,8 +1375,9 @@ function InformeTurno(props) {
       if (!c) return null;
       var min = c.abierta_at && c.cerrada_at ? (new Date(c.cerrada_at) - new Date(c.abierta_at)) / 60000 : null;
       var mesa = (props.mesas || []).find(function(m) { return m.id === c.mesa_id; });
-      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
-      return { c:c, pg:pg, min:(min !== null && min >= 0 && min < 720) ? min : null, nombre:nombre, turno:turnoDe(c.cerrada_at || c.abierta_at) };
+      var secI = mesa ? sectorDeMesa(mesa, datos.plano) : null;
+      var nombre = c.tipo === "mesa" ? "🪑 Mesa " + (mesa ? mesa.nombre : "") + (secI ? " · " + secI.nombre : "") : (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
+      return { c:c, pg:pg, sec:secI, min:(min !== null && min >= 0 && min < 720) ? min : null, nombre:nombre, turno:turnoDe(c.cerrada_at || c.abierta_at) };
     }).filter(function(x) { return x && (turno === "todo" || x.turno === turno); });
     if (!filas.length) return <div style={{ textAlign:"center", padding:"30px 0", color:"#555", fontSize:13 }}>No hay comandas cobradas en este día{turno !== "todo" ? " y turno" : ""}.</div>;
     var ids = {}; filas.forEach(function(f) { ids[f.c.id] = true; });
@@ -1367,6 +1389,12 @@ function InformeTurno(props) {
     var desc = filas.reduce(function(a, f) { return a + (Number(f.pg.descuento) || 0); }, 0);
     var porMedio = {}; filas.forEach(function(f) { (f.pg.pagos || []).forEach(function(q) { var k = normalizarMedio(q.medio); porMedio[k] = (porMedio[k] || 0) + (Number(q.monto) || 0); }); });
     var porMozo = {}; filas.forEach(function(f) { var k = f.c.tipo === "mesa" ? (f.c.mozo || "Sin mozo") : "🧾 Cajero: " + (f.c.mozo || "—"); var o = porMozo[k] || (porMozo[k] = { n:0, v:0, mins:[] }); o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min); });
+    // Por sector (solo mesas): salón, patio, vereda, barra.
+    var porSector = {};
+    filas.filter(function(f) { return f.c.tipo === "mesa"; }).forEach(function(f) {
+      var k = f.sec ? f.sec.id : "otro", o = porSector[k] || (porSector[k] = { sec:f.sec, n:0, v:0, mins:[] });
+      o.n++; o.v += Number(f.pg.total) || 0; if (f.min !== null) o.mins.push(f.min);
+    });
     var itemsT = datos.items.filter(function(i) { return ids[i.comanda_id]; });
     // Cocina: desde «Marchar» hasta que queda listo (se lo entrega al mozo o al cajero). Los pedidos viejos, sin ese registro, se miden hasta la entrega a la mesa.
     var listos = datos.listos || {};
@@ -1442,6 +1470,16 @@ function InformeTurno(props) {
           })}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 0", borderTop:"2px solid #222", fontSize:13 }}><b style={{ color:"#F0EDE8" }}>Total</b><b style={{ color:"#4C9A5A" }}>{pesos(Object.keys(porMedio).reduce(function(a, k) { return a + porMedio[k]; }, 0))}</b></div>
         </div>
+
+        {Object.keys(porSector).length > 0 && (
+          <div style={card}>
+            <div style={h}>📍 Por sector (mesas)</div>
+            {Object.keys(porSector).sort(function(a, b) { return porSector[b].v - porSector[a].v; }).map(function(k) {
+              var o = porSector[k], pm = o.mins.length ? o.mins.reduce(function(a, x) { return a + x; }, 0) / o.mins.length : null;
+              return <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:8, padding:"5px 0", borderTop:"1px solid #181818", fontSize:12.5 }}><span style={{ color:"#DDD" }}>{o.sec ? o.sec.emoji + " " + o.sec.nombre : "Sin sector"}</span><span style={{ color:"#999" }}>{o.n} mesa{o.n === 1 ? "" : "s"} · prom. {fmtMin(pm)} · <b style={{ color:"#F0EDE8" }}>{pesos(o.v)}</b></span></div>;
+            })}
+          </div>
+        )}
 
         <div style={card}>
           <div style={h}>🧑‍🍳 Por mozo (delivery y mostrador van al cajero)</div>
@@ -2747,11 +2785,14 @@ export default function PanelComandas(p) {
   var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo; });
 
   var comandaAbierta = abiertaId ? comandas.find(function(x) { return x.id === abiertaId; }) : null;
+  var planoActual = { pos: posPlano, extras: extrasPlano };
+  function sectorDe(m) { return sectorDeMesa(m, planoActual); }
   function tituloDe(c) {
     if (!c) return "";
     if (c.tipo === "mesa") {
       var m = mesas.find(function(x) { return x.id === c.mesa_id; });
-      return "🪑 Mesa " + ((m && m.nombre) || "");
+      var sc = m ? sectorDe(m) : null;
+      return "🪑 Mesa " + ((m && m.nombre) || "") + (sc ? " · " + sc.nombre : "");
     }
     return (c.tipo === "delivery" ? "🛵 Delivery" : "🥡 Mostrador") + (c.cliente ? " · " + c.cliente : "");
   }
@@ -2962,6 +3003,7 @@ export default function PanelComandas(p) {
         {/* Una mesa se llama "12", pero también "Reservado": el número entra grande
             y el nombre largo se achica para no desbordar la tarjeta. */}
         <div style={{ fontSize: nom.length <= 3 ? 22 : nom.length <= 7 ? 14 : 11, fontWeight:800, lineHeight:1.1, maxWidth:74, textAlign:"center", wordBreak:"break-word" }}>{nom}</div>
+        {sectorDe(m) && <div style={{ fontSize:9, color:"#7E7E7E" }}>{sectorDe(m).emoji} {sectorDe(m).nombre}</div>}
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
         {ocupada && demora !== null && demora >= limite && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +{limite} min</div>}
         {ocupada && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
@@ -3319,7 +3361,7 @@ export default function PanelComandas(p) {
                       return (
                         <div key={z.id}
                           onPointerDown={function(e) { if (!acomodando) return; e.preventDefault(); e.currentTarget.parentNode.setPointerCapture && e.currentTarget.parentNode.setPointerCapture(e.pointerId); setArrastre(z.id); }}
-                          style={{ position:"absolute", left:z.x + "%", top:z.y + "%", transform:"translate(-50%,-50%)", ...(z.w ? { width:z.w + "%", height:z.h + "%" } : { minWidth:110, height:46 }), boxSizing:"border-box", padding:"0 14px", borderRadius:8, background:t.color + "22", border:"1px solid " + t.color + "88", color:t.color, display:"flex", alignItems:"center", justifyContent:"center", gap:6, fontSize:12, fontWeight:800, letterSpacing:0.6, textTransform:"uppercase", cursor: acomodando ? "grab" : "default", zIndex: arrastre === z.id ? 5 : 0, userSelect:"none" }}>
+                          style={{ position:"absolute", left:z.x + "%", top:z.y + "%", transform:"translate(-50%,-50%)", ...(z.w ? { width:z.w + "%", height:z.h + "%" } : { minWidth:110, height:46 }), boxSizing:"border-box", padding: z.w ? "6px 14px 0" : "0 14px", borderRadius:8, background:t.color + "22", border:"1px solid " + t.color + "88", color:t.color, display:"flex", alignItems: z.w ? "flex-start" : "center", justifyContent:"center", gap:6, fontSize:12, fontWeight:800, letterSpacing:0.6, textTransform:"uppercase", cursor: acomodando ? "grab" : "default", zIndex: arrastre === z.id ? 5 : 0, userSelect:"none" }}>
                           <span style={{ textAlign:"center", lineHeight:1.2 }}>{z.tipo === "rect" && !z.nombre ? "" : t.emoji + " " + (z.nombre || t.nombre)}{z.w && dimOk ? <span style={{ display:"block", fontSize:9, opacity:0.75, fontWeight:600, textTransform:"none" }}>{Math.round(z.w * Number(dimsPlano.ancho) / 10) / 10} × {Math.round(z.h * Number(dimsPlano.largo) / 10) / 10} m</span> : null}</span>
                           {acomodando && (
                             <span style={{ position:"absolute", bottom:2, left:4, display:"flex", gap:2 }}>
@@ -3350,7 +3392,7 @@ export default function PanelComandas(p) {
               );
             })()}
             {!verPlano && CMD_SECTORES.map(function(s) {
-              var delSector = mesasLocal.filter(function(m) { return m.sector === s.id; });
+              var delSector = mesasLocal.filter(function(m) { var sc = sectorDe(m); return sc && sc.id === s.id; });
               if (!delSector.length) return null;
               var ocupadasSector = delSector.filter(function(m) { return !!comandaDeMesa(m.id); }).length;
               return (

@@ -1,7 +1,7 @@
 // Grupo Nkt para el público: la página que se abre con el QR (sin usuario ni clave) y el panel donde se arma y se ve la comunidad.
 //  · <GrupoNkt/>        la página pública: quiénes somos, los locales, pedir por WhatsApp, opinar y sumarse a la comunidad.
 //  · <PanelComunidad/>  para administración: datos de cada local, el enlace con su QR y la lista de miembros.
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { SURL, SH } from "./comun.js";
 
@@ -94,6 +94,23 @@ export async function leerPauta(id) {
     var d = await r.json();
     return Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
   } catch (e) { return null; }
+}
+// ─── ¿QUIÉN TIENE LA APP? ───────────────────────────────────────────────
+// El navegador no avisa quién instaló la app, pero sí cuando se abre ya instalada ("standalone") o cuando termina de instalarse.
+// Cada miembro que abre el portal así queda anotado (pautas, ámbito comunidad_app, un registro por WhatsApp):
+//   toco_at → tocó «Descargar la app» (no se sabe si terminó) · instalada_at → el navegador avisó que se instaló
+//   primera_app_at / ultima_app_at / usos → la abrió desde el ícono de su celular: ESA es la prueba de que la tiene.
+export function enModoApp() { try { return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true; } catch (e) { return false; } }
+export async function registrarApp(wsp, nombre, evento) {
+  if (!wsp) return;
+  try {
+    var id = "app_" + wsp, prev = (await leerPauta(id)) || {}, ahora = new Date().toISOString(), ua = navigator.userAgent;
+    var o = { ...prev, wsp: wsp, nombre: nombre || prev.nombre || "", plataforma: /iPhone|iPad|iPod/i.test(ua) ? "iPhone" : /Android/i.test(ua) ? "Android" : "Otro" };
+    if (evento === "toco") o.toco_at = prev.toco_at || ahora;
+    if (evento === "instalada") o.instalada_at = prev.instalada_at || ahora;
+    if (evento === "abierta") { o.primera_app_at = prev.primera_app_at || ahora; o.ultima_app_at = ahora; o.usos = (prev.usos || 0) + 1; }
+    await guardarFila(id, "comunidad_app", o);
+  } catch (e) {}
 }
 function estadoCupon(c) {
   if (!c) return "no existe";
@@ -262,6 +279,7 @@ export function GrupoNkt() {
   var [instalar, setInstalar] = useState(null);
   var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
   var [cupon, setCupon] = useState(null);
+  var cuponRef = useRef(null); cuponRef.current = cupon;
   var [novedades, setNovedades] = useState([]);
   var [historial, setHistorial] = useState([]);   // todos los cupones de este cliente
   var [verMi, setVerMi] = useState(false);   // "Ya soy parte: ver mi cupón"
@@ -270,6 +288,12 @@ export function GrupoNkt() {
   var [buscando, setBuscando] = useState(false);
 
   useEffect(function () { cargarNovedades().then(function (l) { setNovedades(l.filter(novedadVisible).slice(0, 8)); }); }, []);
+  // Si el miembro abre el portal desde el ícono de la app (no desde el navegador), queda anotado una vez por visita.
+  useEffect(function () {
+    if (modoPrueba || !cupon || !cupon.wsp || !enModoApp()) return;
+    try { if (sessionStorage.getItem("nkt_app_reg") === cupon.wsp) return; sessionStorage.setItem("nkt_app_reg", cupon.wsp); } catch (e) {}
+    registrarApp(cupon.wsp, cupon.nombre, "abierta");
+  }, [cupon && cupon.wsp]);
   // Con el cupón a la vista, se trae el historial del cliente (cuántos lleva y dónde los usó).
   useEffect(function () {
     if (!cupon || !cupon.wsp) return;
@@ -295,8 +319,11 @@ export function GrupoNkt() {
       });
     });
     function antes(e) { e.preventDefault(); setInstalar(e); }
+    // Cuando el navegador avisa que se instaló, se anota para el miembro que la estaba mirando.
+    function instalada() { var c = cuponRef.current; if (c && c.wsp && !modoPrueba) registrarApp(c.wsp, c.nombre, "instalada"); }
     window.addEventListener("beforeinstallprompt", antes);
-    return function () { window.removeEventListener("beforeinstallprompt", antes); };
+    window.addEventListener("appinstalled", instalada);
+    return function () { window.removeEventListener("beforeinstallprompt", antes); window.removeEventListener("appinstalled", instalada); };
   }, []);
 
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", padding: "22px 16px 50px", boxSizing: "border-box" };
@@ -364,6 +391,7 @@ export function GrupoNkt() {
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 800, color: "#D4A017" }}>📲 Descargá la app Grupo Nkt</div>
             <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, margin: "6px 0 10px" }}>Tené tu cupón, las novedades, el delivery y las reservas siempre a mano, como una app más de tu celular. Es gratis y no ocupa espacio.</div>
             <button onClick={function () {
+              if (cupon && cupon.wsp && !modoPrueba) registrarApp(cupon.wsp, cupon.nombre, "toco");
               // Si el navegador deja instalar con un toque, se lo ofrece; los pasos quedan a la vista por si no aparece el cartel.
               if (instalar) { try { instalar.prompt(); } catch (e) {} setTimeout(function () { setVerPasos(true); }, 1200); } else { setVerPasos(!verPasos); }
             }} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Descargar la app</button>
@@ -923,6 +951,8 @@ export function MovimientoComunidad(props) {
 export function PanelComunidad() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [miembros, setMiembros] = useState(null);
+  var [apps, setApps] = useState({});          // quién abrió la app instalada: {wsp: registro}
+  var [filtroApp, setFiltroApp] = useState("todos");
   var [vistaCanje, setVistaCanje] = useState("local");   // cupones canjeados: por local o por cliente
   var [filtroCom, setFiltroCom] = useState("todos");   // lista de miembros: todos o los de un local
   var [qr, setQr] = useState("");
@@ -1010,7 +1040,15 @@ export function PanelComunidad() {
     var mios = cupones.filter(function (x) { return !x.prueba && x.wsp === c.wsp; }).sort(function (a, b) { return String(a.creado || "").localeCompare(String(b.creado || "")); });
     return mios.findIndex(function (x) { return x.codigo === c.codigo; }) + 1;
   }
+  function cargarApps() {
+    fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad_app&limit=3000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
+      var o = {}; (Array.isArray(d) ? d : []).forEach(function (f) { try { var x = JSON.parse(f.texto); if (x && x.wsp) o[x.wsp] = x; } catch (e) {} }); setApps(o);
+    }).catch(function () {});
+  }
+  // "app" = la abrió desde el ícono (o el navegador avisó la instalación) · "toco" = tocó Descargar pero no se sabe más · "no" = sin registro
+  function estadoApp(m) { var a = apps[m.wsp]; return a && (a.primera_app_at || a.instalada_at) ? "app" : a && a.toco_at ? "toco" : "no"; }
   function cargarMiembros() {
+    cargarApps();
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
       setMiembros(Array.isArray(d) ? d.map(function (f) { try { var x = JSON.parse(f.texto); return { id: f.id, ...x }; } catch (e) { return null; } }).filter(Boolean) : []);
     }).catch(function () { setMiembros([]); });
@@ -1043,9 +1081,9 @@ export function PanelComunidad() {
     try { navigator.clipboard.writeText(urlGrupo()); setCopiado(true); setTimeout(function () { setCopiado(false); }, 1800); } catch (e) {}
   }
   function csv() {
-    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón actual", "Cupones emitidos", "Cupones canjeados", "Cupones vencidos"]].concat(reales.slice().sort(function (x, y) { return String(y.fecha || "").localeCompare(String(x.fecha || "")); }).map(function (m) {
+    var filas = [["Nombre", "WhatsApp", "Cumpleaños", "Lugar favorito", "Fecha de alta", "Cupón actual", "Cupones emitidos", "Cupones canjeados", "Cupones vencidos", "App instalada", "Veces que abrió la app", "Última vez en la app"]].concat(reales.slice().sort(function (x, y) { return String(y.fecha || "").localeCompare(String(x.fecha || "")); }).map(function (m) {
       var l = LOCALES_GRUPO.find(function (x) { return x.id === m.fav; });
-      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || "", resumenCup(m.wsp).total, resumenCup(m.wsp).usados, resumenCup(m.wsp).vencidos];
+      return [nombreCompleto(m), m.wsp, m.dia && m.mes ? m.dia + "/" + m.mes : "", l ? l.nombre : "", m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "", m.cupon || "", resumenCup(m.wsp).total, resumenCup(m.wsp).usados, resumenCup(m.wsp).vencidos, estadoApp(m) === "app" ? "Sí" : estadoApp(m) === "toco" ? "Tocó descargar, sin confirmar" : "No", (apps[m.wsp] || {}).usos || 0, (apps[m.wsp] || {}).ultima_app_at ? new Date(apps[m.wsp].ultima_app_at).toLocaleDateString("es-AR") : ""];
     }));
     var txt = "﻿" + filas.map(function (f) { return f.map(function (c) { return '"' + String(c == null ? "" : c).replace(/"/g, '""') + '"'; }).join(";"); }).join("\r\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })); a.download = "comunidad_grupo_nkt.csv"; a.click();
@@ -1097,7 +1135,7 @@ export function PanelComunidad() {
   function esDeMiembro(c) { return !c.prueba && !!wspMiembros[c.wsp]; }
   // Por fecha de entrada: el último que se sumó, primero.
   var ordenados = (miembros || []).filter(function (m) { return !empleadoDeWsp(m.wsp, nombreCompleto(m)); }).sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
-  var ordenadosVista = filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; });
+  var ordenadosVista = (filtroCom === "todos" ? ordenados : ordenados.filter(function (m) { return m.fav === filtroCom; })).filter(function (m) { return filtroApp === "todos" || (filtroApp === "con" ? estadoApp(m) === "app" : estadoApp(m) !== "app"); });
   // Cupones canjeados de los miembros actuales (sin los de prueba), del más reciente al más viejo.
   var canjeados = cupones.filter(function (c) { return esDeMiembro(c) && c.estado === "usado"; }).sort(function (a, b) { return String(b.usado_at || "").localeCompare(String(a.usado_at || "")); });
   function agrupar(clave) {
@@ -1387,6 +1425,21 @@ export function PanelComunidad() {
                 return <button key={t.id} onClick={function () { setFiltroCom(t.id); }} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid " + (act ? "#D4A017" : "#2A2A2A"), background: act ? "#D4A01722" : "none", color: act ? "#D4A017" : "#9A9A9A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.txt}</button>;
               })}
             </div>
+            {(function () {
+              var con = reales.filter(function (m) { return estadoApp(m) === "app"; }).length, toco = reales.filter(function (m) { return estadoApp(m) === "toco"; }).length;
+              return (
+                <div style={{ background: "#0B1410", border: "1px solid #3A7D4455", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#F0EDE8" }}>📲 App instalada: <span style={{ color: "#4C9A5A" }}>{con}</span> de {reales.length} miembros{reales.length ? " (" + Math.round(con / reales.length * 100) + "%)" : ""}</div>
+                  <div style={{ fontSize: 11, color: "#8FA89A", margin: "3px 0 7px", lineHeight: 1.5 }}>Cuenta a quien abrió el portal desde el ícono de la app en su celular (o cuyo navegador avisó la instalación). {toco > 0 ? toco + " tocó «Descargar» pero todavía no la abrió como app. " : ""}Un cliente que la instaló pero no volvió a abrirla, o que borró los datos del navegador, figura como «sin app».</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[["todos", "Todos"], ["con", "📲 Con app"], ["sin", "Sin app"]].map(function (t) {
+                      var act = filtroApp === t[0];
+                      return <button key={t[0]} onClick={function () { setFiltroApp(t[0]); }} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid " + (act ? "#4C9A5A" : "#2A2A2A"), background: act ? "#4C9A5A22" : "none", color: act ? "#4C9A5A" : "#9A9A9A", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>;
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ fontSize: 11, color: "#7E7E7E", marginBottom: 6 }}>Ordenados por fecha de entrada: el último que se sumó, primero.</div>
             <button onClick={csv} style={{ padding: "7px 13px", borderRadius: 8, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 12, cursor: "pointer", marginBottom: 8 }}>⬇️ Bajar la lista (Excel)</button>
             {ordenadosVista.slice(0, 100).map(function (m) {
@@ -1401,6 +1454,12 @@ export function PanelComunidad() {
                       var txt = "Hola " + m.nombre + "! Este es tu cupón de Grupo Nkt: " + m.cupon + (cp ? " (" + fraseDescuento(cfg) + ", válido hasta el " + new Date(cp.vence).toLocaleDateString("es-AR") + "). Es válido en cualquiera de los 3 locales (El Bodegón, Kusama y Colantonio's): mostralo en caja. Entrá a tu portal con novedades, delivery y reservas: " + urlGrupo() : ".");
                       var rc = resumenCup(m.wsp);
                       return <div style={{ fontSize: 11, color: "#C8C8C8", marginTop: 2 }}>🎟️ {m.cupon}{est ? " · " + (est === "activo" ? "vigente" : est === "usado" ? "usado" : "vencido") : ""} · <b style={{ color: "#D4A017" }}>{rc.total} {rc.total === 1 ? "cupón" : "cupones"} · {rc.usados} canjeado{rc.usados === 1 ? "" : "s"} · {rc.vencidos} vencido{rc.vencidos === 1 ? "" : "s"}</b> <a href={linkWsp(m.wsp, txt)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none", marginLeft: 6 }}>💬 Enviarle su cupón</a></div>;
+                    })()}
+                    {(function () {
+                      var e = estadoApp(m), a = apps[m.wsp] || {};
+                      if (e === "app") return <div style={{ fontSize: 11, color: "#4C9A5A", marginTop: 2 }}>📲 App instalada{a.plataforma ? " (" + a.plataforma + ")" : ""}{a.usos ? " · la abrió " + a.usos + " vez" + (a.usos === 1 ? "" : "es") : ""}{a.ultima_app_at ? " · última: " + new Date(a.ultima_app_at).toLocaleDateString("es-AR") : ""}</div>;
+                      if (e === "toco") return <div style={{ fontSize: 11, color: "#D4A017", marginTop: 2 }}>🟡 Tocó «Descargar la app» el {new Date(a.toco_at).toLocaleDateString("es-AR")}, pero no la abrió como app</div>;
+                      return <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 2 }}>— Sin app registrada</div>;
                     })()}
                     <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>{m.dia && m.mes ? "🎂 " + m.dia + " " + mesNombre(m.mes) + " · " : ""}{l ? l.nombre + " · " : ""}{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : ""}</div>
                   </div>

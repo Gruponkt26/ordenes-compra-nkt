@@ -952,6 +952,9 @@ function ComandaDetalle(props) {
     return x.categoria === ruta.join(NIV);
   }).sort(function(a, b) { return (a.orden || 0) - (b.orden || 0); });
 
+  // Cuántos de este plato hay ya sin mandar en la cuenta (se muestra en su ventana).
+  function cantPend(x) { return pendientes.filter(function(i) { return i.nombre === x.nombre; }).reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0); }
+
   function agregar(plato) {
     // Si ya está sin mandar, suma uno en vez de repetir la línea: una mesa que pide
     // cuatro cervezas quiere "4x Heineken" y no cuatro renglones iguales.
@@ -1139,7 +1142,7 @@ function ComandaDetalle(props) {
             </div>
           ) : q ? (
             <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
-              {platos.map(function(x) { return <PlatoParaAgregar key={x.id} x={x} onAgregar={agregar} />; })}
+              <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={colorCategoria(hijosDe(cats, []), x.categoria.split(NIV)[0])} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>
               {platos.length === 0 && <div style={{ fontSize:11, color:"#444", padding:"6px 0" }}>Nada con ese nombre.</div>}
             </div>
           ) : (
@@ -1147,12 +1150,8 @@ function ComandaDetalle(props) {
               {ruta.length === 0 && <div style={{ fontSize:11, color:"#666", marginBottom:8 }}>Tocá una categoría para ver lo que hay adentro, o buscá un plato por el nombre.</div>}
               <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta}
                 contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
-                renderPlatos={function() {
-                  return (
-                    <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
-                      {platos.map(function(x) { return <PlatoParaAgregar key={x.id} x={x} onAgregar={agregar} />; })}
-                    </div>
-                  );
+                renderPlatos={function(nodo, col) {
+                  return <RejillaPlatos alto={440}>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>;
                 }} />
             </div>
           )}
@@ -1244,6 +1243,23 @@ function VentanasCategorias(props) {
   );
 }
 
+// Cada plato o bebida también es una ventana del color de su categoría: nombre y precio; si se toca, se agrega a la cuenta.
+function VentanaPlato(props) {
+  var x = props.x, col = props.col || "#8FA3B0", fuera = x.activo === false;
+  var sinPrecio = x.precio === null || x.precio === undefined || x.precio === "";
+  var Tag = props.onClick ? "button" : "div";
+  return (
+    <Tag onClick={props.onClick}
+      style={{ position:"relative", textAlign:"left", minHeight:78, padding:"11px 12px", borderRadius:12, border:"2px solid " + col + "77", background:"linear-gradient(145deg, " + col + "26, " + col + "0D)", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", cursor: props.onClick ? "pointer" : "default", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:7, opacity: fuera ? 0.45 : 1 }}>
+      <span style={{ fontSize:13.5, fontWeight:800, lineHeight:1.25, wordBreak:"break-word", textDecoration: fuera ? "line-through" : "none" }}>{x.nombre}</span>
+      <span style={{ fontSize:13, fontWeight:800, color: sinPrecio ? "#D4A017" : col }}>{sinPrecio ? "sin precio" : pesos(x.precio)}{fuera && <span style={{ fontSize:10, color:"#E0714A", marginLeft:6, fontWeight:600 }}>fuera de la carta</span>}</span>
+      {props.n > 0 && <span style={{ position:"absolute", top:6, right:8, background:col, color:"#0D0D0D", borderRadius:10, padding:"1px 8px", fontSize:12, fontWeight:900 }}>×{props.n}</span>}
+    </Tag>
+  );
+}
+function RejillaPlatos(props) {
+  return <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:9, maxHeight:props.alto || "none", overflowY: props.alto ? "auto" : "visible", paddingRight: props.alto ? 2 : 0 }}>{props.children}</div>;
+}
 // Niveles de la carta: una categoría puede tener subcategorías, y estas otras, sin límite. El camino se guarda en el mismo campo
 // `categoria` separado con « › » (ej: «Pizzas › Especiales»), así no hace falta ninguna columna nueva y todo lo que ya existía sigue igual.
 var NIV = " › ";
@@ -1277,7 +1293,7 @@ function ArbolCarta(props) {
           <VentanasCategorias categorias={hijos} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
         </div>
       )}
-      {ruta.length > 0 && cats.indexOf(nodo) >= 0 && props.renderPlatos(nodo)}
+      {ruta.length > 0 && cats.indexOf(nodo) >= 0 && props.renderPlatos(nodo, col)}
     </div>
   );
 }
@@ -1298,19 +1314,11 @@ function CartaConsulta(props) {
     var platos = delLocal.filter(function(x) { return x.categoria === cat && (!q || String(x.nombre || "").toLowerCase().indexOf(q) !== -1); })
       .sort(function(a, b) { return (a.orden || 0) - (b.orden || 0) || String(a.nombre).localeCompare(String(b.nombre)); });
     if (!platos.length) return null;
+    var col = colorCategoria(hijosDe(categorias, []), cat.split(NIV)[0]);
     return (
       <div key={cat} style={{ marginBottom:14 }}>
-        {conTitulo && <div style={{ fontSize:11, fontWeight:800, color:color, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>}
-        {platos.map(function(x) {
-          var fuera = x.activo === false;
-          var sinPrecio = x.precio === null || x.precio === undefined || x.precio === "";
-          return (
-            <div key={x.id} style={{ display:"flex", justifyContent:"space-between", gap:10, padding:"8px 0", borderTop:"1px solid #161616", opacity:fuera ? 0.45 : 1 }}>
-              <div style={{ fontSize:13.5, color:"#F0EDE8", textDecoration:fuera ? "line-through" : "none" }}>{x.nombre}{fuera && <span style={{ fontSize:10, color:"#E0714A", marginLeft:6 }}>fuera de la carta</span>}</div>
-              <div style={{ fontSize:13.5, fontWeight:800, color:sinPrecio ? "#555" : "#F0EDE8", whiteSpace:"nowrap" }}>{sinPrecio ? "sin precio" : pesos(x.precio)}</div>
-            </div>
-          );
-        })}
+        {conTitulo && <div style={{ fontSize:11, fontWeight:800, color:col, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>}
+        <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} />; })}</RejillaPlatos>
       </div>
     );
   }

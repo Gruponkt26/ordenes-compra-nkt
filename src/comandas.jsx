@@ -793,22 +793,6 @@ function VentanaControl(props) {
 }
 
 
-// Una mesa que ya se cerró hoy se vuelve a abrir: ¿es gente nueva o sigue la misma? De eso depende la prioridad en la cocina.
-function PreguntaMesaNueva(props) {
-  return (
-    <div onClick={props.onCancelar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
-      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid #D4A01788", borderRadius:16, padding:"18px", width:"100%", maxWidth:400 }}>
-        <div style={{ fontSize:17, fontWeight:800, color:"#F0EDE8", marginBottom:4 }}>{props.titulo} ya se cerró hoy</div>
-        <div style={{ fontSize:15, fontWeight:700, color:"#D4A017", marginBottom:6 }}>¿Es una mesa nueva?</div>
-        <div style={{ fontSize:12, color:"#9A9A9A", lineHeight:1.5, marginBottom:14 }}>Esto le dice a la cocina qué atender primero: una mesa nueva va antes que una mesa que sigue pidiendo.</div>
-        <button onClick={function() { props.onElegir(true); }} style={{ width:"100%", padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:900, cursor:"pointer", marginBottom:8 }}>🆕 Sí, es una mesa nueva</button>
-        <button onClick={function() { props.onElegir(false); }} style={{ width:"100%", padding:"15px", borderRadius:11, border:"1px solid #D4A017", background:"#D4A01722", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:800, cursor:"pointer", marginBottom:8 }}>↩ No, es la misma mesa que sigue</button>
-        <button onClick={props.onCancelar} style={{ ...GH, width:"100%", padding:"10px", fontSize:12 }}>Cancelar</button>
-      </div>
-    </div>
-  );
-}
-
 // ─── INFORME DE COCINA ────────────────────────────────────────────────
 // Solo tiempos y comida, sin plata: cuánto tardó la cocina, qué se retrasó, qué se pidió más, qué se quitó o cambió y qué faltó.
 function InformeCocina(props) {
@@ -3126,13 +3110,11 @@ export default function PanelComandas(p) {
     setTurnos(function(prev) { return (prev || []).map(function(x) { return x.fecha === t.fecha ? t : x; }); });
     sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar el cierre del turno."); });
   }
-  // Si la mesa ya se cerró durante este turno (o en las últimas 12 horas), se pregunta si es una mesa nueva; si es la primera vez que se usa, es nueva.
-  var [preguntaNueva, setPreguntaNueva] = useState(null);   // {mesa, alElegir}
+  // Una mesa libre que se abre es siempre una mesa nueva (también si ya se cobró antes): no se pregunta nada.
   function abrirMesa(mesa) {
     var ya = comandaDeMesa(mesa.id);
     if (ya) { setAbiertaId(ya.id); return; }
     if (!puedeAbrirCuenta()) return;
-    var desde = turnoActual ? turnoActual.abierto_at : new Date(Date.now() - 12 * 3600000).toISOString();
     function seguir(esNueva) {
       pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
         var nueva = {
@@ -3146,10 +3128,8 @@ export default function PanelComandas(p) {
         Promise.all([guardar(nueva), sbGuardarExtra(nueva.id, { mesa_nueva: esNueva }, usuario)]).then(function(r) { if (!r[0]) setAbiertaId(nueva.id); });
       });
     }
-    sbMesaCerradaDesde(mesa.id, desde, pruebaVivo).then(function(usada) {
-      if (usada) setPreguntaNueva({ mesa: mesa, alElegir: seguir });
-      else seguir(true);
-    });
+    // Una mesa que ya se cobró y se vuelve a tocar es una mesa nueva: se abre directo (sin preguntar) y la cocina lo lee con el cartel «MESA NUEVA».
+    seguir(true);
   }
   var [cobrando, setCobrando] = useState(null);   // {c, total}: la comanda que se está cobrando
   // Lo extra de la comanda abierta (descuento, factura, control), guardado aparte.
@@ -3421,7 +3401,6 @@ export default function PanelComandas(p) {
         })}
       </div>
 
-      {preguntaNueva && <PreguntaMesaNueva titulo={"🪑 Mesa " + (preguntaNueva.mesa.nombre || "")} onElegir={function(esNueva) { var f = preguntaNueva.alElegir; setPreguntaNueva(null); f(esNueva); }} onCancelar={function() { setPreguntaNueva(null); }} />}
       {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
         onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
         onCancelar={function() { setEligeMozo(null); }} />}

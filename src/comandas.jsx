@@ -217,6 +217,23 @@ async function sbLeerTurnos(localId) {
       .sort(function(a, b) { return String(b.abierto_at).localeCompare(String(a.abierto_at)); });
   } catch(e) { return []; }
 }
+// Colores elegidos para la carta de cada local: de categorías (por camino) y de platos (por id). Va en pautas, ámbito "carta_color".
+async function sbLeerColoresCarta(localId) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("ccolor_" + localId) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
+    return { cats: (o && o.cats) || {}, platos: (o && o.platos) || {} };
+  } catch(e) { return { cats: {}, platos: {} }; }
+}
+async function sbGuardarColoresCarta(localId, col) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"ccolor_" + localId, ambito:"carta_color", texto:JSON.stringify(col), usuario:"", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
 // Registro de todo lo que se hace en una cuenta, con la hora: pautas, ámbito "comanda_log", un registro por acción.
 // El id empieza con el de la comanda para poder traer el historial de una sola cuenta.
 async function sbLogAcciones(filas) {
@@ -482,13 +499,13 @@ function VentanaQuitar(props) {
   var lista = props.items;
   var texto = motivo === "Otro" ? (otro.trim() || "Otro") : motivo;
   return (
-    <Ventana titulo="➖ Quitar un plato" onCerrar={props.onCerrar}>
+    <Ventana titulo="➖ Quitar de la cuenta" onCerrar={props.onCerrar}>
       <label style={{ display:"block", fontSize:9, color:"#8C8C8C", textTransform:"uppercase", marginBottom:4 }}>Motivo (para lo que ya se mandó a la cocina)</label>
       <select value={motivo} onChange={function(e) { setMotivo(e.target.value); }} style={{ ...INP, marginBottom:motivo === "Otro" ? 6 : 12 }}>
         {["Error de carga", "El cliente cambió de idea", "No hay stock", "Reclamo del cliente", "Otro"].map(function(m) { return <option key={m} value={m}>{m}</option>; })}
       </select>
       {motivo === "Otro" && <input value={otro} onChange={function(e) { setOtro(e.target.value); }} placeholder="Escribí el motivo" style={{ ...INP, marginBottom:12 }} />}
-      {lista.length === 0 && <div style={{ fontSize:13, color:"#777", padding:"10px 0" }}>No hay platos para quitar.</div>}
+      {lista.length === 0 && <div style={{ fontSize:13, color:"#777", padding:"10px 0" }}>No hay nada para quitar.</div>}
       {lista.map(function(i) {
         var mandado = i.estado !== "pendiente";
         return (
@@ -631,8 +648,8 @@ function VentanaFaltante(props) {
   return (
     <div onClick={props.onCerrar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
       <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid #D4A01788", borderRadius:14, padding:"16px", width:"100%", maxWidth:400 }}>
-        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:12 }}>⚠️ Avisar faltante de plato</div>
-        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Qué plato falta?</label>
+        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:12 }}>⚠️ Avisar faltante</div>
+        <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Qué falta?</label>
         <input list="cmd-platos" value={plato} onChange={function(e) { setPlato(e.target.value); }} placeholder="Ej: Provoleta, Vino malbec" style={{ ...INP, marginBottom:10 }} />
         <datalist id="cmd-platos">{sugeridos.map(function(n, i) { return <option key={i} value={n} />; })}</datalist>
         <label style={{ display:"block", fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Quién avisa?</label>
@@ -771,18 +788,18 @@ function InformeTurno(props) {
 
         <div style={card}>
           <div style={h}>🍳 Cocina: del pedido a la mesa</div>
-          {cocProm === null ? <div style={{ fontSize:12, color:"#555" }}>Todavía no hay platos marcados como entregados en este turno.</div> : (
+          {cocProm === null ? <div style={{ fontSize:12, color:"#555" }}>Todavía no hay pedidos marcados como entregados en este turno.</div> : (
             <>
-              <div style={{ fontSize:13, color:"#DDD", marginBottom:6 }}>Promedio por plato: <b style={{ color:"#F0EDE8" }}>{fmtMin(cocProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({cocina.length} platos entregados)</span></div>
+              <div style={{ fontSize:13, color:"#DDD", marginBottom:6 }}>Promedio por pedido: <b style={{ color:"#F0EDE8" }}>{fmtMin(cocProm)}</b> <span style={{ color:"#666", fontSize:11 }}>({cocina.length} entregados)</span></div>
               {lentos.map(function(x) { return <div key={x.nombre} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", borderTop:"1px solid #181818", fontSize:12 }}><span style={{ color:"#CCC" }}>{x.nombre}</span><span style={{ color:"#999" }}>{fmtMin(x.prom)} <span style={{ color:"#555" }}>×{x.n}</span></span></div>; })}
               <div style={{ fontSize:10, color:"#555", marginTop:5 }}>Los más lentos arriba. Cuenta desde «Marchar» hasta que se marca entregado.</div>
             </>
           )}
-          {quitados.length > 0 && <div style={{ fontSize:11, color:"#D4A017", marginTop:8 }}>🗑 Platos quitados de las cuentas: {quitados.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} ({quitados.slice(0, 6).map(function(i) { return i.nombre + (i.nota ? " — " + i.nota : ""); }).join("; ")}{quitados.length > 6 ? "…" : ""})</div>}
+          {quitados.length > 0 && <div style={{ fontSize:11, color:"#D4A017", marginTop:8 }}>🗑 Quitado de las cuentas: {quitados.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} ({quitados.slice(0, 6).map(function(i) { return i.nombre + (i.nota ? " — " + i.nota : ""); }).join("; ")}{quitados.length > 6 ? "…" : ""})</div>}
         </div>
 
         <div style={{ ...card, borderColor: falt.length ? "#D4A01766" : "#1E1E1E" }}>
-          <div style={h}>⚠️ Faltantes de plato</div>
+          <div style={h}>⚠️ Faltantes</div>
           {falt.length === 0 ? <div style={{ fontSize:12, color:"#555" }}>Nadie avisó faltantes en este turno.</div> : falt.map(function(f) {
             return <div key={f.id} style={{ padding:"6px 0", borderTop:"1px solid #181818", fontSize:12.5 }}>
               <b style={{ color:"#F0EDE8" }}>{f.plato}</b> <span style={{ color:"#D4A017" }}>· avisó {f.avisa === "cocina" ? "la cocina" : "el mozo"}{f.por ? " (" + f.por + ")" : ""}</span> <span style={{ color:"#555" }}>· {fmtHora ? fmtHora(f.at) : String(f.at).slice(11, 16)}</span>
@@ -1071,8 +1088,8 @@ function ComandaDetalle(props) {
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:7 }}>
           {[
             { id:"marchar",  txt:"🔥 Marchar",     sub:pendientes.length ? pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0) + " a la cocina" : "nada para mandar", col:"#E0914A", off:!pendientes.length, fn:mandar },
-            { id:"sumar",    txt:"➕ Sumar plato",  sub:"de la carta",                                                                    col:"#4C9A5A", off:false, fn:function() { setAgregando(true); } },
-            { id:"quitar",   txt:"➖ Quitar plato", sub:"con motivo",                                                                     col:"#E0714A", off:!mios.length, fn:function() { setVentana("quitar"); } },
+            { id:"sumar",    txt:"➕ Sumar",  sub:"de la carta",                                                                    col:"#4C9A5A", off:false, fn:function() { setAgregando(true); } },
+            { id:"quitar",   txt:"➖ Quitar", sub:"con motivo",                                                                     col:"#E0714A", off:!mios.length, fn:function() { setVentana("quitar"); } },
             { id:"control",  txt:"🧾 Control",      sub:"precuenta",                                                                      col:"#8FD19A", off:!mios.length, fn:function() { setVentana("control"); if (props.onExtra) props.onExtra({ ...extra, control_at:new Date().toISOString() }); } },
             { id:"desc",     txt:"🏷️ Descuento",    sub:props.puedeDescuento === false ? "lo aplica el cajero" : (descM > 0 ? "−" + pesos(descM) : "% o $"),                       col:"#D4A017", off:!mios.length || props.puedeDescuento === false, fn:function() { setVentana("descuento"); } },
             { id:"facturar", txt:"🧾 Facturar",     sub:extra.factura ? "anotado" : "datos de factura",                                    col:"#5BB8DC", off:!mios.length, fn:function() { setVentana("factura"); } },
@@ -1133,7 +1150,7 @@ function ComandaDetalle(props) {
       ) : (
         <div style={{ background:"#0F0F0F", border:"1px solid "+color+"33", borderRadius:12, padding:"12px", marginBottom:12 }}>
           <div style={{ display:"flex", gap:7, marginBottom:9 }}>
-            <input value={busqueda} onChange={function(e) { setBusqueda(e.target.value); }} placeholder="Buscar un plato…" style={{ ...INP, fontSize:12 }} />
+            <input value={busqueda} onChange={function(e) { setBusqueda(e.target.value); }} placeholder="Buscar…" style={{ ...INP, fontSize:12 }} />
             <button onClick={function() { setAgregando(false); setBusqueda(""); }} style={{ ...GH, padding:"8px 13px", fontSize:12 }}>Listo</button>
           </div>
           {delLocal.length === 0 ? (
@@ -1142,16 +1159,16 @@ function ComandaDetalle(props) {
             </div>
           ) : q ? (
             <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:340, overflowY:"auto" }}>
-              <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={colorCategoria(hijosDe(cats, []), x.categoria.split(NIV)[0])} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>
+              <RejillaPlatos>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, props.colores)} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>
               {platos.length === 0 && <div style={{ fontSize:11, color:"#444", padding:"6px 0" }}>Nada con ese nombre.</div>}
             </div>
           ) : (
             <div>
-              {ruta.length === 0 && <div style={{ fontSize:11, color:"#666", marginBottom:8 }}>Tocá una categoría para ver lo que hay adentro, o buscá un plato por el nombre.</div>}
-              <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta}
+              {ruta.length === 0 && <div style={{ fontSize:11, color:"#666", marginBottom:8 }}>Tocá una categoría para ver lo que hay adentro, o buscá por el nombre.</div>}
+              <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta} colores={props.colores}
                 contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
                 renderPlatos={function(nodo, col) {
-                  return <RejillaPlatos alto={440}>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>;
+                  return <RejillaPlatos alto={440}>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, props.colores)} n={cantPend(x)} onClick={function() { agregar(x); }} />; })}</RejillaPlatos>;
                 }} />
             </div>
           )}
@@ -1226,16 +1243,22 @@ function ComandaDetalle(props) {
 // Cada categoría de la carta es una ventana de su propio color: se toca y se abre con todos sus platos.
 var COLORES_CATEGORIA = ["#E0714A", "#4C9A5A", "#3A9BC1", "#D4A017", "#B07CD8", "#E0527A", "#2FB5A0", "#8FA3B0", "#C77DA8", "#A98B62", "#6C8CE0", "#9ACD32"];
 function colorCategoria(cats, cat) { var i = cats.indexOf(cat); return COLORES_CATEGORIA[(i < 0 ? 0 : i) % COLORES_CATEGORIA.length]; }
+// «21 tapeos», «10 vinos», «4 postres»: la cantidad con el nombre de la categoría (en singular si es uno solo).
+function rotuloCat(cat, n) {
+  var nom = String(cat || "").toLowerCase().trim();
+  if (n === 1 && nom.length > 3 && /s$/.test(nom)) nom = nom.slice(0, -1);
+  return nom;
+}
 function VentanasCategorias(props) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:9 }}>
       {props.categorias.map(function(cat) {
-        var col = colorCategoria(props.categorias, cat), n = props.conteo(cat);
+        var col = props.colorDe ? props.colorDe(cat) : colorCategoria(props.categorias, cat), n = props.conteo(cat);
         return (
           <button key={cat} onClick={function() { props.onElegir(cat); }}
             style={{ textAlign:"left", minHeight:84, padding:"13px 13px", borderRadius:12, border:"2px solid " + col + "88", background:"linear-gradient(145deg, " + col + "30, " + col + "10)", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", cursor:"pointer", display:"flex", flexDirection:"column", justifyContent:"space-between", gap:8 }}>
             <span style={{ fontSize:15, fontWeight:800, lineHeight:1.2, color:col, wordBreak:"break-word" }}>{cat}</span>
-            <span style={{ fontSize:11.5, color:"#C8C8C8" }}>{n} plato{n === 1 ? "" : "s"} ›</span>
+            <span style={{ fontSize:11.5, color:"#C8C8C8" }}>{n} {rotuloCat(cat, n)} ›</span>
           </button>
         );
       })}
@@ -1257,6 +1280,14 @@ function VentanaPlato(props) {
     </Tag>
   );
 }
+// El color de la ventana de un plato: el que se le eligió; si no, el de su categoría si se la pintó; y si no, uno de la paleta que va rotando,
+// para que las ventanas se distingan una de otra.
+function colorDePlato(x, i, colores, base) {
+  var c = colores || { cats: {}, platos: {} };
+  if (c.platos[x.id]) return c.platos[x.id];
+  if (c.cats[x.categoria]) return c.cats[x.categoria];
+  return COLORES_CATEGORIA[((i || 0) + (base || 0)) % COLORES_CATEGORIA.length];
+}
 function RejillaPlatos(props) {
   return <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:9, maxHeight:props.alto || "none", overflowY: props.alto ? "auto" : "visible", paddingRight: props.alto ? 2 : 0 }}>{props.children}</div>;
 }
@@ -1275,9 +1306,15 @@ function dentroDe(cat, nodo) { return cat === nodo || String(cat).indexOf(nodo +
 // Navega los niveles: ventanas de colores con lo que hay adentro y, si ese nivel tiene platos propios, la lista de platos.
 // props: cats (caminos completos), ruta/setRuta, contar(nodo), renderPlatos(nodo), extra(nodo) (controles propios del nivel).
 function ArbolCarta(props) {
-  var cats = props.cats, ruta = props.ruta, setRuta = props.setRuta;
-  var hijos = hijosDe(cats, ruta), nodo = ruta.join(NIV), roots = hijosDe(cats, []);
-  var col = ruta.length ? colorCategoria(roots, ruta[0]) : "#999";
+  var cats = props.cats, ruta = props.ruta, setRuta = props.setRuta, colores = props.colores || { cats: {}, platos: {} };
+  var hijos = hijosDe(cats, ruta), nodo = ruta.join(NIV);
+  // El color de un nivel: el que se le eligió o, si no, uno de la paleta según su lugar entre los de su mismo nivel.
+  function colorDe(path) {
+    if (colores.cats[path]) return colores.cats[path];
+    var partes = path.split(NIV);
+    return colorCategoria(hijosDe(cats, partes.slice(0, -1)), partes[partes.length - 1]);
+  }
+  var col = ruta.length ? colorDe(nodo) : "#999";
   return (
     <div>
       {ruta.length > 0 && (
@@ -1286,11 +1323,11 @@ function ArbolCarta(props) {
           <span style={{ fontSize:16, fontWeight:800, color:col, flex:1, minWidth:0, wordBreak:"break-word" }}>{ruta.join(" › ")}</span>
         </div>
       )}
-      {ruta.length > 0 && props.extra && props.extra(nodo)}
+      {ruta.length > 0 && props.extra && props.extra(nodo, col)}
       {hijos.length > 0 && (
         <div style={{ marginBottom:12 }}>
           {ruta.length > 0 && <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1.5, marginBottom:7 }}>Subcategorías</div>}
-          <VentanasCategorias categorias={hijos} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
+          <VentanasCategorias categorias={hijos} colorDe={function(nom) { return colorDe(nodo ? nodo + NIV + nom : nom); }} conteo={function(nom) { return props.contar(nodo ? nodo + NIV + nom : nom); }} onElegir={function(nom) { setRuta(ruta.concat([nom])); }} />
         </div>
       )}
       {ruta.length > 0 && cats.indexOf(nodo) >= 0 && props.renderPlatos(nodo, col)}
@@ -1299,7 +1336,7 @@ function ArbolCarta(props) {
 }
 
 function CartaConsulta(props) {
-  var localId = props.localId, color = props.color, carta = props.carta;
+  var localId = props.localId, color = props.color, carta = props.carta, colores = props.colores || { cats: {}, platos: {} };
   var [buscar, setBuscar] = useState("");
   var [ruta, setRuta] = useState([]);
   var delLocal = carta.filter(function(x) { return x.local === localId; });
@@ -1318,17 +1355,17 @@ function CartaConsulta(props) {
     return (
       <div key={cat} style={{ marginBottom:14 }}>
         {conTitulo && <div style={{ fontSize:11, fontWeight:800, color:col, textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{cat}</div>}
-        <RejillaPlatos>{platos.map(function(x) { return <VentanaPlato key={x.id} x={x} col={col} />; })}</RejillaPlatos>
+        <RejillaPlatos>{platos.map(function(x, i) { return <VentanaPlato key={x.id} x={x} col={colorDePlato(x, i, colores)} />; })}</RejillaPlatos>
       </div>
     );
   }
   return (
     <div>
-      <input value={buscar} onChange={function(e) { setBuscar(e.target.value); }} placeholder="🔎 Buscar un plato…" style={{ ...INP, marginBottom:12 }} />
+      <input value={buscar} onChange={function(e) { setBuscar(e.target.value); }} placeholder="🔎 Buscar…" style={{ ...INP, marginBottom:12 }} />
       {delLocal.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#666", fontSize:13 }}>Este local todavía no tiene carta cargada.</div>}
       {q && categorias.map(function(cat) { return bloque(cat, true); })}
       {!q && delLocal.length > 0 && (
-        <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+        <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta} colores={colores}
           contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo) && x.activo !== false; }).length; }}
           renderPlatos={function(nodo) { return bloque(nodo, false); }} />
       )}
@@ -1340,6 +1377,13 @@ function Carta(props) {
   var localId = props.localId, local = props.local, color = props.color;
   var carta = props.carta, setCarta = props.setCarta, cargarCarta = props.cargarCarta;
   var p = { menuStock: props.menuStock };
+  var colores = props.colores || { cats: {}, platos: {} }, setColores = props.setColores || function() {};
+  // Elegir (o quitar) el color de una categoría (por camino) o de un plato (por id).
+  function ponerColor(tipo, clave, color) {
+    var nuevo = { cats: { ...colores.cats }, platos: { ...colores.platos } };
+    if (color) nuevo[tipo][clave] = color; else delete nuevo[tipo][clave];
+    setColores(nuevo); sbGuardarColoresCarta(localId, nuevo);
+  }
 
     var [nuevoPlato, setNuevoPlato] = useState({});
     var [nuevaCat, setNuevaCat] = useState("");
@@ -1380,7 +1424,7 @@ function Carta(props) {
         return f.concat([x]);
       });
       sbSaveCarta(x).then(function(err) {
-        if (err) alert("No se pudo guardar el plato:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README).");
+        if (err) alert("No se pudo guardar el producto:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README).");
       });
     }
     function borrarPlato(x) {
@@ -1397,16 +1441,18 @@ function Carta(props) {
       nuevo = nuevo.replace(/ › /g, " - ").trim();
       if (!nuevo || nuevo === ultimo) return;
       var nuevoNodo = partes.slice(0, -1).concat([nuevo]).join(NIV);
-      if (categorias.some(function(c) { return dentroDe(c, nuevoNodo); })) { alert("Ya existe «" + nuevo + "» en ese lugar. Para juntarlas, movés los platos de una a la otra."); return; }
+      if (categorias.some(function(c) { return dentroDe(c, nuevoNodo); })) { alert("Ya existe «" + nuevo + "» en ese lugar. Para juntarlas, movés los productos de una a la otra."); return; }
       var cambiados = delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).map(function(x) { return { ...x, categoria:nuevoNodo + x.categoria.slice(nodo.length) }; });
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && dentroDe(y.categoria, nodo)); }).concat(cambiados); });
+      var remap = {}; Object.keys(colores.cats).forEach(function(k) { remap[dentroDe(k, nodo) ? nuevoNodo + k.slice(nodo.length) : k] = colores.cats[k]; });
+      if (JSON.stringify(remap) !== JSON.stringify(colores.cats)) { var nc = { cats: remap, platos: colores.platos }; setColores(nc); sbGuardarColoresCarta(localId, nc); }
       if (ruta.join(NIV) === nodo || ruta.join(NIV).indexOf(nodo + NIV) === 0) setRuta(nuevoNodo.split(NIV).concat(ruta.slice(partes.length)));
       sbSaveCartaMuchos(cambiados).then(function(err) { if (err) { alert("No se pudo cambiar el nombre:\n\n" + String(err).slice(0, 200)); cargarCarta(); } });
     }
     function borrarCat(nodo) {
       var platosCat = delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); });
       var subs = hijosDe(categorias, nodo.split(NIV)).length;
-      if (!window.confirm("¿Borrar «" + nodo.split(NIV).pop() + "»" + (subs ? " con sus " + subs + " subcategoría" + (subs === 1 ? "" : "s") : "") + " y sus " + platosCat.length + " plato" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un plato de lugar, usá la flecha ↪ del plato. No se puede deshacer.")) return;
+      if (!window.confirm("¿Borrar «" + nodo.split(NIV).pop() + "»" + (subs ? " con sus " + subs + " subcategoría" + (subs === 1 ? "" : "s") : "") + " y sus " + platosCat.length + " producto" + (platosCat.length === 1 ? "" : "s") + "?\n\nSi solo querés cambiar un producto de lugar, usá la flecha ↪ del producto. No se puede deshacer.")) return;
       setCarta(function(prev) { return prev.filter(function(y) { return !(y.local === localId && dentroDe(y.categoria, nodo)); }); });
       setRuta(nodo.split(NIV).slice(0, -1));
       platosCat.forEach(function(x) { sbDeleteCarta(x.id); });
@@ -1417,7 +1463,7 @@ function Carta(props) {
       if (!nom) return;
       var camino = nodo + NIV + nom;
       if (categorias.some(function(c) { return dentroDe(c, camino); })) { alert("Ya hay una subcategoría «" + nom + "» acá."); return; }
-      guardarPlato({ id:"carta_" + localId + "_" + Date.now(), local:localId, categoria:camino, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
+      guardarPlato({ id:"carta_" + localId + "_" + Date.now(), local:localId, categoria:camino, nombre:"Nuevo", precio:null, activo:true, orden:0 });
       setNuevaSub(""); setRuta(nodo.split(NIV).concat([nom]));
     }
     // La carta que cada local tiene publicada en Maxirest (Kusama y Colantonio's), con sus precios. Se suma lo que falte, sin tocar lo que ya hay:
@@ -1434,8 +1480,8 @@ function Carta(props) {
         if (ids[id] || nombres[String(fila[1]).trim().toLowerCase()]) return;
         nuevos.push({ id:id, local:localId, categoria:fila[0], nombre:fila[1], precio:fila[2], activo:true, orden:i });
       });
-      if (!nuevos.length) { alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cartaMx.length + " platos de Maxirest. No hay nada nuevo para cargar."); return; }
-      if (!window.confirm("¿Cargar la carta de " + ((local && local.nombre) || "este local") + " tal como figura en Maxirest?\n\nSe suman " + nuevos.length + " platos con su precio" + (cartaMx.length - nuevos.length > 0 ? " (otros " + (cartaMx.length - nuevos.length) + " ya estaban y no se tocan)" : "") + ".\n\nDespués los podés editar, sacar o cambiar de categoría.")) return;
+      if (!nuevos.length) { alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cartaMx.length + " productos de Maxirest. No hay nada nuevo para cargar."); return; }
+      if (!window.confirm("¿Cargar la carta de " + ((local && local.nombre) || "este local") + " tal como figura en Maxirest?\n\nSe suman " + nuevos.length + " productos con su precio" + (cartaMx.length - nuevos.length > 0 ? " (otros " + (cartaMx.length - nuevos.length) + " ya estaban y no se tocan)" : "") + ".\n\nDespués los podés editar, sacar o cambiar de categoría.")) return;
       setCargandoMx(true);
       setCarta(function(prev) { return prev.concat(nuevos); });
       sbSaveCartaMuchos(nuevos).then(function(err) {
@@ -1446,7 +1492,7 @@ function Carta(props) {
           return;
         }
         cargarCarta();
-        alert("Listo: se cargaron " + nuevos.length + " platos con su precio.");
+        alert("Listo: se cargaron " + nuevos.length + " productos con su precio.");
       });
     }
     // Trae los platos del menú de stock de este local. No pisa lo que ya está: si un
@@ -1458,7 +1504,7 @@ function Carta(props) {
       // Un local sin menú de stock y una carta ya completa terminan los dos sin platos
       // para traer, pero se arreglan de maneras muy distintas: hay que decir cuál es.
       if (cuantosEnMenu === 0) {
-        alert("El menú de stock de " + ((local && local.nombre) || "este local") + " está vacío, así que no hay platos para traer.\n\nSe cargan en Compras → Stock, o se pueden escribir acá a mano con \"+ Categoría\" y el campo de agregar de cada una.");
+        alert("El menú de stock de " + ((local && local.nombre) || "este local") + " está vacío, así que no hay productos para traer.\n\nSe cargan en Compras → Stock, o se pueden escribir acá a mano con \"+ Categoría\" y el campo de agregar de cada una.");
         return;
       }
       var existentes = {};
@@ -1474,7 +1520,7 @@ function Carta(props) {
         });
       });
       if (!nuevos.length) {
-        alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cuantosEnMenu + " platos del menú de stock. No hay nada nuevo para traer.");
+        alert("La carta de " + ((local && local.nombre) || "este local") + " ya tiene los " + cuantosEnMenu + " productos del menú de stock. No hay nada nuevo para traer.");
         return;
       }
       setTrayendo(true);
@@ -1483,7 +1529,7 @@ function Carta(props) {
         setTrayendo(false);
         if (err) {
           setCarta(function(prev) { return prev.filter(function(x) { return nuevos.indexOf(x) === -1; }); });
-          alert("No se pudieron traer los platos:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README). Acordate del alter de RLS.");
+          alert("No se pudieron traer los productos:\n\n" + err + "\n\nSi el error menciona la tabla carta, hay que crearla en Supabase (el SQL está en el README). Acordate del alter de RLS.");
           return;
         }
         cargarCarta();
@@ -1518,6 +1564,12 @@ function Carta(props) {
                         }}
                         placeholder="0" inputMode="decimal"
                         style={{ ...INP, width:88, flex:"none", textAlign:"right", fontSize:13, padding:"5px 8px", border:"1px solid "+(faltaPrecio?"#D4A01744":"#2A2A2A") }} />
+                      <button onClick={function() {
+                          var cur = colores.platos[x.id], idx = cur ? COLORES_CATEGORIA.indexOf(cur) : -1;
+                          ponerColor("platos", x.id, idx + 1 < COLORES_CATEGORIA.length ? COLORES_CATEGORIA[idx + 1] : null);
+                        }}
+                        title="Color de esta ventana (tocá para cambiarlo)"
+                        style={{ width:22, height:22, borderRadius:11, border:"2px solid #2A2A2A", background: colores.platos[x.id] || "transparent", cursor:"pointer", padding:0, flex:"none" }} />
                       <button onClick={function() { guardarPlato({ ...x, activo:x.activo===false }); }}
                         title={x.activo===false ? "Está fuera de la carta — tocar para volver a ofrecerlo" : "Sacar de la carta por un tiempo"}
                         style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:x.activo===false?"#555":"#3A7D44", fontSize:11, cursor:"pointer" }}>
@@ -1566,7 +1618,7 @@ function Carta(props) {
             <div>
               <div style={{ fontSize:13, fontWeight:800, color:color }}>Carta de {local && local.nombre}</div>
               <div style={{ fontSize:11, color:"#555", marginTop:3 }}>
-                {delLocal.length} plato{delLocal.length === 1 ? "" : "s"}
+                {delLocal.length} en la carta
                 {sinPrecio > 0 ? " · " + sinPrecio + " sin precio" : delLocal.length ? " · todos con precio" : ""}
               </div>
             </div>
@@ -1578,13 +1630,13 @@ function Carta(props) {
             )}
             <button onClick={traerDelMenu} disabled={trayendo}
               style={{ padding:"9px 14px", borderRadius:8, border:"1px solid "+color+"44", background:color+"11", color:color, fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:trayendo?"wait":"pointer" }}>
-              {trayendo ? "Trayendo…" : "↓ Traer los platos del stock"}
+              {trayendo ? "Trayendo…" : "↓ Traer del stock"}
             </button>
           </div>
-          <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio de un plato para cambiarlo: se guarda solo al salir del campo.</div>
+          <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio para cambiarlo: se guarda solo al salir del campo.</div>
           {sinPrecio > 0 && (
             <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
-              Un plato sin precio no se puede cobrar. Se puede mandar igual a la cocina, así que
+              Lo que no tiene precio no se puede cobrar. Se puede mandar igual a la cocina, así que
               sirve para empezar, pero conviene completarlos antes de usar la cuenta.
             </div>
           )}
@@ -1597,7 +1649,7 @@ function Carta(props) {
           <button onClick={function() {
               var cat = nuevaCat.replace(/ › /g, " - ").trim();
               if (!cat || categorias.some(function(c) { return dentroDe(c, cat); })) return;
-              guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:"Nuevo plato", precio:null, activo:true, orden:0 });
+              guardarPlato({ id:"carta_"+localId+"_"+Date.now(), local:localId, categoria:cat, nombre:"Nuevo", precio:null, activo:true, orden:0 });
               setNuevaCat("");
             }} disabled={!nuevaCat.trim()}
             style={{ padding:"9px 15px", borderRadius:8, border:"none", background:nuevaCat.trim()?color:"#1A1A1A", color:nuevaCat.trim()?"#fff":"#444", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:nuevaCat.trim()?"pointer":"not-allowed", whiteSpace:"nowrap" }}>
@@ -1610,20 +1662,27 @@ function Carta(props) {
             <div style={{ fontSize:30, marginBottom:8 }}>📖</div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#2E2E2E", marginBottom:6 }}>La carta está vacía</div>
             <div style={{ fontSize:11, color:"#444", maxWidth:360, margin:"0 auto", lineHeight:1.6 }}>
-              Los platos de este local ya están cargados en el menú de stock. Traelos con el botón de
+              Lo de este local ya está cargado en el menú de stock. Traelo con el botón de
               arriba y completá los precios: es mucho menos trabajo que escribirlos de nuevo.
             </div>
           </div>
         ) : (
-          <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta}
+          <ArbolCarta cats={categorias} ruta={ruta} setRuta={setRuta} colores={colores}
             contar={function(nodo) { return delLocal.filter(function(x) { return dentroDe(x.categoria, nodo); }).length; }}
-            extra={function(nodo) {
+            extra={function(nodo, colNodo) {
               return (
+                <div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", alignItems:"center", marginBottom:10 }}>
+                  <span style={{ fontSize:11, color:"#888", marginRight:2 }}>🎨 Color:</span>
+                  {COLORES_CATEGORIA.map(function(c) { return <button key={c} onClick={function() { ponerColor("cats", nodo, c); }} title="Pintar este nivel de este color" style={{ width:24, height:24, borderRadius:12, background:c, border: colNodo === c ? "3px solid #fff" : "2px solid #0D0D0D", cursor:"pointer", padding:0 }} />; })}
+                  <button onClick={function() { ponerColor("cats", nodo, null); }} style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 8px", color:"#888", fontSize:11, cursor:"pointer" }}>automático</button>
+                </div>
                 <div style={{ display:"flex", gap:7, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
                   <button onClick={function() { renombrarCat(nodo); }} title="Cambiarle el nombre" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>✎ Renombrar</button>
                   <button onClick={function() { borrarCat(nodo); }} title="Borrar este nivel con todo lo que tiene adentro" style={{ background:"none", border:"1px solid #2A2A2A", borderRadius:6, padding:"5px 10px", color:"#888", fontSize:11, cursor:"pointer" }}>🗑️ Borrar</button>
                   <input value={nuevaSub} onChange={function(e) { setNuevaSub(e.target.value); }} placeholder="Subcategoría nueva…" style={{ ...INP, fontSize:12, padding:"6px 9px", width:170, flex:"none" }} />
                   <button onClick={function() { crearSub(nodo); }} disabled={!nuevaSub.trim()} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:nuevaSub.trim() ? color : "#1A1A1A", color:nuevaSub.trim() ? "#fff" : "#444", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Subcategoría</button>
+                </div>
                 </div>
               );
             }}
@@ -1909,6 +1968,8 @@ export default function PanelComandas(p) {
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
+  var [coloresCarta, setColoresCarta] = useState({ cats: {}, platos: {} });
+  useEffect(function() { sbLeerColoresCarta(localId).then(setColoresCarta); }, [localId, practica]);
   function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
 
   useEffect(function() {
@@ -1981,9 +2042,9 @@ export default function PanelComandas(p) {
     filas.forEach(function(f) {
       var prev = items.find(function(x) { return x.id === f.id; });
       var det = (Number(f.cant) || 1) + "x " + f.nombre, acc = null;
-      if (!prev) { acc = f.estado === "cancelado" ? "Quitó plato" : "Agregó plato"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; }
+      if (!prev) { acc = f.estado === "cancelado" ? "Quitó de la cuenta" : "Agregó a la cuenta"; if (f.estado === "cancelado" && f.nota) det += " — " + f.nota; }
       else if (prev.estado !== f.estado) {
-        acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : "Marchó a la cocina") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó plato" : "Volvió a pendiente";
+        acc = f.estado === "enviado" ? (prev.estado === "entregado" ? "Desmarcó la entrega" : "Marchó a la cocina") : f.estado === "entregado" ? "Entregó a la mesa" : f.estado === "cancelado" ? "Quitó de la cuenta" : "Volvió a pendiente";
         if (f.estado === "cancelado" && f.nota) det += " — " + f.nota;
       }
       else if (Number(prev.cant) !== Number(f.cant)) { acc = "Cambió la cantidad"; det = f.nombre + ": " + prev.cant + " → " + f.cant; }
@@ -2081,7 +2142,7 @@ export default function PanelComandas(p) {
     var delPedido = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
     var sinPrecio = delPedido.filter(function(i) { return !(Number(i.precio) > 0); });
     if (sinPrecio.length) {
-      alert("Hay " + sinPrecio.length + " plato" + (sinPrecio.length === 1 ? "" : "s") + " sin precio: " + sinPrecio.map(function(i) { return i.nombre; }).join(", ") + ".\n\nTocá «Poner precio» al lado de cada uno antes de cerrar, así no se pierde la venta.");
+      alert("Hay " + sinPrecio.length + " producto" + (sinPrecio.length === 1 ? "" : "s") + " sin precio: " + sinPrecio.map(function(i) { return i.nombre; }).join(", ") + ".\n\nTocá «Poner precio» al lado de cada uno antes de cerrar, así no se pierde la venta.");
       return;
     }
     if (!delPedido.length && !window.confirm("La cuenta está vacía. ¿Cerrarla sin cobrar nada?")) return;
@@ -2187,7 +2248,7 @@ export default function PanelComandas(p) {
         )
       )}
       <div style={{ marginBottom:10 }}>
-        <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante de plato</button>
+        <button onClick={function() { setFaltante(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #D4A01788", background:"#D4A01715", color:"#D4A017", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⚠️ Avisar faltante</button>
       </div>
       {faltante && <VentanaFaltante color={color} localId={localId} fecha={fechaNegocio()} usuario={usuario} carta={carta}
         onCerrar={function() { setFaltante(false); }}
@@ -2195,7 +2256,7 @@ export default function PanelComandas(p) {
       {practica ? (
         <div style={{ background:"#2A1F00", border:"2px dashed #D4A017", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#D4A017", letterSpacing:1 }}>🎮 MODO PRÁCTICA</div>
-          <div style={{ fontSize:11, color:"#E8D9A0", lineHeight:1.5, margin:"3px 0 8px" }}>Probá abrir mesas, cargar platos y cobrar. Es de mentira: no se guarda nada ni entra al cierre de caja. Las mesas y la carta son las reales.</div>
+          <div style={{ fontSize:11, color:"#E8D9A0", lineHeight:1.5, margin:"3px 0 8px" }}>Probá abrir mesas, cargar pedidos y cobrar. Es de mentira: no se guarda nada ni entra al cierre de caja. Las mesas y la carta son las reales.</div>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             <button onClick={reiniciarPractica} style={{ ...GH, padding:"6px 11px", fontSize:11 }}>🔄 Empezar de cero</button>
             <button onClick={salirPractica} style={{ background:"#D4A017", border:"none", borderRadius:8, color:"#1A1200", padding:"6px 12px", fontSize:11, fontWeight:800, cursor:"pointer" }}>Salir de la práctica</button>
@@ -2269,6 +2330,7 @@ export default function PanelComandas(p) {
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
           entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
+          colores={coloresCarta}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
       ) : config ? (
@@ -2280,8 +2342,8 @@ export default function PanelComandas(p) {
         <InformeTurno localId={localId} color={color} mesas={mesas} diaDeNegocio={fechaNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
       ) : vista === "carta" ? (
         (p.soloServicio && !p.puedeEditarCarta)
-          ? <CartaConsulta localId={localId} color={color} carta={carta} />
-          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} />
+          ? <CartaConsulta localId={localId} color={color} carta={carta} colores={coloresCarta} />
+          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} colores={coloresCarta} setColores={setColoresCarta} />
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>

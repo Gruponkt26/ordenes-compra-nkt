@@ -8,19 +8,35 @@ export default function AvisoVersion() {
   var [nueva, setNueva] = useState(false);
   useEffect(function () {
     if (!ACTUAL) return;
-    var vivo = true;
-    function mirar() {
+    var vivo = true, ocultoDesde = null;
+    // Al volver a la app después de un rato (celular bloqueado, otra aplicación, tablet dormida) se actualiza sola: es un momento seguro, no hay nada a medio escribir.
+    // Se intenta una sola vez por versión, para que nunca se quede recargando en bucle.
+    function autoPermitido(id) {
+      try { if (sessionStorage.getItem("nkt_auto_ver") === id) return false; sessionStorage.setItem("nkt_auto_ver", id); } catch (e) {}
+      return true;
+    }
+    var minimo = typeof window.__NKT_AUTO_MS === "number" ? window.__NKT_AUTO_MS : 60000;
+    function mirar(auto) {
       fetch("/version.json?t=" + Date.now(), { cache: "no-store" })
         .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (d) { if (vivo && d && d.id && d.id !== ACTUAL) setNueva(true); })
+        .then(function (d) {
+          if (!vivo || !d || !d.id || d.id === ACTUAL) return;
+          if (auto === true && autoPermitido(d.id)) { window.location.reload(); return; }
+          setNueva(true);
+        })
         .catch(function () {});
     }
-    mirar();
-    var t = setInterval(mirar, 60000);
-    function alVolver() { if (document.visibilityState === "visible") mirar(); }
-    document.addEventListener("visibilitychange", alVolver);
-    window.addEventListener("focus", mirar);
-    return function () { vivo = false; clearInterval(t); document.removeEventListener("visibilitychange", alVolver); window.removeEventListener("focus", mirar); };
+    mirar(false);
+    var t = setInterval(function () { mirar(false); }, 60000);
+    function alCambiar() {
+      if (document.visibilityState === "hidden") { ocultoDesde = Date.now(); return; }
+      var estuvo = ocultoDesde ? Date.now() - ocultoDesde : 0; ocultoDesde = null;
+      mirar(estuvo >= minimo);
+    }
+    function alEnfocar() { mirar(false); }
+    document.addEventListener("visibilitychange", alCambiar);
+    window.addEventListener("focus", alEnfocar);
+    return function () { vivo = false; clearInterval(t); document.removeEventListener("visibilitychange", alCambiar); window.removeEventListener("focus", alEnfocar); };
   }, []);
   if (!nueva) return null;
   return (

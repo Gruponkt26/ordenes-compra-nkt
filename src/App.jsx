@@ -13152,10 +13152,11 @@ function PanelFichar(p){
   var vinculandoEf=vinculando||vincularObligatorio;
   // Con el celular propio se ficha en el local de la ficha; los que cubren los tres locales pueden elegir otro.
   if(soyYo&&soyYo.local&&(!multiLocal||!eligioLocal))local=soyYo.local;
-  var coberturaVigente=(soyYo&&cobertura&&cobertura.emp===soyYo.id&&cobertura.fecha===fechaLocal()&&cobertura.local&&cobertura.local!==soyYo.local)?cobertura:null;
+  var coberturaVigente=(soyYo&&cobertura&&cobertura.emp===soyYo.id&&cobertura.fecha===diaDeNegocio()&&cobertura.local&&cobertura.local!==soyYo.local)?cobertura:null;
   if(coberturaVigente)local=coberturaVigente.local;
   // Local fijo de hoy según su jornada (ej: los lunes en Colantonio's): se marca ahí sin tocar nada, salvo que haya elegido otro (multi-local) o tenga una cobertura.
-  var turnoHoyF=soyYo?turnoDe(soyYo,fechaLocal()):null;
+  // «Hoy» es el día de negocio: pasadas las 12 de la noche (hasta las 6) sigue valiendo el local del turno que empezó ayer, así la salida se marca en el mismo local de la entrada.
+  var turnoHoyF=soyYo?turnoDe(soyYo,diaDeNegocio()):null;
   var localFijoHoy=(soyYo&&!coberturaVigente&&!(multiLocal&&eligioLocal)&&turnoHoyF&&!turnoHoyF.franco&&turnoHoyF.local&&turnoHoyF.local!==soyYo.local)?turnoHoyF.local:null;
   if(localFijoHoy)local=localFijoHoy;
   // Recién acá se sabe el local definitivo: la distancia se mide contra ése, no contra el último que quedó guardado en el navegador.
@@ -13636,7 +13637,7 @@ function PanelFichar(p){
               {posibles.map(function(e){return <option key={e.id} value={e.nombre}>{e.nombre}</option>;})}
             </select>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={function(){setCobertura({emp:soyYo.id,fecha:fechaLocal(),local:formCob.local,reemplaza:formCob.reemplaza});setFormCob(null);}} disabled={!formCob.local} style={{...BS("#1A6B8A"),flex:2,padding:"10px",fontSize:13}}>Confirmar</button>
+              <button onClick={function(){setCobertura({emp:soyYo.id,fecha:diaDeNegocio(),local:formCob.local,reemplaza:formCob.reemplaza});setFormCob(null);}} disabled={!formCob.local} style={{...BS("#1A6B8A"),flex:2,padding:"10px",fontSize:13}}>Confirmar</button>
               <button onClick={function(){setFormCob(null);}} style={{...GH,flex:1,padding:"10px",fontSize:12}}>Cancelar</button>
             </div>
             <div style={{fontSize:10.5,color:"#7E7E7E",marginTop:7,lineHeight:1.4}}>Vale solo por hoy. Para marcar tenés que estar en ese local. Administración ve el cambio en Novedades.</div>

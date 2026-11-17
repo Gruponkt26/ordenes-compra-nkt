@@ -57,7 +57,7 @@ function DetalleVotos(props) {
   );
 }
 
-// Configuración de las opiniones (link de reseñas de Google por local y premio del sorteo) y sorteos hechos, guardados en la tabla de pautas.
+// Configuración de las opiniones (link de reseñas de Google por local), guardada en la tabla de pautas.
 async function cargarConfigOpiniones() {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.opinion_config&limit=1", { headers: SH });
@@ -268,7 +268,7 @@ export function Opinar() {
         {opReg && identificado && <div style={{ fontSize: 13, color: "#8FD19A", marginTop: 16 }}>✅ Tu opinión quedó con tu nombre, {fNombre.trim()}.</div>}
         <div style={{ ...tarjeta, textAlign: "left" }}>
           <div style={{ ...tit, textAlign: "center" }}>Sumate a nuestra comunidad de beneficios, descuentos, regalos y más</div>
-          <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "8px 0 12px", textAlign: "center" }}>{gancho || "Recibí un cupón de descuento y enterate primero de las novedades."}{cfg.premio ? " 🎁 Sorteo mensual: " + cfg.premio + "." : ""}</div>
+          <div style={{ fontSize: 13, color: "#C8C8C8", lineHeight: 1.55, margin: "8px 0 12px", textAlign: "center" }}>{gancho || "Recibí un cupón de descuento y enterate primero de las novedades."}</div>
           {abrirForm && !(opReg && !identificado) && (
             <div>
               <input value={fNombre} onChange={function (e) { setFNombre(e.target.value); }} maxLength={60} placeholder="Tu nombre" style={inpS} />
@@ -590,16 +590,11 @@ export function PanelCompetencia(props) {
   var [localVista, setLocalVista] = useState("l1");
   var [cfgPanel, setCfgPanel] = useState({ google: {}, premio: "" });
   var [verCfg, setVerCfg] = useState(false);
-  var [miembrosCom, setMiembrosCom] = useState([]);   // miembros de la comunidad: ponen nombre a las opiniones y participan del sorteo
-  var [sorteos, setSorteos] = useState({});   // mes → ganador
+  var [miembrosCom, setMiembrosCom] = useState([]);   // miembros de la comunidad: ponen nombre a las opiniones
   var [msgCfg, setMsgCfg] = useState("");
 
   useEffect(function () {
     cargarConfigOpiniones().then(setCfgPanel);
-    fetch(SURL + "/rest/v1/pautas?ambito=eq.opinion_sorteo&limit=100", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
-      var m = {}; if (Array.isArray(d)) d.forEach(function (f) { try { var x = JSON.parse(f.texto); if (x && x.mes) m[x.mes] = x; } catch (e) {} });
-      setSorteos(m);
-    }).catch(function () {});
   }, []);
   useEffect(function () {
     fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&order=created_at.desc&limit=2000", { headers: SH }).then(function (r) { return r.json(); }).then(function (d) {
@@ -611,13 +606,6 @@ export function PanelCompetencia(props) {
   function wspDe(o) { var m = o.disp ? porDisp[o.disp] : null; return o.wsp || (m ? m.wsp : "") || ""; }
   function guardarCfg() {
     guardarFilaPauta("opinion_config", "opinion_config", cfgPanel).then(function (ok) { setMsgCfg(ok ? "✓ Guardado" : "No se pudo guardar"); setTimeout(function () { setMsgCfg(""); }, 2500); });
-  }
-  function sortear(mes, participantes) {
-    if (participantes.length === 0) return;
-    if (sorteos[mes] && !window.confirm("Ya hay un ganador de este mes (" + sorteos[mes].nombre + "). ¿Sortear de nuevo?")) return;
-    var g = participantes[Math.floor(Math.random() * participantes.length)];
-    var obj = { mes: mes, id: g.id, nombre: g.nombre, wsp: g.wsp, local: g.local, premio: cfgPanel.premio || "", fecha: new Date().toISOString(), participantes: participantes.length };
-    guardarFilaPauta("opinion_sorteo_" + mes, "opinion_sorteo", obj).then(function (ok) { if (ok) setSorteos(function (p) { var n = { ...p }; n[mes] = obj; return n; }); else window.alert("No se pudo guardar el sorteo."); });
   }
   var [celusPersonal, setCelusPersonal] = useState({});   // ID de celular → nombres de quienes lo usan para fichar
   function recargar() { cargarOpiniones().then(setOpiniones); }
@@ -868,7 +856,7 @@ export function PanelCompetencia(props) {
         <div>
           {!props.soloLectura && (
             <div style={{ background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 12, padding: "10px 13px", marginBottom: 12 }}>
-              <div onClick={function () { setVerCfg(!verCfg); }} style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 800, color: "#D8D8D8" }}>{verCfg ? "▾" : "▸"} ⚙️ Reseñas de Google y sorteo</div>
+              <div onClick={function () { setVerCfg(!verCfg); }} style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 800, color: "#D8D8D8" }}>{verCfg ? "▾" : "▸"} ⚙️ Reseñas de Google</div>
               {verCfg && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Pegá el enlace de reseñas de Google de cada local. Se le ofrece al cliente que puso 4 o 5 estrellas. Si lo dejás vacío, no se muestra.</div>
@@ -876,8 +864,6 @@ export function PanelCompetencia(props) {
                     var l = localDe(id);
                     return <input key={id} value={cfgPanel.google[id] || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { var g = { ...c.google }; g[id] = v.trim(); return { ...c, google: g }; }); }} placeholder={"Enlace de Google de " + l.nombre} style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 6 }} />;
                   })}
-                  <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.5, margin: "6px 0" }}>Premio del sorteo mensual entre los miembros de la comunidad (se muestra en la invitación). Vacío = sin sorteo.</div>
-                  <input value={cfgPanel.premio || ""} onChange={function (e) { var v = e.target.value; setCfgPanel(function (c) { return { ...c, premio: v }; }); }} placeholder="Ej: una cena para dos" style={{ ...sel, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
                   <button onClick={guardarCfg} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Guardar</button>
                   {msgCfg && <span style={{ fontSize: 11.5, color: "#4C9A5A", marginLeft: 10 }}>{msgCfg}</span>}
                 </div>
@@ -1031,21 +1017,6 @@ export function PanelCompetencia(props) {
                 );
               })}
             </div>
-            {(function () {
-              var vistos = {};
-              var finMes = mesVista + "-31T23:59:59";
-              var part = miembrosCom.filter(function (m) { var w = String(m.wsp || "").replace(/\D/g, ""); if (m.prueba || !m.nombre || w.length < 8 || vistos[w] || (m.fecha && m.fecha > finMes)) return false; vistos[w] = true; return true; })
-                .map(function (m) { return { id: "com_" + m.wsp, nombre: nombreCompleto(m), wsp: m.wsp, local: m.fav || "" }; });
-              var gan = sorteos[mesVista];
-              return (
-                <div style={{ maxWidth: 640, margin: "0 auto 12px", background: "#14100A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: "#D4A017" }}>🎁 Sorteo de {nomMes(mesVista)}{cfgPanel.premio ? " · " + cfgPanel.premio : ""}</div>
-                  <div style={{ fontSize: 11, color: "#9A9A9A", margin: "3px 0 8px", lineHeight: 1.5 }}>Participan los miembros de la comunidad que se sumaron hasta fin de mes (uno por WhatsApp). Hay {part.length} participante{part.length === 1 ? "" : "s"}.</div>
-                  {gan && <div style={{ fontSize: 13, marginBottom: 8 }}>🏆 Ganó <b>{gan.nombre}</b> · <a href={linkWsp(gan.wsp)} target="_blank" rel="noreferrer" style={{ color: "#4C9A5A", textDecoration: "none" }}>💬 {gan.wsp}</a> <span style={{ color: "#6E6E6E", fontSize: 10.5 }}>({(localDe(gan.local) || {}).nombre} · sorteado el {new Date(gan.fecha).toLocaleDateString("es-AR")})</span></div>}
-                  {!props.soloLectura && <button onClick={function () { sortear(mesVista, part); }} disabled={part.length === 0} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: part.length ? "#C1440E" : "#2A2A2A", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: part.length ? "pointer" : "default" }}>{gan ? "🎲 Sortear de nuevo" : "🎲 Sortear ahora"}</button>}
-                </div>
-              );
-            })()}
             <div style={{ maxWidth: 640, margin: "0 auto" }}>
               <div style={{ background: "#0F0F0F", border: "1px solid " + (lv.color || "#333") + "33", borderRadius: 10, padding: "10px 12px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: lv.color, marginBottom: 8, borderBottom: "1px solid " + (lv.color || "#333") + "22", paddingBottom: 5 }}>{lv.emoji} {lv.nombre} · {nomMes(mesVista)} · {delLocalV.length} opinion{delLocalV.length === 1 ? "" : "es"}</div>

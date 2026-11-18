@@ -917,7 +917,7 @@ function BotonEnviarApp(p){
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function Login(p) {
   var [u,setU]=useState(""), [pw,setPw]=useState(""), [err,setErr]=useState(""), [show,setShow]=useState(false);
-  function go() { var x=p.users.find(function(x){return x.usuario===u.trim()&&x.password===pw;}); if(x)p.onLogin(x); else setErr("Usuario o contraseña incorrectos."); }
+  function go() { var x=p.users.find(function(x){return String(x.usuario||"").toLowerCase()===u.trim().toLowerCase()&&x.password===pw;}); if(x)p.onLogin(x); else setErr("Usuario o contraseña incorrectos."); }
   return (
     <div style={{minHeight:"100vh",background:"#0A0A0A",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif"}}>
       <div style={{width:"min(380px,92vw)"}}>
@@ -932,7 +932,7 @@ function Login(p) {
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Usuario</label>
-              <input value={u} onChange={function(e){setU(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="tu usuario" style={INP}/>
+              <input value={u} onChange={function(e){setU(e.target.value);setErr("");}} onKeyDown={function(e){if(e.key==="Enter")go();}} placeholder="tu usuario" autoCapitalize="none" autoCorrect="off" autoComplete="username" spellCheck={false} style={INP}/>
             </div>
             <div>
               <label style={{display:"block",fontSize:10,color:"#8C8C8C",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>Contraseña</label>

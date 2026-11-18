@@ -3655,13 +3655,13 @@ export default function PanelComandas(p) {
       <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5 }}>Módulo</div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>{p.soloDelivery ? "🛵 Delivery" : "🍽️ Comandas"}</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
       </div>
 
-      {!p.soloDelivery && nuevosWeb.length > 0 && (
+      {vista !== "delivery" && nuevosWeb.length > 0 && (
         <div style={{ background:"#2A1A00", border:"2px solid #D4A017", borderRadius:10, padding:"10px 13px", marginBottom:10 }}>
           <div style={{ fontSize:14, fontWeight:900, color:"#FFD36B", animation:"nktPulso 1.2s infinite" }}>🔔 {nuevosWeb.length} pedido{nuevosWeb.length === 1 ? "" : "s"} nuevo{nuevosWeb.length === 1 ? "" : "s"} de Comunidad</div>
-          <div style={{ fontSize:12, color:"#E0C080", marginTop:2 }}>Abrilo en el módulo 🛵 Delivery para aceptarlo o rechazarlo.</div>
+          <div style={{ fontSize:12, color:"#E0C080", marginTop:2 }}>Abrilo en la pestaña 🛵 Delivery para aceptarlo o rechazarlo. <button onClick={function() { setVista("delivery"); setConfig(false); }} style={{ ...GH, padding:"3px 10px", fontSize:11, marginLeft:6 }}>Ir a Delivery</button></div>
         </div>
       )}
       {turnos !== null && (
@@ -3686,10 +3686,10 @@ export default function PanelComandas(p) {
         )
       )}
       <div style={{ marginBottom:10, display:"flex", gap:8, flexWrap:"wrap" }}>
-        {verInforme && !p.soloDelivery && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
-        {verInforme && !p.soloDelivery && <button onClick={function() { setDiscontinuando(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #C1440E88", background:"#C1440E15", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>🚫 Discontinuar</button>}
+        {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
+        {verInforme && <button onClick={function() { setDiscontinuando(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #C1440E88", background:"#C1440E15", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>🚫 Discontinuar</button>}
       </div>
-      {!p.soloServicio && !p.soloDelivery && (
+      {!p.soloServicio && (
         <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
           <span style={{ fontSize:12, color:"#C8C8C8" }}>⏱ Avisar cuando un pedido lleve más de</span>
           <select value={limite} onChange={function(e) {
@@ -3734,7 +3734,7 @@ export default function PanelComandas(p) {
           </div>
         );
       })()}
-      {!practica && verInforme && !p.soloDelivery && (pruebaVivo ? (
+      {!practica && verInforme && (pruebaVivo ? (
         <div style={{ background:"#1C1230", border:"2px dashed #B07CD8", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#B07CD8", letterSpacing:1 }}>🧪 PRUEBA COMPARTIDA</div>
           <div style={{ fontSize:11, color:"#CDB8E8", lineHeight:1.5, margin:"3px 0 8px" }}>Las cuentas que abras se guardan, se ven en todos los aparatos (también en la cocina) con el cartel «PRUEBA», y no entran al cierre de caja ni a los informes.</div>
@@ -3758,7 +3758,7 @@ export default function PanelComandas(p) {
             <button onClick={salirPractica} style={{ background:"#D4A017", border:"none", borderRadius:8, color:"#1A1200", padding:"6px 12px", fontSize:11, fontWeight:800, cursor:"pointer" }}>Salir de la práctica</button>
           </div>
         </div>
-      ) : p.soloDelivery ? null : (
+      ) : (
         <div style={{ marginBottom:12 }}>
           <button onClick={entrarPractica} style={{ ...GH, padding:"6px 12px", fontSize:11 }}>🎮 Practicar (simulador)</button>
         </div>
@@ -3795,7 +3795,7 @@ export default function PanelComandas(p) {
       )}
 
       {/* Mesas / Delivery / Mostrador */}
-      <div style={{ display: p.soloDelivery ? "none" : "flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
         {CMD_VISTAS.filter(function(v) { return v.id !== "informe" || verInforme; }).map(function(v) {
           var act = vista === v.id && !config;
           var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
@@ -3803,7 +3803,7 @@ export default function PanelComandas(p) {
           return (
             <button key={v.id} onClick={function() { setVista(v.id); setConfig(false); }}
               style={{ flex:1, minWidth:110, padding:"11px 12px", borderRadius:9, border:"2px solid "+(act?colV:colV+"33"), background:act?colV+"28":"#111", color:act?colV:colV+"AA", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-              {v.emoji} {v.nombre}{cuenta > 0 ? " (" + cuenta + ")" : ""}
+              {v.emoji} {v.nombre}{cuenta > 0 ? " (" + cuenta + ")" : ""}{v.id === "delivery" && nuevosWeb.length > 0 ? " 🔔" : ""}
             </button>
           );
         })}
@@ -3829,7 +3829,7 @@ export default function PanelComandas(p) {
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
-      ) : p.soloDelivery ? (
+      ) : vista === "delivery" ? (
         <>
           <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
             {[["pedidos", "🛵 Pedidos (" + abiertas.filter(function(c) { return c.tipo === "delivery"; }).length + ")"], ["informe", "📊 Informe del día"]].map(function(t) {

@@ -3213,14 +3213,20 @@ export default function PanelComandas(p) {
     // es un problema, y una con una tanda de hace media hora sí. Por eso mientras no
     // haya nada en cocina va en el color del local, y cuando hay, en el de la demora.
     var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap) : null;
-    var col = demora === null ? color : colorDemora(demora, limite);
+    // Comiendo: ya recibió todo lo que pidió (nada pendiente en cocina ni en camino) → amarillo patito.
+    var susItems = ocupada ? items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; }) : [];
+    var comiendo = ocupada && susItems.length > 0 && susItems.every(function(i) { return i.estado === "entregado"; });
+    var comiendoDesde = comiendo ? susItems.reduce(function(a, i) { return i.entregado_at && (!a || i.entregado_at > a) ? i.entregado_at : a; }, null) : null;
+    var pasada = ocupada && demora !== null && demora >= limite;   // se pasó del tiempo elegido: titila en rojo
+    var col = comiendo ? "#FFD60A" : (demora === null ? color : colorDemora(demora, limite));
     return (
       <button onClick={function() { ocupada ? setAbiertaId(c.id) : abrirMesa(m); }}
         title={ocupada ? "Abierta hace " + hace(c.abierta_at) : "Tocar para abrir"}
         style={{
           width:82, height:82, borderRadius:12, cursor:"pointer",
-          border:"1px solid " + (ocupada ? col : "#1E1E1E"),
-          background: ocupada ? col + "22" : "#0F0F0F",
+          border: pasada ? "2px solid #E0452E" : "1px solid " + (ocupada ? col : "#1E1E1E"),
+          background: pasada ? "#E0452E55" : (ocupada ? col + (comiendo ? "33" : "22") : "#0F0F0F"),
+          animation: pasada ? "nktPulso 1s infinite" : "none",
           color: ocupada ? col : "#555",
           fontFamily:"'Inter',sans-serif", display:"flex", flexDirection:"column",
           alignItems:"center", justifyContent:"center", gap:2, padding:4,
@@ -3235,7 +3241,7 @@ export default function PanelComandas(p) {
         {ocupada ? (
           <>
             <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
-              {demora !== null ? "🍳 " + demora + " min" : "⏱ " + hace(c.abierta_at)}
+              {demora !== null ? "🍳 " + demora + " min" : comiendo ? "🍽️ comiendo" + (comiendoDesde ? " · " + hace(comiendoDesde) : "") : "⏱ " + hace(c.abierta_at)}
             </div>
             {c.mozo && <div style={{ fontSize:8, opacity:0.6, maxWidth:74, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.mozo}</div>}
           </>

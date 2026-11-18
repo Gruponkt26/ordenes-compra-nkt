@@ -250,6 +250,37 @@ async function sbLeerDespachos(desdeISO) {
     return o;
   } catch(e) { return {}; }
 }
+// Pedidos de delivery que llegan desde Comunidad: un aviso por pedido (pautas, ámbito "delivery_web"): nuevo → aceptado | rechazado, con el medio de pago y la nota del cliente.
+async function sbGuardarPedidoWeb(a) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cweb_" + a.comanda_id, ambito:"delivery_web", texto:JSON.stringify(a), usuario:a.aceptado_por || "Comunidad", created_at:a.creado_at || ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function sbLeerPedidosWeb() {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.delivery_web&created_at=gte." + new Date(Date.now() - 3 * 86400000).toISOString() + "&limit=1000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(f) { try { var x = JSON.parse(f.texto); if (x && x.comanda_id) o[x.comanda_id] = x; } catch(e) {} });
+    return o;
+  } catch(e) { return {}; }
+}
+// Un pitido corto para avisar que entró un pedido nuevo (funciona porque el cajero ya tocó la pantalla).
+function avisoSonoro(n) {
+  try {
+    var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    var ctx = new C(), t = ctx.currentTime;
+    for (var k = 0; k < (n || 2); k++) {
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, t + k * 0.35); g.gain.exponentialRampToValueAtTime(0.4, t + k * 0.35 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + k * 0.35 + 0.28);
+      o.start(t + k * 0.35); o.stop(t + k * 0.35 + 0.3);
+    }
+    setTimeout(function() { try { ctx.close(); } catch(e) {} }, 1500);
+  } catch(e) {}
+}
 // El turno de cada local: se abre con la fecha del día y se cierra cuando no queda ninguna cuenta abierta.
 // Va en pautas, ámbito "turno", un registro por local y fecha: {local, fecha, estado:"abierto"|"cerrado", abierto_at, abierto_por, cerrado_at, cerrado_por}.
 async function sbGuardarTurno(t) {
@@ -2955,17 +2986,75 @@ var ETAPAS_DELIVERY = [
   { id:"armando",   emoji:"🧾", nombre:"Armando el pedido",      col:"#8C8C8C" },
   { id:"entregado", emoji:"💵", nombre:"Entregado: falta cobrar y cerrar", col:"#B07CD8" },
 ];
+// Un pedido nuevo de Comunidad esperando que el cajero lo acepte (con el tiempo de entrega) o lo rechace (con motivo).
+function TarjetaPedidoWeb(props) {
+  var c = props.comanda, a = props.aviso || {};
+  var [minutos, setMinutos] = useState(40);
+  var [rechazando, setRechazando] = useState(false);
+  var [motivo, setMotivo] = useState("No hay stock de algo del pedido");
+  var its = props.items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+  return (
+    <div style={{ background:"#1A1208", border:"2px solid #D4A017", borderRadius:12, padding:"12px 14px" }}>
+      <div style={{ fontSize:12, fontWeight:900, color:"#D4A017", letterSpacing:0.6, animation:"nktPulso 1.2s infinite" }}>🌐 PEDIDO DE COMUNIDAD · hace {hace(c.abierta_at)}</div>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:9, marginTop:5 }}>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontSize:16, fontWeight:900, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
+          {c.direccion && <div style={{ fontSize:13, color:"#C8C8C8", marginTop:2 }}>📍 {c.direccion}</div>}
+          {c.telefono && <div style={{ fontSize:12.5, color:"#9A9A9A" }}>📞 {c.telefono}</div>}
+        </div>
+        <div style={{ textAlign:"right", whiteSpace:"nowrap", fontSize:17, fontWeight:900, color:"#FFD36B" }}>{pesos(totalItemsDelivery(its))}</div>
+      </div>
+      <div style={{ fontSize:13.5, color:"#E0E0E0", margin:"8px 0", lineHeight:1.5 }}>{its.map(function(i) { return (Number(i.cant) || 1) + "× " + i.nombre; }).join(" · ")}</div>
+      <div style={{ fontSize:12.5, color:"#C8C8C8", lineHeight:1.5 }}>
+        {a.medio === "transferencia" ? "📲 Paga por transferencia (confirmala antes de despachar)" : "💵 Efectivo al recibir" + (a.abona_con ? " · abona con " + pesos(a.abona_con) : "")}
+        {a.nota ? <div style={{ color:"#D4A017" }}>📝 {a.nota}</div> : null}
+      </div>
+      {!rechazando ? (
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginTop:10 }}>
+          <span style={{ fontSize:12, color:"#C8C8C8" }}>Tiempo de entrega</span>
+          <select value={minutos} onChange={function(e) { setMinutos(parseInt(e.target.value, 10)); }} style={{ ...INP, width:"auto", padding:"8px 10px", fontSize:13, fontWeight:800 }}>
+            {[20, 30, 40, 45, 60, 75, 90].map(function(m) { return <option key={m} value={m}>{m} min</option>; })}
+          </select>
+          <button onClick={function() { props.onAceptar(c, minutos); }} style={{ padding:"10px 18px", borderRadius:9, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>✅ Aceptar</button>
+          <button onClick={function() { setRechazando(true); }} style={{ ...GH, padding:"9px 14px", fontSize:13, borderColor:"#C1440E88", color:"#E0714A" }}>✖ Rechazar</button>
+        </div>
+      ) : (
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginTop:10 }}>
+          <select value={motivo} onChange={function(e) { setMotivo(e.target.value); }} style={{ ...INP, width:"auto", padding:"8px 10px", fontSize:13 }}>
+            {["No hay stock de algo del pedido", "Estamos fuera de la zona de reparto", "El local no está tomando pedidos ahora", "No pudimos comunicarnos con vos"].map(function(m) { return <option key={m} value={m}>{m}</option>; })}
+          </select>
+          <button onClick={function() { props.onRechazar(c, motivo); }} style={{ padding:"10px 16px", borderRadius:9, border:"none", background:"#C1440E", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>Confirmar rechazo</button>
+          <button onClick={function() { setRechazando(false); }} style={{ ...GH, padding:"9px 14px", fontSize:13 }}>Volver</button>
+        </div>
+      )}
+    </div>
+  );
+}
 function BandejaDelivery(props) {
   var color = props.color;
-  var delis = props.comandas;
+  var web = props.pedidosWeb || {};
+  var nuevos = props.comandas.filter(function(c) { return web[c.id] && web[c.id].estado === "nuevo"; });
+  var delis = props.comandas.filter(function(c) { return !(web[c.id] && web[c.id].estado === "nuevo"); });
+  var cabeza = nuevos.length > 0 ? (
+    <div style={{ marginBottom:14 }}>
+      <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.6, color:"#D4A017", textTransform:"uppercase", marginBottom:6 }}>🔔 Pedidos nuevos de Comunidad · {nuevos.length}</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {nuevos.map(function(c) { return <TarjetaPedidoWeb key={c.id} comanda={c} aviso={web[c.id]} items={props.items} onAceptar={props.onAceptarWeb} onRechazar={props.onRechazarWeb} />; })}
+      </div>
+    </div>
+  ) : null;
   if (!delis.length) return (
-    <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
-      <div style={{ fontSize:30, marginBottom:8 }}>🛵</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#555" }}>Sin deliverys abiertos</div>
+    <div>
+      {cabeza}
+      {nuevos.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
+        <div style={{ fontSize:30, marginBottom:8 }}>🛵</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#555" }}>Sin deliverys abiertos</div>
+      </div>}
     </div>
   );
   return (
     <div>
+      {cabeza}
       {ETAPAS_DELIVERY.map(function(et) {
         var lista = delis.filter(function(c) { return etapaDelivery(props.items.filter(function(i) { return i.comanda_id === c.id; }), props.despachos[c.id]) === et.id; });
         if (!lista.length) return null;
@@ -2987,7 +3076,8 @@ function BandejaDelivery(props) {
                   <div key={c.id} style={{ background:"#111", border:"1px solid " + et.col + "55", borderLeft:"6px solid " + et.col, borderRadius:10, padding:"11px 13px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", gap:9, alignItems:"flex-start" }}>
                       <div style={{ minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:900, color:"#F0EDE8" }}>#{c.numero} · {c.cliente || "Sin nombre"}</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:"#F0EDE8" }}>#{c.numero} · {c.cliente || "Sin nombre"}{web[c.id] && <span style={{ marginLeft:6, fontSize:10, fontWeight:900, color:"#D4A017", border:"1px solid #D4A01788", borderRadius:5, padding:"1px 6px" }}>🌐 COMUNIDAD</span>}</div>
+                        {web[c.id] && <div style={{ fontSize:11.5, color: web[c.id].medio === "transferencia" ? (web[c.id].transf_ok ? "#8FD19A" : "#B07CD8") : "#C8C8C8", marginTop:2 }}>{web[c.id].medio === "transferencia" ? (web[c.id].transf_ok ? "📲 Transferencia confirmada" : "📲 Transferencia sin confirmar") : "💵 Efectivo" + (web[c.id].abona_con ? " · abona con " + pesos(web[c.id].abona_con) : "")}</div>}
                         {c.direccion && <div style={{ fontSize:12, color:"#9A9A9A", marginTop:2 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:12, color:"#777" }}>📞 {c.telefono}</div>}
                         <div style={{ fontSize:12.5, color:"#C8C8C8", marginTop:4, lineHeight:1.4 }}>{resumen || "Todavía sin productos"}</div>
@@ -3002,7 +3092,8 @@ function BandejaDelivery(props) {
                     <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end", marginTop:9 }}>
                       {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"7px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
                       <button onClick={function() { props.onAbrir(c); }} style={{ ...GH, padding:"7px 12px", fontSize:12 }}>🧾 Abrir cuenta</button>
-                      {et.id === "listo" && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
+                      {et.id === "listo" && web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok && <button onClick={function() { props.onTransferencia(c); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>📲 Confirmar transferencia recibida</button>}
+                      {et.id === "listo" && !(web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok) && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
                       {et.id === "camino" && <button onClick={function() { props.onDespacho(c, "entregado"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>✅ Llegó al cliente</button>}
                     </div>
                   </div>
@@ -3132,6 +3223,7 @@ export default function PanelComandas(p) {
   // El día de las ventas es el del turno abierto: así lo cobrado cae en el cierre de esa fecha.
   function fechaNegocio() { return turnoActual ? turnoActual.fecha : (p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)); }
   var [entregas, setEntregas] = useState({});   // tiempos de entrega prometidos {comanda_id: {...}}
+  var [pedidosWeb, setPedidosWeb] = useState({});   // pedidos de Comunidad {comanda_id: aviso}
   var [despachos, setDespachos] = useState({});   // delivery: en camino / entregado al cliente {comanda_id: {...}}
   var [vistaDel, setVistaDel] = useState("pedidos");   // módulo de delivery: pedidos | informe
   var [refInforme, setRefInforme] = useState(0);
@@ -3211,6 +3303,7 @@ export default function PanelComandas(p) {
   function cargar() {
     sbLeerEntregas().then(setEntregas);
     sbLeerDespachos().then(setDespachos);
+    sbLeerPedidosWeb().then(setPedidosWeb);
     sbLeerTurnos(localId).then(setTurnos);
     sbLeerListosDesde(new Date(Date.now() - 24 * 3600000).toISOString()).then(setListosMap);
     sbLeerExtrasRecientes().then(setExtrasTodos);
@@ -3252,7 +3345,7 @@ export default function PanelComandas(p) {
   var mesasLocal = mesas.filter(function(m) { return m.local === localId && m.activa !== false; });
   var abiertas = comandas.filter(function(c) { return c.local === localId; });
   function comandaDeMesa(mesaId) { return abiertas.find(function(c) { return c.tipo === "mesa" && c.mesa_id === mesaId; }); }
-  var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo; });
+  var delTipo = abiertas.filter(function(c) { return c.tipo === vistaActual.tipo && !(pedidosWeb[c.id] && pedidosWeb[c.id].estado === "nuevo"); });
 
   var comandaAbierta = abiertaId ? comandas.find(function(x) { return x.id === abiertaId; }) : null;
   var planoActual = { pos: posPlano, extras: extrasPlano };
@@ -3332,6 +3425,43 @@ export default function PanelComandas(p) {
       }
       return null;
     });
+  }
+  // Pedidos nuevos de Comunidad (de este local) que esperan al cajero.
+  var nuevosWeb = comandas.filter(function(c) { return c.local === localId && c.tipo === "delivery" && pedidosWeb[c.id] && pedidosWeb[c.id].estado === "nuevo"; });
+  var contNuevosWeb = useRef(null);
+  useEffect(function() {
+    // Suena cuando entra uno nuevo (no en la primera lectura).
+    if (contNuevosWeb.current !== null && nuevosWeb.length > contNuevosWeb.current) avisoSonoro(3);
+    contNuevosWeb.current = nuevosWeb.length;
+  }, [nuevosWeb.length]);
+  function aceptarWeb(c, minutos) {
+    if (!puedeAbrirCuenta()) return;
+    var ahoraISO = new Date().toISOString();
+    var nueva = { ...c, numero: proximoNumero() };
+    guardar(nueva);
+    fijarEntrega(nueva, minutos, ahoraISO);
+    var pend = items.filter(function(i) { return i.comanda_id === c.id && i.estado === "pendiente"; });
+    guardarItems(pend.map(function(i) { return { ...i, estado:"enviado", ronda:1, enviado_at:ahoraISO }; }));
+    var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, estado:"aceptado", aceptado_at:ahoraISO, aceptado_por:usuario, minutos:minutos, prometida_at:new Date(Date.now() + minutos * 60000).toISOString() };
+    setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
+    sbGuardarPedidoWeb(av).then(function(ok) { if (!ok) alert("El pedido se aceptó, pero no se pudo avisar al cliente. Avisale por WhatsApp."); });
+    registrar(nueva, "Aceptó un pedido de Comunidad", (c.cliente || "") + " · " + minutos + " min");
+  }
+  function rechazarWeb(c, motivo) {
+    var ahoraISO = new Date().toISOString();
+    guardar({ ...c, estado:"cancelada", cerrada_at:ahoraISO });
+    var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, estado:"rechazado", motivo:motivo, rechazado_at:ahoraISO, aceptado_por:usuario };
+    setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
+    sbGuardarPedidoWeb(av);
+    registrar(c, "Rechazó un pedido de Comunidad", (c.cliente || "") + " · " + motivo);
+    var wa = c.telefono ? linkWspDelivery(c.telefono, "Hola " + (c.cliente || "") + "! No pudimos tomar tu pedido de " + (local && local.nombre || "") + ": " + motivo + ". Disculpá las molestias.") : "";
+    if (wa && window.confirm("Pedido rechazado. ¿Querés avisarle al cliente por WhatsApp?")) window.open(wa, "_blank");
+  }
+  function confirmarTransferencia(c) {
+    var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, transf_ok:true, transf_at:new Date().toISOString(), transf_por:usuario };
+    setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
+    sbGuardarPedidoWeb(av);
+    registrar(c, "Confirmó la transferencia", c.cliente || "");
   }
   // Delivery: el cajero marca cuándo salió el pedido y cuándo llegó al cliente.
   function despachar(c, estado) {
@@ -3528,6 +3658,12 @@ export default function PanelComandas(p) {
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>{p.soloDelivery ? "🛵 Delivery" : "🍽️ Comandas"}</div>
       </div>
 
+      {!p.soloDelivery && nuevosWeb.length > 0 && (
+        <div style={{ background:"#2A1A00", border:"2px solid #D4A017", borderRadius:10, padding:"10px 13px", marginBottom:10 }}>
+          <div style={{ fontSize:14, fontWeight:900, color:"#FFD36B", animation:"nktPulso 1.2s infinite" }}>🔔 {nuevosWeb.length} pedido{nuevosWeb.length === 1 ? "" : "s"} nuevo{nuevosWeb.length === 1 ? "" : "s"} de Comunidad</div>
+          <div style={{ fontSize:12, color:"#E0C080", marginTop:2 }}>Abrilo en el módulo 🛵 Delivery para aceptarlo o rechazarlo.</div>
+        </div>
+      )}
       {turnos !== null && (
         turnoActual ? (
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:"#0E1F14", border:"1px solid #3A7D4466", borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
@@ -3707,6 +3843,7 @@ export default function PanelComandas(p) {
             <>
               <NuevaComanda tipo="delivery" color={CMD_TIPO.delivery.color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} nuevoId={function() { return (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(); }} />
               <BandejaDelivery comandas={abiertas.filter(function(c) { return c.tipo === "delivery"; })} items={items} entregas={entregas} despachos={despachos} ahora={ahora} color={color} localNombre={local && local.nombre}
+                pedidosWeb={pedidosWeb} onAceptarWeb={aceptarWeb} onRechazarWeb={rechazarWeb} onTransferencia={confirmarTransferencia}
                 onAbrir={function(c) { setAbiertaId(c.id); }} onDespacho={despachar} />
             </>
           )}

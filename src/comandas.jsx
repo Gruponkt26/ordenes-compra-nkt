@@ -2044,6 +2044,7 @@ function ComandaDetalle(props) {
     else if (hayEnCocina) setPreguntaSalida(true);
     else mandar();
   }
+  var [medioDel, setMedioDel] = useState("efectivo");   // cómo paga el delivery que toma el cajero: efectivo al recibir o transferencia al local
   var [preguntaEntrega, setPreguntaEntrega] = useState(false);   // delivery sin tiempo de entrega: se pregunta antes de marchar
   function mandar(salida) {
     if (!pendientes.length) return;
@@ -2320,11 +2321,19 @@ function ComandaDetalle(props) {
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
       {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
       {preguntaEntrega && (
-        <Ventana titulo="🕒 ¿En cuánto tiempo se entrega?" onCerrar={function() { setPreguntaEntrega(false); }}>
-          <div style={{ fontSize:13, color:"#C8C8C8", lineHeight:1.5, marginBottom:12 }}>Último paso: elegí el tiempo de entrega que le prometés al cliente. Se cuenta desde que marchás el pedido a la cocina.</div>
+        <Ventana titulo="Último paso: pago y tiempo" onCerrar={function() { setPreguntaEntrega(false); }}>
+          <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>💳 ¿Cómo paga el cliente?</div>
+          <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+            {[["efectivo", "💵 Efectivo al recibir"], ["transferencia", "📲 Transferencia al local"]].map(function(m) {
+              var act = medioDel === m[0];
+              return <button key={m[0]} onClick={function() { setMedioDel(m[0]); }} style={{ flex:1, padding:"12px 6px", borderRadius:10, border:"2px solid " + (act ? props.color : "#2A2A2A"), background: act ? props.color + "26" : "#111", color: act ? "#fff" : "#9A9A9A", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:800, cursor:"pointer" }}>{m[1]}</button>;
+            })}
+          </div>
+          {medioDel === "transferencia" && <div style={{ fontSize:12, color:"#B07CD8", lineHeight:1.5, margin:"-6px 0 12px" }}>El cliente transfiere al local. Cuando te llegue, tocá «Confirmar transferencia recibida» en el pedido: hasta entonces no se puede despachar.</div>}
+          <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>🕒 ¿En cuánto tiempo se entrega? (se cuenta desde que marchás)</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
             {ENTREGA_OPCIONES.map(function(m) {
-              return <button key={m} onClick={function() { setPreguntaEntrega(false); if (props.onEntrega) props.onEntrega(m); mandar(); }} style={{ flex:"1 1 70px", padding:"16px 8px", borderRadius:11, border:"2px solid " + props.color, background:props.color + "22", color:props.color, fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer" }}>{m} min</button>;
+              return <button key={m} onClick={function() { setPreguntaEntrega(false); if (props.onEntrega) props.onEntrega(m); if (props.onMedioPago) props.onMedioPago(medioDel); mandar(); }} style={{ flex:"1 1 70px", padding:"16px 8px", borderRadius:11, border:"2px solid " + props.color, background:props.color + "22", color:props.color, fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer" }}>{m} min</button>;
             })}
           </div>
           <button onClick={function() { setPreguntaEntrega(false); }} style={{ ...GH, width:"100%", padding:"10px", fontSize:12 }}>Cancelar</button>
@@ -3269,7 +3278,7 @@ function BandejaDelivery(props) {
                   <div key={c.id} style={{ background:"#111", border:"1px solid " + et.col + "55", borderLeft:"6px solid " + et.col, borderRadius:10, padding:"11px 13px" }}>
                     <div style={{ display:"flex", justifyContent:"space-between", gap:9, alignItems:"flex-start" }}>
                       <div style={{ minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:900, color:"#F0EDE8" }}>#{c.numero} · {c.cliente || "Sin nombre"}{web[c.id] && <span style={{ marginLeft:6, fontSize:10, fontWeight:900, color:"#D4A017", border:"1px solid #D4A01788", borderRadius:5, padding:"1px 6px" }}>🌐 COMUNIDAD</span>}</div>
+                        <div style={{ fontSize:15, fontWeight:900, color:"#F0EDE8" }}>#{c.numero} · {c.cliente || "Sin nombre"}{web[c.id] && web[c.id].origen !== "cajero" && <span style={{ marginLeft:6, fontSize:10, fontWeight:900, color:"#D4A017", border:"1px solid #D4A01788", borderRadius:5, padding:"1px 6px" }}>🌐 COMUNIDAD</span>}</div>
                         {web[c.id] && <div style={{ fontSize:11.5, color: web[c.id].medio === "transferencia" ? (web[c.id].transf_ok ? "#8FD19A" : "#B07CD8") : "#C8C8C8", marginTop:2 }}>{web[c.id].medio === "transferencia" ? (web[c.id].transf_ok ? "📲 Transferencia confirmada" : "📲 Transferencia sin confirmar") : "💵 Efectivo" + (web[c.id].abona_con ? " · abona con " + pesos(web[c.id].abona_con) : "")}</div>}
                         {c.direccion && <div style={{ fontSize:12, color:"#9A9A9A", marginTop:2 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:12, color:"#777" }}>📞 {c.telefono}</div>}
@@ -3293,7 +3302,7 @@ function BandejaDelivery(props) {
                       )}
                       {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"7px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
                       <button onClick={function() { props.onAbrir(c); }} style={{ ...GH, padding:"7px 12px", fontSize:12 }}>🧾 Abrir cuenta</button>
-                      {et.id === "listo" && web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok && <button onClick={function() { props.onTransferencia(c); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>📲 Confirmar transferencia recibida</button>}
+                      {(et.id === "listo" || et.id === "cocina") && web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok && <button onClick={function() { props.onTransferencia(c); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>📲 Confirmar transferencia recibida</button>}
                       {et.id === "listo" && cadetes.length > 0 && !desp.cadete && <span style={{ fontSize:12, fontWeight:800, color:"#D4A017" }}>👆 Asigná un cadete para despachar</span>}
                       {et.id === "listo" && (cadetes.length === 0 || desp.cadete) && !(web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok) && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
                       {et.id === "camino" && desp.cadete && <span style={{ fontSize:11.5, color:"#7CC4E4" }}>Lo marca {desp.cadete} al entregar</span>}
@@ -3659,6 +3668,13 @@ export default function PanelComandas(p) {
     registrar(c, "Rechazó un pedido de Comunidad", (c.cliente || "") + " · " + motivo);
     var wa = c.telefono ? linkWspDelivery(c.telefono, "Hola " + (c.cliente || "") + "! No pudimos tomar tu pedido de " + (local && local.nombre || "") + ": " + motivo + ". Disculpá las molestias.") : "";
     if (wa && window.confirm("Pedido rechazado. ¿Querés avisarle al cliente por WhatsApp?")) window.open(wa, "_blank");
+  }
+  // Delivery tomado por el cajero: cómo paga el cliente (efectivo al recibir o transferencia al local). Si es transferencia, no se despacha hasta confirmarla.
+  function fijarMedioDelivery(c, medio) {
+    var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, estado:"aceptado", origen:"cajero", medio:medio, cliente:c.cliente || "", creado_at:(pedidosWeb[c.id] && pedidosWeb[c.id].creado_at) || new Date().toISOString(), aceptado_por:usuario };
+    setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
+    sbGuardarPedidoWeb(av);
+    registrar(c, "Eligió cómo paga el delivery", medio === "transferencia" ? "Transferencia al local" : "Efectivo al recibir");
   }
   // El cajero asigna el pedido a un cadete (los cadetes reparten para los 3 locales).
   function asignarCadete(c, nombre) {
@@ -4068,7 +4084,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />

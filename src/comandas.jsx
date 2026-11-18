@@ -2959,6 +2959,153 @@ function NuevaComanda(props) {
     );
   }
 
+// ─── PANTALLA DEL CADETE ──────────────────────────────────────────────
+// El cadete reparte para los 3 locales. Ve solo los pedidos que el cajero le asignó: retira, sale, entrega y cobra (efectivo o ya transferido).
+// El efectivo que cobra lo rinde en cada local (cada local tiene su caja): el cajero de ese local confirma «recibí $X».
+function TarjetaCadete(props) {
+  var c = props.comanda, d = props.desp || {}, a = props.aviso || {};
+  var loc = getLocal(c.local) || {};
+  var its = props.items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+  var total = totalItemsDelivery(its);
+  var etapa = etapaDelivery(its, d);
+  var transfer = a.medio === "transferencia";
+  var transfPend = transfer && !a.transf_ok;
+  var [cobrando, setCobrando] = useState(false);
+  var [monto, setMonto] = useState(String(Math.round(total)));
+  var mapa = c.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(c.direccion + " Punta Alta") : "";
+  var wa = c.telefono ? linkWspDelivery(c.telefono, "Hola " + (c.cliente || "") + "! Soy el cadete de " + (loc.nombre || "") + ", estoy llegando con tu pedido 🛵") : "";
+  var colEtapa = etapa === "camino" ? "#3A9BC1" : etapa === "listo" ? "#4C9A5A" : "#D4A017";
+  return (
+    <div style={{ background:"#111", border:"2px solid " + colEtapa + "88", borderLeft:"8px solid " + (loc.color || colEtapa), borderRadius:14, padding:"13px 14px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
+        <div>
+          <div style={{ fontSize:12, fontWeight:900, color:loc.color || "#9A9A9A", letterSpacing:0.6 }}>{loc.emoji} {String(loc.nombre || "").toUpperCase()} · #{c.numero}</div>
+          <div style={{ fontSize:19, fontWeight:900, color:"#F0EDE8", marginTop:3 }}>{c.cliente || "Sin nombre"}</div>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ fontSize:18, fontWeight:900, color:"#FFD36B" }}>{pesos(total)}</div>
+          <div style={{ fontSize:11, fontWeight:800, color: transfer ? "#B07CD8" : "#8FD19A" }}>{transfer ? (a.transf_ok ? "📲 transferido" : "📲 transf. sin confirmar") : "💵 cobrar en efectivo"}</div>
+        </div>
+      </div>
+      {c.direccion && <div style={{ fontSize:15, fontWeight:700, color:"#E0E0E0", marginTop:6 }}>📍 {c.direccion}</div>}
+      <div style={{ fontSize:13, color:"#B8B8B8", marginTop:5, lineHeight:1.45 }}>{its.map(function(i) { return (Number(i.cant) || 1) + "× " + i.nombre; }).join(" · ")}</div>
+      {a.nota && <div style={{ fontSize:12.5, color:"#D4A017", marginTop:3 }}>📝 {a.nota}</div>}
+      {!transfer && a.abona_con && <div style={{ fontSize:12.5, color:"#C8C8C8", marginTop:3 }}>Abona con {pesos(a.abona_con)} · vuelto {pesos(Math.max(0, Number(a.abona_con) - total))}</div>}
+      <div style={{ display:"flex", gap:7, flexWrap:"wrap", marginTop:9 }}>
+        {mapa && <a href={mapa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"9px 13px", fontSize:13, textDecoration:"none" }}>🗺️ Mapa</a>}
+        {c.telefono && <a href={"tel:" + String(c.telefono).replace(/[^\d+]/g, "")} style={{ ...GH, padding:"9px 13px", fontSize:13, textDecoration:"none" }}>📞 Llamar</a>}
+        {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"9px 13px", fontSize:13, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
+      </div>
+      {etapa === "cocina" && <div style={{ marginTop:10, fontSize:13, fontWeight:800, color:"#D4A017" }}>🍳 Todavía en la cocina: esperá el aviso del local.</div>}
+      {etapa === "armando" && <div style={{ marginTop:10, fontSize:13, fontWeight:800, color:"#9A9A9A" }}>🧾 El local lo está armando.</div>}
+      {etapa === "listo" && (transfPend
+        ? <div style={{ marginTop:10, fontSize:13, fontWeight:800, color:"#B07CD8" }}>⏳ Esperá: el local todavía no confirmó la transferencia.</div>
+        : <button onClick={function() { props.onSali(c); }} style={{ marginTop:10, width:"100%", padding:"15px", borderRadius:11, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer" }}>🛵 Retiré y salí</button>)}
+      {etapa === "camino" && !cobrando && <button onClick={function() { if (transfer) props.onEntregue(c, 0); else setCobrando(true); }} style={{ marginTop:10, width:"100%", padding:"15px", borderRadius:11, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:900, cursor:"pointer" }}>✅ Entregué</button>}
+      {etapa === "camino" && cobrando && (
+        <div style={{ marginTop:10, background:"#0F1A12", border:"1px solid #3A7D44", borderRadius:10, padding:"10px 12px" }}>
+          <div style={{ fontSize:13, fontWeight:800, color:"#8FD19A", marginBottom:6 }}>¿Cuánto cobraste en efectivo?</div>
+          <input value={monto} onChange={function(e) { setMonto(e.target.value); }} inputMode="numeric" style={{ ...INP, fontSize:20, fontWeight:900, marginBottom:8 }} />
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={function() { var m = parseInt(String(monto).replace(/[^\d]/g, ""), 10); if (!(m >= 0)) return; props.onEntregue(c, m); setCobrando(false); }} style={{ flex:2, padding:"13px", borderRadius:10, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:15, fontWeight:900, cursor:"pointer" }}>Confirmar entrega</button>
+            <button onClick={function() { setCobrando(false); }} style={{ ...GH, flex:1, padding:"13px", fontSize:13 }}>Volver</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+export function PantallaCadete(props) {
+  var usuario = props.usuario;
+  var [datos, setDatos] = useState(null);
+  var previos = useRef(null);
+  function cargar() {
+    return Promise.all([sbLoadComandas(), sbLeerDespachos(), sbLeerPedidosWeb()]).then(function(r) {
+      var coms = r[0].filter(function(c) { return c.tipo === "delivery"; });
+      return sbLoadItems(coms.map(function(c) { return c.id; })).then(function(its) { setDatos({ coms:coms, items:its, desp:r[1], web:r[2] }); });
+    }).catch(function() {});
+  }
+  useEffect(function() {
+    var vivo = true; cargar();
+    var t = setInterval(function() { if (vivo) cargar(); }, 8000);
+    return function() { vivo = false; clearInterval(t); };
+  }, []);
+  var desp = datos ? datos.desp : {};
+  var mios = datos ? datos.coms.filter(function(c) { var d = desp[c.id]; return d && d.cadete === usuario && d.estado !== "entregado"; }) : [];
+  useEffect(function() {
+    if (!datos) return;
+    if (previos.current !== null && mios.length > previos.current) avisoSonoro(3);
+    previos.current = mios.length;
+  }, [mios.length, !!datos]);
+  function guardarDesp(c, cambios, accion, detalle) {
+    var nuevo = { ...(desp[c.id] || {}), comanda_id:c.id, local:c.local, cadete:usuario, ...cambios };
+    setDatos(function(prev) { return { ...prev, desp: { ...prev.desp, [c.id]: nuevo } }; });
+    sbGuardarDespacho(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar. Revisá la conexión y probá de nuevo."); });
+    var fecha = props.diaDeNegocio ? props.diaDeNegocio() : new Date().toISOString().slice(0, 10);
+    sbLogAcciones([{ local:c.local, fecha:fecha, comanda_id:c.id, titulo:"🛵 Delivery #" + c.numero + (c.cliente ? " · " + c.cliente : ""), accion:accion, detalle:detalle, por:usuario, at:new Date().toISOString() }]);
+  }
+  function sali(c) { guardarDesp(c, { estado:"en_camino", en_camino_at:new Date().toISOString(), por:usuario }, "El cadete salió con el pedido", usuario); }
+  function entregue(c, monto) { guardarDesp(c, { estado:"entregado", entregado_at:new Date().toISOString(), cobrado_efectivo:monto, por:usuario }, "El cadete entregó el pedido", usuario + (monto > 0 ? " · cobró " + pesos(monto) : "")); }
+  // Pedidos del mismo cliente y dirección (de varios locales): el cadete cobra todo junto, pero cada pedido es de su local.
+  var grupos = [];
+  mios.forEach(function(c) {
+    var k = String(c.telefono || "") + "|" + String(c.direccion || "");
+    var g = grupos.find(function(z) { return z.k === k; });
+    if (!g) { g = { k:k, lista:[] }; grupos.push(g); }
+    g.lista.push(c);
+  });
+  // Efectivo cobrado y todavía sin rendir, por local.
+  var porRendir = {};
+  Object.keys(desp).forEach(function(id) {
+    var d = desp[id];
+    if (d && d.cadete === usuario && d.cobrado_efectivo > 0 && !d.rendido) porRendir[d.local] = (porRendir[d.local] || 0) + d.cobrado_efectivo;
+  });
+  var locRend = Object.keys(porRendir);
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:500, background:"#0D0D0D", overflowY:"auto", padding:"12px 14px 30px", fontFamily:"'Inter',sans-serif", color:"#F0EDE8" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:11, color:"#8C8C8C", textTransform:"uppercase", letterSpacing:1.5 }}>Cadete</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:21, fontWeight:800 }}>🛵 {usuario}</div>
+        </div>
+        {props.alSalir && <button onClick={props.alSalir} title="Salir" style={{ background:"transparent", border:"1px solid #2A2A2A", color:"#8C8C8C", borderRadius:8, padding:"7px 11px", fontSize:13, cursor:"pointer" }}>🔒 Salir</button>}
+      </div>
+      {locRend.length > 0 && (
+        <div style={{ background:"#150F1C", border:"1px solid #B07CD8", borderRadius:12, padding:"10px 13px", marginBottom:12 }}>
+          <div style={{ fontSize:13, fontWeight:900, color:"#D9B8F5" }}>💵 Efectivo para rendir</div>
+          {locRend.map(function(l) { var lo = getLocal(l) || {}; return <div key={l} style={{ fontSize:14, marginTop:3 }}>{lo.emoji} Entregalo en <b style={{ color:lo.color }}>{lo.nombre}</b>: <b>{pesos(porRendir[l])}</b></div>; })}
+          <div style={{ fontSize:11, color:"#9A9A9A", marginTop:5 }}>El cajero de cada local confirma que lo recibió.</div>
+        </div>
+      )}
+      {!datos ? <div style={{ textAlign:"center", padding:"60px 0", color:"#555" }}>Cargando…</div>
+        : mios.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"60px 0" }}>
+            <div style={{ fontSize:52, marginBottom:8 }}>🛵</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:19, color:"#4C9A5A" }}>Sin pedidos asignados</div>
+            <div style={{ fontSize:13, color:"#666", marginTop:6 }}>Cuando un cajero te asigne un pedido, aparece acá con un aviso.</div>
+          </div>
+        ) : grupos.map(function(g) {
+          var efectivo = g.lista.filter(function(c) { var a = datos.web[c.id] || {}; return a.medio !== "transferencia"; });
+          var tot = function(c) { return totalItemsDelivery(datos.items.filter(function(i) { return i.comanda_id === c.id; })); };
+          var totalEf = efectivo.reduce(function(a, c) { return a + tot(c); }, 0);
+          return (
+            <div key={g.k} style={{ marginBottom:14 }}>
+              {g.lista.length > 1 && (
+                <div style={{ background:"#1A1208", border:"1px solid #D4A017", borderRadius:10, padding:"8px 12px", marginBottom:7, fontSize:13, fontWeight:800, color:"#FFD36B" }}>
+                  🧾 {g.lista.length} pedidos para el mismo cliente
+                  {efectivo.length > 0 && <div style={{ fontSize:12.5, fontWeight:700, color:"#E0C080", marginTop:2 }}>Cobrar en total {pesos(totalEf)}: {efectivo.map(function(c) { return (getLocal(c.local) || {}).nombre + " " + pesos(tot(c)); }).join(" + ")}</div>}
+                </div>
+              )}
+              <div style={{ display:"flex", flexDirection:"column", gap:9 }}>
+                {g.lista.map(function(c) { return <TarjetaCadete key={c.id} comanda={c} items={datos.items} desp={desp[c.id]} aviso={datos.web[c.id]} onSali={sali} onEntregue={entregue} />; })}
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
 // ─── MÓDULO DE DELIVERY ───────────────────────────────────────────────
 // Pantalla exclusiva de delivery para cajeros y administración (por local): los pedidos por etapa y el informe del día. Convive con la pestaña Delivery de Comandas.
 function numeroWspAR(t) {
@@ -3035,6 +3182,25 @@ function BandejaDelivery(props) {
   var web = props.pedidosWeb || {};
   var nuevos = props.comandas.filter(function(c) { return web[c.id] && web[c.id].estado === "nuevo"; });
   var delis = props.comandas.filter(function(c) { return !(web[c.id] && web[c.id].estado === "nuevo"); });
+  var rendiciones = props.rendiciones || [];
+  var cabezaRend = rendiciones.length > 0 ? (
+    <div style={{ marginBottom:14 }}>
+      <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.6, color:"#B07CD8", textTransform:"uppercase", marginBottom:6 }}>💵 Rendiciones de cadetes · {rendiciones.length}</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+        {rendiciones.map(function(r) {
+          return (
+            <div key={r.cadete} style={{ background:"#150F1C", border:"1px solid #B07CD866", borderRadius:10, padding:"10px 13px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:900, color:"#F0EDE8" }}>🛵 {r.cadete} tiene que rendir <span style={{ color:"#D9B8F5" }}>{pesos(r.monto)}</span></div>
+                <div style={{ fontSize:11.5, color:"#9A9A9A", marginTop:2 }}>{r.pedidos} pedido{r.pedidos === 1 ? "" : "s"} cobrado{r.pedidos === 1 ? "" : "s"} en efectivo de este local. Contá la plata antes de confirmar.</div>
+              </div>
+              <button onClick={function() { props.onRendir(r); }} style={{ padding:"10px 16px", borderRadius:9, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900, cursor:"pointer" }}>💵 Recibí {pesos(r.monto)}</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
   var cabeza = nuevos.length > 0 ? (
     <div style={{ marginBottom:14 }}>
       <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.6, color:"#D4A017", textTransform:"uppercase", marginBottom:6 }}>🔔 Pedidos nuevos de Comunidad · {nuevos.length}</div>
@@ -3046,15 +3212,18 @@ function BandejaDelivery(props) {
   if (!delis.length) return (
     <div>
       {cabeza}
-      {nuevos.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
+      {cabezaRend}
+      {nuevos.length === 0 && rendiciones.length === 0 && <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
         <div style={{ fontSize:30, marginBottom:8 }}>🛵</div>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#555" }}>Sin deliverys abiertos</div>
       </div>}
     </div>
   );
+  var cadetes = props.cadetes || [];
   return (
     <div>
       {cabeza}
+      {cabezaRend}
       {ETAPAS_DELIVERY.map(function(et) {
         var lista = delis.filter(function(c) { return etapaDelivery(props.items.filter(function(i) { return i.comanda_id === c.id; }), props.despachos[c.id]) === et.id; });
         if (!lista.length) return null;
@@ -3086,10 +3255,18 @@ function BandejaDelivery(props) {
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
                         <div style={{ fontSize:15, fontWeight:900, color:color }}>{pesos(totalItemsDelivery(its))}</div>
                         <div style={{ fontSize:11, color:"#888", marginTop:2 }}>⏱ {hace(c.abierta_at)}</div>
+                        {desp.cadete && <div style={{ fontSize:11, color:"#7CC4E4", marginTop:2 }}>🛵 {desp.cadete}</div>}
                         {desp.en_camino_at && <div style={{ fontSize:10, color:"#3A9BC1", marginTop:2 }}>salió {horaSeg(desp.en_camino_at).slice(0, 5)}</div>}
+                        {desp.cobrado_efectivo > 0 && <div style={{ fontSize:10.5, color: desp.rendido ? "#8FD19A" : "#D9B8F5", marginTop:2 }}>{desp.rendido ? "💵 rendido" : "💵 cobró " + pesos(desp.cobrado_efectivo)}</div>}
                       </div>
                     </div>
-                    <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end", marginTop:9 }}>
+                    <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end", alignItems:"center", marginTop:9 }}>
+                      {et.id !== "armando" && et.id !== "entregado" && cadetes.length > 0 && (
+                        <select value={desp.cadete || ""} onChange={function(e) { props.onAsignar(c, e.target.value); }} style={{ ...INP, width:"auto", padding:"7px 9px", fontSize:12, fontWeight:700, color: desp.cadete ? "#7CC4E4" : "#9A9A9A" }}>
+                          <option value="">🛵 Asignar cadete…</option>
+                          {cadetes.map(function(n) { return <option key={n} value={n}>🛵 {n}</option>; })}
+                        </select>
+                      )}
                       {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"7px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
                       <button onClick={function() { props.onAbrir(c); }} style={{ ...GH, padding:"7px 12px", fontSize:12 }}>🧾 Abrir cuenta</button>
                       {et.id === "listo" && web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok && <button onClick={function() { props.onTransferencia(c); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>📲 Confirmar transferencia recibida</button>}
@@ -3456,6 +3633,32 @@ export default function PanelComandas(p) {
     registrar(c, "Rechazó un pedido de Comunidad", (c.cliente || "") + " · " + motivo);
     var wa = c.telefono ? linkWspDelivery(c.telefono, "Hola " + (c.cliente || "") + "! No pudimos tomar tu pedido de " + (local && local.nombre || "") + ": " + motivo + ". Disculpá las molestias.") : "";
     if (wa && window.confirm("Pedido rechazado. ¿Querés avisarle al cliente por WhatsApp?")) window.open(wa, "_blank");
+  }
+  // El cajero asigna el pedido a un cadete (los cadetes reparten para los 3 locales).
+  function asignarCadete(c, nombre) {
+    var nuevo = { ...(despachos[c.id] || {}), comanda_id:c.id, local:c.local, cadete:nombre || null, asignado_at:new Date().toISOString(), asignado_por:usuario };
+    setDespachos(function(prev) { return { ...prev, [c.id]: nuevo }; });
+    sbGuardarDespacho(nuevo);
+    registrar(c, nombre ? "Asignó el pedido a un cadete" : "Sacó al cadete del pedido", nombre || "");
+  }
+  // Efectivo que los cadetes cobraron de pedidos de este local y todavía no rindieron.
+  var rendiciones = (function() {
+    var por = {};
+    Object.keys(despachos).forEach(function(id) {
+      var d = despachos[id];
+      if (d && d.local === localId && d.cadete && d.cobrado_efectivo > 0 && !d.rendido) { var r = por[d.cadete] || (por[d.cadete] = { cadete:d.cadete, monto:0, pedidos:0, ids:[] }); r.monto += d.cobrado_efectivo; r.pedidos++; r.ids.push(id); }
+    });
+    return Object.keys(por).map(function(k) { return por[k]; });
+  })();
+  function rendir(r) {
+    if (!window.confirm("¿Recibiste " + pesos(r.monto) + " de " + r.cadete + "? Contá la plata antes de confirmar.")) return;
+    var ahoraISO = new Date().toISOString();
+    r.ids.forEach(function(id) {
+      var nuevo = { ...despachos[id], rendido:true, rendido_at:ahoraISO, rendido_por:usuario };
+      setDespachos(function(prev) { return { ...prev, [id]: nuevo }; });
+      sbGuardarDespacho(nuevo);
+    });
+    sbLogAcciones([{ local:localId, fecha:fechaNegocio(), comanda_id:r.ids[0], titulo:"🛵 Rendición de " + r.cadete, accion:"Recibió el efectivo del cadete", detalle:r.cadete + " · " + pesos(r.monto) + " (" + r.pedidos + " pedido" + (r.pedidos === 1 ? "" : "s") + ")", por:usuario, at:ahoraISO }]);
   }
   function confirmarTransferencia(c) {
     var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, transf_ok:true, transf_at:new Date().toISOString(), transf_por:usuario };
@@ -3843,7 +4046,7 @@ export default function PanelComandas(p) {
             <>
               <NuevaComanda tipo="delivery" color={CMD_TIPO.delivery.color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} nuevoId={function() { return (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(); }} />
               <BandejaDelivery comandas={abiertas.filter(function(c) { return c.tipo === "delivery"; })} items={items} entregas={entregas} despachos={despachos} ahora={ahora} color={color} localNombre={local && local.nombre}
-                pedidosWeb={pedidosWeb} onAceptarWeb={aceptarWeb} onRechazarWeb={rechazarWeb} onTransferencia={confirmarTransferencia}
+                pedidosWeb={pedidosWeb} onAceptarWeb={aceptarWeb} onRechazarWeb={rechazarWeb} onTransferencia={confirmarTransferencia} cadetes={p.cadetes} onAsignar={asignarCadete} rendiciones={rendiciones} onRendir={rendir}
                 onAbrir={function(c) { setAbiertaId(c.id); }} onDespacho={despachar} />
             </>
           )}

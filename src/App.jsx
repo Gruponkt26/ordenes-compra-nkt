@@ -3278,6 +3278,79 @@ function PautasComunidad(){
     </div>
   );
 }
+// Cómo se usa Comandas, con el mismo formato de las pautas de fichaje: queda fijo en «Info para cajeros» y en «Info para salón».
+function PautasComandas(p){
+  var [abierto,setAbierto]=useState(true);
+  var cajero=p.rol==="cajeros";
+  var colores={ fondo:"#0F140A", borde:"#3A7D4455", titulo:"#4C9A5A" };
+  var bloques=cajero?[
+    {t:"🟢 Abrir y cerrar el turno",l:[
+      "Al empezar, en Comandas tocá «Abrir turno» con la fecha del día. Sin turno abierto no se pueden abrir mesas nuevas.",
+      "Al terminar, cerrá todas las cajas y después tocá «Cerrar turno». El cierre de caja ya toma lo cobrado en Comandas."]},
+    {t:"🪑 Abrir una mesa y cargar el pedido",l:[
+      "Tocá la mesa libre y elegí el mozo. Si la mesa ya se había cobrado antes, se abre como mesa nueva y la cocina la ve así.",
+      "Tocá «Sumar» y elegí de la carta. Si algo es entrada, marcalo con 🥗 para que la cocina lo sepa.",
+      "Para sacar algo tocá «Quitar» y poné el motivo; para cambiar cantidad o agregar una nota, hacelo desde el mismo plato."]},
+    {t:"🔥 Mandar a la cocina",l:[
+      "Tocá «Marchar»: el pedido le llega a la pantalla de la cocina con la hora y el mozo.",
+      "Si la mesa ya tiene cosas en cocina y agregás algo nuevo, te pregunta cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina lo ve resaltado.",
+      "Lo que sale «por orden» no empieza a contar tiempo hasta que la cocina entregó la parte anterior."]},
+    {t:"🍽️ Cuando la cocina entrega",l:[
+      "La mesa muestra 🍽️ LISTO: la cocina ya lo entregó. Llevalo a la mesa y tocá «entregado a la mesa».",
+      "Si en administración se pidió que la cocina marque primero, mientras la cocina no entregue no se puede marcar como entregado a la mesa."]},
+    {t:"🎨 Colores de las mesas",l:[
+      "Gris: libre. Color del local: abierta pero todavía sin pedir.",
+      "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
+      "Rojo titilando: se pasó del tiempo elegido en administración (por ejemplo 15 minutos): hay que apurar.",
+      "Amarillo brillante: ya recibió todo lo que pidió, está comiendo.",
+      "En Mesas hay un botón «Colores de las mesas» con esta referencia."]},
+    {t:"💵 Cobrar",l:[
+      "Antes de cobrar tocá «Control» para ver la precuenta. Si corresponde, aplicá el «Descuento» con su motivo.",
+      "Elegí el medio de pago: son los mismos que figuran en el cierre de caja de tu local. Si pagan con más de un medio, dividí el pago.",
+      "Al cobrar, la cuenta se cierra y la mesa queda libre."]},
+    {t:"🛵 Delivery y mostrador",l:[
+      "Los carga siempre el cajero. Al cargar, poné el tiempo de entrega prometido al cliente.",
+      "Si se pasa de ese tiempo, avisa en rojo en la cocina y en tu pantalla."]},
+    {t:"🚫 Producto que se terminó",l:[
+      "Tocá «Discontinuar» y elegí el producto: deja de ofrecerse hasta que lo vuelvas a poner. También se puede hacer desde la pantalla de cocina."]}
+  ]:[
+    {t:"🪑 Tomar el pedido",l:[
+      "Tocá tu mesa libre y elegí tu nombre como mozo.",
+      "Tocá «Sumar» y elegí de la carta. Si algo es entrada, marcalo con 🥗 para que la cocina lo sepa.",
+      "Para sacar algo tocá «Quitar» y poné el motivo. Podés cambiar la cantidad o agregar una nota; la cocina lo ve resaltado en rojo."]},
+    {t:"🔥 Mandar a la cocina",l:[
+      "Tocá «Marchar»: el pedido le llega a la cocina con tu nombre.",
+      "Si agregás algo a una mesa que ya está en cocina, elegí cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina ve tu elección bien resaltada.",
+      "Con las mesas grandes que van sumando gente, podés agregar a medida que llegan: cada tanda cuenta su propio tiempo."]},
+    {t:"🍽️ Llevar a la mesa",l:[
+      "Cuando la cocina entrega, tu mesa muestra 🍽️ LISTO. Retiralo y llevalo a la mesa.",
+      "Después se marca «entregado a la mesa» (lo hace el mozo o el cajero)."]},
+    {t:"🎨 Colores de tu mesa",l:[
+      "Gris: libre. Color del local: abierta pero todavía sin pedir.",
+      "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
+      "Rojo titilando: se pasó del tiempo: avisale a la cocina o al cajero.",
+      "🍽️ LISTO: la cocina ya lo entregó, retiralo.",
+      "Amarillo brillante: ya recibió todo, está comiendo.",
+      "En Mesas hay un botón «Colores de las mesas» con esta referencia."]},
+    {t:"🧾 Pedir la cuenta",l:[
+      "Cuando la mesa pide la cuenta, avisale al cajero para que haga la precuenta y cobre.",
+      "Una mesa que ya se cobró y se vuelve a ocupar se abre como mesa nueva: la cocina la atiende primero."]}
+  ];
+  return(
+    <div style={{background:colores.fondo,border:"1px solid "+colores.borde,borderRadius:12,padding:"12px 14px",marginBottom:14}}>
+      <button onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+        <span style={{fontSize:14,fontWeight:800,color:colores.titulo}}>🍽️ Comandas: {cajero?"cómo se usa (cajeros)":"cómo se usa (salón)"}</span>
+        <span style={{fontSize:11,color:"#7E7E7E"}}>{abierto?"▾ ocultar":"▸ ver"}</span>
+      </button>
+      {abierto&&bloques.map(function(b){return(
+        <div key={b.t} style={{marginTop:11}}>
+          <div style={{fontSize:12.5,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>{b.t}</div>
+          {b.l.map(function(x,i){return <div key={i} style={{fontSize:12.5,color:"#D0D0D0",lineHeight:1.6,padding:"2px 0 2px 12px",borderLeft:"2px solid "+colores.borde,marginBottom:3}}>{x}</div>;})}
+        </div>
+      );})}
+    </div>
+  );
+}
 function PanelInfoCajero(p){
   // Quien edita ve las cuatro secciones; un colaborador ve la suya (p.misSecciones) más General.
   // Si viene "solo", se muestra únicamente esa sección (el colaborador tiene un módulo para la general y otro para la suya).
@@ -3344,7 +3417,9 @@ function PanelInfoCajero(p){
       </div>
 
       {sec==="general"&&<PautasFichaje/>}
+      {sec==="cajeros"&&<PautasComandas rol="cajeros"/>}
       {sec==="cajeros"&&<PautasComunidad/>}
+      {sec==="salon"&&<PautasComandas rol="salon"/>}
 
       {puedeEditar&&(
         <div style={{background:"#0F0F0F",border:"1px solid #1A6B8A33",borderRadius:12,padding:"13px",marginBottom:14}}>

@@ -542,31 +542,53 @@ function notaConMarca(texto, entrada) { var t = String(texto || "").trim(); retu
 // Cursos de una cuenta: lo que se manda junto se parte en la tanda de ENTRADA y la de PRINCIPAL (lo que viene después). La entrada cuenta desde que se manda;
 // lo principal cuenta desde que la cocina entregó la entrada (hasta entonces «espera la entrada»). La cuenta tiene siempre, además, su contador global desde el primer pedido.
 // itemsC = todos los productos de la cuenta; listos = {"comanda|ronda": registro de la cocina}.
-function infoCurso(itemsC, ronda, listos) {
+function infoCurso(itemsC, ronda, listos, salidas) {
   var sal = function(i) { return i.estado !== "cancelado" && i.estado !== "pendiente"; };
   var minEnv = function(arr) { return arr.reduce(function(a, i) { return i.enviado_at && (!a || i.enviado_at < a) ? i.enviado_at : a; }, null); };
   var mios = itemsC.filter(function(i) { return (i.ronda || 0) === ronda && sal(i); });
   if (!mios.length) return { curso:null, inicio:null, espera:false };
   var env = minEnv(mios);
-  if (mios.every(esEntrada)) return { curso:"entrada", inicio:env, espera:false };
-  if (mios.some(esEntrada)) return { curso:null, inicio:env, espera:false };
+  // «Por orden de comanda»: lo agregado espera a que la cocina entregue la tanda anterior; recién entonces empieza a correr su tiempo (y así sucesivamente).
+  var ord = null;
+  if (salidas && salidas[ronda] === "orden") {
+    var rondasAnt = []; itemsC.forEach(function(i) { var r = i.ronda || 0; if (r < ronda && sal(i) && rondasAnt.indexOf(r) < 0) rondasAnt.push(r); });
+    if (rondasAnt.length) {
+      var rAnt = Math.max.apply(null, rondasAnt);
+      var itAnt = itemsC.filter(function(i) { return (i.ronda || 0) === rAnt && sal(i); });
+      if (itAnt.some(function(i) { return i.estado === "enviado"; })) ord = { espera:true, inicio:null };
+      else {
+        var recA = listos && listos[mios[0].comanda_id + "|" + rAnt];
+        var iniA = recA ? recA.listo_at : itAnt.reduce(function(a, i) { return i.entregado_at && (!a || i.entregado_at > a) ? i.entregado_at : a; }, null);
+        ord = { espera:false, inicio:iniA };
+      }
+    }
+  }
+  function fin(res) {
+    if (!ord || res.espera) return res;
+    if (ord.espera) return { curso:res.curso, inicio:null, espera:true };
+    var i = res.inicio;
+    if (ord.inicio && (!i || ord.inicio > i)) i = ord.inicio;
+    return { curso:res.curso, inicio:i, espera:false };
+  }
+  if (mios.every(esEntrada)) return fin({ curso:"entrada", inicio:env, espera:false });
+  if (mios.some(esEntrada)) return fin({ curso:null, inicio:env, espera:false });
   var prev = itemsC.filter(function(i) { return (i.ronda || 0) === ronda - 1 && sal(i); });
   if (prev.length && prev.every(esEntrada) && minEnv(prev) === env) {
     var rec = listos && listos[mios[0].comanda_id + "|" + (ronda - 1)];
     var ini = rec ? rec.listo_at : (prev.every(function(i) { return i.estado === "entregado" && i.entregado_at; }) ? prev.reduce(function(a, i) { return i.entregado_at > a ? i.entregado_at : a; }, "") : null);
-    return { curso:"principal", inicio:ini, espera:!ini };
+    return fin({ curso:"principal", inicio:ini, espera:!ini });
   }
-  return { curso:null, inicio:env, espera:false };
+  return fin({ curso:null, inicio:env, espera:false });
 }
 // La tanda más vieja que la cocina todavía no entregó, que es la que manda en el
 // color de la mesa: si hay tres rondas, la que importa es la que más espera.
-function demoraDe(itemsComanda, listos) {
+function demoraDe(itemsComanda, listos, salidas) {
   // La demora de la mesa es la de lo más viejo que sigue en la cocina; cada parte agregada y cada curso (entrada, principal) tiene su propio contador.
   var todos = itemsComanda || [];
   var rondas = []; todos.forEach(function(i) { if (i.estado === "enviado" && i.enviado_at && rondas.indexOf(i.ronda || 0) < 0) rondas.push(i.ronda || 0); });
   var inicios = [];
   rondas.forEach(function(r) {
-    var inf = infoCurso(todos, r, listos);
+    var inf = infoCurso(todos, r, listos, salidas);
     if (inf.espera) return;   // lo principal espera a que salga la entrada: todavía no cuenta
     var ini = inf.inicio || todos.filter(function(i) { return (i.ronda || 0) === r && i.estado === "enviado" && i.enviado_at; }).reduce(function(a, i) { return !a || i.enviado_at < a ? i.enviado_at : a; }, null);
     if (ini) inicios.push(ini);
@@ -792,6 +814,39 @@ function VentanaControl(props) {
   );
 }
 
+
+// Referencias de los colores de las mesas, para que cajeros y mozos sepan qué significa cada una.
+function LeyendaColores(props) {
+  var L = props.limite || LIMITE_DEFECTO;
+  var [abierta, setAbierta] = useState(function() { try { return window.localStorage.getItem("nkt_leyenda_mesas") !== "0"; } catch(e) { return true; } });
+  function alternar() { var n = !abierta; setAbierta(n); try { window.localStorage.setItem("nkt_leyenda_mesas", n ? "1" : "0"); } catch(e) {} }
+  var filas = [
+    ["#2A2A2A", "#555", "Libre", "Mesa sin cuenta abierta."],
+    [props.color || "#C1440E", props.color || "#C1440E", "Abierta, sin pedir", "Tiene cuenta pero todavía no se mandó nada a cocina."],
+    ["#3A7D44", "#3A7D44", "En cocina, a tiempo", "Ya está en cocina y va bien de tiempo."],
+    ["#D4A017", "#D4A017", "En cocina, demorando", "Se acerca al límite de " + L + " min: conviene estar atento."],
+    ["#E0452E", "#E0452E", "Rojo titilando", "Se pasó de los " + L + " min en cocina: hay que apurar."],
+    ["#4C9A5A", "#4C9A5A", "🍽️ LISTO", "La cocina ya lo entregó: llevalo a la mesa."],
+    ["#FFD60A", "#FFD60A", "Amarillo: comiendo", "Ya recibió todo lo que pidió."],
+  ];
+  return (
+    <div style={{ marginBottom:10 }}>
+      <button onClick={alternar} style={{ ...GH, padding:"5px 11px", fontSize:11 }}>🎨 Colores de las mesas {abierta ? "▴" : "▾"}</button>
+      {abierta && (
+        <div style={{ marginTop:6, background:"#0F0F0F", border:"1px solid #222", borderRadius:10, padding:"8px 10px", display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(250px, 1fr))", gap:"6px 14px" }}>
+          {filas.map(function(f, k) {
+            return (
+              <div key={k} style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ flexShrink:0, width:22, height:22, borderRadius:6, border:"2px solid " + f[0], background: f[0] + "44", animation: k === 4 ? "nktPulso 1s infinite" : "none" }} />
+                <span style={{ fontSize:11.5, color:"#B8B8B8", lineHeight:1.35 }}><b style={{ color: f[1] === "#555" ? "#8C8C8C" : f[1] }}>{f[2]}</b> · {f[3]}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── INFORME DE COCINA ────────────────────────────────────────────────
 // Solo tiempos y comida, sin plata: cuánto tardó la cocina, qué se retrasó, qué se pidió más, qué se quitó o cambió y qué faltó.
@@ -1100,9 +1155,9 @@ export function PanelCocina(props) {
           g.titulo = titulo(c);
           g.orden = ordenLlegada[c.id] || null;
           // Entrada o principal: la entrada cuenta desde que se mandó; lo principal, desde que la cocina entregó la entrada (hasta entonces espera).
-          var inf = infoCurso(its.filter(function(x) { return x.comanda_id === c.id; }), g.ronda, listos);
+          var inf = infoCurso(its.filter(function(x) { return x.comanda_id === c.id; }), g.ronda, listos, (extras[c.id] || {}).salidas);
           g.curso = inf.curso; g.espera = inf.espera;
-          if (inf.curso === "principal" && inf.inicio) g.desde = inf.inicio;
+          if (inf.inicio) g.desde = inf.inicio;
           g.entrega = entregasP[c.id] || null;
           var ex = extras[c.id] || {};
           g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
@@ -1156,8 +1211,8 @@ export function PanelCocina(props) {
             var desde = items.reduce(function(a, i) { return i.enviado_at && (!a || i.enviado_at < a) ? i.enviado_at : a; }, null);
             var enMesa = items.every(function(i) { return i.estado === "entregado"; });
             var enMesaAt = enMesa ? items.reduce(function(a, i) { return i.entregado_at && i.entregado_at > a ? i.entregado_at : a; }, "") : null;
-            var inf = infoCurso(todosC, rn, listos);
-            return { clave:c.id + "|" + rn, comanda:c, ronda:rn, items:items, desde:(inf.curso === "principal" && inf.inicio) ? inf.inicio : desde, listo:rec ? rec.listo_at : null, enMesa:enMesa, enMesaAt:enMesaAt, titulo:titulo(c), curso:inf.curso };
+            var inf = infoCurso(todosC, rn, listos, (extras[c.id] || {}).salidas);
+            return { clave:c.id + "|" + rn, comanda:c, ronda:rn, items:items, desde:(inf.inicio && inf.inicio > String(desde || "")) ? inf.inicio : desde, listo:rec ? rec.listo_at : null, enMesa:enMesa, enMesaAt:enMesaAt, titulo:titulo(c), curso:inf.curso };
           }).sort(function(a, b) { return a.ronda - b.ronda; });
         }
         // Las comandas que todavía tienen algo pendiente muestran lo ya entregado adentro de su misma ventana.
@@ -1431,7 +1486,7 @@ export function PanelCocina(props) {
                     var mt = t.espera ? null : minutosDesde(t.desde);
                     return (
                       <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: (agregado || t.curso) ? "6px 8px 8px" : 0, borderRadius:9, background: t.curso === "entrada" ? "#4C9A5A14" : t.curso === "principal" ? "#3A9BC114" : agregado ? "#D4A01712" : "transparent", border: t.curso === "entrada" ? "1px solid #4C9A5A66" : t.curso === "principal" ? "1px solid #3A9BC166" : agregado ? "1px solid #D4A01766" : "none" }}>
-                        {(multiple || agregado || t.curso || t.juntoCon) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ espera que salga la entrada</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
+                        {(multiple || agregado || t.curso || t.juntoCon) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ {t.curso === "principal" ? "espera que salga la entrada" : "espera que salga lo anterior"}</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
                         {t.items.map(function(i) {
                           return (
                             <div key={i.id} style={{ padding:"4px 0" }}>
@@ -2144,7 +2199,7 @@ function ComandaDetalle(props) {
                   {(function() {
                     // Cada parte tiene su propio contador: el pedido original, cada agregado y cada curso (entrada / principal) cuentan desde su propio arranque;
                     // lo principal arranca cuando la cocina entregó la entrada. El contador global de la mesa está arriba, desde el primer pedido.
-                    var inf = infoCurso(mios, r.ronda || 0, props.listos);
+                    var inf = infoCurso(mios, r.ronda || 0, props.listos, props.extra && props.extra.salidas);
                     if (rondasAsc.length <= 1 && !inf.curso) return null;
                     var pendiente = r.items.some(function(i) { return i.estado === "enviado"; });
                     var ini = inf.inicio || r.enviado_at;
@@ -2155,7 +2210,7 @@ function ComandaDetalle(props) {
                     return <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, margin:"6px 0 2px", fontSize:10, fontWeight:800, letterSpacing:0.8, textTransform:"uppercase", color: inf.curso === "entrada" ? "#8FD19A" : inf.curso === "principal" ? "#7CC4E4" : (r.ronda || 0) > 1 ? "#D4A017" : "#6E6E6E" }}>
                       <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}{props.extra && props.extra.salidas && props.extra.salidas[r.ronda || 0] && <span style={{ marginLeft:6, color:"#fff", background: props.extra.salidas[r.ronda || 0] === "junto" ? "#E0652E" : "#3A9BC1", borderRadius:5, padding:"0 6px", fontSize:10 }}>{props.extra.salidas[r.ronda || 0] === "junto" ? "🔥 todo junto" : "📋 por orden"}</span>}</span>
                       <span style={{ fontSize:12, color: entregada ? "#4C9A5A" : inf.espera ? "#D4A017" : minR !== null ? colorDemora(minR, props.limite) : "#4C9A5A", textTransform:"none", letterSpacing:0 }}>
-                        {entregada ? "✅ entregada" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? "⏳ espera que salga la entrada" : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
+                        {entregada ? "✅ entregada" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? (inf.curso === "principal" ? "⏳ espera que salga la entrada" : "⏳ espera que salga lo anterior") : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
                       </span>
                     </div>;
                   })()}
@@ -2963,11 +3018,14 @@ export default function PanelComandas(p) {
     sbLeerEntregas().then(setEntregas);
     sbLeerTurnos(localId).then(setTurnos);
     sbLeerListosDesde(new Date(Date.now() - 24 * 3600000).toISOString()).then(setListosMap);
+    sbLeerExtrasRecientes().then(setExtrasTodos);
     return Promise.all([sbLoadMesas(), sbLoadComandas()]).then(function(r) {
       setMesas(r[0]); setComandas(r[1]); setCargando(false);
       return sbLoadItems(r[1].map(function(c) { return c.id; })).then(setItems);
     }).catch(function() { setCargando(false); });
   }
+  var [extrasTodos, setExtrasTodos] = useState({});   // lo extra de todas las cuentas (cómo sale lo agregado), para que cada mesa cuente bien su tiempo
+  function salidasDe(cid) { return ((extras[cid] && extras[cid].salidas) ? extras[cid] : (extrasTodos[cid] || {})).salidas; }
   var [listosMap, setListosMap] = useState({});   // lo que la cocina ya entregó (para saber desde cuándo cuenta lo principal)
   var [cfgCom, setCfgCom] = useState({ limites: {}, exigir: {} });
   useEffect(function() { sbLeerConfigCom().then(setCfgCom); }, [practica]);
@@ -3212,7 +3270,7 @@ export default function PanelComandas(p) {
     // El color lo manda la cocina, no la mesa: una mesa recién abierta sin pedir no
     // es un problema, y una con una tanda de hace media hora sí. Por eso mientras no
     // haya nada en cocina va en el color del local, y cuando hay, en el de la demora.
-    var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap) : null;
+    var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap, salidasDe(c.id)) : null;
     // Comiendo: ya recibió todo lo que pidió (nada pendiente en cocina ni en camino) → amarillo patito.
     var susItems = ocupada ? items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; }) : [];
     var comiendo = ocupada && susItems.length > 0 && susItems.every(function(i) { return i.estado === "entregado"; });
@@ -3319,7 +3377,7 @@ export default function PanelComandas(p) {
       {discontinuando && <VentanaDiscontinuar localId={localId} usuario={usuario} diaDeNegocio={fechaNegocio} onCambio={function() { cargarCarta(); setRefInforme(function(n) { return n + 1; }); }} onCerrar={function() { setDiscontinuando(false); }} />}
       {(function() {
         // Aviso para el mozo y el cajero: pedidos que llevan más del tiempo elegido en la cocina, y deliverys o mostradores que se pasaron de la hora prometida al cliente.
-        var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap) }; }).filter(function(x) { return x.min !== null && x.min >= limite; });
+        var tarde = abiertas.map(function(c) { return { c:c, min:demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap, salidasDe(c.id)) }; }).filter(function(x) { return x.min !== null && x.min >= limite; });
         var vencidas = abiertas.filter(function(c) { return c.tipo !== "mesa"; }).map(function(c) { return { c:c, over:minutosVencida(entregas[c.id], Date.now()) }; })
           .filter(function(x) { return x.over !== null && items.some(function(i) { return i.comanda_id === x.c.id && (i.estado === "enviado" || i.estado === "listo"); }); });
         if (!tarde.length && !vencidas.length) return null;
@@ -3461,6 +3519,7 @@ export default function PanelComandas(p) {
               <span style={{ fontSize:13, fontWeight:800, color:CMD_TIPO.mesa.color, letterSpacing:0.5, textTransform:"uppercase" }}>Mesas del salón</span>
               <span style={{ marginLeft:"auto", fontSize:12, color:CMD_TIPO.mesa.color, fontWeight:700 }}>{mesasLocal.filter(function(m) { return !!comandaDeMesa(m.id); }).length} de {mesasLocal.length} ocupadas</span>
             </div>
+            <LeyendaColores limite={limite} color={color} />
             <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
               {[[false, "☰ Lista"], [true, "🗺️ Plano"]].map(function(x) {
                 var act = verPlano === x[0];

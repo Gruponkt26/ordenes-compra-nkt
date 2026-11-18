@@ -14782,6 +14782,7 @@ function PanelFichajes(p){
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
                               {r.js.length===0?<><span style={{color:r.vac?"#1A8A9B":(r.licP?"#B07CE0":(r.licS?"#9A9A9A":(r.jus?"#3A9B5A":(falta?"#C1440E":"#6E6E6E")))),fontWeight:(r.vac||r.jus||r.licP||r.licS)?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(r.licP?"📋 Licencia paga · cuenta como trabajado":(r.licS?"📋 Licencia sin goce · no suma horas":(r.jus?"✅ "+tipoJust(r.jj)+" · cuenta como trabajado":(falta?"no marcó":"—"))))}</span>
+                              {r.jus&&r.jj&&puedeEditar&&p.onDeleteJustif&&<button onClick={function(){if(window.confirm("¿Borrar el justificativo de "+x.e.nombre+" del "+fmtDate(r.f)+"? La falta vuelve a quedar sin justificar y deja de sumar horas."))p.onDeleteJustif(r.jj);}} title="Borrar justificativo" style={{marginLeft:8,padding:"2px 8px",borderRadius:6,border:"1px solid #C1440E66",background:"none",color:"#E0714A",fontSize:10.5,fontWeight:700,cursor:"pointer"}}>🗑️ Borrar justificativo</button>}
                               {(r.licP||r.licS)&&r.vr&&notaSinMarca(r.vr.notas)&&<span style={{display:"block",fontSize:10.5,color:"#B8A8D0",fontStyle:"italic"}}>Motivo: “{notaSinMarca(r.vr.notas)}”</span>}</>:r.js.map(function(j,k){return(
                                 <span key={k} style={{display:"inline-flex",alignItems:"center",gap:5,marginRight:8}}><Marca f={j.entrada} et="Entrada"/><span style={{color:"#6E6E6E"}}>→</span><Marca f={j.salida} et="Salida"/>{j.entrada&&inicioContable(j,x.e)>new Date(j.entrada.momento)&&<span title="Marcó antes de su horario: las horas cuentan desde el horario de la jornada" style={{fontSize:10,color:"#7E7E7E"}}>(cuenta desde {horaLocal(inicioContable(j,x.e))})</span>}</span>
                               );})}
@@ -25781,6 +25782,11 @@ function FichaLaboral(p){
               {f.just&&f.just.motivo&&<div style={{fontSize:11.5,color:"#B8B8B8",marginTop:3}}>“{f.just.motivo}”</div>}
               {f.just&&f.just.foto_url&&<a href={f.just.foto_url} target="_blank" rel="noreferrer"><img src={f.just.foto_url} alt="certificado" style={{height:50,borderRadius:8,border:"1px solid #2A2A2A",marginTop:5}}/></a>}
               {f.estado==="sin"&&!admin&&<div style={{fontSize:10.5,color:"#8C8C8C",marginTop:3}}>Se te va a pedir el justificativo la próxima vez que fiches.</div>}
+              {admin&&f.just&&f.estado==="aprobado"&&p.onDeleteJustif&&(
+                <div style={{display:"flex",gap:6,marginTop:6}}>
+                  <button onClick={function(){if(window.confirm("¿Borrar este justificativo del "+fmtDate(f.fecha)+"? La falta vuelve a quedar sin justificar y deja de sumar horas."))p.onDeleteJustif(f.just);}} style={{padding:"5px 11px",borderRadius:7,border:"1px solid #C1440E66",background:"none",color:"#E0714A",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>🗑️ Borrar justificativo</button>
+                </div>
+              )}
               {admin&&f.estado==="pendiente"&&f.just&&(
                 <div style={{display:"flex",gap:6,marginTop:6}}>
                   <button onClick={function(){resolver(f.just,"aprobado");}} style={{padding:"5px 11px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>✅ Aprobar</button>
@@ -27248,7 +27254,7 @@ function PanelSueldos(p){
                       {ex.nacimiento&&<div>Nacimiento: {fmtDate(ex.nacimiento)}{edadDe(ex.nacimiento)!=null?" ("+edadDe(ex.nacimiento)+" años)":""}</div>}
                       <div>{emp.convenio==="convenio"?"📋 Convenio":emp.convenio==="mixto"?"📋 + Sin convenio":"Sin convenio"}{ex.convenio_nombre&&emp.convenio!=="sin_convenio"?" · "+ex.convenio_nombre:""}</div>
                     </div>
-                    <FichaLaboral emp={emp} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
+                    <FichaLaboral emp={emp} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif} onDeleteJustif={p.onDeleteJustif}
                       sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
                   </div>
                 )}
@@ -27527,7 +27533,7 @@ function PanelSueldos(p){
                   {camposLaborales()}
                   <button onClick={guardarLaborales} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#4CAF50",color:"#000",fontWeight:700,cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:10}}>{guardadoLab?"✓ Guardado":"💾 Guardar situación laboral"}</button>
                 </div>
-                <FichaLaboral emp={empEdit} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif}
+                <FichaLaboral emp={empEdit} fichajes={p.fichajes} vacaciones={p.vacaciones} justificativos={p.justificativos} onSaveJustif={p.onSaveJustif} onDeleteJustif={p.onDeleteJustif}
                   sueldos={sueldos} adelantos={p.adelantos} usuario={usuario} verAdmin={true}/>
                 <button onClick={function(){setShowFormEmp(false);setEmpEdit(null);}} style={{width:"100%",padding:"10px",borderRadius:8,border:"1px solid #333",background:"none",color:"#888",cursor:"pointer",fontFamily:"'Inter',sans-serif",marginTop:4}}>Cerrar</button>
               </div>
@@ -31434,6 +31440,15 @@ export default function App() {
     if(r&&r.ok)setJustificativos(function(prev){ return [j].concat(prev.filter(function(x){return x.id!==j.id;})); });
     return r;
   }
+  // Borra un justificativo (por ejemplo uno aprobado por error): la falta vuelve a quedar sin justificar y deja de sumar horas.
+  async function borrarJustif(j){
+    try{
+      var r=await fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent(j.id),{method:"DELETE",headers:SH});
+      if(!r.ok){ alert("No se pudo borrar el justificativo."); return {ok:false}; }
+    }catch(e){ alert("No se pudo borrar el justificativo."); return {ok:false}; }
+    setJustificativos(function(prev){ return prev.filter(function(x){return x.id!==j.id;}); });
+    return {ok:true};
+  }
   async function guardarFichaje(f){
     var r=await sbSaveFichaje(f);
     if(r&&r.ok)setFichajes(function(prev){ return [f].concat(prev.filter(function(x){return x.id!==f.id;})); });
@@ -32120,7 +32135,7 @@ export default function App() {
                 <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Módulo</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>👥 Colaboradores</div>
               </div>
-              <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
+              <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
                 tabInicial={vista==="vacaciones"?"vacaciones":vista==="faltantes"?"faltantes":vista==="f931"?"cuit":undefined}
                 empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
                 showF931={false} showCuit={true} showInforme={true}
@@ -32176,7 +32191,7 @@ export default function App() {
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")
                 ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
-                   justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones}
+                   justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} vacaciones={vacaciones}
                    localesDatos={localesDatos}
                    onSaveLocalDatos={async function(d){
                      var antes=localesDatos[d.local];
@@ -32198,7 +32213,7 @@ export default function App() {
                 :vista==="fichajes_fichar"
                 ?<PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
               onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onTurnoDia={guardarTurnoDia} onFichar={guardarFichaje}
-              justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
+              justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
                 :null}
             </div>
           )}
@@ -32343,7 +32358,7 @@ export default function App() {
           )}
           {esSofia&&modulo==="novedades"&&(
             <ErrorSeguro nombre="Novedades">
-            <PanelNovedades onSaveJustif={guardarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}
@@ -32612,7 +32627,7 @@ export default function App() {
 
           {/* PERSONAL — sin tab F.931 */}
           {esSofia&&modulo==="admin"&&vista==="personal"&&(
-            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               showF931={false}
               cargasSociales={cargasSociales}
@@ -32720,7 +32735,7 @@ export default function App() {
           )}
 
           {esSofia&&modulo==="admin"&&vista==="sueldos"&&(
-            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
+            <PanelSueldos fichajes={fichajes} justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} users={users} onSaveUser={guardarUsuario} onDeleteUser={borrarUsuario}
               empleados={empleados} sueldos={sueldos} usuario={cu.nombre}
               onSaveEmpleado={function(e){sbSaveEmpleado(e);setEmpleados(function(prev){var ant=prev.find(function(x){return x.id===e.id;});var f=prev.filter(function(x){return x.id!==e.id;});return[{...(ant||{}),...e},...f];});}}
               onDeleteEmpleado={function(id){sbDeleteEmpleado(id);setEmpleados(function(prev){return prev.filter(function(e){return e.id!==id;});});}}
@@ -32851,7 +32866,7 @@ export default function App() {
           {!esSofia&&subCompras==="fichar"&&(
             <PanelFichar fichajes={fichajes} empleados={empleados} usuario={cu.nombre} usuarioLogin={cu.usuario}
               onActivarPantalla={function(l){ try{window.localStorage.setItem("nkt_pantalla_local",l);}catch(e){} setPantallaLocal(l); }} secretos={secretosFichaje} onCrearSecreto={function(l){ if(secretosFichaje[l])return; guardarOfPauta("fich_secreto",{id:"fichsec_"+l,secreto:Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,"0");}).join("")}); }} localSugerido={cu.local} esAdmin={esAdmin} empleadoId={cu.empleado_id||""} onTurnoDia={guardarTurnoDia} onFichar={guardarFichaje}
-              justificativos={justificativos} onSaveJustif={guardarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
+              justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} vacaciones={vacaciones} localesDatos={localesDatos}/>
           )}
 
           {esCajero&&subCompras==="caja"&&(

@@ -1899,7 +1899,7 @@ function GestUsuarios(p) {
                 <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={nuevo.rol} onChange={function(e){setNuevo(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Colaborador</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
               </div>
               {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setNuevo(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"7px 3px",borderRadius:8,border:"2px solid "+(nuevo.local===l.id?l.color:"#222"),background:nuevo.local===l.id?l.color+"22":"#111",color:nuevo.local===l.id?l.color:"#8C8C8C",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
-              {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={nuevo.seccion||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
+              {nuevo.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={nuevo.seccion||""} onChange={function(e){var v=e.target.value;setNuevo(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja","Pantalla de cocina"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local. «Pantalla de cocina»: el usuario ve solo la pantalla de cocina (para la tablet o monitor fijo).</div></div>}
               {nuevo.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!nuevo.puedeCompras} onChange={function(e){var v=e.target.checked;setNuevo(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
               {/* Atar el usuario a su ficha de empleado: con esto, al entrar a Fichar la app
                   ya sabe quién es y le muestra su nombre y nada más. Queda del lado de la
@@ -1930,7 +1930,7 @@ function GestUsuarios(p) {
                     <div><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Rol</label><select value={editando.rol} onChange={function(e){setEditando(function(n){return{...n,rol:e.target.value,local:e.target.value==="admin"?null:(n.local||"l1")};});}} style={INP}><option value="usuario">Colaborador</option><option value="cajero">Cajero</option><option value="admin">Admin</option></select></div>
                   </div>
                   {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:6}}>Local</label><div style={{display:"flex",gap:5}}>{LOCALES.map(function(l){return <button key={l.id} onClick={function(){setEditando(function(n){return{...n,local:l.id};});}} style={{flex:1,padding:"6px 3px",borderRadius:8,border:"2px solid "+(editando.local===l.id?l.color:"#222"),background:editando.local===l.id?l.color+"22":"#111",color:editando.local===l.id?l.color:"#8C8C8C",cursor:"pointer",fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:600}}>{l.emoji} {l.nombre}</button>;})}</div></div>}
-                  {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={editando.seccion||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local.</div></div>}
+                  {editando.rol!=="admin"&&<div style={{marginBottom:9}}><label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>Sección</label><select value={editando.seccion||""} onChange={function(e){var v=e.target.value;setEditando(function(n){return{...n,seccion:v};});}} style={INP}>{["","Salón","Cocina","Caja","Pantalla de cocina"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}</select><div style={{fontSize:9,color:"#6E6E6E",marginTop:4}}>Cocina ve el recetario de su local. «Pantalla de cocina»: el usuario ve solo la pantalla de cocina (para la tablet o monitor fijo).</div></div>}
                   {editando.rol==="cajero"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#888",cursor:"pointer",marginBottom:9}}><input type="checkbox" checked={!!(editando.puedeCompras||editando.puedecompras)} onChange={function(e){var v=e.target.checked;setEditando(function(n){return{...n,puedeCompras:v};});}}/>🛒 Ve el módulo Compras</label>}
                   <div style={{marginBottom:9}}>
                     <label style={{fontSize:10,color:"#8C8C8C",display:"block",marginBottom:4}}>🕐 Es el empleado</label>
@@ -3133,12 +3133,16 @@ function seccionInfo(x){
   var m=/^info_(cajeros|salon|cocina|general)_/.exec(String((x&&x.id)||""));
   return m?m[1]:"cajeros";
 }
+// Usuario de un aparato dedicado a la cocina (sección «Pantalla de cocina»): al entrar ve solo la pantalla de cocina, sin nada más de la app.
+function esSoloPantallaCocina(u){
+  return String((u&&u.seccion)||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")==="pantalla de cocina"&&(!u||u.rol!=="admin");
+}
 // A qué sección de Info pertenece cada usuario (la "Sección" que se le carga en Usuarios).
 function infoSeccionesDe(u){
   var sx=String((u&&u.seccion)||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
   if(u&&u.rol==="cajero")return ["cajeros"];
   if(sx==="salon")return ["salon"];
-  if(sx==="cocina")return ["cocina"];
+  if(sx==="cocina"||sx==="pantalla de cocina")return ["cocina"];
   if(sx==="caja")return ["cajeros"];
   return [];
 }
@@ -27424,7 +27428,7 @@ function PanelSueldos(p){
                     </select></div>
                   <div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Sección</label>
                     <select value={formAcc.seccion||""} onChange={function(e){var v=e.target.value;setFormAcc(function(f){return{...f,seccion:v};});}} style={{padding:"9px 10px",borderRadius:8,border:"1px solid #2A2A2A",background:"#0F0F0F",color:"#F0EDE8",fontSize:13,width:"100%"}}>
-                      {["","Salón","Cocina","Caja"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}
+                      {["","Salón","Cocina","Caja","Pantalla de cocina"].map(function(sx){return <option key={sx} value={sx}>{sx||"— Sin sección —"}</option>;})}
                     </select></div>
                 </div>
                 {formAcc.rol!=="admin"&&<div><label style={{display:"block",fontSize:9,color:"#8C8C8C",textTransform:"uppercase",marginBottom:4}}>Local</label>
@@ -31232,6 +31236,7 @@ export default function App() {
 
   // Pantalla de cocina fija (aparato dedicado, abierto con ?cocina): solo la cocina, sin el resto de la app. Se sale con la contraseña del usuario.
   var cocinaFija=false; try{ cocinaFija=window.localStorage.getItem("nkt_cocina_fija")==="1"; }catch(e){}
+  if(esSoloPantallaCocina(cu))cocinaFija=true;
   if(cocinaFija&&PANEL_COMPLETO.indexOf(String(cu.usuario||"").toLowerCase())===-1&&(enListaDe(USUARIOS_RECETAS,cu)||infoSeccionesDe(cu).indexOf("cocina")>=0)){
     return <PanelCocina usuario={cu.nombre} localFijo={cu.local||null} diaDeNegocio={diaDeNegocio} fija={true} alSalir={function(){
       var pw=window.prompt("Para salir de la pantalla de cocina fija, escribí tu contraseña:");

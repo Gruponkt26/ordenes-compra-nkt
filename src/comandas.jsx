@@ -233,6 +233,23 @@ async function sbLeerEntregas(desdeISO) {
     return o;
   } catch(e) { return {}; }
 }
+// Despacho del delivery: «en camino» y «entregado al cliente», con la hora de cada paso. Va en pautas, ámbito "delivery_estado", un registro por comanda.
+async function sbGuardarDespacho(d) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cdeliv_" + d.comanda_id, ambito:"delivery_estado", texto:JSON.stringify(d), usuario:d.por || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function sbLeerDespachos(desdeISO) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?ambito=eq.delivery_estado&created_at=gte." + (desdeISO || new Date(Date.now() - 3 * 86400000).toISOString()) + "&limit=2000", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function(f) { try { var x = JSON.parse(f.texto); if (x && x.comanda_id) o[x.comanda_id] = x; } catch(e) {} });
+    return o;
+  } catch(e) { return {}; }
+}
 // El turno de cada local: se abre con la fecha del día y se cierra cuando no queda ninguna cuenta abierta.
 // Va en pautas, ámbito "turno", un registro por local y fecha: {local, fecha, estado:"abierto"|"cerrado", abierto_at, abierto_por, cerrado_at, cerrado_por}.
 async function sbGuardarTurno(t) {
@@ -2911,6 +2928,181 @@ function NuevaComanda(props) {
     );
   }
 
+// ─── MÓDULO DE DELIVERY ───────────────────────────────────────────────
+// Pantalla exclusiva de delivery para cajeros y administración (por local): los pedidos por etapa y el informe del día. Convive con la pestaña Delivery de Comandas.
+function numeroWspAR(t) {
+  var n = String(t || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!n) return "";
+  if (n.indexOf("549") === 0) return n;
+  if (n.indexOf("54") === 0) return "549" + n.slice(2);
+  return "549" + n.replace(/^15/, "");
+}
+function linkWspDelivery(tel, texto) { var n = numeroWspAR(tel); return n ? "https://wa.me/" + n + "?text=" + encodeURIComponent(texto) : ""; }
+function totalItemsDelivery(its) { return (its || []).filter(function(i) { return i.estado !== "cancelado"; }).reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0); }
+// Etapa de un delivery: armando → en cocina → listo para despachar → en camino → entregado (falta cobrar o cerrar la cuenta).
+function etapaDelivery(its, desp) {
+  if (desp && desp.estado === "entregado") return "entregado";
+  if (desp && desp.estado === "en_camino") return "camino";
+  var vivos = (its || []).filter(function(i) { return i.estado !== "cancelado"; });
+  if (vivos.some(function(i) { return i.estado === "enviado"; })) return "cocina";
+  if (vivos.some(function(i) { return i.estado === "listo" || i.estado === "entregado"; })) return "listo";
+  return "armando";
+}
+var ETAPAS_DELIVERY = [
+  { id:"cocina",    emoji:"🍳", nombre:"En cocina",              col:"#D4A017" },
+  { id:"listo",     emoji:"📦", nombre:"Listo para despachar",   col:"#4C9A5A" },
+  { id:"camino",    emoji:"🛵", nombre:"En camino",              col:"#3A9BC1" },
+  { id:"armando",   emoji:"🧾", nombre:"Armando el pedido",      col:"#8C8C8C" },
+  { id:"entregado", emoji:"💵", nombre:"Entregado: falta cobrar y cerrar", col:"#B07CD8" },
+];
+function BandejaDelivery(props) {
+  var color = props.color;
+  var delis = props.comandas;
+  if (!delis.length) return (
+    <div style={{ textAlign:"center", padding:"30px 0", color:"#444" }}>
+      <div style={{ fontSize:30, marginBottom:8 }}>🛵</div>
+      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:15, color:"#555" }}>Sin deliverys abiertos</div>
+    </div>
+  );
+  return (
+    <div>
+      {ETAPAS_DELIVERY.map(function(et) {
+        var lista = delis.filter(function(c) { return etapaDelivery(props.items.filter(function(i) { return i.comanda_id === c.id; }), props.despachos[c.id]) === et.id; });
+        if (!lista.length) return null;
+        return (
+          <div key={et.id} style={{ marginBottom:14 }}>
+            <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.6, color:et.col, textTransform:"uppercase", marginBottom:6 }}>{et.emoji} {et.nombre} · {lista.length}</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+              {lista.map(function(c) {
+                var its = props.items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+                var st = estadoEntrega(props.entregas[c.id], props.ahora);
+                var resumen = its.map(function(i) { return (Number(i.cant) || 1) + "× " + i.nombre; }).join(", ");
+                var desp = props.despachos[c.id] || {};
+                var hh = props.entregas[c.id] && props.entregas[c.id].prometida_at ? String(new Date(props.entregas[c.id].prometida_at).getHours()).padStart(2, "0") + ":" + String(new Date(props.entregas[c.id].prometida_at).getMinutes()).padStart(2, "0") : "";
+                var texto = et.id === "cocina" || et.id === "armando"
+                  ? "Hola " + (c.cliente || "") + "! Recibimos tu pedido de " + (props.localNombre || "") + ", ya lo estamos preparando 🍳" + (hh ? " Llega aproximadamente a las " + hh + "." : "")
+                  : "Hola " + (c.cliente || "") + "! Tu pedido de " + (props.localNombre || "") + " ya salió y llega en unos minutos 🛵";
+                var wa = c.telefono ? linkWspDelivery(c.telefono, texto) : "";
+                return (
+                  <div key={c.id} style={{ background:"#111", border:"1px solid " + et.col + "55", borderLeft:"6px solid " + et.col, borderRadius:10, padding:"11px 13px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", gap:9, alignItems:"flex-start" }}>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ fontSize:15, fontWeight:900, color:"#F0EDE8" }}>#{c.numero} · {c.cliente || "Sin nombre"}</div>
+                        {c.direccion && <div style={{ fontSize:12, color:"#9A9A9A", marginTop:2 }}>📍 {c.direccion}</div>}
+                        {c.telefono && <div style={{ fontSize:12, color:"#777" }}>📞 {c.telefono}</div>}
+                        <div style={{ fontSize:12.5, color:"#C8C8C8", marginTop:4, lineHeight:1.4 }}>{resumen || "Todavía sin productos"}</div>
+                        {st && <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:8, padding:"3px 9px" }}>{st.txt}</div>}
+                      </div>
+                      <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>
+                        <div style={{ fontSize:15, fontWeight:900, color:color }}>{pesos(totalItemsDelivery(its))}</div>
+                        <div style={{ fontSize:11, color:"#888", marginTop:2 }}>⏱ {hace(c.abierta_at)}</div>
+                        {desp.en_camino_at && <div style={{ fontSize:10, color:"#3A9BC1", marginTop:2 }}>salió {horaSeg(desp.en_camino_at).slice(0, 5)}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end", marginTop:9 }}>
+                      {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"7px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
+                      <button onClick={function() { props.onAbrir(c); }} style={{ ...GH, padding:"7px 12px", fontSize:12 }}>🧾 Abrir cuenta</button>
+                      {et.id === "listo" && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
+                      {et.id === "camino" && <button onClick={function() { props.onDespacho(c, "entregado"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>✅ Llegó al cliente</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+// Informe de los deliverys de un día de negocio en un local: cuántos, cuánto se vendió, cuánto tardaron y cuáles llegaron tarde.
+function InformeDelivery(props) {
+  var localId = props.localId, color = props.color;
+  var [fecha, setFecha] = useState(props.diaDeNegocio ? props.diaDeNegocio() : new Date().toISOString().slice(0, 10));
+  var [datos, setDatos] = useState(null);
+  useEffect(function() {
+    var vivo = true; setDatos(null);
+    var d0 = new Date(fecha + "T06:00:00"), d1 = new Date(d0.getTime() + 86400000);
+    cfetch(SURL + "/rest/v1/comandas?tipo=eq.delivery&local=eq." + encodeURIComponent(localId) + "&abierta_at=gte." + d0.toISOString() + "&abierta_at=lt." + d1.toISOString() + "&order=abierta_at", { headers: {...SH, "Cache-Control":"no-cache"} })
+      .then(function(r) { return r.json(); })
+      .then(function(cs) {
+        cs = (Array.isArray(cs) ? cs : []).filter(function(c) { return !esComandaPrueba(c.id); });
+        return Promise.all([sbLoadItems(cs.map(function(c) { return c.id; })), sbLeerEntregas(d0.toISOString()), sbLeerDespachos(d0.toISOString()), cargarPagosGen(localId, fecha, cfetch)]).then(function(r) {
+          if (vivo) setDatos({ cs:cs, items:r[0], entregas:r[1], desp:r[2], pagos:r[3].filter(function(x) { return x.tipo === "delivery"; }) });
+        });
+      }).catch(function() { if (vivo) setDatos({ cs:[], items:[], entregas:{}, desp:{}, pagos:[] }); });
+    return function() { vivo = false; };
+  }, [localId, fecha, props.refresco]);
+  var cuerpo;
+  if (!datos) cuerpo = <div style={{ textAlign:"center", padding:"40px 0", color:"#444" }}>Cargando…</div>;
+  else if (!datos.cs.length) cuerpo = <div style={{ textAlign:"center", padding:"40px 0", color:"#555", fontSize:14 }}>No hubo deliverys este día.</div>;
+  else {
+    var filas = datos.cs.map(function(c) {
+      var its = datos.items.filter(function(i) { return i.comanda_id === c.id; });
+      var pago = datos.pagos.find(function(x) { return x.comanda_id === c.id; });
+      var desp = datos.desp[c.id] || {}, ent = datos.entregas[c.id] || {};
+      var fin = desp.entregado_at || (c.estado === "cerrada" ? c.cerrada_at : null);
+      var tardo = fin ? Math.round((new Date(fin) - new Date(c.abierta_at)) / 60000) : null;
+      var atraso = fin && ent.prometida_at ? Math.round((new Date(fin) - new Date(ent.prometida_at)) / 60000) : null;
+      return { c:c, total: pago ? Number(pago.total) || 0 : totalItemsDelivery(its), cobrado:!!pago, pago:pago, tardo:tardo, atraso:atraso, prometida:ent.prometida_at || null };
+    });
+    var cobrados = filas.filter(function(f) { return f.cobrado; });
+    var ventas = cobrados.reduce(function(a, f) { return a + f.total; }, 0);
+    var conTiempo = filas.filter(function(f) { return f.tardo !== null && f.tardo >= 0; });
+    var prom = conTiempo.length ? Math.round(conTiempo.reduce(function(a, f) { return a + f.tardo; }, 0) / conTiempo.length) : null;
+    var conPrometida = filas.filter(function(f) { return f.atraso !== null; });
+    var aTiempo = conPrometida.filter(function(f) { return f.atraso <= 0; }).length;
+    var medios = {};
+    cobrados.forEach(function(f) { (f.pago.pagos || []).forEach(function(x) { medios[x.medio] = (medios[x.medio] || 0) + (Number(x.monto) || 0); }); });
+    var nombreMedio = function(id) { var m = mediosDeLocal(localId).find(function(z) { return z.id === id; }); return m ? m.emoji + " " + m.nombre : id; };
+    var kpi = function(t, v, sub) { return <div style={{ background:"#111", border:"1px solid #222", borderRadius:10, padding:"10px 12px", flex:"1 1 130px" }}><div style={{ fontSize:10, color:"#8C8C8C", textTransform:"uppercase", letterSpacing:1 }}>{t}</div><div style={{ fontSize:20, fontWeight:900, color:"#F0EDE8", marginTop:2 }}>{v}</div>{sub && <div style={{ fontSize:10.5, color:"#777", marginTop:1 }}>{sub}</div>}</div>; };
+    cuerpo = (
+      <div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+          {kpi("Pedidos", filas.length, cobrados.length + " cobrados")}
+          {kpi("Ventas", pesos(ventas), cobrados.length ? "ticket " + pesos(ventas / cobrados.length) : "")}
+          {kpi("Tiempo promedio", prom !== null ? prom + " min" : "—", "desde que se abrió hasta que llegó")}
+          {kpi("A tiempo", conPrometida.length ? aTiempo + " de " + conPrometida.length : "—", conPrometida.length ? Math.round(aTiempo * 100 / conPrometida.length) + "% llegó en la hora prometida" : "")}
+        </div>
+        {Object.keys(medios).length > 0 && (
+          <div style={{ background:"#111", border:"1px solid #222", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
+            <div style={{ fontSize:10, color:"#8C8C8C", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Cobrado por medio de pago</div>
+            {Object.keys(medios).map(function(m) { return <div key={m} style={{ display:"flex", justifyContent:"space-between", fontSize:13, color:"#D0D0D0", padding:"2px 0" }}><span>{nombreMedio(m)}</span><b>{pesos(medios[m])}</b></div>; })}
+          </div>
+        )}
+        <div style={{ fontSize:10, color:"#8C8C8C", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Cada pedido</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {filas.map(function(f) {
+            var tarde = f.atraso !== null && f.atraso > 0;
+            return (
+              <div key={f.c.id} style={{ background:"#0F0F0F", border:"1px solid " + (tarde ? "#E0452E66" : "#1E1E1E"), borderRadius:9, padding:"8px 11px", display:"flex", justifyContent:"space-between", gap:10, alignItems:"center" }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:800, color:"#F0EDE8" }}>#{f.c.numero} · {f.c.cliente || "Sin nombre"} <span style={{ fontWeight:500, color:"#777", fontSize:11 }}>· {horaSeg(f.c.abierta_at).slice(0, 5)}</span></div>
+                  {f.c.direccion && <div style={{ fontSize:11, color:"#777" }}>📍 {f.c.direccion}</div>}
+                  <div style={{ fontSize:11, marginTop:2, color: tarde ? "#E0452E" : "#8C8C8C" }}>
+                    {f.tardo !== null ? "Tardó " + f.tardo + " min" : f.c.estado === "cerrada" ? "Cerrado" : "Todavía abierto"}
+                    {f.atraso !== null ? (tarde ? " · llegó " + f.atraso + " min tarde" : " · a tiempo") : ""}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right", whiteSpace:"nowrap", fontSize:13, fontWeight:900, color: f.cobrado ? "#8FD19A" : "#9A9A9A" }}>{pesos(f.total)}<div style={{ fontSize:10, fontWeight:600 }}>{f.cobrado ? "cobrado" : "sin cobrar"}</div></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+        <span style={{ fontSize:12, color:"#8C8C8C" }}>Día</span>
+        <input type="date" value={fecha} onChange={function(e) { if (e.target.value) setFecha(e.target.value); }} style={{ ...INP, width:"auto", padding:"7px 10px" }} />
+      </div>
+      {cuerpo}
+    </div>
+  );
+}
+
 export default function PanelComandas(p) {
   var usuario = p.usuario || "";
   // Un mozo ve su local y nada más; administración elige.
@@ -2940,6 +3132,8 @@ export default function PanelComandas(p) {
   // El día de las ventas es el del turno abierto: así lo cobrado cae en el cierre de esa fecha.
   function fechaNegocio() { return turnoActual ? turnoActual.fecha : (p.diaDeNegocio ? p.diaDeNegocio() : new Date().toISOString().slice(0, 10)); }
   var [entregas, setEntregas] = useState({});   // tiempos de entrega prometidos {comanda_id: {...}}
+  var [despachos, setDespachos] = useState({});   // delivery: en camino / entregado al cliente {comanda_id: {...}}
+  var [vistaDel, setVistaDel] = useState("pedidos");   // módulo de delivery: pedidos | informe
   var [refInforme, setRefInforme] = useState(0);
   var verInforme = !p.soloServicio || !!p.puedeDescuento;   // el informe lo ven administración y cajeros
   var [eligeMozo, setEligeMozo] = useState(null);   // {titulo, alElegir}
@@ -3016,6 +3210,7 @@ export default function PanelComandas(p) {
 
   function cargar() {
     sbLeerEntregas().then(setEntregas);
+    sbLeerDespachos().then(setDespachos);
     sbLeerTurnos(localId).then(setTurnos);
     sbLeerListosDesde(new Date(Date.now() - 24 * 3600000).toISOString()).then(setListosMap);
     sbLeerExtrasRecientes().then(setExtrasTodos);
@@ -3137,6 +3332,15 @@ export default function PanelComandas(p) {
       }
       return null;
     });
+  }
+  // Delivery: el cajero marca cuándo salió el pedido y cuándo llegó al cliente.
+  function despachar(c, estado) {
+    var ahoraISO = new Date().toISOString();
+    var nuevo = { ...(despachos[c.id] || {}), comanda_id:c.id, local:c.local, estado:estado, por:usuario };
+    if (estado === "en_camino") nuevo.en_camino_at = ahoraISO; else nuevo.entregado_at = ahoraISO;
+    setDespachos(function(prev) { return { ...prev, [c.id]: nuevo }; });
+    sbGuardarDespacho(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar el estado del delivery. Probá de nuevo."); });
+    registrar(c, estado === "en_camino" ? "Salió el delivery" : "Llegó al cliente", (c.cliente || "") + (c.direccion ? " · " + c.direccion : ""));
   }
   function borrarItem(id) {
     var it = items.find(function(x) { return x.id === id; });
@@ -3321,7 +3525,7 @@ export default function PanelComandas(p) {
       <style>{"@keyframes nktPulso{0%,100%{opacity:1}50%{opacity:.35}}"}</style>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:10, color:"#555", textTransform:"uppercase", letterSpacing:1.5 }}>Módulo</div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>🍽️ Comandas</div>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:800 }}>{p.soloDelivery ? "🛵 Delivery" : "🍽️ Comandas"}</div>
       </div>
 
       {turnos !== null && (
@@ -3346,10 +3550,10 @@ export default function PanelComandas(p) {
         )
       )}
       <div style={{ marginBottom:10, display:"flex", gap:8, flexWrap:"wrap" }}>
-        {verInforme && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
-        {verInforme && <button onClick={function() { setDiscontinuando(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #C1440E88", background:"#C1440E15", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>🚫 Discontinuar</button>}
+        {verInforme && !p.soloDelivery && <button onClick={function() { setVerCocina(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #3A7D4488", background:"#3A7D4415", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>👨‍🍳 Pantalla de cocina</button>}
+        {verInforme && !p.soloDelivery && <button onClick={function() { setDiscontinuando(true); }} style={{ padding:"7px 13px", borderRadius:8, border:"1px solid #C1440E88", background:"#C1440E15", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>🚫 Discontinuar</button>}
       </div>
-      {!p.soloServicio && (
+      {!p.soloServicio && !p.soloDelivery && (
         <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", background:"#0F0F0F", border:"1px solid #2A2A2A", borderRadius:10, padding:"9px 12px", marginBottom:10 }}>
           <span style={{ fontSize:12, color:"#C8C8C8" }}>⏱ Avisar cuando un pedido lleve más de</span>
           <select value={limite} onChange={function(e) {
@@ -3394,7 +3598,7 @@ export default function PanelComandas(p) {
           </div>
         );
       })()}
-      {!practica && verInforme && (pruebaVivo ? (
+      {!practica && verInforme && !p.soloDelivery && (pruebaVivo ? (
         <div style={{ background:"#1C1230", border:"2px dashed #B07CD8", borderRadius:10, padding:"10px 12px", marginBottom:12 }}>
           <div style={{ fontSize:12, fontWeight:800, color:"#B07CD8", letterSpacing:1 }}>🧪 PRUEBA COMPARTIDA</div>
           <div style={{ fontSize:11, color:"#CDB8E8", lineHeight:1.5, margin:"3px 0 8px" }}>Las cuentas que abras se guardan, se ven en todos los aparatos (también en la cocina) con el cartel «PRUEBA», y no entran al cierre de caja ni a los informes.</div>
@@ -3418,7 +3622,7 @@ export default function PanelComandas(p) {
             <button onClick={salirPractica} style={{ background:"#D4A017", border:"none", borderRadius:8, color:"#1A1200", padding:"6px 12px", fontSize:11, fontWeight:800, cursor:"pointer" }}>Salir de la práctica</button>
           </div>
         </div>
-      ) : (
+      ) : p.soloDelivery ? null : (
         <div style={{ marginBottom:12 }}>
           <button onClick={entrarPractica} style={{ ...GH, padding:"6px 12px", fontSize:11 }}>🎮 Practicar (simulador)</button>
         </div>
@@ -3455,7 +3659,7 @@ export default function PanelComandas(p) {
       )}
 
       {/* Mesas / Delivery / Mostrador */}
-      <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
+      <div style={{ display: p.soloDelivery ? "none" : "flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
         {CMD_VISTAS.filter(function(v) { return v.id !== "informe" || verInforme; }).map(function(v) {
           var act = vista === v.id && !config;
           var cuenta = v.tipo ? abiertas.filter(function(c) { return c.tipo === v.tipo; }).length : 0;
@@ -3489,6 +3693,24 @@ export default function PanelComandas(p) {
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
+      ) : p.soloDelivery ? (
+        <>
+          <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" }}>
+            {[["pedidos", "🛵 Pedidos (" + abiertas.filter(function(c) { return c.tipo === "delivery"; }).length + ")"], ["informe", "📊 Informe del día"]].map(function(t) {
+              var act = vistaDel === t[0];
+              return <button key={t[0]} onClick={function() { setVistaDel(t[0]); }} style={{ padding:"10px 16px", borderRadius:10, border:"2px solid " + (act ? CMD_TIPO.delivery.color : "#2A2A2A"), background: act ? CMD_TIPO.delivery.color + "26" : "#111", color: act ? CMD_TIPO.delivery.color : "#9A9A9A", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }}>{t[1]}</button>;
+            })}
+          </div>
+          {vistaDel === "informe" ? (
+            <InformeDelivery localId={localId} color={color} diaDeNegocio={fechaNegocio} refresco={refInforme + (practica ? 1000 : 0)} />
+          ) : (
+            <>
+              <NuevaComanda tipo="delivery" color={CMD_TIPO.delivery.color} localId={localId} usuario={usuario} guardar={guardar} proximoNumero={proximoNumero} registrar={registrar} fijarEntrega={fijarEntrega} puedeAbrirCuenta={puedeAbrirCuenta} nuevoId={function() { return (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(); }} />
+              <BandejaDelivery comandas={abiertas.filter(function(c) { return c.tipo === "delivery"; })} items={items} entregas={entregas} despachos={despachos} ahora={ahora} color={color} localNombre={local && local.nombre}
+                onAbrir={function(c) { setAbiertaId(c.id); }} onDespacho={despachar} />
+            </>
+          )}
+        </>
       ) : config ? (
         <>
           <button onClick={function() { setConfig(false); }} style={{ ...estiloVolver(color), marginBottom:12 }}>← Volver al plano</button>

@@ -10530,6 +10530,113 @@ var MEDIOS_EGRESO=[
   {grupo:"Otros",label:"📄 Cheque",value:"Cheque"},
   {grupo:"Otros",label:"Otro",value:"Otro"},
   ];
+// ─── PLATA PRESTADA ───────────────────────────────────────────────────
+// A veces un egreso se paga con una tarjeta (o plata) que presta otra persona: el egreso queda pagado y el servicio saldado, pero se le debe
+// la plata a esa persona. El medio se guarda como «Prestado - Nombre»: no baja ninguna cuenta ni caja hasta que se devuelve. Al devolverla se
+// elige con qué se pagó de verdad (efectivo, transferencia, etc.) y el egreso (y el vencimiento, si venía de uno) pasa a figurar con ese medio.
+var PREFIJO_PRESTADO="Prestado - ";
+function esMedioPrestado(m){ return String(m||"").indexOf(PREFIJO_PRESTADO)===0; }
+function prestadorDe(m){ return String(m||"").slice(PREFIJO_PRESTADO.length).trim()||"alguien"; }
+var PRESTADORES_CONOCIDOS=[];
+function sumarPrestadores(gastos){
+  (gastos||[]).forEach(function(g){
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago}];
+    pagos.forEach(function(pg){ var m=pg.medio||pg.tipo||""; if(esMedioPrestado(m)){ var n=prestadorDe(m); if(PRESTADORES_CONOCIDOS.indexOf(n)<0)PRESTADORES_CONOCIDOS.push(n); } });
+  });
+}
+// Las opciones «a devolver» para cualquier lista de medios de pago.
+function OpcionesPrestado(){
+  return <optgroup label="── A devolver (plata prestada) ──">
+    {PRESTADORES_CONOCIDOS.map(function(n){return <option key={n} value={PREFIJO_PRESTADO+n}>{"🤝 Prestado por "+n+" (a devolver)"}</option>;})}
+    <option value="__prestado_nuevo__">🤝 Prestado por otra persona… (a devolver)</option>
+  </optgroup>;
+}
+// Si eligieron «otra persona», se pregunta el nombre y se devuelve el medio listo; si cancelan, null (no se cambia nada).
+function resolverMedioPrestado(v){
+  if(v!=="__prestado_nuevo__")return v;
+  var n=window.prompt("¿Quién te prestó la tarjeta o la plata?");
+  if(!n||!n.trim())return null;
+  n=n.trim();
+  if(PRESTADORES_CONOCIDOS.indexOf(n)<0)PRESTADORES_CONOCIDOS.push(n);
+  return PREFIJO_PRESTADO+n;
+}
+// Lo que se debe por pagos con plata prestada: una fila por pago de cada egreso.
+function pagosPrestados(gastos){
+  var out=[];
+  (gastos||[]).forEach(function(g){
+    var pagos=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago,monto:g.monto}];
+    pagos.forEach(function(pg,idx){
+      var m=pg.medio||pg.tipo||"";
+      if(esMedioPrestado(m))out.push({gastoId:g.id,idx:idx,persona:prestadorDe(m),monto:parseFloat(pg.monto||0)||0,concepto:g.concepto||g.detalle||"Egreso",fecha:String(g.fecha||"").substring(0,10),local:g.local});
+    });
+  });
+  return out.sort(function(a,b){return String(a.fecha).localeCompare(String(b.fecha));});
+}
+function PanelPrestados(p){
+  var filas=pagosPrestados(p.gastos);
+  var [abierto,setAbierto]=useState(false);
+  var [dev,setDev]=useState(null);   // {persona, items}
+  var [medio,setMedio]=useState("");
+  var [fecha,setFecha]=useState(new Date().toISOString().split("T")[0]);
+  if(!filas.length)return null;
+  var total=filas.reduce(function(a,f){return a+f.monto;},0);
+  var personas=[]; filas.forEach(function(f){ if(personas.indexOf(f.persona)<0)personas.push(f.persona); });
+  var money=function(n){return "$"+Math.round(n).toLocaleString("es-AR");};
+  function confirmar(){
+    if(!medio){ alert("Elegí con qué le devolviste la plata."); return; }
+    p.onDevolver(dev.items,medio,fecha);
+    setDev(null); setMedio("");
+  }
+  return(
+    <div style={{background:"#150F1C",border:"1px solid #B07CD866",borderRadius:12,padding:"11px 14px",marginBottom:14,fontFamily:"'Inter',sans-serif"}}>
+      <button onClick={function(){setAbierto(!abierto);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"'Inter',sans-serif"}}>
+        <span style={{fontSize:13.5,fontWeight:800,color:"#D9B8F5"}}>🤝 Plata prestada para pagar · {money(total)} a devolver</span>
+        <span style={{fontSize:11,color:"#7E7E7E"}}>{abierto?"▾ ocultar":"▸ ver"}</span>
+      </button>
+      {abierto&&personas.map(function(n){
+        var mias=filas.filter(function(f){return f.persona===n;});
+        var sub=mias.reduce(function(a,f){return a+f.monto;},0);
+        return(
+          <div key={n} style={{marginTop:10,borderTop:"1px solid #2A1F36",paddingTop:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>Le debés a {n}: <span style={{color:"#D9B8F5"}}>{money(sub)}</span></span>
+              {p.puedeEditar!==false&&<button onClick={function(){setDev({persona:n,items:mias});}} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#B07CD8",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer"}}>💵 Le devolví todo</button>}
+            </div>
+            {mias.map(function(f,i){
+              var l=getLocal(f.local)||{};
+              return <div key={f.gastoId+"_"+f.idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"5px 0",fontSize:12,color:"#C8C8C8",flexWrap:"wrap"}}>
+                <span>{fmtDate(f.fecha)} · {f.concepto} <span style={{color:"#7E7E7E"}}>· {l.emoji} {l.nombre||""}</span></span>
+                <span style={{display:"flex",gap:8,alignItems:"center"}}><b>{money(f.monto)}</b>
+                  {p.puedeEditar!==false&&<button onClick={function(){setDev({persona:n,items:[f]});}} style={{padding:"3px 9px",borderRadius:7,border:"1px solid #B07CD888",background:"none",color:"#D9B8F5",fontSize:11,fontWeight:700,cursor:"pointer"}}>Devolví este</button>}
+                </span>
+              </div>;
+            })}
+          </div>
+        );
+      })}
+      {dev&&(
+        <div onClick={function(){setDev(null);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={function(e){e.stopPropagation();}} style={{background:"#111",border:"1px solid #B07CD8",borderRadius:16,padding:"18px",width:"100%",maxWidth:420}}>
+            <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:4}}>💵 Devolución a {dev.persona}</div>
+            <div style={{fontSize:13,color:"#D9B8F5",marginBottom:10}}>{dev.items.length} pago{dev.items.length===1?"":"s"} · {money(dev.items.reduce(function(a,f){return a+f.monto;},0))}</div>
+            <div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.5,marginBottom:10}}>Elegí con qué le devolviste la plata. Los egresos pasan a figurar pagados con ese medio.</div>
+            <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Medio de pago de la devolución</label>
+            <select value={medio} onChange={function(e){setMedio(e.target.value);}} style={{...INP,marginBottom:10}}>
+              <option value="">-- Seleccioná medio --</option>
+              {GRUPOS_MEDIOS_EGRESO.map(function(grp){return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;})}
+            </select>
+            <label style={{display:"block",fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Fecha en que se la devolviste</label>
+            <input type="date" value={fecha} onChange={function(e){if(e.target.value)setFecha(e.target.value);}} style={{...INP,marginBottom:14}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={confirmar} style={{flex:2,padding:"12px",borderRadius:10,border:"none",background:"#B07CD8",color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer"}}>Confirmar devolución</button>
+              <button onClick={function(){setDev(null);}} style={{...GH,flex:1,padding:"12px",fontSize:13}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // Al lado de cada medio, la dependencia a la que pertenece (salvo que el nombre ya la diga).
 function etiquetaMedioEg(m){
   var lid=detectarLocalMedio(m.value), loc=lid&&getLocal(lid);
@@ -11029,12 +11136,13 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
               </div>
               {pagosEgreso.map(function(pago,idx){return(
                 <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
-                  <select value={pago.medio} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],medio:e.target.value};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                  <select value={pago.medio} onChange={function(e){var v=resolverMedioPrestado(e.target.value);if(v===null)return;setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
                     <option value="">-- Seleccioná medio --</option>
                     {grupos_medios.map(function(grp){
                       var items=MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;});
                       return <optgroup key={grp} label={"── "+grp+" ──"}>{items.map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;
                     })}
+                    {OpcionesPrestado()}
                   </select>
                   <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){setPagosEgreso(function(prev){var n=[...prev];n[idx]={...n[idx],monto:e.target.value};return n;});}} style={{...INP,width:90}}/>
                   {pagosEgreso.length>1&&<button onClick={function(){setPagosEgreso(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
@@ -11646,6 +11754,8 @@ function PanelEgresos(p){
         <div style={{fontSize:10,color:"#8C8C8C",textTransform:"uppercase",letterSpacing:1.5}}>Administración</div>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:800}}>💰 Egresos</div>
       </div>
+
+      {p.onDevolverPrestado&&<PanelPrestados gastos={gastos} onDevolver={p.onDevolverPrestado}/>}
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
@@ -18011,11 +18121,12 @@ function PanelVencimientos(p){
               </div>
               {pagosPago.map(function(pago,idx){return(
                 <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:6,marginBottom:6,alignItems:"center"}}>
-                  <select value={pago.medio} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
+                  <select value={pago.medio} onChange={function(e){var v=resolverMedioPrestado(e.target.value);if(v===null)return;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],medio:v};return n;});}} style={{...INP,fontSize:11,borderColor:!pago.medio?"#C1440E":"#2A2A2A"}}>
                     <option value="">-- Seleccioná medio --</option>
                     {GRUPOS_MEDIOS_EGRESO.map(function(grp){
                       return <optgroup key={grp} label={"── "+grp+" ──"}>{MEDIOS_EGRESO.filter(function(m){return m.grupo===grp;}).map(function(m){return <option key={m.value} value={m.value}>{etiquetaMedioEg(m)}</option>;})}</optgroup>;
                     })}
+                    {OpcionesPrestado()}
                   </select>
                   <input type="number" placeholder="Monto" value={pago.monto} onChange={function(e){var v=e.target.value;setPagosPago(function(prev){var n=[...prev];n[idx]={...n[idx],monto:v};return n;});}} style={{...INP,width:100}}/>
                   {pagosPago.length>1&&<button onClick={function(){setPagosPago(function(prev){return prev.filter(function(_,i){return i!==idx;});});}} style={{background:"none",border:"none",color:"#8C8C8C",fontSize:14,cursor:"pointer",padding:"0 4px"}}>✕</button>}
@@ -19663,6 +19774,7 @@ function pendientesDeSaldar(gastos){
 // Calcular deudas entre locales por medio de pago
 function detectarLocalMedio(medio){
   if(!medio)return null;
+  if(esMedioPrestado(medio))return null;   // plata prestada: no es de ninguna cuenta hasta que se devuelve
   if(medio.includes("Concesión")||medio.includes("Belo Nicolás")||medio.includes("Lemon Sofía"))return "dep";
   if(medio.includes("Bodegón")||medio.includes("Bode")||medio.includes("Provincia Personas")||medio.includes("Mercado Pago Nicolás")||medio.includes("Visa Provincia")||medio.includes("Mastercard Patagonia")||medio.includes("Visa Patagonia")||medio.includes("Patagonia Personas"))return "l1";
   if(medio.includes("Kusama")||medio.includes("Galicia"))return "l2";
@@ -19672,6 +19784,7 @@ function detectarLocalMedio(medio){
 }
 function tipoMedio(medio){
   if(!medio)return "Otro";
+  if(esMedioPrestado(medio))return "Otro";
   if(medio.toLowerCase().includes("efectivo"))return "Efectivo";
   if(medio.toLowerCase().includes("transferencia"))return "Transferencia";
   if(medio.toLowerCase().includes("débito")||medio.toLowerCase().includes("debito"))return "Débito";
@@ -30749,6 +30862,7 @@ export default function App() {
   var [vistaProv,setVistaProv]=useState("gestion"); // módulo Proveedores: gestion | comparador
   var [faltantes,setFaltantes]=useState([]);
   var [gastos,setGastos]=useState([]);
+  sumarPrestadores(gastos);   // las personas que ya prestaron plata, para ofrecerlas en los medios de pago
   var [datosGrupo,setDatosGrupo]=useState(null);
   var [datosPrev,setDatosPrev]=useState(null), [datosAnio,setDatosAnio]=useState(null), [comparaCostos,setComparaCostos]=useState(false);   // números del mes de cada dependencia, que calcula Resultados y Novedades usa
   var [retiros,setRetiros]=useState([]);
@@ -31526,6 +31640,8 @@ export default function App() {
   }
   function panelVencimientos(extra){
     return (
+      <>
+      <PanelPrestados gastos={gastos} onDevolver={devolverPrestado}/>
       <PanelVencimientos key={(extra&&extra.llave)||"venc_general"} {...extra}
                     vencimientos={vencimientos}
                     faltanColumnas={faltanColsVenc}
@@ -31545,6 +31661,7 @@ export default function App() {
                     onDeleteEgreso={borrarEgresoSolo}
                     gastos={gastos}
                   />
+      </>
     );
   }
 
@@ -31637,6 +31754,46 @@ export default function App() {
     var ids=[id].concat(["_l1","_l3","_l2"].map(function(suf){return id+suf;}).filter(function(h){return gastos.some(function(g){return g.id===h;});}));
     ids.forEach(function(x){sbDeleteGasto(x);});
     setGastos(function(p){return p.filter(function(g){return ids.indexOf(g.id)===-1;});});
+  }
+  // Devolución de plata prestada: los pagos «Prestado - X» de esos egresos pasan a figurar con el medio con el que se devolvió (y el vencimiento de donde
+  // venían, si venían de uno). Queda anotado a quién se le debía y cuándo se devolvió.
+  function devolverPrestado(items,medio,fecha){
+    var porGasto={};
+    items.forEach(function(it){ (porGasto[it.gastoId]=porGasto[it.gastoId]||[]).push(it); });
+    Object.keys(porGasto).forEach(function(gid){
+      var g=gastos.find(function(x){return x.id===gid;}); if(!g)return;
+      var idxs=porGasto[gid].map(function(it){return it.idx;});
+      var base=(g.pagos&&g.pagos.length>0)?g.pagos:[{medio:g.forma_pago||"",monto:g.monto}];
+      var personas=[];
+      var pagos=base.map(function(pg,i){
+        var m=pg.medio||pg.tipo||"";
+        if(idxs.indexOf(i)===-1||!esMedioPrestado(m))return pg;
+        var n=prestadorDe(m); if(personas.indexOf(n)<0)personas.push(n);
+        return {...pg,medio:medio,prestado_de:n,devuelto_el:fecha,devuelto_por:cu.nombre};
+      });
+      var nuevo={...g,pagos:pagos,forma_pago:esMedioPrestado(g.forma_pago)?medio:(g.forma_pago||""),
+        notas:(g.notas?g.notas+" · ":"")+"Se pagó con plata prestada por "+personas.join(", ")+"; se devolvió el "+fmtDate(fecha)+" con "+medio};
+      sbSaveGasto(nuevo);
+      setGastos(function(prev){return prev.map(function(x){return x.id===gid?nuevo:x;});});
+      // El vencimiento que originó este egreso también cambia de medio.
+      var cambiar=function(pago){
+        if(!pago)return pago;
+        var out={...pago};
+        if(esMedioPrestado(out.medio))out.medio=medio;
+        if(Array.isArray(out.medios))out.medios=out.medios.map(function(x){return esMedioPrestado(x.medio)?{...x,medio:medio}:x;});
+        return out;
+      };
+      vencimientos.forEach(function(v){
+        var tocado=false, nv={...v};
+        var cs=Array.isArray(v.cuotas_plan)?v.cuotas_plan:[];
+        if(cs.some(function(c){return c.pago&&c.pago.egreso_id===gid;})){ nv.cuotas_plan=cs.map(function(c){return (c.pago&&c.pago.egreso_id===gid)?{...c,pago:cambiar(c.pago)}:c;}); tocado=true; }
+        var pgs=Array.isArray(v.pagos)?v.pagos:[];
+        if(pgs.some(function(pg){return pg.egreso_id===gid;})){ nv.pagos=pgs.map(function(pg){return pg.egreso_id===gid?cambiar(pg):pg;}); tocado=true; }
+        if(!tocado)return;
+        setVencimientos(function(prev){return prev.map(function(x){return x.id===v.id?nv:x;});});
+        sbSaveVencimiento(nv);
+      });
+    });
   }
   function despagarPorEgreso(egresoId){
     if(!egresoId)return;
@@ -32652,7 +32809,7 @@ export default function App() {
 
           {/* CONFIG COMPRAS */}
           {esSofia&&modulo==="admin"&&vista==="egresos"&&(
-            <PanelEgresos gastos={gastos} usuario={cu.nombre} proveedores={proveedores} cierres={cierres} adelantos={adelantos}
+            <PanelEgresos gastos={gastos} onDevolverPrestado={devolverPrestado} usuario={cu.nombre} proveedores={proveedores} cierres={cierres} adelantos={adelantos}
               conceptosCustom={conceptosGastos}
               areasCustom={areasCustomGastos}
               empleados={empleados} sueldos={sueldos}

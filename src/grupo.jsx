@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { SURL, SH } from "./comun.js";
-import { PedirDelivery } from "./pedido_delivery.jsx";
+import { PedirDelivery, SeguimientoPedido } from "./pedido_delivery.jsx";
 
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
 var LOCALES_GRUPO = [
@@ -304,6 +304,7 @@ export function GrupoNkt() {
   var [wspVer, setWspVer] = useState("");
   var [msgVer, setMsgVer] = useState("");
   var [buscando, setBuscando] = useState(false);
+  var [segKey, setSegKey] = useState(0);   // al cerrar el pedido se vuelve a leer el seguimiento
   var [pedirLocal, setPedirLocal] = useState(null);   // el local del que se está armando un pedido de delivery
 
   useEffect(function () { cargarNovedades().then(function (l) { setNovedades(l.filter(novedadVisible).slice(0, 8)); }); }, []);
@@ -598,6 +599,7 @@ export function GrupoNkt() {
       </div>
       {esParte ? (
         <div>
+          <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
           {bNovedades}
           {bCupon}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
@@ -615,7 +617,7 @@ export function GrupoNkt() {
           {bInstalar}
         </div>
       )}
-      {pedirLocal && cupon && <PedirDelivery local={pedirLocal} miembro={{ nombre: cupon.nombre, wsp: cupon.wsp }} prueba={modoPrueba || !!cupon.prueba} onCerrar={function () { setPedirLocal(null); }} />}
+      {pedirLocal && cupon && <PedirDelivery local={pedirLocal} info={cfg.locales[pedirLocal.id]} miembro={{ nombre: cupon.nombre, wsp: cupon.wsp }} prueba={modoPrueba || !!cupon.prueba} onCerrar={function () { setPedirLocal(null); setSegKey(function (k) { return k + 1; }); }} />}
     </div></div>
   );
 }
@@ -1514,6 +1516,7 @@ export function PanelComunidad() {
                   <textarea value={d.horarios || ""} onChange={function (e) { setLocal(l.id, "horarios", e.target.value); }} rows={2} placeholder={"Horarios (ej: Mar a Dom de 20 a 00 h)"} style={{ ...sel, resize: "vertical" }} />
                   <input value={d.carta || ""} onChange={function (e) { setLocal(l.id, "carta", e.target.value); }} placeholder="Enlace de la carta (opcional)" style={sel} />
                   <input value={d.instagram || ""} onChange={function (e) { setLocal(l.id, "instagram", e.target.value); }} placeholder="Enlace de Instagram (opcional)" style={sel} />
+                  <input value={d.demora || ""} onChange={function (e) { setLocal(l.id, "demora", e.target.value); }} placeholder="Demora aproximada del delivery (ej: 40 a 50 min). Se muestra al cliente" style={sel} />
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#C8C8C8", marginTop: 4, cursor: "pointer" }}><input type="checkbox" checked={d.delivery === true} onChange={function (e) { setLocal(l.id, "delivery", e.target.checked); }} />🛵 Recibir pedidos de delivery por la comunidad (los clientes ven la carta y piden)</label>
                 </div>
               );

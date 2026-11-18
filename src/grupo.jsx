@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { SURL, SH } from "./comun.js";
+import { PedirDelivery } from "./pedido_delivery.jsx";
 
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
 var LOCALES_GRUPO = [
@@ -303,6 +304,7 @@ export function GrupoNkt() {
   var [wspVer, setWspVer] = useState("");
   var [msgVer, setMsgVer] = useState("");
   var [buscando, setBuscando] = useState(false);
+  var [pedirLocal, setPedirLocal] = useState(null);   // el local del que se está armando un pedido de delivery
 
   useEffect(function () { cargarNovedades().then(function (l) { setNovedades(l.filter(novedadVisible).slice(0, 8)); }); }, []);
   // Si el miembro abre el portal desde el ícono de la app (no desde el navegador), queda anotado una vez por visita.
@@ -531,8 +533,10 @@ export function GrupoNkt() {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-              {/* Delivery todavía no está habilitado: queda a la vista como "Próximamente". Para activarlo, volver a usar itemLocal(wa, ...). */}
-              <span style={{ ...boton, opacity: 0.6, cursor: "default", background: "#161616" }}>🛵 Pedir delivery<span style={{ display: "block", fontSize: 10.5, color: "#D4A017", fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>Próximamente</span></span>
+              {/* Delivery: se habilita por local en administración (Comunidad → datos de cada local). Mientras no esté habilitado queda como "Próximamente". */}
+              {d.delivery === true && cupon
+                ? <button onClick={function () { setPedirLocal(l); }} style={{ ...boton, cursor: "pointer", background: l.color, borderColor: l.color, color: "#fff" }}>🛵 Pedir delivery</button>
+                : <span style={{ ...boton, opacity: 0.6, cursor: "default", background: "#161616" }}>🛵 Pedir delivery<span style={{ display: "block", fontSize: 10.5, color: "#D4A017", fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>{d.delivery === true ? "Un momento…" : "Próximamente"}</span></span>}
               {l.id === "l3" && itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}   {/* El Bodegón y Kusama no toman reservas por acá */}
               {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
               {itemLocal(linkWeb(d.carta), "🍽️ Ver la carta")}
@@ -611,6 +615,7 @@ export function GrupoNkt() {
           {bInstalar}
         </div>
       )}
+      {pedirLocal && cupon && <PedirDelivery local={pedirLocal} miembro={{ nombre: cupon.nombre, wsp: cupon.wsp }} prueba={modoPrueba || !!cupon.prueba} onCerrar={function () { setPedirLocal(null); }} />}
     </div></div>
   );
 }
@@ -1509,6 +1514,7 @@ export function PanelComunidad() {
                   <textarea value={d.horarios || ""} onChange={function (e) { setLocal(l.id, "horarios", e.target.value); }} rows={2} placeholder={"Horarios (ej: Mar a Dom de 20 a 00 h)"} style={{ ...sel, resize: "vertical" }} />
                   <input value={d.carta || ""} onChange={function (e) { setLocal(l.id, "carta", e.target.value); }} placeholder="Enlace de la carta (opcional)" style={sel} />
                   <input value={d.instagram || ""} onChange={function (e) { setLocal(l.id, "instagram", e.target.value); }} placeholder="Enlace de Instagram (opcional)" style={sel} />
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#C8C8C8", marginTop: 4, cursor: "pointer" }}><input type="checkbox" checked={d.delivery === true} onChange={function (e) { setLocal(l.id, "delivery", e.target.checked); }} />🛵 Recibir pedidos de delivery por la comunidad (los clientes ven la carta y piden)</label>
                 </div>
               );
             })}

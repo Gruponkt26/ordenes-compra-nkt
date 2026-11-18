@@ -10535,7 +10535,7 @@ var MEDIOS_EGRESO=[
 // la plata a esa persona. El medio se guarda como «Prestado - Nombre»: no baja ninguna cuenta ni caja hasta que se devuelve. Al devolverla se
 // elige con qué se pagó de verdad (efectivo, transferencia, etc.) y el egreso (y el vencimiento, si venía de uno) pasa a figurar con ese medio.
 var PREFIJO_PRESTADO="Prestado - ";
-function esMedioPrestado(m){ return String(m||"").indexOf(PREFIJO_PRESTADO)===0; }
+function esMedioPrestado(m){ return String(m||"").toLowerCase().indexOf(PREFIJO_PRESTADO.toLowerCase())===0; }
 function prestadorDe(m){ return String(m||"").slice(PREFIJO_PRESTADO.length).trim()||"alguien"; }
 var PRESTADORES_CONOCIDOS=[];
 function sumarPrestadores(gastos){
@@ -10593,6 +10593,7 @@ function PanelPrestados(p){
         <span style={{fontSize:13.5,fontWeight:800,color:"#D9B8F5"}}>🤝 Plata prestada para pagar · {money(total)} a devolver</span>
         <span style={{fontSize:11,color:"#7E7E7E"}}>{abierto?"▾ ocultar":"▸ ver"}</span>
       </button>
+      {abierto&&<div style={{fontSize:11,color:"#9A9A9A",lineHeight:1.5,marginTop:8}}>Estos egresos figuran pagados y suman en el estado de resultados, pero <b>no descuentan de la disponibilidad</b> hasta que anotes la devolución. En Novedades te aparece todos los días como descubierto.</div>}
       {abierto&&personas.map(function(n){
         var mias=filas.filter(function(f){return f.persona===n;});
         var sub=mias.reduce(function(a,f){return a+f.monto;},0);
@@ -16208,6 +16209,28 @@ function PanelNovedades(p){
 
   return(
     <div style={{fontFamily:"'Inter',sans-serif"}}>
+      {(function(){
+        // Descubierto: lo que se pagó con plata prestada y todavía no se devolvió. Se muestra todos los días hasta que se devuelve.
+        var deb=pagosPrestados(p.gastos);
+        if(!deb.length)return null;
+        var tot=deb.reduce(function(a,f){return a+f.monto;},0);
+        var porP={}; deb.forEach(function(f){ (porP[f.persona]=porP[f.persona]||[]).push(f); });
+        var money=function(n){return "$"+Math.round(n).toLocaleString("es-AR");};
+        return(
+          <div style={{background:"#1C0F0F",border:"2px solid #C1440E",borderRadius:12,padding:"12px 15px",marginBottom:14}}>
+            <div style={{fontSize:15,fontWeight:900,color:"#FF8A5C"}}>🔴 Tenés un descubierto a pagar de {money(tot)}</div>
+            <div style={{fontSize:12,color:"#D8B8A8",marginTop:3,lineHeight:1.5}}>Pagaste con plata prestada y todavía no la devolviste. Este aviso se repite todos los días hasta que lo devuelvas.</div>
+            {Object.keys(porP).map(function(n){
+              var l=porP[n];
+              return <div key={n} style={{marginTop:7,fontSize:12.5,color:"#F0EDE8"}}>
+                <b>A {n}: {money(l.reduce(function(a,f){return a+f.monto;},0))}</b>
+                <span style={{color:"#B8A8A0"}}> · {l.map(function(f){var lo=getLocal(f.local)||{};return f.concepto+" ("+(lo.nombre||"")+", "+fmtDate(f.fecha).substring(0,5)+")";}).join(" · ")}</span>
+              </div>;
+            })}
+            <div style={{fontSize:11,color:"#9A8A80",marginTop:7}}>Cuando le devuelvas la plata, anotalo en Administración → Egresos → «Plata prestada para pagar».</div>
+          </div>
+        );
+      })()}
       {/* Encabezado */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:10,flexWrap:"wrap",marginBottom:16}}>
         <div>
@@ -20815,6 +20838,7 @@ function salidasPorMedio(gastos, sueldosADescontar, adelantosLocal, retirosCuent
   var out={transferencia:0,debito:0,credito:0,otros:0,mp:0,total:0,impDebito:0};
   function sumar(medio, monto, localPago){
     if(localPago!==lid)return;
+    if(esMedioPrestado(medio))return;   // plata prestada: no toca ninguna cuenta (ni paga impuesto al débito) hasta que se devuelve
     var m=(medio||"").toLowerCase();
     if(esEfectivoOCajaMayor(m))return; // ni el efectivo ni la Caja Mayor tocan el banco
     var v=parseFloat(monto||0);
@@ -23662,6 +23686,7 @@ function PanelResultados(p){
     gl.forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
+          if(esMedioPrestado(pago.medio||pago.tipo))return;   // plata prestada: cuenta en Resultados, pero no baja la disponibilidad hasta que se devuelve
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||lid;
@@ -23672,6 +23697,7 @@ function PanelResultados(p){
           detGastos.push({fecha:g.fecha,concepto:g.concepto||g.categoria||g.area||"Gasto",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:false});
         });
       } else {
+        if(esMedioPrestado(g.forma_pago))return;
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
         var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||lid;
@@ -23689,6 +23715,7 @@ function PanelResultados(p){
     }).forEach(function(g){
       if(g.pagos&&g.pagos.length>0){
         g.pagos.forEach(function(pago){
+          if(esMedioPrestado(pago.medio||pago.tipo))return;
           var pm=parseFloat(pago.monto||0);
           var medioStr=(pago.medio||pago.tipo||"").toLowerCase();
           var pagoLocal=pago.local||getLocalFromMedio(pago.medio||pago.tipo)||localDeCajaMayor(pago.medio||pago.tipo)||g.local;
@@ -23698,6 +23725,7 @@ function PanelResultados(p){
           detGastos.push({fecha:g.fecha,concepto:(g.concepto||g.categoria||g.area||"Gasto")+" ("+((getLocal(g.local)||{}).emoji||"")+" "+((getLocal(g.local)||{}).nombre||"")+")",medio:pago.medio||pago.tipo||"",monto:pm,tipo:esEf?"efectivo":"electronico",cruzado:true});
         });
       } else {
+        if(esMedioPrestado(g.forma_pago))return;
         var fp=(g.forma_pago||"").toLowerCase();
         var gm=parseFloat(g.monto||0);
         var pagoLocal=getLocalFromMedio(g.forma_pago)||localDeCajaMayor(g.forma_pago)||g.local;
@@ -23805,6 +23833,7 @@ function PanelResultados(p){
     var gastoTransferencia=0,gastoDebito=0,gastoCredito=0,gastoOtros=0,gastoMp=0;
     var procesarPagoDetalle=function(medioStr,pm,pagoLocal){
       if(pagoLocal!==lid)return;
+      if(esMedioPrestado(medioStr))return;   // plata prestada: no sale de ninguna cuenta hasta que se devuelve
       if(esEfectivoOCajaMayor(medioStr))return; // ya se descontó en gastoEfectivo, más arriba
       if(medioStr.includes("mercado pago")||/\bmp\b/.test(medioStr))gastoMp+=pm;
       else if(medioStr.includes("transferencia"))gastoTransferencia+=pm;
@@ -32515,7 +32544,7 @@ export default function App() {
           )}
           {esSofia&&modulo==="novedades"&&(
             <ErrorSeguro nombre="Novedades">
-            <PanelNovedades onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades gastos={gastos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

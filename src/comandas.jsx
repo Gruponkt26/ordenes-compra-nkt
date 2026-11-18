@@ -3294,8 +3294,10 @@ function BandejaDelivery(props) {
                       {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, padding:"7px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 WhatsApp</a>}
                       <button onClick={function() { props.onAbrir(c); }} style={{ ...GH, padding:"7px 12px", fontSize:12 }}>🧾 Abrir cuenta</button>
                       {et.id === "listo" && web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok && <button onClick={function() { props.onTransferencia(c); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#B07CD8", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>📲 Confirmar transferencia recibida</button>}
-                      {et.id === "listo" && !(web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok) && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
-                      {et.id === "camino" && <button onClick={function() { props.onDespacho(c, "entregado"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>✅ Llegó al cliente</button>}
+                      {et.id === "listo" && cadetes.length > 0 && !desp.cadete && <span style={{ fontSize:12, fontWeight:800, color:"#D4A017" }}>👆 Asigná un cadete para despachar</span>}
+                      {et.id === "listo" && (cadetes.length === 0 || desp.cadete) && !(web[c.id] && web[c.id].medio === "transferencia" && !web[c.id].transf_ok) && <button onClick={function() { props.onDespacho(c, "en_camino"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A9BC1", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>🛵 Salió el delivery</button>}
+                      {et.id === "camino" && desp.cadete && <span style={{ fontSize:11.5, color:"#7CC4E4" }}>Lo marca {desp.cadete} al entregar</span>}
+                      {et.id === "camino" && <button onClick={function() { props.onDespacho(c, "entregado"); }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"#3A7D44", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:900, cursor:"pointer" }}>{desp.cadete ? "✅ Marcar entregado" : "✅ Llegó al cliente"}</button>}
                     </div>
                   </div>
                 );
@@ -3693,8 +3695,22 @@ export default function PanelComandas(p) {
   // Delivery: el cajero marca cuándo salió el pedido y cuándo llegó al cliente.
   function despachar(c, estado) {
     var ahoraISO = new Date().toISOString();
-    var nuevo = { ...(despachos[c.id] || {}), comanda_id:c.id, local:c.local, estado:estado, por:usuario };
+    var d0 = despachos[c.id] || {}, cads = p.cadetes || [];
+    // Sin cadete asignado no se despacha (si el local tiene cadetes cargados).
+    if (estado === "en_camino" && cads.length && !d0.cadete) { alert("Primero asignale un cadete a este pedido."); return; }
+    var nuevo = { ...d0, comanda_id:c.id, local:c.local, estado:estado, por:usuario };
     if (estado === "en_camino") nuevo.en_camino_at = ahoraISO; else nuevo.entregado_at = ahoraISO;
+    // Si lo llevó un cadete y lo marca el cajero (porque el cadete no pudo), se anota cuánto cobró el cadete para que figure en su rendición.
+    if (estado === "entregado" && d0.cadete) {
+      var av = pedidosWeb[c.id] || {};
+      if (av.medio === "transferencia") { if (!window.confirm("El pedido lo llevó " + d0.cadete + ". ¿Confirmás que ya se entregó?")) return; nuevo.cobrado_efectivo = 0; }
+      else {
+        var tot = totalItemsDelivery(items.filter(function(i) { return i.comanda_id === c.id; }));
+        var rta = window.prompt("El pedido lo llevó " + d0.cadete + ". ¿Cuánto cobró en efectivo?", String(Math.round(tot)));
+        if (rta === null) return;
+        nuevo.cobrado_efectivo = parseInt(String(rta).replace(/[^\d]/g, ""), 10) || 0;
+      }
+    }
     setDespachos(function(prev) { return { ...prev, [c.id]: nuevo }; });
     sbGuardarDespacho(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar el estado del delivery. Probá de nuevo."); });
     registrar(c, estado === "en_camino" ? "Salió el delivery" : "Llegó al cliente", (c.cliente || "") + (c.direccion ? " · " + c.direccion : ""));

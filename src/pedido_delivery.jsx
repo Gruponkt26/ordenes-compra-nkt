@@ -16,6 +16,57 @@ export async function leerPedidoWeb(cid) {
     return Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
   } catch (e) { return null; }
 }
+// El despacho del pedido (en camino / entregado), que escribe el cajero o el cadete.
+async function leerDespachoWeb(cid) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?id=eq.cdeliv_" + encodeURIComponent(cid) + "&limit=1", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
+  } catch (e) { return null; }
+}
+var CLAVE_PEDIDO = "nkt_pedido_delivery";
+function pedidoGuardado() { try { var p = JSON.parse(localStorage.getItem(CLAVE_PEDIDO) || "null"); return p && p.id && Date.now() - (p.at || 0) < 10 * 3600000 ? p : null; } catch (e) { return null; } }
+// Cómo va el pedido, en palabras para el cliente.
+function textoEstado(aviso, desp, localNombre, demora) {
+  var a = aviso || {}, d = desp || {};
+  var hora = a.prometida_at ? hhmm(a.prometida_at) : "";
+  if (a.estado === "rechazado") return { fin: true, emoji: "😕", color: "#E0714A", titulo: "No pudimos tomar tu pedido", detalle: a.motivo || "", hora: "" };
+  if (d.estado === "entregado") return { fin: true, emoji: "✅", color: "#4C9A5A", titulo: "¡Tu pedido llegó! Que lo disfrutes", detalle: "", hora: "" };
+  if (d.estado === "en_camino") return { fin: false, emoji: "🛵", color: "#3A9BC1", titulo: "Tu pedido ya salió", detalle: hora ? "Llega aproximadamente a las " + hora : "Está en camino", hora: hora };
+  if (a.estado === "aceptado") return { fin: false, emoji: "👨‍🍳", color: "#4C9A5A", titulo: localNombre + " confirmó tu pedido", detalle: (hora ? "Llega aproximadamente a las " + hora : "") + (a.medio === "transferencia" && !a.transf_ok ? (hora ? ". " : "") + "El local te escribe por WhatsApp con los datos para transferir." : ""), hora: hora };
+  return { fin: false, emoji: "⏳", color: "#D4A017", titulo: "Esperando que " + localNombre + " confirme tu pedido", detalle: demora ? "Demora aproximada: " + demora : "Apenas lo confirme, te avisamos acá cuánto demora.", hora: "" };
+}
+// El pedido en curso, a la vista en la portada de Comunidad: se actualiza solo aunque el cliente haya cerrado y vuelto a abrir la app.
+export function SeguimientoPedido(props) {
+  var [p, setP] = useState(pedidoGuardado);
+  var [est, setEst] = useState({ aviso: null, desp: null });
+  useEffect(function () {
+    if (!p) return;
+    var vivo = true;
+    function mirar() { Promise.all([leerPedidoWeb(p.id), leerDespachoWeb(p.id)]).then(function (r) { if (vivo) setEst({ aviso: r[0], desp: r[1] }); }); }
+    mirar(); var t = setInterval(mirar, 15000);
+    return function () { vivo = false; clearInterval(t); };
+  }, [p && p.id]);
+  if (!p) return null;
+  var loc = (props.locales || []).find(function (l) { return l.id === p.local; }) || { nombre: "el local", color: "#C1440E", emoji: "🛵" };
+  var info = ((props.cfgLocales || {})[p.local]) || {};
+  var e = textoEstado(est.aviso, est.desp, loc.nombre, info.demora);
+  function cerrar() { try { localStorage.removeItem(CLAVE_PEDIDO); } catch (x) {} setP(null); }
+  return (
+    <div style={{ background: "#111", border: "2px solid " + e.color, borderRadius: 14, padding: "13px 15px", marginBottom: 14 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: "#8C8C8C" }}>Tu pedido de delivery · {loc.emoji} {loc.nombre}</div>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 6 }}>
+        <div style={{ fontSize: 38 }}>{e.emoji}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#F0EDE8", lineHeight: 1.25 }}>{e.titulo}</div>
+          {e.detalle && <div style={{ fontSize: 13, color: "#C8C8C8", marginTop: 3, lineHeight: 1.45 }}>{e.detalle}</div>}
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: "#666", marginTop: 7 }}>Se actualiza sola.{e.fin ? "" : " No hace falta que dejes abierta esta pantalla."}</div>
+      {e.fin && <button onClick={cerrar} style={{ marginTop: 8, background: "#161616", border: "1px solid #2A2A2A", color: "#F0EDE8", borderRadius: 9, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Cerrar</button>}
+    </div>
+  );
+}
 // ¿Ya tiene este cliente un pedido esperando respuesta? (uno solo a la vez por WhatsApp, para evitar pedidos repetidos)
 async function pedidoPendienteDe(wsp) {
   try {
@@ -43,6 +94,8 @@ export function PedirDelivery(props) {
   var [error, setError] = useState("");
   var [pedidoId, setPedidoId] = useState("");
   var [estado, setEstado] = useState(null);
+  var [despacho, setDespacho] = useState(null);
+  var info = props.info || {};
 
   useEffect(function () {
     var vivo = true;
@@ -57,7 +110,7 @@ export function PedirDelivery(props) {
   useEffect(function () {
     if (!pedidoId) return;
     var vivo = true;
-    function mirar() { leerPedidoWeb(pedidoId).then(function (p) { if (vivo && p) setEstado(p); }); }
+    function mirar() { Promise.all([leerPedidoWeb(pedidoId), leerDespachoWeb(pedidoId)]).then(function (r) { if (vivo) { if (r[0]) setEstado(r[0]); setDespacho(r[1]); } }); }
     mirar(); var t = setInterval(mirar, 15000);
     return function () { vivo = false; clearInterval(t); };
   }, [pedidoId]);
@@ -100,7 +153,7 @@ export function PedirDelivery(props) {
       var aviso = { comanda_id: cid, local: local.id, estado: "nuevo", medio: medio, abona_con: medio === "efectivo" ? String(abonaCon).replace(/[^\d]/g, "") : "", nota: nota.trim(), cliente: nombre.trim(), wsp: String(miembro.wsp || telefono), total: total, creado_at: ahora };
       var r3 = await fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: h, body: JSON.stringify({ id: "cweb_" + cid, ambito: "delivery_web", texto: JSON.stringify(aviso), usuario: "Comunidad", created_at: ahora, updated_at: ahora }) });
       if (!r3.ok) throw new Error("aviso");
-      try { localStorage.setItem("nkt_dir_delivery", direccion.trim()); localStorage.removeItem(claveCarrito); } catch (e) {}
+      try { localStorage.setItem("nkt_dir_delivery", direccion.trim()); localStorage.removeItem(claveCarrito); localStorage.setItem(CLAVE_PEDIDO, JSON.stringify({ id: cid, local: local.id, at: Date.now() })); } catch (e) {}
       setCarrito({}); setEstado(aviso); setPedidoId(cid); setPaso("listo");
     } catch (e) {
       setError("No se pudo enviar el pedido. Revisá tu conexión y probá de nuevo.");
@@ -122,6 +175,7 @@ export function PedirDelivery(props) {
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: color }}>{local.emoji} {local.nombre}</div>
           </div>
         </div>
+        {info.demora && paso !== "listo" && <div style={{ fontSize: 12.5, color: "#D4A017", background: "#1A1408", border: "1px solid #D4A01744", borderRadius: 9, padding: "7px 11px", marginBottom: 10 }}>🕒 Demora aproximada del delivery: <b>{info.demora}</b></div>}
         {prueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "7px 11px", fontSize: 12, marginBottom: 10 }}>🧪 Modo prueba: el pedido queda marcado como prueba.</div>}
 
         {paso === "carta" && (
@@ -194,22 +248,13 @@ export function PedirDelivery(props) {
         {paso === "listo" && (
           <div style={{ textAlign: "center", paddingTop: 20 }}>
             {(function () {
-              var e = estado || {};
-              if (e.estado === "aceptado") return <div>
-                <div style={{ fontSize: 54 }}>✅</div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, color: "#4C9A5A", margin: "6px 0" }}>¡{local.nombre} confirmó tu pedido!</div>
-                {e.prometida_at && <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>🕒 Llega aproximadamente a las {hhmm(e.prometida_at)}</div>}
-                {e.medio === "transferencia" && <div style={{ fontSize: 13, color: "#D4A017", lineHeight: 1.5, margin: "8px 0" }}>Te va a escribir el local por WhatsApp con los datos para transferir.</div>}
-              </div>;
-              if (e.estado === "rechazado") return <div>
-                <div style={{ fontSize: 54 }}>😕</div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, color: "#E0714A", margin: "6px 0" }}>No pudimos tomar tu pedido</div>
-                {e.motivo && <div style={{ fontSize: 14, color: "#C8C8C8", margin: "6px 0" }}>{e.motivo}</div>}
-              </div>;
+              var e = textoEstado(estado, despacho, local.nombre, info.demora);
               return <div>
-                <div style={{ fontSize: 54 }}>🛵</div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, margin: "6px 0" }}>¡Pedido enviado!</div>
-                <div style={{ fontSize: 14, color: "#B8B8B8", lineHeight: 1.5 }}>{local.nombre} lo está revisando. Apenas lo confirme, te mostramos acá a qué hora llega. Esta pantalla se actualiza sola.</div>
+                <div style={{ fontSize: 54 }}>{e.emoji}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 800, color: e.color, margin: "6px 0" }}>{estado && estado.estado === "nuevo" && !despacho ? "¡Pedido enviado!" : e.titulo}</div>
+                {estado && estado.estado === "nuevo" && !despacho && <div style={{ fontSize: 14, color: "#C8C8C8", marginBottom: 6 }}>{e.titulo}</div>}
+                {e.detalle && <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.5 }}>{e.detalle}</div>}
+                <div style={{ fontSize: 12, color: "#8C8C8C", marginTop: 10, lineHeight: 1.5 }}>Podés cerrar esta pantalla: en la portada de Grupo Nkt vas a ver cómo va tu pedido, y se actualiza sola.</div>
               </div>;
             })()}
             <div style={{ fontSize: 13, color: "#8C8C8C", margin: "14px 0 4px" }}>Total productos: <b style={{ color: "#F0EDE8" }}>{pesos((estado || {}).total || 0)}</b> · {((estado || {}).medio === "transferencia") ? "Transferencia" : "Efectivo al recibir"}</div>

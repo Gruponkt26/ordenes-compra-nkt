@@ -12951,10 +12951,11 @@ function esLocalFijoDelDia(emp,fecha,localId){
 var TURNOS_DIA={};
 function turnoDe(emp, fecha){
   var ov=emp&&fecha?TURNOS_DIA[emp.id+"|"+String(fecha).substring(0,10)]:null;
+  if(ov&&ov.franco)return {franco:true, minutos:0, cambiado:true};   // cambio de franco: ese día no le tocaba trabajar
   if(ov&&ov.desde&&ov.hasta){
     var oa=String(ov.desde).split(":"), ob=String(ov.hasta).split(":");
     var o1=parseInt(oa[0],10)*60+parseInt(oa[1],10), o2=parseInt(ob[0],10)*60+parseInt(ob[1],10);
-    return {franco:false, desde:ov.desde, hasta:ov.hasta, minutos:o2>o1?(o2-o1):(o2+1440-o1), cambiado:true};
+    return {franco:false, desde:ov.desde, hasta:ov.hasta, minutos:o2>o1?(o2-o1):(o2+1440-o1), cambiado:true, local:ov.local||""};
   }
   var j=jornadaDe(emp); if(!j)return null;
   var k=claveDia(fecha); if(!k)return null;
@@ -13839,7 +13840,7 @@ function PanelFichar(p){
         );
       })()}
       {soyYo&&p.onTurnoDia&&(function(){
-        var hoyF=fechaLocal(), ov=TURNOS_DIA[soyYo.id+"|"+hoyF];
+        var hoyF=fechaLocal(), ov=TURNOS_DIA[soyYo.id+"|"+hoyF]; if(ov&&!ov.desde)ov=null;
         var INPh={padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};
         if(formHor){
           return(
@@ -15568,6 +15569,7 @@ function rotuloRetiro(v,normal){ return (parseFloat(v)||0)<0?"↩️ Paso de caj
 function TarjetaCambiosPersonal(p){
   var fichajes=p.fichajes||[], empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [abierta,setAbierta]=useState(false);
+  var [cf,setCf]=useState(null);   // cambio de franco en curso: {emp, fecha (el día que trabajó), dia (el día que no vino)}
   var hoy=fechaLocal();
   var desde=fechaLocal(new Date(Date.now()-6*86400000));
   var DSN=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
@@ -15600,9 +15602,9 @@ function TarjetaCambiosPersonal(p){
       var mc=/Cobertura\|reemplaza=([^|]*)\|/.exec(n), mf=/Franco trabajado\|dia=([^|]*)\|motivo=([^|]*)\|/.exec(n);
       var loc=getLocal(f.local)||{}, k=e.id+"_"+fe;
       if(mf&&!vistos["f"+k]){ vistos["f"+k]=1;
-        items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(francoMin[e.id+"_"+fe]?" y trabajó "+fmtHs(francoMin[e.id+"_"+fe]):"")+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
+        items.push({tipo:"franco",emp:e,pedido:mf[1],hecho:(function(){var tf=jornadaDe(e)?turnoDe(e,fe):null;return !!(tf&&!tf.franco);})(),fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(francoMin[e.id+"_"+fe]?" y trabajó "+fmtHs(francoMin[e.id+"_"+fe]):"")+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
       }
-      if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco)"+(francoMin[e.id+"_"+fe]?" durante "+fmtHs(francoMin[e.id+"_"+fe]):"")+", sin aclarar el motivo"}); } }
+      if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",emp:e,pedido:"",hecho:false,fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco)"+(francoMin[e.id+"_"+fe]?" durante "+fmtHs(francoMin[e.id+"_"+fe]):"")+", sin aclarar el motivo"}); } }
       if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual&&!esLocalFijoDelDia(e,f.fecha,f.local)))&&!vistos["l"+k]){ vistos["l"+k]=1;
         items.push({tipo:"local",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(mc&&mc[1]?" reemplazando a "+mc[1]:(mc?" de refuerzo":""))});
       }
@@ -15645,9 +15647,37 @@ function TarjetaCambiosPersonal(p){
               <div key={i} style={{padding:"6px 0",borderTop:"1px solid #141414",fontSize:12,color:"#D8D8D8",lineHeight:1.5}}>
                 <span style={{color:t[2],fontWeight:800}}>{t[0]}</span> <b style={{color:"#F0EDE8"}}>{x.nombre}</b>{loc.nombre?<span style={{color:"#7E7E7E"}}> · {loc.emoji} {loc.nombre}</span>:null} {x.txt}
                 <div style={{fontSize:10,color:"#7E7E7E"}}>{fmtDate(x.fecha)}</div>
+                {x.tipo==="franco"&&x.hecho&&<div style={{fontSize:11,color:"#4C9A5A",marginTop:3}}>✅ Cambio de franco ya aplicado: ese día cuenta como día normal.</div>}
+                {x.tipo==="franco"&&!x.hecho&&x.emp&&p.onCambioFranco&&<button onClick={function(){
+                  // El día que no vino: el que le tocaba trabajar y no tiene marcas, cerca de la fecha en que vino en su franco.
+                  var mios=fichajes.filter(function(f){return f.empleado_id===x.emp.id;});
+                  var cands=[];
+                  for(var d=-6;d<=6;d++){ var dt=new Date(x.fecha+"T12:00:00"); dt.setDate(dt.getDate()+d); var fd=fechaLocal(dt); if(fd===x.fecha||fd>hoy)continue;
+                    var tt=turnoDe(x.emp,fd); if(!tt||tt.franco)continue;
+                    if(mios.some(function(f){return String(f.fecha||"").substring(0,10)===fd;}))continue;
+                    cands.push(fd); }
+                  setCf({emp:x.emp,fecha:x.fecha,cands:cands,dia:(x.pedido&&cands.indexOf(x.pedido)>=0)?x.pedido:(cands.filter(function(c){return c<x.fecha;}).pop()||cands[0]||"")});
+                }} style={{marginTop:5,padding:"5px 11px",borderRadius:8,border:"1px solid #D4A01788",background:"#D4A01715",color:"#D4A017",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>🔄 Era un cambio de franco</button>}
               </div>
             );
           })}
+          {cf&&(
+            <div onClick={function(){setCf(null);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+              <div onClick={function(e){e.stopPropagation();}} style={{background:"#111",border:"1px solid #D4A01788",borderRadius:16,padding:"18px",width:"100%",maxWidth:420}}>
+                <div style={{fontSize:17,fontWeight:800,color:"#F0EDE8",marginBottom:6}}>🔄 Cambio de franco de {cf.emp.nombre}</div>
+                <div style={{fontSize:12.5,color:"#B8B8B8",lineHeight:1.55,marginBottom:10}}>Trabajó el <b>{DSN[new Date(cf.fecha+"T12:00:00").getDay()]} {fmtDate(cf.fecha)}</b>, que era su franco. ¿Qué día le tocaba trabajar y no fue?</div>
+                {cf.cands.length===0?<div style={{fontSize:12.5,color:"#D4A017",marginBottom:10}}>No hay un día cercano en el que le tocara trabajar y no tenga marcas.</div>:(
+                  <select value={cf.dia} onChange={function(e){var v=e.target.value;setCf(function(c){return {...c,dia:v};});}} style={{...INP,marginBottom:10}}>
+                    {cf.cands.map(function(d){return <option key={d} value={d}>{DSN[new Date(d+"T12:00:00").getDay()]} {fmtDate(d)}</option>;})}
+                  </select>)}
+                {cf.dia&&<div style={{fontSize:12,color:"#9A9A9A",lineHeight:1.55,marginBottom:12}}>Queda así: el <b>{DSN[new Date(cf.dia+"T12:00:00").getDay()]} {fmtDate(cf.dia)}</b> pasa a ser su franco (no es falta) y el <b>{DSN[new Date(cf.fecha+"T12:00:00").getDay()]} {fmtDate(cf.fecha)}</b> cuenta como día normal, con el horario y el local de ese día.</div>}
+                <div style={{display:"flex",gap:8}}>
+                  <button disabled={!cf.dia} onClick={function(){p.onCambioFranco(cf.emp,cf.dia,cf.fecha);setCf(null);}} style={{flex:2,padding:"12px",borderRadius:10,border:"none",background:cf.dia?"#D4A017":"#333",color:"#000",fontSize:14,fontWeight:900,cursor:cf.dia?"pointer":"default"}}>Aplicar el cambio</button>
+                  <button onClick={function(){setCf(null);}} style={{...GH,flex:1,padding:"12px",fontSize:13}}>Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
           {items.length>5&&<button onClick={function(){setAbierta(!abierta);}} style={{background:"none",border:"none",color:"#6A6A6A",fontSize:11,cursor:"pointer",padding:"6px 0 0",fontFamily:"'Inter',sans-serif"}}>{abierta?"Ver menos":"+"+(items.length-5)+" más"}</button>}
         </div>
       )}
@@ -16246,7 +16276,7 @@ function PanelNovedades(p){
       </div>
 
       {/* Primero de todo: lo que se movió con el personal (horas de más, francos, otros locales, cambios de jornada). */}
-      <TarjetaCambiosPersonal fichajes={p.fichajes} empleados={p.empleados} cambiosJornada={p.cambiosJornada} irCambios={p.irCambios}/>
+      <TarjetaCambiosPersonal onCambioFranco={p.onCambioFranco} fichajes={p.fichajes} empleados={p.empleados} cambiosJornada={p.cambiosJornada} irCambios={p.irCambios}/>
 
       {/* Lo urgente, si lo hay: una sola línea por cosa. Lleva el título "Prioridad". */}
       {(function(){
@@ -31169,9 +31199,23 @@ export default function App() {
   var turnosDia={};
   pautas.forEach(function(x){
     if(x.ambito!=="turno_dia")return;
-    try{ var dd=JSON.parse(x.texto||"{}"); if(dd.empleado_id&&dd.fecha&&dd.desde&&dd.hasta)turnosDia[dd.empleado_id+"|"+dd.fecha]={desde:dd.desde,hasta:dd.hasta,usuario:dd.usuario||""}; }catch(e){}
+    try{
+      var dd=JSON.parse(x.texto||"{}");
+      if(dd.empleado_id&&dd.fecha){
+        if(dd.franco)turnosDia[dd.empleado_id+"|"+dd.fecha]={franco:true,usuario:dd.usuario||"",motivo:dd.motivo||""};
+        else if(dd.desde&&dd.hasta)turnosDia[dd.empleado_id+"|"+dd.fecha]={desde:dd.desde,hasta:dd.hasta,local:dd.local||"",usuario:dd.usuario||"",motivo:dd.motivo||""};
+      }
+    }catch(e){}
   });
   TURNOS_DIA=turnosDia;
+  // Cambio de franco: el día que no vino pasa a ser franco (no es falta) y el día que vino en su franco cuenta como día normal, con el horario y el local del día que no vino.
+  function cambioFranco(emp,diaNoVino,diaTrabajo){
+    var t=turnoDe(emp,diaNoVino);
+    if(!t||t.franco){ alert("Ese día no le tocaba trabajar."); return; }
+    var motivo="Cambio de franco: no fue el "+fmtDate(diaNoVino)+" y trabajó el "+fmtDate(diaTrabajo);
+    guardarOfPauta("turno_dia",{id:"turnodia_"+emp.id+"_"+diaNoVino,empleado_id:emp.id,fecha:diaNoVino,franco:true,motivo:motivo,usuario:(cu&&cu.nombre)||""});
+    guardarOfPauta("turno_dia",{id:"turnodia_"+emp.id+"_"+diaTrabajo,empleado_id:emp.id,fecha:diaTrabajo,desde:t.desde,hasta:t.hasta,local:t.local||"",motivo:motivo,usuario:(cu&&cu.nombre)||""});
+  }
   function guardarTurnoDia(emp,fecha,desde,hasta){
     guardarOfPauta("turno_dia",{id:"turnodia_"+emp.id+"_"+fecha,empleado_id:emp.id,fecha:fecha,desde:desde,hasta:hasta,usuario:emp.nombre});
   }
@@ -32544,7 +32588,7 @@ export default function App() {
           )}
           {esSofia&&modulo==="novedades"&&(
             <ErrorSeguro nombre="Novedades">
-            <PanelNovedades gastos={gastos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
+            <PanelNovedades gastos={gastos} onCambioFranco={cambioFranco} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} onFichar={guardarFichaje} controlesArca={controlesArca} onControlArca={function(semana,cuit,mes,datos){guardarOfPauta("control_arca",{id:"ctrlarca_"+semana+"_"+cuit,semana:semana,cuit:cuit,mes:mes,usuario:(cu&&cu.nombre)||"",...datos});}} hoyChecks={hoyChecks} onHoyCheck={function(fecha,marcas){guardarOfPauta("hoy_check",{id:"hoycheck_"+fecha,fecha:fecha,marcas:marcas});}} docsLocal={docsLocal} datosGrupo={datosGrupo} datosPrev={datosPrev} datosAnio={datosAnio} comparaCostos={comparaCostos} onComparaCostos={setComparaCostos} deportes={deportes} ordenes={ordenes} fichajes={fichajes} cajaInicial={cajaInicial} onGuardarCajaInicial={guardarCajaInicial}
               cierres={cierres} vencimientos={vencimientos.concat(f931Virtuales)} aportes={aportes} retiros={retiros}
               vacaciones={vacaciones} empleados={empleados} gastos={gastos}
               planillaSueldos={planillaSueldos} sueldos={sueldos} adelantos={adelantos}

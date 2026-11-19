@@ -12949,6 +12949,23 @@ function esLocalFijoDelDia(emp,fecha,localId){
 }
 // Horario de un día puntual cargado por el propio empleado (ej: hoy entra otro horario): {"empId|AAAA-MM-DD":{desde,hasta}}. Manda sobre su jornada.
 var TURNOS_DIA={};
+// Historial de jornadas con fecha de vigencia: {empleado_id: [{desde, antes}]} (de menor a mayor). Un cambio de jornada que se cargó «rige desde»
+// una fecha no toca lo anterior: antes de esa fecha vale la jornada de antes. App lo deja acá en cada render.
+var JORNADA_HIST={};
+function jornadaEn(emp, fecha){
+  var h=emp&&JORNADA_HIST[emp.id], f=String(fecha||"").substring(0,10);
+  if(h&&f){
+    for(var i=0;i<h.length;i++){
+      if(h[i].desde>f){
+        var a=h[i].antes;
+        if(typeof a==="string"){ try{ a=JSON.parse(a); }catch(e){ a=null; } }
+        if(a&&typeof a==="object")return a;
+        break;
+      }
+    }
+  }
+  return jornadaDe(emp);
+}
 function turnoDe(emp, fecha){
   var ov=emp&&fecha?TURNOS_DIA[emp.id+"|"+String(fecha).substring(0,10)]:null;
   if(ov&&ov.franco)return {franco:true, minutos:0, cambiado:true};   // cambio de franco: ese día no le tocaba trabajar
@@ -12957,7 +12974,7 @@ function turnoDe(emp, fecha){
     var o1=parseInt(oa[0],10)*60+parseInt(oa[1],10), o2=parseInt(ob[0],10)*60+parseInt(ob[1],10);
     return {franco:false, desde:ov.desde, hasta:ov.hasta, minutos:o2>o1?(o2-o1):(o2+1440-o1), cambiado:true, local:ov.local||""};
   }
-  var j=jornadaDe(emp); if(!j)return null;
+  var j=jornadaEn(emp,fecha); if(!j)return null;
   var k=claveDia(fecha); if(!k)return null;
   var d=j[k];
   if(!d||d.franco||!d.desde||!d.hasta)return {franco:true, minutos:0};
@@ -14237,6 +14254,7 @@ function PanelJornadas(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [localF,setLocalF]=useState("all");
   var [borr,setBorr]=useState({});     // id → jornada en edición
+  var [vig,setVig]=useState({});       // id → fecha desde la que rige el cambio (vacío: vale para todo el historial)
   var [guardando,setGuardando]=useState("");
   var [abierto,setAbierto]=useState({});
 
@@ -14287,7 +14305,8 @@ function PanelJornadas(p){
     if(r!==false){
       setBorr(function(o){var n={...o};delete n[e.id];return n;});
       // Queda anotado qué se cambió, quién y cuándo (la pestaña Cambios del Fichaje lo muestra).
-      if(p.onCambioJornada&&JSON.stringify(antes||null)!==JSON.stringify(jn))p.onCambioJornada({empleado_id:e.id,empleado_nombre:e.nombre,local:e.local,antes:antes,despues:jn});
+      if(p.onCambioJornada&&JSON.stringify(antes||null)!==JSON.stringify(jn))p.onCambioJornada({empleado_id:e.id,empleado_nombre:e.nombre,local:e.local,antes:antes,despues:jn,vigente_desde:(antes&&vig[e.id])||""});
+      setVig(function(o){var n={...o};delete n[e.id];return n;});
     }
   }
   function minSemana(e){
@@ -14366,6 +14385,15 @@ function PanelJornadas(p){
                     </div>
                   );
                 })}
+                {cambio&&jornadaDe(e)&&(
+                  <div style={{marginTop:10,background:"#0A1014",border:"1px solid #1A8A7B55",borderRadius:10,padding:"9px 11px"}}>
+                    <div style={{fontSize:11.5,fontWeight:800,color:"#3AB5A5",marginBottom:4}}>📅 ¿Desde cuándo rige este cambio?</div>
+                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <input type="date" value={vig[e.id]||""} onChange={function(ev){var v=ev.target.value;setVig(function(o){return {...o,[e.id]:v};});}} style={{...INP,width:"auto",padding:"6px 9px",fontSize:12}}/>
+                      <span style={{fontSize:11,color:"#8C8C8C",lineHeight:1.45,flex:1,minWidth:180}}>{vig[e.id]?"Antes del "+fmtDate(vig[e.id])+" se sigue contando la jornada de antes (faltas, francos y horarios de esos días no cambian).":"Si lo dejás vacío, el cambio vale también para los días anteriores del historial."}</span>
+                    </div>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
                   <button onClick={function(){copiarATodos(e);}} style={{...GH,padding:"8px 12px",fontSize:11.5}}>Copiar el horario al resto</button>
                   <button onClick={function(){guardar(e);}} disabled={!cambio||guardando===e.id}
@@ -15619,7 +15647,7 @@ function TarjetaCambiosPersonal(p){
       if(a!==b){ dif.push(d.n+": "+(c.antes?a:"sin cargar")+" → "+b); if((a==="franco")!==(b==="franco"))cambiaDia=true; }
     });
     if(dif.length===0||!c.antes)return;
-    items.push({tipo:cambiaDia?"dia":"horario",fecha:fc,nombre:c.empleado_nombre,local:c.local,txt:(cambiaDia?"cambió sus días laborales":"cambió su horario")+" · "+dif.join(" · ")});
+    items.push({tipo:cambiaDia?"dia":"horario",fecha:fc,nombre:c.empleado_nombre,local:c.local,txt:(cambiaDia?"cambió sus días laborales":"cambió su horario")+" · "+dif.join(" · ")+(c.vigente_desde?" · rige desde el "+fmtDate(c.vigente_desde):"")});
   });
   items.sort(function(a,b){return String(b.fecha).localeCompare(String(a.fecha));});
   var TIPOS={extra:["⏱️","Horas de más","#E07B00"],franco:["📅","En su franco","#D4A017"],local:["🔁","Otro local","#1A8A7B"],horario:["🕐","Cambio de horario","#8B2FC9"],dia:["🗓️","Cambio de días laborales","#8B2FC9"]};
@@ -31220,10 +31248,19 @@ export default function App() {
     guardarOfPauta("turno_dia",{id:"turnodia_"+emp.id+"_"+fecha,empleado_id:emp.id,fecha:fecha,desde:desde,hasta:hasta,usuario:emp.nombre});
   }
   var cambiosJornada=[];
+  var jornadaHist={};
   pautas.forEach(function(x){
     if(x.ambito!=="cambio_jornada")return;
-    try{ var dj=JSON.parse(x.texto||"{}"); if(dj.empleado_id)cambiosJornada.push({...dj,id:x.id,creado:x.created_at}); }catch(e){}
+    try{
+      var dj=JSON.parse(x.texto||"{}");
+      if(dj.empleado_id){
+        cambiosJornada.push({...dj,id:x.id,creado:x.created_at});
+        if(dj.vigente_desde&&dj.antes)(jornadaHist[dj.empleado_id]=jornadaHist[dj.empleado_id]||[]).push({desde:String(dj.vigente_desde).substring(0,10),antes:dj.antes});
+      }
+    }catch(e){}
   });
+  Object.keys(jornadaHist).forEach(function(k){ jornadaHist[k].sort(function(a,b){return a.desde<b.desde?-1:a.desde>b.desde?1:0;}); });
+  JORNADA_HIST=jornadaHist;
   var telUtiles=[];
   pautas.forEach(function(x){
     if(x.ambito!=="tel_util")return;

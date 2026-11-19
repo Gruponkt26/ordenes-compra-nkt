@@ -79,6 +79,47 @@ export async function cargarNovedades() {
     return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
   } catch (e) { return []; }
 }
+// Foto de una novedad: se achica sola en el celular o la compu (a ~1200 px de ancho, JPEG comprimido, unos 150 a 300 KB) antes de subirla.
+function achicarFotoNov(file, maxLado) {
+  return new Promise(function (res) {
+    try {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var m = maxLado || 1200, k = Math.min(1, m / Math.max(img.width, img.height));
+        var cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        cv.toBlob(function (b) { URL.revokeObjectURL(url); res(b || null); }, "image/jpeg", 0.8);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); res(null); };
+      img.src = url;
+    } catch (e) { res(null); }
+  });
+}
+async function subirFotoNovedad(blob, nombre) {
+  try {
+    var r = await fetch(SURL + "/storage/v1/object/fichajes/novedades/" + nombre + ".jpg", { method: "POST", headers: { apikey: SH.apikey, Authorization: SH.Authorization, "Content-Type": "image/jpeg", "x-upsert": "true" }, body: blob });
+    if (!r.ok) return { ok: false, error: await r.text() };
+    return { ok: true, url: SURL + "/storage/v1/object/public/fichajes/novedades/" + nombre + ".jpg" };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+// Enlace de video: YouTube se reproduce adentro de la novedad; el resto (Instagram, TikTok, Facebook, Drive) abre el enlace.
+function videoDe(u) {
+  u = String(u || "").trim(); if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  var m = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/))([\w-]{11})/.exec(u);
+  return m ? { youtube: m[1], url: u } : { youtube: "", url: u };
+}
+function MediaNovedad(props) {
+  var n = props.n, v = videoDe(n.video);
+  if (!n.foto_url && !v) return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      {n.foto_url && <img src={n.foto_url} alt={n.titulo} loading="lazy" style={{ display: "block", width: "100%", maxHeight: 360, objectFit: "cover", borderRadius: 10, marginBottom: v ? 8 : 0 }} />}
+      {v && v.youtube && <div style={{ position: "relative", paddingTop: "56.25%", borderRadius: 10, overflow: "hidden", background: "#000" }}><iframe src={"https://www.youtube.com/embed/" + v.youtube} title={n.titulo} allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} /></div>}
+      {v && !v.youtube && <a href={v.url} target="_blank" rel="noreferrer" style={{ display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #D4A01788", background: "#D4A01722", color: "#FFD36B", fontSize: 14, fontWeight: 800, textDecoration: "none" }}>▶ Ver el video</a>}
+    </div>
+  );
+}
 function novedadVisible(n) {
   var hoy = new Date().toISOString().substring(0, 10);
   return n.activa !== false && (!n.hasta || n.hasta >= hoy);
@@ -480,6 +521,7 @@ export function GrupoNkt() {
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: l ? l.color : "#C8B27A", margin: "3px 0 6px" }}>{l ? "📍 Solo en " + l.nombre : "📍 En los 3 locales"}{n.hasta ? " · válido hasta el " + n.hasta.split("-").reverse().join("/") : ""}</div>
                 <div style={{ fontSize: 14, color: "#F0EDE8", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{n.texto}</div>
+                <MediaNovedad n={n} />
               </div>
             );
           })}
@@ -992,7 +1034,8 @@ export function PanelComunidad() {
   var [envNov, setEnvNov] = useState(null);       // novedad que se está mandando por WhatsApp
   var [envMsg, setEnvMsg] = useState("");         // texto del mensaje ({nombre} se reemplaza por el de cada persona)
   var [envLocal, setEnvLocal] = useState("todos");
-  var [formNov, setFormNov] = useState({ titulo: "", texto: "", local: "todos", hasta: "" });
+  var [fotoNov, setFotoNov] = useState(null);   // foto elegida para la novedad: {blob, vista, kb}
+  var [formNov, setFormNov] = useState({ titulo: "", texto: "", local: "todos", hasta: "", video: "" });
   var [msgNov, setMsgNov] = useState("");
 
   useEffect(function () {
@@ -1006,11 +1049,26 @@ export function PanelComunidad() {
   var sel = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12, width: "100%", boxSizing: "border-box", marginBottom: 6 };
   var tarjeta = { background: "#0F0F0F", border: "1px solid #1E1E1E", borderRadius: 14, padding: "14px 16px", marginBottom: 12 };
 
+  function elegirFotoNov(file) {
+    if (!file) return;
+    setMsgNov("Preparando la foto…");
+    achicarFotoNov(file, 1200).then(function (blob) {
+      if (!blob) { setMsgNov("No se pudo leer esa foto. Probá con otra."); return; }
+      setFotoNov({ blob: blob, vista: URL.createObjectURL(blob), kb: Math.round(blob.size / 1024) });
+      setMsgNov("");
+    });
+  }
   function publicarNovedad() {
     if (!formNov.titulo.trim() || !formNov.texto.trim()) { setMsgNov("Poné el título y el texto."); setTimeout(function () { setMsgNov(""); }, 3000); return; }
-    guardarFila("nov_" + Date.now(), "grupo_novedad", { titulo: formNov.titulo.trim(), texto: formNov.texto.trim(), local: formNov.local, hasta: formNov.hasta || "", creado: new Date().toISOString(), activa: true }).then(function (ok) {
-      if (ok) { setFormNov({ titulo: "", texto: "", local: "todos", hasta: "" }); cargarNovedades().then(setNovAdm); setMsgNov("✓ Publicada: ya la ven los miembros."); } else setMsgNov("No se pudo publicar.");
-      setTimeout(function () { setMsgNov(""); }, 3500);
+    setMsgNov(fotoNov ? "Subiendo la foto…" : "Publicando…");
+    var id = "nov_" + Date.now();
+    (fotoNov ? subirFotoNovedad(fotoNov.blob, id) : Promise.resolve({ ok: true, url: "" })).then(function (sub) {
+      if (!sub.ok) return { fallo: "No se pudo subir la foto. Probá de nuevo o publicá sin foto." };
+      return guardarFila(id, "grupo_novedad", { titulo: formNov.titulo.trim(), texto: formNov.texto.trim(), local: formNov.local, hasta: formNov.hasta || "", foto_url: sub.url || "", video: formNov.video.trim(), creado: new Date().toISOString(), activa: true }).then(function (ok) { return ok ? { ok: true } : { fallo: "No se pudo publicar." }; });
+    }).then(function (r) {
+      if (r.ok) { setFormNov({ titulo: "", texto: "", local: "todos", hasta: "", video: "" }); setFotoNov(null); cargarNovedades().then(setNovAdm); setMsgNov("✓ Publicada: ya la ven los miembros."); }
+      else setMsgNov(r.fallo);
+      setTimeout(function () { setMsgNov(""); }, 4000);
     });
   }
   // Mandar una novedad por WhatsApp, persona por persona: se abre el chat con el mensaje listo y queda marcado quién ya lo recibió
@@ -1239,6 +1297,16 @@ export function PanelComunidad() {
         <div style={{ fontSize: 11.5, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 10 }}>Lo que publiques acá lo ven los clientes al entrar a «Grupo Nkt»: promociones, platos nuevos, eventos, cambios de horario.</div>
         <input value={formNov.titulo} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, titulo: v }; }); }} maxLength={80} placeholder="Título (ej: Noche de pizzas 2x1)" style={sel} />
         <textarea value={formNov.texto} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, texto: v }; }); }} rows={3} placeholder="Texto de la novedad" style={{ ...sel, resize: "vertical" }} />
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10.5, color: "#8C8C8C", marginBottom: 3 }}>📷 Foto (opcional): se achica sola antes de subirla</div>
+          <input type="file" accept="image/*" onChange={function (e) { elegirFotoNov(e.target.files && e.target.files[0]); e.target.value = ""; }} style={{ ...sel, padding: "6px" }} />
+          {fotoNov && <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
+            <img src={fotoNov.vista} alt="vista previa" style={{ height: 70, borderRadius: 8, border: "1px solid #2A2A2A" }} />
+            <span style={{ fontSize: 11.5, color: "#8FD19A" }}>Lista · {fotoNov.kb} KB</span>
+            <button onClick={function () { setFotoNov(null); }} style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid #333", background: "none", color: "#C8C8C8", fontSize: 11, cursor: "pointer" }}>Quitar</button>
+          </div>}
+        </div>
+        <input value={formNov.video} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, video: v }; }); }} placeholder="🎬 Enlace de un video (YouTube, Instagram, TikTok, Drive…) — opcional" style={sel} />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           <div style={{ flex: "1 1 140px" }}><div style={{ fontSize: 10.5, color: "#8C8C8C", marginBottom: 3 }}>Para</div>
             <select value={formNov.local} onChange={function (e) { var v = e.target.value; setFormNov(function (f) { return { ...f, local: v }; }); }} style={sel}>
@@ -1258,7 +1326,7 @@ export function PanelComunidad() {
               return (
                 <div key={n.id} style={{ padding: "7px 0", borderTop: "1px solid #161616", fontSize: 12.5, opacity: vis ? 1 : 0.55 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                    <div><b>{n.titulo}</b> <span style={{ fontSize: 10.5, color: l ? l.color : "#7E7E7E" }}>· {l ? l.nombre : "todos"}{n.hasta ? " · hasta " + n.hasta.split("-").reverse().join("/") : ""}{!vis ? " · oculta" : ""}</span></div>
+                    <div><b>{n.titulo}</b>{n.foto_url ? " 📷" : ""}{n.video ? " 🎬" : ""} <span style={{ fontSize: 10.5, color: l ? l.color : "#7E7E7E" }}>· {l ? l.nombre : "todos"}{n.hasta ? " · hasta " + n.hasta.split("-").reverse().join("/") : ""}{!vis ? " · oculta" : ""}</span></div>
                     <div style={{ display: "flex", gap: 8, whiteSpace: "nowrap" }}>
                       <button onClick={function () { abrirEnvio(n); }} style={{ background: "none", border: "none", color: "#25D366", fontSize: 11.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>📲 Mandar por WhatsApp{n.enviados && Object.keys(n.enviados).length > 0 ? " (" + Object.keys(n.enviados).length + ")" : ""}</button>
                       <button onClick={function () { ocultarNovedad(n, n.activa === false); }} style={{ background: "none", border: "none", color: "#D4A017", fontSize: 11.5, cursor: "pointer", padding: 0 }}>{n.activa === false ? "Mostrar" : "Ocultar"}</button>

@@ -14250,6 +14250,13 @@ function PanelPines(p){
 
 // Las jornadas: qué días y en qué horario le toca a cada uno. Los días sin horario son
 // francos, y de ahí sale lo que después el Registro compara contra lo que marcaron.
+// El logo del local (sobre fondo blanco, como en Comunidad), para ver de un vistazo dónde trabaja cada uno.
+var LOGOS_LOCAL={l1:"/logos/bodegon.png",l2:"/logos/kusama.png",l3:"/logos/colantonio.png"};
+function LogoLocal(p){
+  var l=getLocal(p.local)||{}, src=LOGOS_LOCAL[p.local];
+  if(!src)return <span style={{fontSize:11,color:l.color||"#8C8C8C",fontWeight:700}}>{l.emoji} {l.nombre}</span>;
+  return <span title={l.nombre} style={{display:"inline-flex",alignItems:"center",background:"#fff",borderRadius:6,padding:"2px 6px",border:"2px solid "+(l.color||"#ccc"),flexShrink:0}}><img src={src} alt={l.nombre} style={{height:p.alto||16,width:"auto",display:"block"}}/></span>;
+}
 function PanelJornadas(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [localF,setLocalF]=useState("all");
@@ -14346,8 +14353,8 @@ function PanelJornadas(p){
               style={{width:"100%",background:"none",border:"none",padding:"13px 15px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left",fontFamily:"'Inter',sans-serif"}}>
               <span style={{fontSize:11,color:"#7E7E7E"}}>{ab?"▾":"▸"}</span>
               <span style={{flex:1,minWidth:0}}>
-                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{e.nombre}</span>
-                <span style={{fontSize:11,color:"#7E7E7E"}}> · {l.emoji} {l.nombre}</span>
+                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{e.nombre}</span>{" "}
+                <LogoLocal local={e.local} alto={14}/>
                 <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:2}}>
                   {jornadaDe(e)||cambio
                     ?(francos.length===7?"Sin días de trabajo":"Franco: "+(francos.length?francos.join(", "):"ninguno"))
@@ -14366,6 +14373,7 @@ function PanelJornadas(p){
                   return (
                     <div key={d.k} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",flexWrap:"wrap"}}>
                       <span style={{width:34,fontSize:12,fontWeight:700,color:esFranco?"#6E6E6E":"#F0EDE8"}}>{d.n}</span>
+                      <span style={{width:112,flexShrink:0,display:"inline-flex",justifyContent:"flex-start"}}>{esFranco?<span style={{fontSize:10.5,color:"#5A5A5A"}}>— franco —</span>:<LogoLocal local={x.local||e.local} alto={13}/>}</span>
                       <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#8C8C8C",cursor:"pointer",width:70}}>
                         <input type="checkbox" checked={esFranco} onChange={function(ev){tocar(e,d.k,"franco",ev.target.checked);}}/>
                         franco
@@ -14445,6 +14453,8 @@ function PanelFichajes(p){
   var fichajes=p.fichajes||[], empleados=p.empleados||[];
   var accesos=useAccesos();
   var [desdeEdit,setDesdeEdit]=useState(FICHAJE_DESDE);
+  var [anticipoEdit,setAnticipoEdit]=useState(String(ANTICIPO_ENTRADA_MIN));
+  useEffect(function(){ setAnticipoEdit(String(ANTICIPO_ENTRADA_MIN)); },[ANTICIPO_ENTRADA_MIN]);
   useEffect(function(){ setDesdeEdit(FICHAJE_DESDE); },[FICHAJE_DESDE]);
   // El usuario de cada empleado (por el vínculo "Es el empleado" de Colaboradores).
   function accesoDe(emp){
@@ -14664,6 +14674,18 @@ function PanelFichajes(p){
           </div>
           <input type="date" value={desdeEdit||""} onChange={function(e){setDesdeEdit(e.target.value);}} style={{...INP,width:"auto",padding:"7px 10px",fontSize:12}}/>
           <button onClick={function(){ if(desdeEdit)p.onSaveDesde(desdeEdit); }} disabled={!desdeEdit||desdeEdit===FICHAJE_DESDE} style={{...GH,padding:"7px 12px",fontSize:12,opacity:(!desdeEdit||desdeEdit===FICHAJE_DESDE)?0.5:1}}>Guardar</button>
+        </div>
+      )}
+
+      {puedeEditar&&p.onSaveAnticipo&&(
+        <div style={{...CAJA,marginBottom:12,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#F0EDE8"}}>⏰ Marcar la entrada antes del horario</div>
+            <div style={{fontSize:10.5,color:"#7E7E7E",lineHeight:1.5}}>Cuántos minutos antes de su horario puede marcar la entrada cada empleado (hoy: {ANTICIPO_ENTRADA_MIN} min). Si marca antes, las horas cuentan igual desde el horario de su jornada, no desde la marca.</div>
+          </div>
+          <input type="number" min="0" max="240" value={anticipoEdit} onChange={function(e){setAnticipoEdit(e.target.value);}} style={{...INP,width:84,padding:"7px 10px",fontSize:12}}/>
+          <span style={{fontSize:11,color:"#8C8C8C"}}>min</span>
+          <button onClick={function(){ var v=parseInt(anticipoEdit,10); if(isNaN(v)||v<0||v>240){ alert("Poné un número de minutos entre 0 y 240."); return; } p.onSaveAnticipo(v); }} disabled={String(anticipoEdit)===String(ANTICIPO_ENTRADA_MIN)} style={{...GH,padding:"7px 12px",fontSize:12,opacity:String(anticipoEdit)===String(ANTICIPO_ENTRADA_MIN)?0.5:1}}>Guardar</button>
         </div>
       )}
 
@@ -31339,8 +31361,9 @@ export default function App() {
   var f931Virtuales=(cargasSociales||[]).filter(function(c){return (c.cuit==="c1"||c.cuit==="c2")&&(c.estado==="pendiente"||c.estado==="parcial")&&parseFloat(c.total||0)>0&&venceF931(c);})
     .map(function(c){return {id:"f931v_"+c.id,local:c.cuit==="c1"?"l1":"l2",grupo:"afip",area:"Administrativo",concepto:"F.931 "+(c.cuit==="c1"?"Bodegón (CUIT propio)":"SRL (Calzon Gitano)")+" "+c.periodo,
       monto:parseFloat(c.total)||0,recurrente:false,activo:true,fecha:venceF931(c),virtualF931:true};});
-  var cfgFichaje=null;
-  pautas.forEach(function(x){ if(x.ambito==="config_fichaje"){ try{ var d0=JSON.parse(x.texto||"{}").desde; if(d0)cfgFichaje=d0; }catch(e){} } });
+  var cfgFichaje=null, cfgAnticipo=null;
+  pautas.forEach(function(x){ if(x.ambito==="config_fichaje"){ try{ var cj=JSON.parse(x.texto||"{}"); if(cj.desde)cfgFichaje=cj.desde; if(cj.anticipo!==undefined&&cj.anticipo!==null&&cj.anticipo!=="")cfgAnticipo=Math.max(0,Math.min(240,parseInt(cj.anticipo,10)||0)); }catch(e){} } });
+  ANTICIPO_ENTRADA_MIN=cfgAnticipo!==null?cfgAnticipo:5;   // cuánto antes del horario se puede marcar la entrada (se elige en Fichaje)
   var primeraMarca="";
   fichajes.forEach(function(f){ if(!f.manual&&f.fecha){ var d1=String(f.fecha).substring(0,10); if(!primeraMarca||d1<primeraMarca)primeraMarca=d1; } });
   FICHAJE_DESDE=cfgFichaje||primeraMarca||"";
@@ -32456,7 +32479,7 @@ export default function App() {
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")&&<ProbarUbicacion localesDatos={localesDatos}/>}
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")&&<InformeUbicacionFichajes fichajes={fichajes} localesDatos={localesDatos}/>}
               {(vista!=="fichajes_jornadas"&&vista!=="fichajes_pines"&&vista!=="fichajes_fichar"&&vista!=="fichajes_faltas"&&vista!=="fichajes_tardes"&&vista!=="fichajes_cambios")
-                ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
+                ?<PanelFichajes fichajes={fichajes} empleados={empleados} users={users} usuario={cu.nombre} desdeFijado={!!cfgFichaje} onSaveAnticipo={function(m){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_anticipo",anticipo:m});}} onSaveDesde={function(d){guardarOfPauta("config_fichaje",{id:"cfg_fichaje_desde",desde:d});}}
                    puedeEditar={esSofia} onFichar={guardarFichaje} onDelete={borrarFichaje} onDeleteMes={borrarFichajesMes}
                    justificativos={justificativos} onSaveJustif={guardarJustif} onDeleteJustif={borrarJustif} vacaciones={vacaciones}
                    localesDatos={localesDatos}

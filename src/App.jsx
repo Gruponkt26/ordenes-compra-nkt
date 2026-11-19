@@ -14854,8 +14854,8 @@ function PanelFichajes(p){
               style={{width:"100%",background:"none",border:"none",padding:"13px 15px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left",fontFamily:"'Inter',sans-serif"}}>
               <span style={{fontSize:11,color:"#7E7E7E"}}>{ab?"▾":"▸"}</span>
               <span style={{flex:1,minWidth:0}}>
-                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.e.nombre}</span>
-                <span style={{fontSize:11,color:"#7E7E7E"}}> · {l.emoji} {l.nombre}</span>
+                <span style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{x.e.nombre}</span>{" "}
+                <LogoLocal local={x.e.local} alto={14}/>
                 <div style={{fontSize:10.5,color:"#6E6E6E",marginTop:2}}>
                   {x.dias} día{x.dias===1?"":"s"}
                   {x.faltas.length>0?<span style={{color:"#C1440E"}}> · {x.faltas.length} falta{x.faltas.length===1?"":"s"}</span>:null}
@@ -14942,6 +14942,12 @@ function PanelFichajes(p){
                         return(
                           <div key={r.f} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 15px",borderTop:"1px solid #121212",flexWrap:"wrap",background:falta?"#1A0D0A":(r.vac?"#0A1518":((r.licP||r.licS)?"#150F1C":(r.jus?"#0A1A10":"transparent")))}}>
                             <span style={{width:74,flexShrink:0,fontSize:12,color:"#B8B8B8"}}>{r.dsem} {fmtDate(r.f).substring(0,5)}</span>
+                            <span style={{width:104,flexShrink:0,display:"inline-flex",alignItems:"center"}}>{(function(){
+                              // Dónde trabajó ese día (el local de la marca) y, si no marcó, dónde le tocaba (la jornada de ese día).
+                              var ml=(r.js||[]).map(function(j){return (j.entrada||j.salida||{}).local;}).filter(Boolean)[0];
+                              var lt=ml||((r.t&&!r.t.franco)?(r.t.local||x.e.local):"");
+                              return lt?<LogoLocal local={lt} alto={13}/>:null;
+                            })()}</span>
                             <span style={{flex:1,minWidth:150,fontSize:11.5}}>
                               {r.js.length===0?<><span style={{color:r.vac?"#1A8A9B":(r.licP?"#B07CE0":(r.licS?"#9A9A9A":(r.jus?"#3A9B5A":(falta?"#C1440E":"#6E6E6E")))),fontWeight:(r.vac||r.jus||r.licP||r.licS)?700:400}}>{r.vac?"🏖️ De vacaciones · cuenta como trabajado":(r.licP?"📋 Licencia paga · cuenta como trabajado":(r.licS?"📋 Licencia sin goce · no suma horas":(r.jus?"✅ "+tipoJust(r.jj)+" · cuenta como trabajado":(falta?"no marcó":"—"))))}</span>
                               {r.jus&&r.jj&&puedeEditar&&p.onDeleteJustif&&<button onClick={function(){if(window.confirm("¿Borrar el justificativo de "+x.e.nombre+" del "+fmtDate(r.f)+"? La falta vuelve a quedar sin justificar y deja de sumar horas."))p.onDeleteJustif(r.jj);}} title="Borrar justificativo" style={{marginLeft:8,padding:"2px 8px",borderRadius:6,border:"1px solid #C1440E66",background:"none",color:"#E0714A",fontSize:10.5,fontWeight:700,cursor:"pointer"}}>🗑️ Borrar justificativo</button>}

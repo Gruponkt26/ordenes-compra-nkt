@@ -3300,13 +3300,12 @@ function PautasComandas(p){
       "Si la mesa ya tiene cosas en cocina y agregás algo nuevo, te pregunta cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina lo ve resaltado.",
       "Lo que sale «por orden» no empieza a contar tiempo hasta que la cocina entregó la parte anterior."]},
     {t:"🍽️ Cuando la cocina entrega",l:[
-      "La mesa muestra 🍽️ LISTO: la cocina ya lo entregó. Llevalo a la mesa y tocá «entregado a la mesa».",
-      "Si en administración se pidió que la cocina marque primero, mientras la cocina no entregue no se puede marcar como entregado a la mesa."]},
+      "Cuando la cocina entrega el pedido, la mesa muestra 🍽️ LISTO un rato y en la cuenta figura «✅ la cocina entregó el pedido». Llevalo a la mesa: no hace falta marcar nada más."]},
     {t:"🎨 Colores de las mesas",l:[
       "Gris: libre. Color del local: abierta pero todavía sin pedir.",
       "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
       "Rojo titilando: se pasó del tiempo elegido en administración (por ejemplo 15 minutos): hay que apurar.",
-      "Amarillo brillante: ya recibió todo lo que pidió, está comiendo.",
+      "Amarillo brillante: la cocina ya entregó todo lo que pidió, está comiendo.",
       "En Mesas hay un botón «Colores de las mesas» con esta referencia."]},
     {t:"💵 Cobrar",l:[
       "Antes de cobrar tocá «Control» para ver la precuenta. Si corresponde, aplicá el «Descuento» con su motivo.",
@@ -3327,14 +3326,13 @@ function PautasComandas(p){
       "Si agregás algo a una mesa que ya está en cocina, elegí cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina ve tu elección bien resaltada.",
       "Con las mesas grandes que van sumando gente, podés agregar a medida que llegan: cada tanda cuenta su propio tiempo."]},
     {t:"🍽️ Llevar a la mesa",l:[
-      "Cuando la cocina entrega, tu mesa muestra 🍽️ LISTO. Retiralo y llevalo a la mesa.",
-      "Después se marca «entregado a la mesa» (lo hace el mozo o el cajero)."]},
+      "Cuando la cocina entrega, tu mesa muestra 🍽️ LISTO. Retiralo y llevalo a la mesa: no hace falta marcar nada más."]},
     {t:"🎨 Colores de tu mesa",l:[
       "Gris: libre. Color del local: abierta pero todavía sin pedir.",
       "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
       "Rojo titilando: se pasó del tiempo: avisale a la cocina o al cajero.",
       "🍽️ LISTO: la cocina ya lo entregó, retiralo.",
-      "Amarillo brillante: ya recibió todo, está comiendo.",
+      "Amarillo brillante: la cocina ya entregó todo, está comiendo.",
       "En Mesas hay un botón «Colores de las mesas» con esta referencia."]},
     {t:"🧾 Pedir la cuenta",l:[
       "Cuando la mesa pide la cuenta, avisale al cajero para que haga la precuenta y cobre.",

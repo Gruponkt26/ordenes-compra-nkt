@@ -21,7 +21,10 @@ const CONFIG = {
 const ESC = 0x1b, GS = 0x1d;
 const CMD = {
   init:        [ESC, 0x40],
-  codepage:    (n) => [ESC, 0x74, n],
+  // FS . apaga el modo de caracteres chinos (GBK), que muchas térmicas traen prendido y que rompe los acentos.
+  // Con esto las tablas 19, 2, 0 y 16 imprimen bien la ñ y los acentos (probado en la comandera de la cocina).
+  sinChino:    [0x1c, 0x2e],
+  codepage:   (n) => [ESC, 0x74, n],
   izquierda:   [ESC, 0x61, 0],
   centro:      [ESC, 0x61, 1],
   derecha:     [ESC, 0x61, 2],
@@ -98,6 +101,7 @@ function armar(ticket, cfg) {
   const linea = (txt) => partes.push(codificar((txt === undefined ? "" : txt) + "\n"));
 
   crudo(CMD.init);
+  crudo(CMD.sinChino);
   crudo(CMD.codepage(c.codepage));
 
   // Encabezado: lo que el cocinero tiene que ver de un vistazo desde lejos
@@ -187,8 +191,41 @@ function enviar(buffer, cfg) {
   });
 }
 
+// Impresora USB: no tiene IP, así que se le manda el papel por Windows, por el nombre con el que figura en «Impresoras y escáneres».
+// Va como documento RAW (los bytes de la impresora, sin pasar por el driver gráfico) con imprimir-usb.ps1: no comparte la impresora
+// ni le cambia nada, y convive con lo que ya la use (el spooler de Windows va haciendo cola).
+const os = require("os");
+const fs = require("fs");
+const path = require("path");
+const { execFile } = require("child_process");
+function enviarUSB(buffer, nombre) {
+  return new Promise((resolve, reject) => {
+    if (process.platform !== "win32" && !process.env.COMANDERA_POWERSHELL) return reject(new Error("La impresora USB solo se maneja desde Windows. Esta PC no es Windows."));
+    const archivo = path.join(os.tmpdir(), "comanda_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".bin");
+    fs.writeFileSync(archivo, buffer);
+    const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
+    execFile(ps, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 20000, windowsHide: true }, (err, out, errout) => {
+      try { fs.unlinkSync(archivo); } catch (e) {}
+      if (err) return reject(new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
+      resolve();
+    });
+  });
+}
+// Los nombres de las impresoras instaladas en Windows, para elegir bien el de la barra.
+function listarImpresorasWindows() {
+  return new Promise((resolve, reject) => {
+    const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
+    execFile(ps, ["-NoProfile", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"], { timeout: 20000, windowsHide: true }, (err, out) => {
+      if (err) return reject(new Error("No se pudo leer la lista de impresoras (¿es Windows?)."));
+      resolve(String(out).split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
+    });
+  });
+}
+
 function imprimir(ticket, cfg) {
-  return enviar(armar(ticket, cfg), cfg);
+  const c = { ...CONFIG, ...(cfg || {}) };
+  const buf = armar(ticket, cfg);
+  return c.usb ? enviarUSB(buf, c.usb) : enviar(buf, cfg);
 }
 
 // Cómo se vería el ticket, sin impresora de por medio. Sirve para mirar el formato
@@ -200,6 +237,7 @@ function previsualizar(ticket, cfg) {
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
     // Saltear los comandos, que no se imprimen: son instrucciones para la impresora.
+    if (b === 0x1c && bytes[i + 1] === 0x2e) { i += 1; continue; }              // sin modo chino
     if (b === ESC || b === GS) {
       const sig = bytes[i + 1];
       if (b === ESC && sig === 0x40) { i += 1; continue; }                       // init
@@ -213,4 +251,4 @@ function previsualizar(ticket, cfg) {
   return texto;
 }
 
-module.exports = { CONFIG, imprimir, armar, enviar, previsualizar, codificar, envolver, dosColumnas };
+module.exports = { CONFIG, imprimir, armar, enviar, enviarUSB, listarImpresorasWindows, previsualizar, codificar, envolver, dosColumnas };

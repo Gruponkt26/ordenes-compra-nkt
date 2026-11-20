@@ -5,6 +5,7 @@
 //   node prueba.js              → imprime de verdad
 //   node prueba.js --simular    → sólo muestra en pantalla cómo quedaría
 //   node prueba.js --ip 192.168.1.50 --codepage 2
+//   node prueba.js --usb "NOMBRE DE LA IMPRESORA"    → impresora USB de Windows
 
 const { imprimir, previsualizar, CONFIG } = require("./comandera");
 
@@ -19,6 +20,7 @@ const cfg = {
   puerto: parseInt(opcion("puerto", CONFIG.puerto), 10),
   ancho: parseInt(opcion("ancho", CONFIG.ancho), 10),
   codepage: parseInt(opcion("codepage", CONFIG.codepage), 10),
+  usb: opcion("usb", ""),   // impresora USB de Windows: --usb "NOMBRE" (en vez de --ip)
 };
 
 const ahora = new Date();
@@ -48,7 +50,7 @@ if (args.includes("--simular")) {
   process.exit(0);
 }
 
-console.log("Mandando a la impresora " + cfg.ip + ":" + cfg.puerto + "...");
+console.log("Mandando a la impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + "...");
 imprimir(ticket, cfg)
   .then(() => console.log("Listo. Si no salió el ticket, fijate que tenga papel y que la IP sea la correcta."))
   .catch((e) => { console.error("\nNo se pudo imprimir:\n  " + e.message + "\n"); process.exit(1); });

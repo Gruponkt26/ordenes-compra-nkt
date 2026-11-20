@@ -26,6 +26,7 @@ function Linea([string]$t) {
 }
 
 Crudo @(0x1B,0x40)                  # iniciar
+Crudo @(0x1C,0x2E)                  # apagar modo chino (si no, los acentos salen mal)
 Crudo @(0x1B,0x74,[byte]$Codepage)  # tabla de caracteres
 Crudo @(0x1B,0x61,1)                # centrado
 Crudo @(0x1D,0x21,0x11)             # letra grande

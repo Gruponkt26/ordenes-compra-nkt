@@ -21,7 +21,10 @@ const CONFIG = {
 const ESC = 0x1b, GS = 0x1d;
 const CMD = {
   init:        [ESC, 0x40],
-  codepage:    (n) => [ESC, 0x74, n],
+  // FS . apaga el modo de caracteres chinos (GBK), que muchas térmicas traen prendido y que rompe los acentos.
+  // Con esto las tablas 19, 2, 0 y 16 imprimen bien la ñ y los acentos (probado en la comandera de la cocina).
+  sinChino:    [0x1c, 0x2e],
+  codepage:   (n) => [ESC, 0x74, n],
   izquierda:   [ESC, 0x61, 0],
   centro:      [ESC, 0x61, 1],
   derecha:     [ESC, 0x61, 2],
@@ -98,6 +101,7 @@ function armar(ticket, cfg) {
   const linea = (txt) => partes.push(codificar((txt === undefined ? "" : txt) + "\n"));
 
   crudo(CMD.init);
+  crudo(CMD.sinChino);
   crudo(CMD.codepage(c.codepage));
 
   // Encabezado: lo que el cocinero tiene que ver de un vistazo desde lejos
@@ -233,6 +237,7 @@ function previsualizar(ticket, cfg) {
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
     // Saltear los comandos, que no se imprimen: son instrucciones para la impresora.
+    if (b === 0x1c && bytes[i + 1] === 0x2e) { i += 1; continue; }              // sin modo chino
     if (b === ESC || b === GS) {
       const sig = bytes[i + 1];
       if (b === ESC && sig === 0x40) { i += 1; continue; }                       // init

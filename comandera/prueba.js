@@ -6,8 +6,10 @@
 //   node prueba.js --simular    → sólo muestra en pantalla cómo quedaría
 //   node prueba.js --ip 192.168.1.50 --codepage 2
 //   node prueba.js --usb "NOMBRE DE LA IMPRESORA"    → impresora USB de Windows
+//   node prueba.js --elegir     → muestra las impresoras numeradas, elegís una por número y la guarda (impresora.txt)
+//   node prueba.js --usb-guardada   → usa la impresora que se guardó con --elegir
 
-const { imprimir, previsualizar, CONFIG } = require("./comandera");
+const { imprimir, previsualizar, impresoraGuardada, elegirImpresoraUSB, CONFIG } = require("./comandera");
 
 const args = process.argv.slice(2);
 function opcion(nombre, porDefecto) {
@@ -50,7 +52,14 @@ if (args.includes("--simular")) {
   process.exit(0);
 }
 
-console.log("Mandando a la impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + "...");
-imprimir(ticket, cfg)
-  .then(() => console.log("Listo. Si no salió el ticket, fijate que tenga papel y que la IP sea la correcta."))
-  .catch((e) => { console.error("\nNo se pudo imprimir:\n  " + e.message + "\n"); process.exit(1); });
+async function main() {
+  if (args.includes("--elegir")) cfg.usb = await elegirImpresoraUSB();
+  else if (args.includes("--usb-guardada")) {
+    cfg.usb = impresoraGuardada();
+    if (!cfg.usb) throw new Error("Todavía no elegiste la impresora. Corré primero: node prueba.js --elegir");
+  }
+  console.log("Mandando a la impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + "...");
+  await imprimir(ticket, cfg);
+  console.log("Listo. Si no salió el ticket, fijate que tenga papel y que la IP sea la correcta.");
+}
+main().catch((e) => { console.error("\nNo se pudo imprimir:\n  " + e.message + "\n"); process.exit(1); });

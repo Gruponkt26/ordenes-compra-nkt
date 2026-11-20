@@ -224,6 +224,26 @@ function listarImpresorasWindows() {
   });
 }
 
+// La impresora USB elegida se guarda en impresora.txt (al lado del programa), así no hay que escribir el nombre.
+const ARCHIVO_IMPRESORA = require("path").join(__dirname, "impresora.txt");
+function impresoraGuardada() {
+  try { return require("fs").readFileSync(ARCHIVO_IMPRESORA, "utf8").replace(/^\uFEFF/, "").trim(); } catch (e) { return ""; }
+}
+// Muestra las impresoras numeradas, pregunta cuál es y la guarda. Devuelve el nombre elegido.
+async function elegirImpresoraUSB() {
+  const lista = await listarImpresorasWindows();
+  if (!lista.length) throw new Error("Windows no muestra ninguna impresora instalada.");
+  console.log("Impresoras instaladas en esta PC:\n");
+  lista.forEach((n, i) => console.log("  " + (i + 1) + ")  " + n));
+  const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+  const n = await new Promise((res) => rl.question("\nEscribí el NÚMERO de la impresora de la barra y apretá Enter: ", (r) => { rl.close(); res(parseInt(r, 10)); }));
+  if (!(n >= 1 && n <= lista.length)) throw new Error("Ese número no está en la lista.");
+  const nombre = lista[n - 1];
+  require("fs").writeFileSync(ARCHIVO_IMPRESORA, nombre, "utf8");
+  console.log("\nElegiste: " + nombre + "  (queda guardada en impresora.txt)\n");
+  return nombre;
+}
+
 function imprimir(ticket, cfg) {
   const c = { ...CONFIG, ...(cfg || {}) };
   const buf = armar(ticket, cfg);
@@ -253,4 +273,4 @@ function previsualizar(ticket, cfg) {
   return texto;
 }
 
-module.exports = { CONFIG, imprimir, armar, enviar, enviarUSB, listarImpresorasWindows, previsualizar, codificar, envolver, dosColumnas };
+module.exports = { CONFIG, imprimir, armar, enviar, enviarUSB, listarImpresorasWindows, impresoraGuardada, elegirImpresoraUSB, previsualizar, codificar, envolver, dosColumnas };

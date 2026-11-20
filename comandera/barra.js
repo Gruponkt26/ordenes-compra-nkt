@@ -6,6 +6,7 @@
 //
 //   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA"   (impresora USB de la barra, en Windows)
 //   node barra.js --local l1 --ip 192.168.1.223 (impresora de red)
+//   node barra.js --local l1 --usb-guardada   → usa la impresora que se eligió con «node prueba.js --elegir» (impresora.txt)
 //   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
@@ -18,7 +19,7 @@
 
 const https = require("https");
 const http = require("http");
-const { imprimir, previsualizar, listarImpresorasWindows, CONFIG } = require("./comandera");
+const { imprimir, previsualizar, listarImpresorasWindows, impresoraGuardada, CONFIG } = require("./comandera");
 
 const args = process.argv.slice(2);
 const tiene = (n) => args.includes("--" + n);
@@ -43,7 +44,7 @@ const cfg = {
   puerto: parseInt(opcion("puerto", CONFIG.puerto), 10),
   ancho: parseInt(opcion("ancho", CONFIG.ancho), 10),
   codepage: parseInt(opcion("codepage", CONFIG.codepage), 10),
-  usb: opcion("usb", process.env.COMANDERA_USB || ""),
+  usb: opcion("usb", process.env.COMANDERA_USB || (tiene("usb-guardada") ? impresoraGuardada() : "")),
 };
 const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
 
@@ -166,6 +167,7 @@ if (tiene("listar")) {
   if (SIMULAR) { mostrar(t); process.exit(0); }
   imprimir(t, cfg).then(() => console.log("Listo.")).catch((e) => { console.error(e.message); process.exit(1); });
 } else {
+  if (tiene("usb-guardada") && !cfg.usb) { console.error("Todavía no elegiste la impresora USB. Corré primero probar-usb.bat y elegí el número."); process.exit(1); }
   if (!CLAVE) { console.error("Falta la clave de la base (--key o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
   if (!LOCAL) console.log("Aviso: sin --local se imprimen las comandas de barra de TODOS los locales.");
   console.log("Comanda de " + DESTINO + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");

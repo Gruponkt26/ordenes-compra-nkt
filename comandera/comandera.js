@@ -205,22 +205,69 @@ function enviarUSB(buffer, nombre) {
     const archivo = path.join(os.tmpdir(), "comanda_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".bin");
     fs.writeFileSync(archivo, buffer);
     const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    execFile(ps, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 20000, windowsHide: true }, (err, out, errout) => {
+    let listo = false;
+    const salir = (fn, arg) => { if (listo) return; listo = true; fn(arg); };
+    // -InputFormat None y cerrar la entrada: PowerShell 2.0 (Windows 7) se queda esperando datos y no termina nunca.
+    const hijo = execFile(ps, ["-NoProfile", "-NonInteractive", "-InputFormat", "None", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 30000, windowsHide: true }, (err, out, errout) => {
       try { fs.unlinkSync(archivo); } catch (e) {}
-      if (err) return reject(new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
-      resolve();
+      // Si el script ya avisó «OK-NKT», el ticket salió: no importa cómo termine PowerShell después.
+      if (String(out || "").indexOf("OK-NKT") !== -1) return salir(resolve);
+      if (err) return salir(reject, new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
+      salir(resolve);
+    });
+    try { hijo.stdin.end(); } catch (e) {}
+    hijo.stdout.on("data", (d) => {
+      if (String(d).indexOf("OK-NKT") !== -1) { salir(resolve); try { hijo.kill(); } catch (e) {} }
     });
   });
 }
 // Los nombres de las impresoras instaladas en Windows, para elegir bien el de la barra.
 function listarImpresorasWindows() {
-  return new Promise((resolve, reject) => {
-    const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    execFile(ps, ["-NoProfile", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"], { timeout: 20000, windowsHide: true }, (err, out) => {
-      if (err) return reject(new Error("No se pudo leer la lista de impresoras (¿es Windows?)."));
-      resolve(String(out).split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
+  const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
+  const wmic = process.env.COMANDERA_WMIC || "wmic";
+  const limpiar = (t) => String(t || "").split(/\r?\n/).map((x) => x.replace(/\0/g, "").trim()).filter(Boolean);
+  // 1) PowerShell (Get-WmiObject anda desde Windows 7; Get-Printer no existe antes de Windows 8).
+  const conPowerShell = () => new Promise((resolve, reject) => {
+    execFile(ps, ["-NoProfile", "-Command", "Get-WmiObject -Class Win32_Printer | ForEach-Object { $_.Name }"], { timeout: 45000, windowsHide: true }, (err, out, errTxt) => {
+      if (err) return reject(new Error("PowerShell: " + (limpiar(errTxt)[0] || err.message)));
+      resolve(limpiar(out));
     });
   });
+  // 2) wmic, que viene con Windows y no depende de PowerShell.
+  const conWmic = () => new Promise((resolve, reject) => {
+    execFile(wmic, ["printer", "get", "name"], { timeout: 45000, windowsHide: true }, (err, out, errTxt) => {
+      if (err) return reject(new Error("wmic: " + (limpiar(errTxt)[0] || err.message)));
+      resolve(limpiar(out).filter((x) => x.toLowerCase() !== "name"));
+    });
+  });
+  return conPowerShell().catch((e) => ({ falla: e.message })).then((r) => {
+    if (Array.isArray(r) && r.length) return r;
+    return conWmic().catch((e) => ({ falla: (r && r.falla ? r.falla + " | " : "") + e.message })).then((r2) => {
+      if (Array.isArray(r2) && r2.length) return r2;
+      if (Array.isArray(r2)) return [];
+      throw new Error("No se pudo leer la lista de impresoras. " + r2.falla);
+    });
+  });
+}
+
+// La impresora USB elegida se guarda en impresora.txt (al lado del programa), así no hay que escribir el nombre.
+const ARCHIVO_IMPRESORA = require("path").join(__dirname, "impresora.txt");
+function impresoraGuardada() {
+  try { return require("fs").readFileSync(ARCHIVO_IMPRESORA, "utf8").replace(/^\uFEFF/, "").trim(); } catch (e) { return ""; }
+}
+// Muestra las impresoras numeradas, pregunta cuál es y la guarda. Devuelve el nombre elegido.
+async function elegirImpresoraUSB() {
+  const lista = await listarImpresorasWindows();
+  if (!lista.length) throw new Error("Windows no muestra ninguna impresora instalada.");
+  console.log("Impresoras instaladas en esta PC:\n");
+  lista.forEach((n, i) => console.log("  " + (i + 1) + ")  " + n));
+  const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+  const n = await new Promise((res) => rl.question("\nEscribí el NÚMERO de la impresora de la barra y apretá Enter: ", (r) => { rl.close(); res(parseInt(r, 10)); }));
+  if (!(n >= 1 && n <= lista.length)) throw new Error("Ese número no está en la lista.");
+  const nombre = lista[n - 1];
+  require("fs").writeFileSync(ARCHIVO_IMPRESORA, nombre, "utf8");
+  console.log("\nElegiste: " + nombre + "  (queda guardada en impresora.txt)\n");
+  return nombre;
 }
 
 function imprimir(ticket, cfg) {
@@ -252,4 +299,4 @@ function previsualizar(ticket, cfg) {
   return texto;
 }
 
-module.exports = { CONFIG, imprimir, armar, enviar, enviarUSB, listarImpresorasWindows, previsualizar, codificar, envolver, dosColumnas };
+module.exports = { CONFIG, imprimir, armar, enviar, enviarUSB, listarImpresorasWindows, impresoraGuardada, elegirImpresoraUSB, previsualizar, codificar, envolver, dosColumnas };

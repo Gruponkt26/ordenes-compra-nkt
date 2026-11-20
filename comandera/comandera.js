@@ -205,10 +205,19 @@ function enviarUSB(buffer, nombre) {
     const archivo = path.join(os.tmpdir(), "comanda_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".bin");
     fs.writeFileSync(archivo, buffer);
     const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    execFile(ps, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 60000, windowsHide: true }, (err, out, errout) => {
+    let listo = false;
+    const salir = (fn, arg) => { if (listo) return; listo = true; fn(arg); };
+    // -InputFormat None y cerrar la entrada: PowerShell 2.0 (Windows 7) se queda esperando datos y no termina nunca.
+    const hijo = execFile(ps, ["-NoProfile", "-NonInteractive", "-InputFormat", "None", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 30000, windowsHide: true }, (err, out, errout) => {
       try { fs.unlinkSync(archivo); } catch (e) {}
-      if (err) return reject(new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
-      resolve();
+      // Si el script ya avisó «OK-NKT», el ticket salió: no importa cómo termine PowerShell después.
+      if (String(out || "").indexOf("OK-NKT") !== -1) return salir(resolve);
+      if (err) return salir(reject, new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
+      salir(resolve);
+    });
+    try { hijo.stdin.end(); } catch (e) {}
+    hijo.stdout.on("data", (d) => {
+      if (String(d).indexOf("OK-NKT") !== -1) { salir(resolve); try { hijo.kill(); } catch (e) {} }
     });
   });
 }

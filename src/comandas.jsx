@@ -584,6 +584,11 @@ function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[loc
 // ENTRADA: el mozo o el cajero marca al lado de cada producto cuál es entrada. La marca (🥗) va al principio de la aclaración del producto, así no hace falta
 // ninguna columna nueva; en pantalla se ve como una insignia y la aclaración se muestra sin la marca.
 var MARCA_ENTRADA = "🥗";
+// Lo que la cocina dejó listo hace poco (menos de 10 min) es lo que hay que ir a buscar; pasado ese rato ya no es una novedad.
+function listoReciente(listos, comandaId) {
+  var lim = Date.now() - 10 * 60000;
+  return Object.keys(listos || {}).some(function(k) { return k.indexOf(comandaId + "|") === 0 && listos[k] && listos[k].listo_at && new Date(listos[k].listo_at).getTime() >= lim; });
+}
 function esEntrada(i) { return String((i && i.nota) || "").indexOf(MARCA_ENTRADA) === 0; }
 function notaVisible(i) { var n = String((i && i.nota) || ""); return n.indexOf(MARCA_ENTRADA) === 0 ? n.slice(MARCA_ENTRADA.length).replace(/^\s*\|?\s*/, "") : n; }
 function notaConMarca(texto, entrada) { var t = String(texto || "").trim(); return entrada ? MARCA_ENTRADA + (t ? " | " + t : "") : (t || null); }
@@ -874,8 +879,8 @@ function LeyendaColores(props) {
     ["#3A7D44", "#3A7D44", "En cocina, a tiempo", "Ya está en cocina y va bien de tiempo."],
     ["#D4A017", "#D4A017", "En cocina, demorando", "Se acerca al límite de " + L + " min: conviene estar atento."],
     ["#E0452E", "#E0452E", "Rojo titilando", "Se pasó de los " + L + " min en cocina: hay que apurar."],
-    ["#4C9A5A", "#4C9A5A", "🍽️ LISTO", "La cocina ya lo entregó: llevalo a la mesa."],
-    ["#FFD60A", "#FFD60A", "Amarillo: comiendo", "Ya recibió todo lo que pidió."],
+    ["#4C9A5A", "#4C9A5A", "🍽️ LISTO", "La cocina lo acaba de entregar (unos minutos): hay que llevarlo a la mesa."],
+    ["#FFD60A", "#FFD60A", "Amarillo: comiendo", "La cocina ya entregó todo lo que pidió."],
   ];
   return (
     <div style={{ marginBottom:10 }}>
@@ -1385,7 +1390,6 @@ export function PanelCocina(props) {
     return (
       <div key={h.clave} style={{ marginBottom:10, padding:"6px 8px 8px", borderRadius:9, background:"#0A140C", border:"1px solid #1E3A24" }}>
         <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.5, color:"#4C9A5A" }}>✅ {nombre} · al {quien} {h.listo ? horaSeg(h.listo).slice(0, 5) : ""}{tardo !== null && <span style={{ color: nv ? nv.col : "#8FD19A" }}> · la cocina tardó {tardo} min{nv ? " (+" + nv.extra + " · " + nv.txt.toLowerCase() + ")" : ""}</span>}</div>
-        <div style={{ fontSize:11, fontWeight:700, color: h.enMesa ? "#8FD19A" : "#D4A017", margin:"2px 0 3px" }}>{h.enMesa ? "🍽️ Llegó a la mesa a las " + horaSeg(h.enMesaAt).slice(0, 5) + (aMesa !== null ? " · " + aMesa + " min después de estar listo" : "") : "⏳ Todavía no lo llevaron a la mesa"}</div>
         {h.items.map(function(i) { return <div key={i.id} style={{ fontSize:15, color:"#8A8A8A", padding:"1px 0", textDecoration:"line-through" }}><span style={{ fontWeight:800 }}>{Number(i.cant) || 1}×</span> {i.nombre}{notaVisible(i) ? <span style={{ color:"#A8893A" }}> · 📝 {notaVisible(i)}</span> : null}</div>; })}
         <button onClick={function() { deshacer(h); }} style={{ ...GH, padding:"4px 10px", fontSize:11, marginTop:4 }}>↩ Volver a pendientes</button>
       </div>
@@ -2258,8 +2262,8 @@ function ComandaDetalle(props) {
         var hayEnviado = mandados.some(function(i) { return i.estado === "enviado"; });
         var min = hayEnviado ? minutosDesde(primero) : null;
         var col = min === null ? "#3A7D44" : colorDemora(min, props.limite);
-        var todoEntregado = mandados.every(function(i) { return i.estado === "entregado"; });
-        var hayListo = mandados.some(function(i) { return i.estado === "listo"; });   // la cocina ya dejó algo listo: falta llevarlo a la mesa
+        var todoEntregado = mandados.every(function(i) { return i.estado === "listo" || i.estado === "entregado"; });   // la cocina ya entregó todo
+        var hayListo = mandados.some(function(i) { return i.estado === "listo"; }) && listoReciente(props.listos, c.id);   // la cocina dejó algo listo hace poco: hay que llevarlo
         return (
           <div style={{ background: hayListo ? "#0B1F12" : "#111", border: hayListo ? "2px solid #4C9A5A" : "1px solid "+col+"55", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:9 }}>
@@ -2267,11 +2271,11 @@ function ComandaDetalle(props) {
                 Pedido{primero ? " · desde " + fmtHora(primero) : ""}
               </div>
               <div style={{ fontSize:13, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
-                {todoEntregado ? "✅ entregada a la mesa" : hayEnviado ? "⏱ " + min + " min la mesa" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : ""}
+                {todoEntregado && !hayListo ? "✅ la cocina entregó el pedido" : hayEnviado ? "⏱ " + min + " min la mesa" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : ""}
               </div>
             </div>
             {rondasAsc.map(function(r) {
-              var entregada = r.items.every(function(i) { return i.estado === "entregado"; });
+              var entregada = r.items.every(function(i) { return i.estado === "listo" || i.estado === "entregado"; });
               var listoR = r.items.some(function(i) { return i.estado === "listo"; });
               return (
                 <div key={r.ronda} style={{ marginBottom:6 }}>
@@ -2283,18 +2287,19 @@ function ComandaDetalle(props) {
                     var pendiente = r.items.some(function(i) { return i.estado === "enviado"; });
                     var ini = inf.inicio || r.enviado_at;
                     var minR = pendiente && !inf.espera ? minutosDesde(ini) : null;
-                    var fin = entregada ? r.items.reduce(function(a, i) { return i.entregado_at && i.entregado_at > a ? i.entregado_at : a; }, "") : "";
+                    var recR = props.listos && props.listos[c.id + "|" + (r.ronda || 0)];
+                    var fin = entregada ? (recR && recR.listo_at ? recR.listo_at : r.items.reduce(function(a, i) { return i.entregado_at && i.entregado_at > a ? i.entregado_at : a; }, "")) : "";
                     var tardo = entregada && fin && ini ? Math.round((new Date(fin) - new Date(ini)) / 60000) : null;
                     var nombreTanda = inf.curso === "entrada" ? "🥗 Entrada" : inf.curso === "principal" ? "🍽️ Principal" : ((r.ronda || 0) > 1 ? "➕ " : "") + "Tanda " + r.ronda;
                     return <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, margin:"6px 0 2px", fontSize:10, fontWeight:800, letterSpacing:0.8, textTransform:"uppercase", color: inf.curso === "entrada" ? "#8FD19A" : inf.curso === "principal" ? "#7CC4E4" : (r.ronda || 0) > 1 ? "#D4A017" : "#6E6E6E" }}>
                       <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}{c.tipo === "mesa" && props.extra && props.extra.salidas && props.extra.salidas[r.ronda || 0] && <span style={{ marginLeft:6, color:"#fff", background: props.extra.salidas[r.ronda || 0] === "junto" ? "#E0652E" : "#3A9BC1", borderRadius:5, padding:"0 6px", fontSize:10 }}>{props.extra.salidas[r.ronda || 0] === "junto" ? "🔥 todo junto" : "📋 por orden"}</span>}</span>
                       <span style={{ fontSize:12, color: entregada ? "#4C9A5A" : inf.espera ? "#D4A017" : minR !== null ? colorDemora(minR, props.limite) : "#4C9A5A", textTransform:"none", letterSpacing:0 }}>
-                        {entregada ? "✅ entregada" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? (inf.curso === "principal" ? "⏳ espera que salga la entrada" : "⏳ espera que salga lo anterior") : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
+                        {entregada ? "✅ la cocina entregó" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? (inf.curso === "principal" ? "⏳ espera que salga la entrada" : "⏳ espera que salga lo anterior") : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
                       </span>
                     </div>;
                   })()}
                   {r.items.map(function(i) {
-              var listo = i.estado === "entregado", enBarra = i.estado === "listo";
+              var listo = false;
               return (
                 <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 0", opacity:listo?0.5:1 }}>
                   <span style={{ fontSize:13, fontWeight:800, color:"#888", minWidth:24 }}>{i.cant}x</span>
@@ -2305,18 +2310,9 @@ function ComandaDetalle(props) {
                   </div>
                   {PrecioItem({ i:i, chico:true })}
                   {i.estado === "enviado" && <button onClick={function() { setCambiando(i); }} title="Cambiar por otro producto" style={{ background:"none", border:"1px solid #D4A01766", borderRadius:6, padding:"3px 8px", color:"#D4A017", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>🔄 cambiar</button>}
-                  {i.estado === "enviado" && props.exigirCocina ? (
-                    <span title="La cocina todavía no lo entregó" style={{ border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 9px", color:"#777", fontSize:11, whiteSpace:"nowrap" }}>⏳ en cocina</span>
-                  ) : (
-                  <button onClick={function() {
-                      // enviado/listo → entregado a la mesa; si ya estaba entregado, vuelve a «listo» (la cocina ya lo había despachado).
-                      props.onGuardarItems([{ ...i, estado: listo ? "listo" : "entregado", entregado_at: listo ? null : new Date().toISOString() }]);
-                    }}
-                    title={listo ? "Marcar como no entregado a la mesa" : "Marcar como entregado a la mesa"}
-                    style={{ background: enBarra ? "#3A7D44" : "none", border:"1px solid "+(listo?"#2A2A2A":enBarra?"#4C9A5A":col+"55"), borderRadius:6, padding: enBarra ? "6px 11px" : "3px 9px", color:listo?"#444":enBarra?"#fff":col, fontSize: enBarra ? 12 : 11, fontWeight: enBarra ? 800 : 400, cursor:"pointer", whiteSpace:"nowrap" }}>
-                    {listo ? "✓" : enBarra ? "🍽️ a la mesa" : "entregar"}
-                  </button>
-                  )}
+                  {i.estado === "enviado"
+                    ? <span title="La cocina todavía no lo entregó" style={{ border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 9px", color:"#777", fontSize:11, whiteSpace:"nowrap" }}>⏳ en cocina</span>
+                    : <span title="La cocina ya lo entregó" style={{ border:"1px solid #3A7D4466", borderRadius:6, padding:"3px 9px", color:"#4C9A5A", fontSize:11, fontWeight:800, whiteSpace:"nowrap" }}>✅ cocina</span>}
                 </div>
               );
                   })}
@@ -3927,7 +3923,7 @@ export default function PanelComandas(p) {
     var demora = ocupada ? demoraDe(items.filter(function(i) { return i.comanda_id === c.id; }), listosMap, salidasDe(c.id)) : null;
     // Comiendo: ya recibió todo lo que pidió (nada pendiente en cocina ni en camino) → amarillo patito.
     var susItems = ocupada ? items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; }) : [];
-    var comiendo = ocupada && susItems.length > 0 && susItems.every(function(i) { return i.estado === "entregado"; });
+    var comiendo = ocupada && susItems.length > 0 && susItems.every(function(i) { return i.estado === "listo" || i.estado === "entregado"; });
     var comiendoDesde = comiendo ? susItems.reduce(function(a, i) { return i.entregado_at && (!a || i.entregado_at > a) ? i.entregado_at : a; }, null) : null;
     var pasada = ocupada && demora !== null && demora >= limite;   // se pasó del tiempo elegido: titila en rojo
     var col = comiendo ? "#FFD60A" : (demora === null ? color : colorDemora(demora, limite));
@@ -3949,7 +3945,7 @@ export default function PanelComandas(p) {
         {sectorDe(m) && <div style={{ fontSize:9, color:"#7E7E7E" }}>{sectorDe(m).emoji} {sectorDe(m).nombre}</div>}
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
         {ocupada && demora !== null && demora >= limite && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +{limite} min</div>}
-        {ocupada && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
+        {ocupada && listoReciente(listosMap, c.id) && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
         {ocupada ? (
           <>
             <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
@@ -4411,7 +4407,7 @@ export default function PanelComandas(p) {
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
-                        {items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ display:"inline-block", marginTop:5, marginRight:6, fontSize:12, fontWeight:900, color:"#4C9A5A", background:"#3A7D4426", border:"1px solid #4C9A5A", borderRadius:6, padding:"2px 8px", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA ENTREGAR</div>}
+                        {listoReciente(listosMap, c.id) && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ display:"inline-block", marginTop:5, marginRight:6, fontSize:12, fontWeight:900, color:"#4C9A5A", background:"#3A7D4426", border:"1px solid #4C9A5A", borderRadius:6, padding:"2px 8px", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA ENTREGAR</div>}
                         {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px", animation: st.col === "#E0452E" ? "nktPulso 1.2s infinite" : "none" }}>{st.txt}</div> : null; })()}
                       </div>
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>

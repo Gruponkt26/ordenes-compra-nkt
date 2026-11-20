@@ -2,7 +2,7 @@
 // Las bebidas no pasan por la pantalla de la cocina: la app deja una «comanda de barra» para imprimir
 // (tabla pautas, ámbito "impresion_barra") cada vez que se marcha algo de bebida. Este programa, que corre
 // en una PC del local, mira cada tanto si hay comandas sin imprimir, las manda a la impresora de la barra y
-// las marca como impresas. No usa librerías: solo lo que trae Node (18 o más).
+// las marca como impresas. No usa librerías: solo lo que trae Node (anda desde Node 12, la última versión que corre en Windows 7).
 //
 //   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA" --key LA_CLAVE   (impresora USB de la barra, en Windows)
 //   node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE               (impresora de red)
@@ -13,6 +13,8 @@
 // Opciones (o variables de entorno): --local (l1 Bodegón, l2 Kusama, l3 Colantonio's) · --ip / COMANDERA_IP
 // · --puerto · --ancho · --codepage · --url / NKT_SUPABASE_URL · --key / NKT_SUPABASE_KEY · --cada (segundos, 3).
 
+const https = require("https");
+const http = require("http");
 const { imprimir, previsualizar, listarImpresorasWindows, CONFIG } = require("./comandera");
 
 const args = process.argv.slice(2);
@@ -53,20 +55,42 @@ function ticketDe(job) {
 }
 
 const headers = () => ({ apikey: CLAVE, Authorization: "Bearer " + CLAVE, "Content-Type": "application/json" });
+
+// Pedido HTTP con lo que trae Node (sin fetch, que no existe en Node 12). Devuelve { ok, status, texto }.
+function pedir(url, opc) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const cuerpo = opc.body ? Buffer.from(opc.body, "utf8") : null;
+    const h = Object.assign({}, opc.headers || {});
+    if (cuerpo) h["Content-Length"] = cuerpo.length;
+    const req = (u.protocol === "http:" ? http : https).request({
+      protocol: u.protocol, hostname: u.hostname, port: u.port || undefined, path: u.pathname + u.search,
+      method: opc.method || "GET", headers: h, timeout: 20000,
+    }, (res) => {
+      const partes = [];
+      res.on("data", (d) => partes.push(d));
+      res.on("end", () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, texto: Buffer.concat(partes).toString("utf8") }));
+    });
+    req.on("timeout", () => req.destroy(new Error("La base no contesta (¿hay internet?)")));
+    req.on("error", (e) => reject(new Error("No se pudo conectar a la base: " + e.message)));
+    if (cuerpo) req.write(cuerpo);
+    req.end();
+  });
+}
 const impresos = new Set();   // por si marcar como impresa falla: no se imprime dos veces
 
 async function pendientes() {
   const q = "ambito=eq.impresion_barra&texto=like." + encodeURIComponent('*"impreso":false*') + "&order=created_at.asc&limit=30";
-  const r = await fetch(URL_BASE + "/rest/v1/pautas?" + q, { headers: headers() });
+  const r = await pedir(URL_BASE + "/rest/v1/pautas?" + q, { headers: headers() });
   if (!r.ok) throw new Error("No se pudo leer la base (" + r.status + "). ¿La clave es correcta?");
-  const filas = await r.json();
+  const filas = JSON.parse(r.texto);
   return (Array.isArray(filas) ? filas : []).map((f) => { try { return { id: f.id, job: JSON.parse(f.texto) }; } catch (e) { return null; } })
     .filter((x) => x && x.job && !x.job.prueba && (!LOCAL || x.job.local === LOCAL) && !impresos.has(x.id));
 }
 
 async function marcar(fila) {
-  const nuevo = { ...fila.job, impreso: true, impreso_at: new Date().toISOString() };
-  const r = await fetch(URL_BASE + "/rest/v1/pautas?id=eq." + encodeURIComponent(fila.id), { method: "PATCH", headers: { ...headers(), Prefer: "return=minimal" }, body: JSON.stringify({ texto: JSON.stringify(nuevo) }) });
+  const nuevo = Object.assign({}, fila.job, { impreso: true, impreso_at: new Date().toISOString() });
+  const r = await pedir(URL_BASE + "/rest/v1/pautas?id=eq." + encodeURIComponent(fila.id), { method: "PATCH", headers: Object.assign({}, headers(), { Prefer: "return=minimal" }), body: JSON.stringify({ texto: JSON.stringify(nuevo) }) });
   if (!r.ok) throw new Error("No se pudo marcar como impresa (" + r.status + ")");
 }
 

@@ -1,8 +1,7 @@
 @echo off
-rem Comanda de barra: se queda mirando si hay comandas para imprimir. Editar las tres líneas de abajo.
+rem Comanda de barra: se queda mirando si hay comandas para imprimir. Editar solo la línea del nombre de la impresora (la clave ya viene incluida).
 cd /d "%~dp0"
 set NKT_LOCAL=l1
-set NKT_SUPABASE_KEY=PEGAR_ACA_LA_CLAVE
 set COMANDERA_USB=NOMBRE EXACTO DE LA IMPRESORA DE LA BARRA
 :otra_vez
 node barra.js

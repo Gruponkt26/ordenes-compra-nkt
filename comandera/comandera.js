@@ -150,9 +150,10 @@ function armar(ticket, cfg) {
     crudo(CMD.normal);
   }
 
-  if (ticket.nota) {
+  const notas = (Array.isArray(ticket.nota) ? ticket.nota : [ticket.nota]).filter(Boolean);   // una o varias líneas al pie
+  if (notas.length) {
     linea("-".repeat(c.ancho));
-    envolver(ticket.nota, c.ancho, 0).forEach(linea);
+    for (const n of notas) envolver(n, c.ancho, 0).forEach(linea);
   }
 
   crudo(CMD.avanzar(4));

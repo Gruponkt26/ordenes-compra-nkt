@@ -4,11 +4,14 @@
 // en una PC del local, mira cada tanto si hay comandas sin imprimir, las manda a la impresora de la barra y
 // las marca como impresas. No usa librerías: solo lo que trae Node (anda desde Node 12, la última versión que corre en Windows 7).
 //
-//   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA" --key LA_CLAVE   (impresora USB de la barra, en Windows)
-//   node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE               (impresora de red)
+//   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA"   (impresora USB de la barra, en Windows)
+//   node barra.js --local l1 --ip 192.168.1.223 (impresora de red)
 //   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
+//   --destino cocina            → imprime las comandas de COCINA en papel (por defecto: barra)
+//   --con-pruebas               → imprime también las de la «Prueba compartida» / modo práctica (para ensayar)
+//   --max-edad 5                → no imprime comandas con más de 5 minutos (por defecto 60; 0 = sin límite)
 //
 // Opciones (o variables de entorno): --local (l1 Bodegón, l2 Kusama, l3 Colantonio's) · --ip / COMANDERA_IP
 // · --puerto · --ancho · --codepage · --url / NKT_SUPABASE_URL · --key / NKT_SUPABASE_KEY · --cada (segundos, 3).
@@ -26,9 +29,15 @@ function opcion(nombre, porDefecto) {
 
 const LOCAL = opcion("local", process.env.NKT_LOCAL || "");
 const URL_BASE = String(opcion("url", process.env.NKT_SUPABASE_URL || "https://qcfwqnqtrqyjdfvakwxt.supabase.co")).replace(/\/+$/, "");
-const CLAVE = opcion("key", process.env.NKT_SUPABASE_KEY || "");
+// Clave pública de la base: es la misma que ya usa la app en el navegador (SKEY en src/comun.js), así que va incluida
+// y no hace falta pegarla. Si se pasa otra con --key, se le sacan espacios y saltos de línea (por si se copió mal).
+const CLAVE_PUBLICA = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjZndxbnF0cnF5amRmdmFrd3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzYxODMsImV4cCI6MjA5NjE1MjE4M30.Zh5jN_oGXde0JGBJ_NTBn5Mkr2m6lI3VPjAsqrzd6Gc";
+const CLAVE = String(opcion("key", process.env.NKT_SUPABASE_KEY || CLAVE_PUBLICA)).replace(/[^\x21-\x7E]/g, "");
 const CADA = Math.max(1, parseInt(opcion("cada", "3"), 10) || 3);
 const SIMULAR = tiene("simular");
+const DESTINO = opcion("destino", process.env.NKT_DESTINO || "barra");   // "barra" o "cocina": qué comandas imprime este programa
+const CON_PRUEBAS = tiene("con-pruebas");                       // imprime también las comandas de la «Prueba compartida» / modo práctica
+const MAX_EDAD_MIN = parseInt(opcion("max-edad", "60"), 10);    // no imprime comandas más viejas que esto (minutos); 0 = sin límite
 const cfg = {
   ip: opcion("ip", CONFIG.ip),
   puerto: parseInt(opcion("puerto", CONFIG.puerto), 10),
@@ -43,14 +52,22 @@ const limpiar = (t) => String(t || "").replace(/[·•]/g, "-").replace(/[→»]
 const hora = (iso) => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }); } catch (e) { return ""; } };
 
 function ticketDe(job) {
+  const cocina = job.destino === "cocina";
+  const notas = [];
+  if (cocina) {
+    if (job.entrega_at) notas.push("ENTREGA AL CLIENTE: " + hora(job.entrega_at));
+    if (job.salida === "junto") notas.push("AGREGADO: SALE TODO JUNTO con lo que ya esta en la cocina.");
+    else if (job.salida === "orden") notas.push("AGREGADO: SALE POR ORDEN DE COMANDA, despues de lo anterior.");
+  }
   return {
-    tipo: "BARRA",
+    tipo: cocina ? "COCINA" : "BARRA",
+    nota: notas.length ? notas : undefined,
     local: limpiar(job.titulo || NOMBRES[job.local] || ""),
     numero: job.numero || undefined,
     hora: hora(job.at),
     mozo: limpiar(job.mozo || ""),
     direccion: job.tipo === "delivery" ? limpiar(job.direccion || "") : "",
-    items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar(i.nota || "") })),
+    items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")) })),
   };
 }
 
@@ -77,6 +94,8 @@ function pedir(url, opc) {
     req.end();
   });
 }
+let primeraVuelta = false;
+const avisados = new Set();
 const impresos = new Set();   // por si marcar como impresa falla: no se imprime dos veces
 
 async function pendientes() {
@@ -84,8 +103,16 @@ async function pendientes() {
   const r = await pedir(URL_BASE + "/rest/v1/pautas?" + q, { headers: headers() });
   if (!r.ok) throw new Error("No se pudo leer la base (" + r.status + "). ¿La clave es correcta?");
   const filas = JSON.parse(r.texto);
-  return (Array.isArray(filas) ? filas : []).map((f) => { try { return { id: f.id, job: JSON.parse(f.texto) }; } catch (e) { return null; } })
-    .filter((x) => x && x.job && !x.job.prueba && (!LOCAL || x.job.local === LOCAL) && !impresos.has(x.id));
+  const todas = (Array.isArray(filas) ? filas : []).map((f) => { try { return { id: f.id, job: JSON.parse(f.texto) }; } catch (e) { return null; } }).filter((x) => x && x.job);
+  if (!primeraVuelta) { primeraVuelta = true; console.log("Pendientes de imprimir en la base (de todos los locales): " + todas.length); }
+  return todas.filter((x) => {
+    if (impresos.has(x.id)) return false;
+    const edadMin = x.job.at ? (Date.now() - new Date(x.job.at).getTime()) / 60000 : 0;
+    if ((x.job.destino || "barra") !== DESTINO) return false;   // las de la otra impresora no se tocan ni se avisan
+    const motivo = x.job.prueba && !CON_PRUEBAS ? "es de PRUEBA COMPARTIDA / modo practica (para imprimirlas: --con-pruebas)" : (MAX_EDAD_MIN > 0 && edadMin > MAX_EDAD_MIN ? "tiene mas de " + MAX_EDAD_MIN + " minutos (para imprimirla: --max-edad " + Math.ceil(edadMin + 1) + ")" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : ""));
+    if (motivo) { if (!avisados.has(x.id)) { avisados.add(x.id); console.log(new Date().toLocaleTimeString("es-AR") + "  Se saltea " + (x.job.titulo || x.id) + ": " + motivo + "."); } return false; }
+    return true;
+  });
 }
 
 async function marcar(fila) {
@@ -104,7 +131,7 @@ async function vuelta() {
   const lista = await pendientes();
   for (const fila of lista) {
     const ticket = ticketDe(fila.job);
-    if (SIMULAR) { console.log("\nComanda de barra pendiente (" + fila.id + "):"); mostrar(ticket); impresos.add(fila.id); continue; }
+    if (SIMULAR) { console.log("\nComanda de " + DESTINO + " pendiente (" + fila.id + "):"); mostrar(ticket); impresos.add(fila.id); continue; }
     try {
       await imprimir(ticket, cfg);
       impresos.add(fila.id);
@@ -124,9 +151,9 @@ if (tiene("listar")) {
   if (SIMULAR) { mostrar(t); process.exit(0); }
   imprimir(t, cfg).then(() => console.log("Listo.")).catch((e) => { console.error(e.message); process.exit(1); });
 } else {
-  if (!CLAVE) { console.error("Falta la clave de la base: --key LA_CLAVE (o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
+  if (!CLAVE) { console.error("Falta la clave de la base (--key o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
   if (!LOCAL) console.log("Aviso: sin --local se imprimen las comandas de barra de TODOS los locales.");
-  console.log("Comanda de barra" + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");
+  console.log("Comanda de " + DESTINO + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");
   const ciclo = () => vuelta().catch((e) => console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message)).finally(() => setTimeout(ciclo, CADA * 1000));
   ciclo();
 }

@@ -109,21 +109,21 @@ de la barra. No cambia IPs, ni drivers, ni la comparte.
    **12.22.12** (`node-v12.22.12-x64.msi`, la última que corre ahí); el programa anda desde Node 12.
 2. Ver cómo se llama la impresora en Windows: `node barra.js --listar` (es el nombre de *Impresoras y escáneres*).
 3. Probar con un ticket de prueba: `node prueba.js --usb "NOMBRE"`. Si los acentos salen raros: `--codepage 2`.
-4. Dejarla andando: `node barra.js --local l1 --usb "NOMBRE" --key LA_CLAVE`
+4. Dejarla andando: `node barra.js --local l1 --usb "NOMBRE"`
 
 Se manda como documento RAW por el spooler de Windows: convive con Maxirest si usan la misma impresora, el
 spooler va haciendo cola y no se mezclan los tickets.
 
 ### Impresora de red
 
-`node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE` (IP fija, distinta de la de la cocina).
+`node barra.js --local l1 --ip 192.168.1.223` (IP fija, distinta de la de la cocina).
 
 ### Opciones
 
 - `--local`: `l1` El Bodegón · `l2` Kusama · `l3` Colantonio's (solo imprime las de ese local).
-- `--key`: la clave de la base de datos (la misma de la app: `SKEY` en `src/comun.js`), o la variable `NKT_SUPABASE_KEY`.
+- `--key`: opcional. La clave pública de la base (la misma de la app, `SKEY` en `src/comun.js`) ya viene incluida en `barra.js`.
 - `node barra.js --demo --simular` muestra en pantalla cómo sale una comanda, sin impresora ni base.
-- `node barra.js --local l1 --key LA_CLAVE --simular` muestra las pendientes sin imprimirlas ni marcarlas.
+- `node barra.js --local l1 --simular` muestra las pendientes sin imprimirlas ni marcarlas.
 
 Las comandas de prueba (prueba compartida y modo práctica) no se imprimen. Si la impresora no contesta, el
 programa lo avisa y vuelve a intentar; cada comanda sale una sola vez.
@@ -132,3 +132,19 @@ programa lo avisa y vuelve a intentar; cada comanda sale una sola vez.
 
 Editar `iniciar-barra.bat` (poner el nombre de la impresora y la clave) y crear en el **Programador de tareas de
 Windows** una tarea «Al iniciar sesión» que ejecute ese archivo.
+
+## Comanda de cocina en papel (opcional)
+
+Además de la pantalla de cocina, el local puede imprimir lo que va a la cocina. Se prende **por local** en
+Comandas, en la tarjeta del tiempo de aviso: «🖨️ Imprimir también en papel lo que va a la cocina» (apagado por defecto,
+para no duplicar si el local ya imprime con otro sistema). Cada «Marchar» deja una comanda de cocina para imprimir;
+las bebidas siguen yendo solo a la barra.
+
+La imprime este mismo programa, con `--destino cocina`, apuntando a la impresora de la cocina:
+
+```
+node barra.js --local l1 --ip 192.168.1.222 --destino cocina
+```
+
+Para la barra se sigue usando el comando de siempre (`--destino barra` es el valor por defecto). Si la cocina y la barra
+imprimen en la misma PC, se dejan dos ventanas corriendo, una con cada destino.

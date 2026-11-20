@@ -185,7 +185,7 @@ async function sbCrearImpresionBarra(job) {
   try {
     var ahora = new Date().toISOString();
     var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
-    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cprint_" + job.comanda_id + "_" + Date.now(), ambito:"impresion_barra", texto:JSON.stringify(job), usuario:job.por || "", created_at:ahora, updated_at:ahora }) });
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cprint_" + job.comanda_id + "_" + (job.destino || "barra") + "_" + Date.now(), ambito:"impresion_barra", texto:JSON.stringify(job), usuario:job.por || "", created_at:ahora, updated_at:ahora }) });
     return r.ok;
   } catch(e) { return false; }
 }
@@ -585,8 +585,8 @@ async function sbLeerConfigCom() {
     var r = await cfetch(SURL + "/rest/v1/pautas?id=eq.ccfg&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
     var d = await r.json();
     var o = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : {};
-    return { limites: (o && o.limites) || {}, exigir: (o && o.exigir) || {} };
-  } catch(e) { return { limites: {}, exigir: {} }; }
+    return { limites: (o && o.limites) || {}, exigir: (o && o.exigir) || {}, imprimir: (o && o.imprimir) || {} };
+  } catch(e) { return { limites: {}, exigir: {}, imprimir: {} }; }
 }
 async function sbGuardarConfigCom(cfg) {
   try {
@@ -605,6 +605,8 @@ function nivelRetraso(minutos, limite) {
 }
 // ¿Hay que esperar a que la cocina entregue antes de llevar a la mesa? Sí, salvo que administración lo apague para ese local.
 function exigeCocina(cfg, localId) { return ((cfg || {}).exigir || {})[localId] !== false; }
+// ¿Lo que va a la cocina sale también en papel? Apagado por defecto (si el local ya imprime con otro sistema, saldría duplicado).
+function imprimeCocina(cfg, localId) { return ((cfg || {}).imprimir || {})[localId] === true; }
 function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[localId]); return n > 0 ? n : LIMITE_DEFECTO; }
 // ENTRADA: el mozo o el cajero marca al lado de cada producto cuál es entrada. La marca (🥗) va al principio de la aclaración del producto, así no hace falta
 // ninguna columna nueva; en pantalla se ve como una insignia y la aclaración se muestra sin la marca.
@@ -2106,6 +2108,7 @@ function ComandaDetalle(props) {
       return { ...i, estado:"enviado", ronda: hayEntrada && hayResto && !esEntrada(i) ? ronda + 1 : ronda, enviado_at:ahora };
     }));
     if (deBarra.length && props.onImprimirBarra) props.onImprimirBarra(deBarra, ronda);
+    if (deCocina.length && props.onImprimirCocina) props.onImprimirCocina(deCocina, ronda, salida, rondasNuevas.length > 1);
   }
 
   var LBL = { display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6 };
@@ -3675,9 +3678,17 @@ export default function PanelComandas(p) {
     var it = carta.find(function(x) { return x.local === localId && String(x.nombre || "").trim().toLowerCase() === n; });
     return it ? categoriaSinCocina(it.categoria, cfgSinCocina) : false;
   }
+  // Comanda de cocina en papel (si el local lo tiene prendido): mismo mecanismo que la de barra, con destino «cocina».
+  function imprimirCocina(c, its, ronda, salida, separaEntrada) {
+    if (!imprimeCocina(cfgCom, localId)) return;
+    var e = entregas[c.id];
+    sbCrearImpresionBarra({ destino:"cocina", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda,
+      salida: salida || "", entrega_at: e && e.prometida_at ? e.prometida_at : "", at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
+      items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i), entrada:esEntrada(i) }; }) });
+  }
   function imprimirBarra(c, its, ronda) {
     var ahoraISO = new Date().toISOString();
-    sbCrearImpresionBarra({ comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
+    sbCrearImpresionBarra({ destino:"barra", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
       items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i) }; }) });
     registrar(c, "Comanda de barra", its.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "));
   }
@@ -3806,6 +3817,8 @@ export default function PanelComandas(p) {
     }));
     var deBarra = pend.filter(function(i) { return esSinCocina(i.nombre); });
     if (deBarra.length) imprimirBarra(nueva, deBarra, 1);
+    var deCocinaWeb = pend.filter(function(i) { return !esSinCocina(i.nombre); });
+    if (deCocinaWeb.length) imprimirCocina(nueva, deCocinaWeb, 1, "", false);
     var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, estado:"aceptado", aceptado_at:ahoraISO, aceptado_por:usuario, minutos:minutos, prometida_at:new Date(Date.now() + minutos * 60000).toISOString() };
     setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
     sbGuardarPedidoWeb(av).then(function(ok) { if (!ok) alert("El pedido se aceptó, pero no se pudo avisar al cliente. Avisale por WhatsApp."); });
@@ -4122,6 +4135,15 @@ export default function PanelComandas(p) {
             ✋ El mozo o el cajero solo puede llevar a la mesa lo que la cocina ya entregó
           </label>
           {!exigirCocina && <span style={{ fontSize:10.5, color:"#D4A017", flex:"1 1 100%" }}>Apagado: se puede marcar «entregar» sin pasar por la pantalla de cocina (para un local que no la usa).</span>}
+          <label style={{ display:"flex", alignItems:"center", gap:8, flex:"1 1 100%", fontSize:12, color:"#C8C8C8", cursor:"pointer", marginTop:4 }}>
+            <input type="checkbox" checked={imprimeCocina(cfgCom, localId)} onChange={function(e) {
+                var nuevo = { ...cfgCom, imprimir: { ...(cfgCom.imprimir || {}), [localId]: e.target.checked } };
+                setCfgCom(nuevo);
+                sbGuardarConfigCom(nuevo).then(function(ok) { if (!ok) alert("No se pudo guardar el cambio."); });
+              }} />
+            🖨️ Imprimir también en papel lo que va a la cocina
+          </label>
+          {imprimeCocina(cfgCom, localId) && <span style={{ fontSize:10.5, color:"#D4A017", flex:"1 1 100%" }}>Prendido: cada «Marchar» deja una comanda de cocina para imprimir (la pantalla de cocina sigue igual). Si este local ya imprime con otro sistema, saldría duplicado. Necesita el programa de la comandera corriendo con <b>--destino cocina</b>.</span>}
         </div>
       )}
       {discontinuando && <VentanaDiscontinuar localId={localId} usuario={usuario} diaDeNegocio={fechaNegocio} onCambio={function() { cargarCarta(); setRefInforme(function(n) { return n + 1; }); }} onCerrar={function() { setDiscontinuando(false); }} />}
@@ -4235,7 +4257,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onImprimirCocina={function(its, ronda, salida, separa) { imprimirCocina(comandaAbierta, its, ronda, salida, separa); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />

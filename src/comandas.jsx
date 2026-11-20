@@ -2041,11 +2041,15 @@ function ComandaDetalle(props) {
   function pedirMandar() {
     if (!pendientes.length) return;
     if (props.comanda.tipo === "delivery" && !props.entrega) setPreguntaEntrega(true);
+    // Delivery con el pedido ya en marcha al que se le suma algo: se ofrece cambiar el tiempo de entrega antes de mandar.
+    else if (props.comanda.tipo === "delivery" && props.entrega && mandados.length) setPreguntaTiempoExtra(true);
     else if (hayEnCocina) setPreguntaSalida(true);
     else mandar();
   }
+  function seguirTrasTiempo() { if (hayEnCocina) setPreguntaSalida(true); else mandar(); }
   var [medioDel, setMedioDel] = useState("efectivo");   // cómo paga el delivery que toma el cajero: efectivo al recibir o transferencia al local
-  var [preguntaEntrega, setPreguntaEntrega] = useState(false);   // delivery sin tiempo de entrega: se pregunta antes de marchar
+  var [preguntaEntrega, setPreguntaEntrega] = useState(false);
+  var [preguntaTiempoExtra, setPreguntaTiempoExtra] = useState(false);   // delivery en marcha al que se le suma algo: ¿cambia el tiempo?   // delivery sin tiempo de entrega: se pregunta antes de marchar
   function mandar(salida) {
     if (!pendientes.length) return;
     var ronda = mandados.reduce(function(a, i) { return Math.max(a, Number(i.ronda) || 0); }, 0) + 1;
@@ -2103,8 +2107,21 @@ function ComandaDetalle(props) {
         return (
           <div style={{ background:"#0F0F0F", border:"1px solid " + (st ? st.col + "66" : "#1E1E1E"), borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
             <div style={{ fontSize:13, fontWeight:800, color: st ? st.col : "#999", marginBottom:8 }}>{st ? st.txt : "🕒 Sin tiempo de entrega"}</div>
+            {props.entrega && props.entrega.prometida_at && props.onSumarEntrega && (
+              <div style={{ marginBottom:8 }}>
+                <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Sumar minutos a la hora prometida</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {[5, 10, 15, 20, 30].map(function(m) { return <button key={m} onClick={function() { props.onSumarEntrega(m); }} style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #2A2A2A", background:"#161616", color:"#DDD", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>+{m}</button>; })}
+                </div>
+              </div>
+            )}
             <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Poner o cambiar el tiempo (cuenta desde ahora)</div>
             <ElegirEntrega valor={null} color={color} onElegir={function(m) { props.onEntrega(m); }} />
+            {c.tipo === "delivery" && c.telefono && props.entrega && props.entrega.prometida_at && (function() {
+              var d = new Date(props.entrega.prometida_at), hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+              var wa = linkWspDelivery(c.telefono, "Hola " + (c.cliente || "") + "! Sumamos lo que pediste a tu pedido de " + (props.localNombre || "") + ". La nueva hora de entrega es aproximadamente a las " + hh + ".");
+              return wa ? <a href={wa} target="_blank" rel="noreferrer" style={{ ...GH, display:"inline-block", marginTop:10, padding:"8px 12px", fontSize:12, textDecoration:"none", borderColor:"#25D36688", color:"#5BDB8B" }}>💬 Avisar al cliente la hora de entrega ({hh})</a> : null;
+            })()}
           </div>
         );
       })()}
@@ -2320,6 +2337,26 @@ function ComandaDetalle(props) {
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
       {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
+      {preguntaTiempoExtra && (function() {
+        var st = estadoEntrega(props.entrega, props.ahora || Date.now());
+        var ir = function(fn) { setPreguntaTiempoExtra(false); if (fn) fn(); seguirTrasTiempo(); };
+        return (
+          <Ventana titulo="🕒 El cliente sumó algo: ¿cambia el tiempo?" onCerrar={function() { setPreguntaTiempoExtra(false); }}>
+            <div style={{ fontSize:13, color:"#C8C8C8", lineHeight:1.5, marginBottom:8 }}>El pedido ya está en marcha y le estás sumando {pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)} producto{pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0) === 1 ? "" : "s"}. ¿Querés cambiar el tiempo de entrega que le prometiste?</div>
+            {st && <div style={{ fontSize:13, fontWeight:800, color:st.col, marginBottom:10 }}>Ahora: {st.txt}</div>}
+            <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>Sumar minutos a la hora prometida</div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+              {[5, 10, 15, 20, 30].map(function(m) {
+                return <button key={m} onClick={function() { ir(function() { if (props.onSumarEntrega) props.onSumarEntrega(m); }); }} style={{ flex:"1 1 60px", padding:"14px 6px", borderRadius:10, border:"2px solid " + props.color, background:props.color + "22", color:props.color, fontFamily:"'Inter',sans-serif", fontSize:16, fontWeight:900, cursor:"pointer" }}>+{m} min</button>;
+              })}
+            </div>
+            <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>O un tiempo nuevo, desde ahora</div>
+            <div style={{ marginBottom:12 }}><ElegirEntrega valor={null} color={props.color} onElegir={function(m) { ir(function() { if (props.onEntrega) props.onEntrega(m); }); }} /></div>
+            <button onClick={function() { ir(null); }} style={{ width:"100%", padding:"13px", borderRadius:10, border:"1px solid #3A7D44", background:"#3A7D4422", color:"#8FD19A", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer", marginBottom:8 }}>Dejar el tiempo como está</button>
+            <button onClick={function() { setPreguntaTiempoExtra(false); }} style={{ ...GH, width:"100%", padding:"10px", fontSize:12 }}>Cancelar (no mandar todavía)</button>
+          </Ventana>
+        );
+      })()}
       {preguntaEntrega && (
         <Ventana titulo="Último paso: pago y tiempo" onCerrar={function() { setPreguntaEntrega(false); }}>
           <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>💳 ¿Cómo paga el cliente?</div>
@@ -3457,12 +3494,31 @@ export default function PanelComandas(p) {
   }
   function registrar(c, accion, detalle) { registrarVarias([{ c: c, accion: accion, detalle: detalle }]); }
   // El cajero le promete un tiempo al cliente (delivery y mostrador): se cuenta desde que lo fija.
+  // Si el pedido vino de Comunidad, el cliente ve la hora nueva en su portada.
+  function avisarHoraAlWeb(c, e) {
+    var av = pedidosWeb[c.id];
+    if (!av || av.estado !== "aceptado") return;
+    var nuevo = { ...av, prometida_at:e.prometida_at, minutos:e.minutos };
+    setPedidosWeb(function(prev) { return { ...prev, [c.id]: nuevo }; });
+    sbGuardarPedidoWeb(nuevo);
+  }
   function fijarEntrega(c, minutos, desdeISO) {
     var base = desdeISO ? new Date(desdeISO).getTime() : Date.now();
     var e = { comanda_id: c.id, local: c.local || localId, minutos: minutos, prometida_at: new Date(base + minutos * 60000).toISOString(), por: usuario, at: new Date().toISOString() };
     setEntregas(function(prev) { return { ...prev, [c.id]: e }; });
     sbGuardarEntrega(e);
     registrar(c, "Fijó el tiempo de entrega", minutos + " min (hora prometida " + horaSeg(e.prometida_at).slice(0, 5) + ")");
+    avisarHoraAlWeb(c, e);
+  }
+  // El cliente sumó algo con el pedido en marcha: se le suman minutos a la hora que ya se le había prometido.
+  function sumarEntrega(c, extra) {
+    var ant = entregas[c.id];
+    var base = ant && ant.prometida_at ? Math.max(new Date(ant.prometida_at).getTime(), Date.now()) : Date.now();
+    var e = { ...(ant || {}), comanda_id: c.id, local: c.local || localId, minutos: (Number(ant && ant.minutos) || 0) + extra, prometida_at: new Date(base + extra * 60000).toISOString(), por: usuario, at: new Date().toISOString() };
+    setEntregas(function(prev) { return { ...prev, [c.id]: e }; });
+    sbGuardarEntrega(e);
+    registrar(c, "Sumó tiempo a la entrega", "+" + extra + " min (nueva hora prometida " + horaSeg(e.prometida_at).slice(0, 5) + ")");
+    avisarHoraAlWeb(c, e);
   }
   var [posPlano, setPosPlano] = useState({});     // {mesaId: {x, y}} en %
   var [verPlano, setVerPlano] = useState(false);
@@ -4084,7 +4140,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />

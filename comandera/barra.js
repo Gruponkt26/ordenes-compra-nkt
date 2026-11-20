@@ -9,6 +9,8 @@
 //   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
+//   --con-pruebas               → imprime también las de la «Prueba compartida» / modo práctica (para ensayar)
+//   --max-edad 5                → no imprime comandas con más de 5 minutos (por defecto 60; 0 = sin límite)
 //
 // Opciones (o variables de entorno): --local (l1 Bodegón, l2 Kusama, l3 Colantonio's) · --ip / COMANDERA_IP
 // · --puerto · --ancho · --codepage · --url / NKT_SUPABASE_URL · --key / NKT_SUPABASE_KEY · --cada (segundos, 3).
@@ -32,6 +34,8 @@ const CLAVE_PUBLICA = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const CLAVE = String(opcion("key", process.env.NKT_SUPABASE_KEY || CLAVE_PUBLICA)).replace(/[^\x21-\x7E]/g, "");
 const CADA = Math.max(1, parseInt(opcion("cada", "3"), 10) || 3);
 const SIMULAR = tiene("simular");
+const CON_PRUEBAS = tiene("con-pruebas");                       // imprime también las comandas de la «Prueba compartida» / modo práctica
+const MAX_EDAD_MIN = parseInt(opcion("max-edad", "60"), 10);    // no imprime comandas más viejas que esto (minutos); 0 = sin límite
 const cfg = {
   ip: opcion("ip", CONFIG.ip),
   puerto: parseInt(opcion("puerto", CONFIG.puerto), 10),
@@ -93,7 +97,8 @@ async function pendientes() {
   if (!primeraVuelta) { primeraVuelta = true; console.log("Pendientes de imprimir en la base (de todos los locales): " + todas.length); }
   return todas.filter((x) => {
     if (impresos.has(x.id)) return false;
-    const motivo = x.job.prueba ? "es de MODO PRACTICA / comanda de prueba" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : "");
+    const edadMin = x.job.at ? (Date.now() - new Date(x.job.at).getTime()) / 60000 : 0;
+    const motivo = x.job.prueba && !CON_PRUEBAS ? "es de PRUEBA COMPARTIDA / modo practica (para imprimirlas: --con-pruebas)" : (MAX_EDAD_MIN > 0 && edadMin > MAX_EDAD_MIN ? "tiene mas de " + MAX_EDAD_MIN + " minutos (para imprimirla: --max-edad " + Math.ceil(edadMin + 1) + ")" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : ""));
     if (motivo) { if (!avisados.has(x.id)) { avisados.add(x.id); console.log(new Date().toLocaleTimeString("es-AR") + "  Se saltea " + (x.job.titulo || x.id) + ": " + motivo + "."); } return false; }
     return true;
   });

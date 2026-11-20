@@ -214,12 +214,29 @@ function enviarUSB(buffer, nombre) {
 }
 // Los nombres de las impresoras instaladas en Windows, para elegir bien el de la barra.
 function listarImpresorasWindows() {
-  return new Promise((resolve, reject) => {
-    const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    // Get-WmiObject Win32_Printer anda desde Windows 7 (Get-Printer no existe antes de Windows 8).
-    execFile(ps, ["-NoProfile", "-Command", "Get-WmiObject -Class Win32_Printer | ForEach-Object { $_.Name }"], { timeout: 30000, windowsHide: true }, (err, out, errTxt) => {
-      if (err) return reject(new Error("No se pudo leer la lista de impresoras (¿es Windows?): " + String(errTxt || err.message).trim().split(/\r?\n/)[0]));
-      resolve(String(out).split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
+  const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
+  const wmic = process.env.COMANDERA_WMIC || "wmic";
+  const limpiar = (t) => String(t || "").split(/\r?\n/).map((x) => x.replace(/\0/g, "").trim()).filter(Boolean);
+  // 1) PowerShell (Get-WmiObject anda desde Windows 7; Get-Printer no existe antes de Windows 8).
+  const conPowerShell = () => new Promise((resolve, reject) => {
+    execFile(ps, ["-NoProfile", "-Command", "Get-WmiObject -Class Win32_Printer | ForEach-Object { $_.Name }"], { timeout: 45000, windowsHide: true }, (err, out, errTxt) => {
+      if (err) return reject(new Error("PowerShell: " + (limpiar(errTxt)[0] || err.message)));
+      resolve(limpiar(out));
+    });
+  });
+  // 2) wmic, que viene con Windows y no depende de PowerShell.
+  const conWmic = () => new Promise((resolve, reject) => {
+    execFile(wmic, ["printer", "get", "name"], { timeout: 45000, windowsHide: true }, (err, out, errTxt) => {
+      if (err) return reject(new Error("wmic: " + (limpiar(errTxt)[0] || err.message)));
+      resolve(limpiar(out).filter((x) => x.toLowerCase() !== "name"));
+    });
+  });
+  return conPowerShell().catch((e) => ({ falla: e.message })).then((r) => {
+    if (Array.isArray(r) && r.length) return r;
+    return conWmic().catch((e) => ({ falla: (r && r.falla ? r.falla + " | " : "") + e.message })).then((r2) => {
+      if (Array.isArray(r2) && r2.length) return r2;
+      if (Array.isArray(r2)) return [];
+      throw new Error("No se pudo leer la lista de impresoras. " + r2.falla);
     });
   });
 }

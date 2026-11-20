@@ -3300,7 +3300,7 @@ function PautasComandas(p){
       "Si la mesa ya tiene cosas en cocina y agregás algo nuevo, te pregunta cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina lo ve resaltado.",
       "Lo que sale «por orden» no empieza a contar tiempo hasta que la cocina entregó la parte anterior."]},
     {t:"🍽️ Cuando la cocina entrega",l:[
-      "Cuando la cocina entrega el pedido, la mesa muestra 🍽️ LISTO un rato y en la cuenta figura «✅ la cocina entregó el pedido». Llevalo a la mesa: no hace falta marcar nada más."]},
+      "Cuando la cocina entrega el pedido, en la cuenta figura «✅ la cocina entregó el pedido». Llevalo a la mesa: no hace falta marcar nada."]},
     {t:"🎨 Colores de las mesas",l:[
       "Gris: libre. Color del local: abierta pero todavía sin pedir.",
       "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
@@ -3326,12 +3326,11 @@ function PautasComandas(p){
       "Si agregás algo a una mesa que ya está en cocina, elegí cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina ve tu elección bien resaltada.",
       "Con las mesas grandes que van sumando gente, podés agregar a medida que llegan: cada tanda cuenta su propio tiempo."]},
     {t:"🍽️ Llevar a la mesa",l:[
-      "Cuando la cocina entrega, tu mesa muestra 🍽️ LISTO. Retiralo y llevalo a la mesa: no hace falta marcar nada más."]},
+      "Cuando la cocina entrega el pedido, en la cuenta figura «✅ la cocina entregó el pedido». Retiralo y llevalo a la mesa: no hace falta marcar nada."]},
     {t:"🎨 Colores de tu mesa",l:[
       "Gris: libre. Color del local: abierta pero todavía sin pedir.",
       "Verde: en cocina, va bien de tiempo. Amarillo oscuro: se está demorando.",
       "Rojo titilando: se pasó del tiempo: avisale a la cocina o al cajero.",
-      "🍽️ LISTO: la cocina ya lo entregó, retiralo.",
       "Amarillo brillante: la cocina ya entregó todo, está comiendo.",
       "En Mesas hay un botón «Colores de las mesas» con esta referencia."]},
     {t:"🧾 Pedir la cuenta",l:[

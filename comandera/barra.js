@@ -115,10 +115,20 @@ async function pendientes() {
   });
 }
 
-async function marcar(fila) {
+// «Reclamar» la comanda ANTES de imprimir: la marca como impresa solo si todavía figuraba sin imprimir (el filtro lo resuelve la base
+// de un solo golpe). Si hay dos programas mirando lo mismo (dos ventanas abiertas, por ejemplo), solo uno lo logra y el otro no imprime.
+async function reclamar(fila) {
   const nuevo = Object.assign({}, fila.job, { impreso: true, impreso_at: new Date().toISOString() });
-  const r = await pedir(URL_BASE + "/rest/v1/pautas?id=eq." + encodeURIComponent(fila.id), { method: "PATCH", headers: Object.assign({}, headers(), { Prefer: "return=minimal" }), body: JSON.stringify({ texto: JSON.stringify(nuevo) }) });
-  if (!r.ok) throw new Error("No se pudo marcar como impresa (" + r.status + ")");
+  const q = "id=eq." + encodeURIComponent(fila.id) + "&texto=like." + encodeURIComponent('*"impreso":false*');
+  const r = await pedir(URL_BASE + "/rest/v1/pautas?" + q, { method: "PATCH", headers: Object.assign({}, headers(), { Prefer: "return=representation" }), body: JSON.stringify({ texto: JSON.stringify(nuevo) }) });
+  if (!r.ok) throw new Error("No se pudo reclamar la comanda (" + r.status + ")");
+  const filas = JSON.parse(r.texto || "[]");
+  return Array.isArray(filas) && filas.length > 0;
+}
+// Si la impresión falla después de reclamar, se vuelve a dejar pendiente para que se reintente.
+async function liberar(fila) {
+  const r = await pedir(URL_BASE + "/rest/v1/pautas?id=eq." + encodeURIComponent(fila.id), { method: "PATCH", headers: Object.assign({}, headers(), { Prefer: "return=minimal" }), body: JSON.stringify({ texto: JSON.stringify(fila.job) }) });
+  if (!r.ok) throw new Error("No se pudo dejar pendiente de nuevo (" + r.status + ")");
 }
 
 function mostrar(ticket) {
@@ -132,12 +142,17 @@ async function vuelta() {
   for (const fila of lista) {
     const ticket = ticketDe(fila.job);
     if (SIMULAR) { console.log("\nComanda de " + DESTINO + " pendiente (" + fila.id + "):"); mostrar(ticket); impresos.add(fila.id); continue; }
+    let reclamada = false;
     try {
-      await imprimir(ticket, cfg);
+      reclamada = await reclamar(fila);
       impresos.add(fila.id);
+      if (!reclamada) continue;   // otro programa la agarró primero: no se imprime dos veces
+      await imprimir(ticket, cfg);
       console.log(new Date().toLocaleTimeString("es-AR") + "  Impresa: " + ticket.local + " (" + ticket.items.length + " ítem" + (ticket.items.length === 1 ? "" : "s") + ")");
-      await marcar(fila);
-    } catch (e) { console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message + " (se reintenta)"); }
+    } catch (e) {
+      console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message + " (se reintenta)");
+      if (reclamada) { impresos.delete(fila.id); try { await liberar(fila); } catch (e2) { console.error("  " + e2.message); } }
+    }
   }
 }
 

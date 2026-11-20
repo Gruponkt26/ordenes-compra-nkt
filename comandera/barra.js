@@ -4,8 +4,8 @@
 // en una PC del local, mira cada tanto si hay comandas sin imprimir, las manda a la impresora de la barra y
 // las marca como impresas. No usa librerías: solo lo que trae Node (anda desde Node 12, la última versión que corre en Windows 7).
 //
-//   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA" --key LA_CLAVE   (impresora USB de la barra, en Windows)
-//   node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE               (impresora de red)
+//   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA"   (impresora USB de la barra, en Windows)
+//   node barra.js --local l1 --ip 192.168.1.223 (impresora de red)
 //   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
@@ -26,7 +26,10 @@ function opcion(nombre, porDefecto) {
 
 const LOCAL = opcion("local", process.env.NKT_LOCAL || "");
 const URL_BASE = String(opcion("url", process.env.NKT_SUPABASE_URL || "https://qcfwqnqtrqyjdfvakwxt.supabase.co")).replace(/\/+$/, "");
-const CLAVE = opcion("key", process.env.NKT_SUPABASE_KEY || "");
+// Clave pública de la base: es la misma que ya usa la app en el navegador (SKEY en src/comun.js), así que va incluida
+// y no hace falta pegarla. Si se pasa otra con --key, se le sacan espacios y saltos de línea (por si se copió mal).
+const CLAVE_PUBLICA = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjZndxbnF0cnF5amRmdmFrd3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzYxODMsImV4cCI6MjA5NjE1MjE4M30.Zh5jN_oGXde0JGBJ_NTBn5Mkr2m6lI3VPjAsqrzd6Gc";
+const CLAVE = String(opcion("key", process.env.NKT_SUPABASE_KEY || CLAVE_PUBLICA)).replace(/[^\x21-\x7E]/g, "");
 const CADA = Math.max(1, parseInt(opcion("cada", "3"), 10) || 3);
 const SIMULAR = tiene("simular");
 const cfg = {
@@ -124,7 +127,7 @@ if (tiene("listar")) {
   if (SIMULAR) { mostrar(t); process.exit(0); }
   imprimir(t, cfg).then(() => console.log("Listo.")).catch((e) => { console.error(e.message); process.exit(1); });
 } else {
-  if (!CLAVE) { console.error("Falta la clave de la base: --key LA_CLAVE (o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
+  if (!CLAVE) { console.error("Falta la clave de la base (--key o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
   if (!LOCAL) console.log("Aviso: sin --local se imprimen las comandas de barra de TODOS los locales.");
   console.log("Comanda de barra" + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");
   const ciclo = () => vuelta().catch((e) => console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message)).finally(() => setTimeout(ciclo, CADA * 1000));

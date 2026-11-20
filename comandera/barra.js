@@ -80,6 +80,8 @@ function pedir(url, opc) {
     req.end();
   });
 }
+let primeraVuelta = false;
+const avisados = new Set();
 const impresos = new Set();   // por si marcar como impresa falla: no se imprime dos veces
 
 async function pendientes() {
@@ -87,8 +89,14 @@ async function pendientes() {
   const r = await pedir(URL_BASE + "/rest/v1/pautas?" + q, { headers: headers() });
   if (!r.ok) throw new Error("No se pudo leer la base (" + r.status + "). ¿La clave es correcta?");
   const filas = JSON.parse(r.texto);
-  return (Array.isArray(filas) ? filas : []).map((f) => { try { return { id: f.id, job: JSON.parse(f.texto) }; } catch (e) { return null; } })
-    .filter((x) => x && x.job && !x.job.prueba && (!LOCAL || x.job.local === LOCAL) && !impresos.has(x.id));
+  const todas = (Array.isArray(filas) ? filas : []).map((f) => { try { return { id: f.id, job: JSON.parse(f.texto) }; } catch (e) { return null; } }).filter((x) => x && x.job);
+  if (!primeraVuelta) { primeraVuelta = true; console.log("Pendientes de imprimir en la base (de todos los locales): " + todas.length); }
+  return todas.filter((x) => {
+    if (impresos.has(x.id)) return false;
+    const motivo = x.job.prueba ? "es de MODO PRACTICA / comanda de prueba" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : "");
+    if (motivo) { if (!avisados.has(x.id)) { avisados.add(x.id); console.log(new Date().toLocaleTimeString("es-AR") + "  Se saltea " + (x.job.titulo || x.id) + ": " + motivo + "."); } return false; }
+    return true;
+  });
 }
 
 async function marcar(fila) {

@@ -90,3 +90,26 @@ Sólo usa `net`, que viene con Node. Esto corre en la PC de un local: cada depen
 una cosa más que puede faltar el día que haya que reinstalarlo apurado, en medio de un
 servicio. Los acentos se convierten a mano con una tabla de veinte líneas en vez de traer
 un paquete entero para eso.
+
+## 🍸 Comanda de barra (bebidas)
+
+Las bebidas **no pasan por la pantalla de la cocina**: al marchar, la app deja una comanda de barra para
+imprimir y la bebida queda sumada en la cuenta de la mesa (para cuando se pida el ticket). Qué categorías de la
+carta cuentan como bebida se elige en Comandas → Carta → «🥤 Categorías que no van a cocina».
+
+`barra.js` es el programa que la imprime. Corre en una PC del local (una por local, la que está en la misma red
+que la impresora de la barra) y mira cada 3 segundos si hay comandas de barra sin imprimir:
+
+```
+node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE
+```
+
+- `--local`: `l1` El Bodegón · `l2` Kusama · `l3` Colantonio's (solo imprime las de ese local).
+- `--ip`: la IP de **la impresora de la barra** (no la de la cocina). Conviene fijarla en el router.
+- `--key`: la clave de la base de datos (la misma de la app), o la variable `NKT_SUPABASE_KEY`.
+- `node barra.js --demo --simular` muestra en pantalla cómo sale una comanda, sin impresora ni base.
+- `node barra.js --local l1 --key LA_CLAVE --simular` muestra las pendientes sin imprimirlas ni marcarlas.
+
+Las comandas de prueba (prueba compartida y modo práctica) no se imprimen. Si la impresora no contesta, el
+programa lo avisa y vuelve a intentar; cada comanda sale una sola vez. Para que arranque solo con la PC, igual que
+lo de arriba: Programador de tareas de Windows → *Al iniciar sesión*.

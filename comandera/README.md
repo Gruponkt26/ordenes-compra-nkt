@@ -97,19 +97,37 @@ Las bebidas **no pasan por la pantalla de la cocina**: al marchar, la app deja u
 imprimir y la bebida queda sumada en la cuenta de la mesa (para cuando se pida el ticket). Qué categorías de la
 carta cuentan como bebida se elige en Comandas → Carta → «🥤 Categorías que no van a cocina».
 
-`barra.js` es el programa que la imprime. Corre en una PC del local (una por local, la que está en la misma red
-que la impresora de la barra) y mira cada 3 segundos si hay comandas de barra sin imprimir:
+`barra.js` es el programa que la imprime. Corre en la **PC a la que está conectada la impresora de la barra**
+y mira cada 3 segundos si hay comandas de barra sin imprimir. Las manda, las marca como impresas y listo.
 
-```
-node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE
-```
+**No toca nada de lo que ya funciona** (Maxirest, la impresora de la cocina): solo le manda papel a la impresora
+de la barra. No cambia IPs, ni drivers, ni la comparte.
+
+### Impresora de la barra por USB (Windows)
+
+1. Instalar **Node.js** (LTS) en esa PC y copiar esta carpeta (`comandera`).
+2. Ver cómo se llama la impresora en Windows: `node barra.js --listar` (es el nombre de *Impresoras y escáneres*).
+3. Probar con un ticket de prueba: `node prueba.js --usb "NOMBRE"`. Si los acentos salen raros: `--codepage 2`.
+4. Dejarla andando: `node barra.js --local l1 --usb "NOMBRE" --key LA_CLAVE`
+
+Se manda como documento RAW por el spooler de Windows: convive con Maxirest si usan la misma impresora, el
+spooler va haciendo cola y no se mezclan los tickets.
+
+### Impresora de red
+
+`node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE` (IP fija, distinta de la de la cocina).
+
+### Opciones
 
 - `--local`: `l1` El Bodegón · `l2` Kusama · `l3` Colantonio's (solo imprime las de ese local).
-- `--ip`: la IP de **la impresora de la barra** (no la de la cocina). Conviene fijarla en el router.
-- `--key`: la clave de la base de datos (la misma de la app), o la variable `NKT_SUPABASE_KEY`.
+- `--key`: la clave de la base de datos (la misma de la app: `SKEY` en `src/comun.js`), o la variable `NKT_SUPABASE_KEY`.
 - `node barra.js --demo --simular` muestra en pantalla cómo sale una comanda, sin impresora ni base.
 - `node barra.js --local l1 --key LA_CLAVE --simular` muestra las pendientes sin imprimirlas ni marcarlas.
 
 Las comandas de prueba (prueba compartida y modo práctica) no se imprimen. Si la impresora no contesta, el
-programa lo avisa y vuelve a intentar; cada comanda sale una sola vez. Para que arranque solo con la PC, igual que
-lo de arriba: Programador de tareas de Windows → *Al iniciar sesión*.
+programa lo avisa y vuelve a intentar; cada comanda sale una sola vez.
+
+### Que arranque solo con la PC
+
+Editar `iniciar-barra.bat` (poner el nombre de la impresora y la clave) y crear en el **Programador de tareas de
+Windows** una tarea «Al iniciar sesión» que ejecute ese archivo.

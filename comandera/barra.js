@@ -4,14 +4,16 @@
 // en una PC del local, mira cada tanto si hay comandas sin imprimir, las manda a la impresora de la barra y
 // las marca como impresas. No usa librerías: solo lo que trae Node (18 o más).
 //
-//   node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE
+//   node barra.js --local l1 --usb "NOMBRE DE LA IMPRESORA" --key LA_CLAVE   (impresora USB de la barra, en Windows)
+//   node barra.js --local l1 --ip 192.168.1.223 --key LA_CLAVE               (impresora de red)
+//   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
 //
 // Opciones (o variables de entorno): --local (l1 Bodegón, l2 Kusama, l3 Colantonio's) · --ip / COMANDERA_IP
 // · --puerto · --ancho · --codepage · --url / NKT_SUPABASE_URL · --key / NKT_SUPABASE_KEY · --cada (segundos, 3).
 
-const { imprimir, previsualizar, CONFIG } = require("./comandera");
+const { imprimir, previsualizar, listarImpresorasWindows, CONFIG } = require("./comandera");
 
 const args = process.argv.slice(2);
 const tiene = (n) => args.includes("--" + n);
@@ -30,6 +32,7 @@ const cfg = {
   puerto: parseInt(opcion("puerto", CONFIG.puerto), 10),
   ancho: parseInt(opcion("ancho", CONFIG.ancho), 10),
   codepage: parseInt(opcion("codepage", CONFIG.codepage), 10),
+  usb: opcion("usb", process.env.COMANDERA_USB || ""),
 };
 const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
 
@@ -87,7 +90,10 @@ async function vuelta() {
   }
 }
 
-if (tiene("demo")) {
+if (tiene("listar")) {
+  listarImpresorasWindows().then((l) => { console.log("Impresoras instaladas en esta PC:\n" + l.map((x) => "  " + x).join("\n") + "\n\nUsá el nombre exacto con --usb \"NOMBRE\"."); })
+    .catch((e) => { console.error(e.message); process.exit(1); });
+} else if (tiene("demo")) {
   const demo = { local: LOCAL || "l1", tipo: "mesa", titulo: "Mesa 12 · Salón", numero: 7, at: new Date().toISOString(), mozo: "Prueba",
     items: [{ cant: 2, nombre: "Cerveza IPA 500cc" }, { cant: 1, nombre: "Fernet con coca", nota: "sin hielo" }, { cant: 3, nombre: "Gaseosa línea Coca-Cola 1,5 litros" }] };
   const t = ticketDe(demo);
@@ -96,7 +102,7 @@ if (tiene("demo")) {
 } else {
   if (!CLAVE) { console.error("Falta la clave de la base: --key LA_CLAVE (o la variable NKT_SUPABASE_KEY)."); process.exit(1); }
   if (!LOCAL) console.log("Aviso: sin --local se imprimen las comandas de barra de TODOS los locales.");
-  console.log("Comanda de barra" + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + cfg.ip + ":" + cfg.puerto + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");
+  console.log("Comanda de barra" + (LOCAL ? " de " + (NOMBRES[LOCAL] || LOCAL) : "") + " → impresora " + (cfg.usb ? "USB «" + cfg.usb + "»" : cfg.ip + ":" + cfg.puerto) + (SIMULAR ? " (SIMULACIÓN: no imprime ni marca nada)" : "") + ". Mirando cada " + CADA + " s. Ctrl+C para cortar.");
   const ciclo = () => vuelta().catch((e) => console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message)).finally(() => setTimeout(ciclo, CADA * 1000));
   ciclo();
 }

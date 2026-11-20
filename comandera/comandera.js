@@ -216,8 +216,9 @@ function enviarUSB(buffer, nombre) {
 function listarImpresorasWindows() {
   return new Promise((resolve, reject) => {
     const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    execFile(ps, ["-NoProfile", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"], { timeout: 20000, windowsHide: true }, (err, out) => {
-      if (err) return reject(new Error("No se pudo leer la lista de impresoras (¿es Windows?)."));
+    // Get-WmiObject Win32_Printer anda desde Windows 7 (Get-Printer no existe antes de Windows 8).
+    execFile(ps, ["-NoProfile", "-Command", "Get-WmiObject -Class Win32_Printer | ForEach-Object { $_.Name }"], { timeout: 30000, windowsHide: true }, (err, out, errTxt) => {
+      if (err) return reject(new Error("No se pudo leer la lista de impresoras (¿es Windows?): " + String(errTxt || err.message).trim().split(/\r?\n/)[0]));
       resolve(String(out).split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
     });
   });

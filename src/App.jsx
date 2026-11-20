@@ -3295,7 +3295,7 @@ function PautasComandas(p){
       "Tocá la mesa libre y elegí el mozo. Si la mesa ya se había cobrado antes, se abre como mesa nueva y la cocina la ve así.",
       "Tocá «Sumar» y elegí de la carta. Si algo es entrada, marcalo con 🥗 para que la cocina lo sepa.",
       "Para sacar algo tocá «Quitar» y poné el motivo; para cambiar cantidad o agregar una nota, hacelo desde el mismo plato."]},
-    {t:"🔥 Mandar a la cocina",l:[
+    {t:"🔥 Marchar",l:[
       "Tocá «Marchar»: el pedido le llega a la pantalla de la cocina con la hora y el mozo.",
       "Si la mesa ya tiene cosas en cocina y agregás algo nuevo, te pregunta cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina lo ve resaltado.",
       "Lo que sale «por orden» no empieza a contar tiempo hasta que la cocina entregó la parte anterior."]},
@@ -3321,7 +3321,7 @@ function PautasComandas(p){
       "Tocá tu mesa libre y elegí tu nombre como mozo.",
       "Tocá «Sumar» y elegí de la carta. Si algo es entrada, marcalo con 🥗 para que la cocina lo sepa.",
       "Para sacar algo tocá «Quitar» y poné el motivo. Podés cambiar la cantidad o agregar una nota; la cocina lo ve resaltado en rojo."]},
-    {t:"🔥 Mandar a la cocina",l:[
+    {t:"🔥 Marchar",l:[
       "Tocá «Marchar»: el pedido le llega a la cocina con tu nombre.",
       "Si agregás algo a una mesa que ya está en cocina, elegí cómo sale: «Todo junto» (sale con lo que ya está) o «Por orden de comanda» (sale cuando termina lo anterior). La cocina ve tu elección bien resaltada.",
       "Con las mesas grandes que van sumando gente, podés agregar a medida que llegan: cada tanda cuenta su propio tiempo."]},

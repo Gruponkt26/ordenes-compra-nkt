@@ -764,7 +764,7 @@ function VentanaQuitar(props) {
   var texto = motivo === "Otro" ? (otro.trim() || "Otro") : motivo;
   return (
     <Ventana titulo="➖ Quitar de la cuenta" onCerrar={props.onCerrar}>
-      <label style={{ display:"block", fontSize:9, color:"#8C8C8C", textTransform:"uppercase", marginBottom:4 }}>Motivo (para lo que ya se mandó a la cocina)</label>
+      <label style={{ display:"block", fontSize:9, color:"#8C8C8C", textTransform:"uppercase", marginBottom:4 }}>Motivo (para lo que ya se marchó)</label>
       <select value={motivo} onChange={function(e) { setMotivo(e.target.value); }} style={{ ...INP, marginBottom:motivo === "Otro" ? 6 : 12 }}>
         {["Error de carga", "El cliente cambió de idea", "No hay stock", "Reclamo del cliente", "Otro"].map(function(m) { return <option key={m} value={m}>{m}</option>; })}
       </select>
@@ -776,7 +776,7 @@ function VentanaQuitar(props) {
           <div key={i.id} style={{ display:"flex", gap:8, alignItems:"center", padding:"8px 0", borderTop:"1px solid #1A1A1A" }}>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:13.5, color:"#F0EDE8" }}>{i.cant}× {i.nombre}</div>
-              <div style={{ fontSize:10.5, color:mandado ? "#E0914A" : "#777" }}>{mandado ? "Ya mandado a la cocina" : "Sin mandar"} · {pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</div>
+              <div style={{ fontSize:10.5, color:mandado ? "#E0914A" : "#777" }}>{mandado ? "Ya marchado" : "Sin marchar"} · {pesos((Number(i.precio) || 0) * (Number(i.cant) || 1))}</div>
             </div>
             <button onClick={function() { props.onQuitar(i, texto, false); }} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #C1440E66", background:"#C1440E18", color:"#E0714A", fontSize:11.5, fontWeight:800, cursor:"pointer" }}>Quitar {Number(i.cant) > 1 ? "1" : ""}</button>
             {Number(i.cant) > 1 && <button onClick={function() { props.onQuitar(i, texto, true); }} style={{ padding:"7px 10px", borderRadius:8, border:"1px solid #2A2A2A", background:"none", color:"#9A9A9A", fontSize:11.5, cursor:"pointer" }}>Todos</button>}
@@ -1961,7 +1961,7 @@ function VentanaCambiar(props) {
   }
   return (
     <Ventana titulo={"🔄 Cambiar «" + props.item.nombre + "»"} onCerrar={props.onCerrar}>
-      <div style={{ fontSize:12, color:"#9A9A9A", marginBottom:8, lineHeight:1.5 }}>Elegí lo que va en su lugar. Se manda a la cocina de una vez y ella ve el aviso del cambio.</div>
+      <div style={{ fontSize:12, color:"#9A9A9A", marginBottom:8, lineHeight:1.5 }}>Elegí lo que va en su lugar. Se marcha de una vez y la cocina ve el aviso del cambio.</div>
       <input value={q} onChange={function(e) { setQ(e.target.value); }} placeholder="Buscar…" style={{ ...INP, fontSize:12, marginBottom:10 }} />
       {qq ? lista(platos) : (
         <ArbolCarta cats={cats} ruta={ruta} setRuta={setRuta} colores={colores}
@@ -2201,7 +2201,7 @@ function ComandaDetalle(props) {
         <div style={{ ...LBL, marginBottom:8 }}>Opciones</div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:7 }}>
           {[
-            { id:"marchar",  txt:"🔥 Marchar",     sub:pendientes.length ? pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0) + " a la cocina" : "nada para mandar", col:"#E0914A", off:!pendientes.length, fn:function() { pedirMandar(); } },
+            { id:"marchar",  txt:"🔥 Marchar",     sub:pendientes.length ? pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0) + " para marchar" : "nada para marchar", col:"#E0914A", off:!pendientes.length, fn:function() { pedirMandar(); } },
             { id:"sumar",    txt:"➕ Sumar",  sub:"de la carta",                                                                    col:"#4C9A5A", off:false, fn:function() { setAgregando(true); } },
             { id:"quitar",   txt:"➖ Quitar", sub:"con motivo",                                                                     col:"#E0714A", off:!mios.length, fn:function() { setVentana("quitar"); } },
             { id:"control",  txt:"🧾 Control",      sub:"precuenta",                                                                      col:"#8FD19A", off:!mios.length, fn:function() { setVentana("control"); if (props.onExtra) props.onExtra({ ...extra, control_at:new Date().toISOString() }); } },
@@ -2222,7 +2222,7 @@ function ComandaDetalle(props) {
       {/* Lo cargado y todavía no mandado */}
       {pendientes.length > 0 && (
         <div style={{ background:"#0F0F0F", border:"1px dashed "+color+"55", borderRadius:12, padding:"12px", marginBottom:12 }}>
-          <div style={LBL}>Sin mandar</div>
+          <div style={LBL}>Sin marchar</div>
           {pendientes.map(function(i) {
             return (
               <div key={i.id} style={{ marginBottom:7 }}>
@@ -2252,7 +2252,7 @@ function ComandaDetalle(props) {
           })}
           <button onClick={function() { pedirMandar(); }}
             style={{ width:"100%", marginTop:8, padding:"12px", borderRadius:9, border:"none", background:color, color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:800, cursor:"pointer" }}>
-            🔔 Mandar a la cocina ({pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)})
+            🔔 Marchar ({pendientes.reduce(function(a, i) { return a + (Number(i.cant) || 1); }, 0)})
           </button>
         </div>
       )}
@@ -2830,7 +2830,7 @@ function Carta(props) {
           <div style={{ fontSize:11, color:"#7E7E7E", marginTop:9, lineHeight:1.5 }}>✎ Tocá el nombre o el precio para cambiarlo: se guarda solo al salir del campo.</div>
           {sinPrecio > 0 && (
             <div style={{ fontSize:11, color:"#8A6055", marginTop:9, lineHeight:1.5 }}>
-              Lo que no tiene precio no se puede cobrar. Se puede mandar igual a la cocina, así que
+              Lo que no tiene precio no se puede cobrar. Se puede marchar igual, así que
               sirve para empezar, pero conviene completarlos antes de usar la cuenta.
             </div>
           )}
@@ -3967,7 +3967,7 @@ export default function PanelComandas(p) {
     sbGuardarExtra(id, e, usuario);
   }
   function cerrar(c, total, sinMandar, subtotal, desc) {
-    if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin mandar a la cocina. Mandalos o sacalos antes de cerrar."); return; }
+    if (sinMandar) { alert("Quedan " + sinMandar + " ítem(s) sin marchar. Marchalos o sacalos antes de cerrar."); return; }
     var t = total === undefined ? c.total : total;
     var delPedido = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
     var sinPrecio = delPedido.filter(function(i) { return !(Number(i.precio) > 0); });

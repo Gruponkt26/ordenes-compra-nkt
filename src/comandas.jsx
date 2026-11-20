@@ -164,6 +164,31 @@ async function sbGuardarPlano(localId, pos, extras, dims, usuario) {
     return r.ok;
   } catch(e) { return false; }
 }
+// Qué categorías de la carta no pasan por la cocina (van a la barra), por local. Va en pautas, ámbito "carta_sin_cocina". Sin registro, se reconocen por el nombre.
+async function sbLeerSinCocina(localId) {
+  try {
+    var r = await cfetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent("csinc_" + localId) + "&limit=1", { headers: {...SH, "Cache-Control":"no-cache"} });
+    var d = await r.json();
+    return Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
+  } catch(e) { return null; }
+}
+async function sbGuardarSinCocina(localId, categorias, usuario) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"csinc_" + localId, ambito:"carta_sin_cocina", texto:JSON.stringify({ categorias:categorias }), usuario:usuario || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+// Comanda de barra para imprimir: un registro por «Marchar» con bebidas (pautas, ámbito "impresion_barra"). El programa de la comandera, en la PC del local, lo toma, lo imprime y lo marca como impreso.
+async function sbCrearImpresionBarra(job) {
+  try {
+    var ahora = new Date().toISOString();
+    var h = { ...SH, "Prefer":"resolution=merge-duplicates,return=minimal" };
+    var r = await cfetch(SURL + "/rest/v1/pautas", { method:"POST", headers:h, body:JSON.stringify({ id:"cprint_" + job.comanda_id + "_" + Date.now(), ambito:"impresion_barra", texto:JSON.stringify(job), usuario:job.por || "", created_at:ahora, updated_at:ahora }) });
+    return r.ok;
+  } catch(e) { return false; }
+}
 // Faltantes de plato: lo avisa el mozo o la cocina. Va en pautas, ámbito "comanda_faltante", un registro por aviso.
 async function sbGuardarFaltante(f) {
   try {
@@ -585,7 +610,17 @@ function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[loc
 // ninguna columna nueva; en pantalla se ve como una insignia y la aclaración se muestra sin la marca.
 var MARCA_ENTRADA = "🥗";
 function esEntrada(i) { return String((i && i.nota) || "").indexOf(MARCA_ENTRADA) === 0; }
-function notaVisible(i) { var n = String((i && i.nota) || ""); return n.indexOf(MARCA_ENTRADA) === 0 ? n.slice(MARCA_ENTRADA.length).replace(/^\s*\|?\s*/, "") : n; }
+// Las bebidas no pasan por la cocina: salen en la comanda de barra (impresa) y quedan en la cuenta de la mesa. Se marcan al principio de la nota.
+var MARCA_BARRA = "🥤";
+function esBarra(i) { return String((i && i.nota) || "").indexOf(MARCA_BARRA) === 0; }
+var SIN_COCINA_DEFECTO = /bebida|cerveza|vino|trago|champ|whisk|jugo|gaseosa|\bagua|caf[eé]|licor|aperitivo|espumante|c[oó]ctel|sin alcohol|infusi/i;
+// Una categoría va a la barra si así se eligió para el local; si todavía no se eligió nada, se reconoce por el nombre (bebidas, vinos, cervezas, tragos…).
+function categoriaSinCocina(cat, cfg) {
+  var top = String(cat || "").split(" › ")[0];
+  if (cfg && Array.isArray(cfg.categorias)) return cfg.categorias.indexOf(top) >= 0;
+  return SIN_COCINA_DEFECTO.test(top);
+}
+function notaVisible(i) { var n = String((i && i.nota) || ""); var m = n.indexOf(MARCA_ENTRADA) === 0 ? MARCA_ENTRADA : n.indexOf(MARCA_BARRA) === 0 ? MARCA_BARRA : ""; return m ? n.slice(m.length).replace(/^\s*\|?\s*/, "") : n; }
 function notaConMarca(texto, entrada) { var t = String(texto || "").trim(); return entrada ? MARCA_ENTRADA + (t ? " | " + t : "") : (t || null); }
 // Cursos de una cuenta: lo que se manda junto se parte en la tanda de ENTRADA y la de PRINCIPAL (lo que viene después). La entrada cuenta desde que se manda;
 // lo principal cuenta desde que la cocina entregó la entrada (hasta entonces «espera la entrada»). La cuenta tiene siempre, además, su contador global desde el primer pedido.
@@ -1251,7 +1286,7 @@ export function PanelCocina(props) {
         var comPorId = {}; coms.concat(cerradas).forEach(function(c) { comPorId[c.id] = c; });
         function tandasHechas(c) {
           var rs = {};
-          itsTodos.filter(function(i) { return i.comanda_id === c.id && (i.estado === "listo" || i.estado === "entregado"); }).forEach(function(i) { (rs[i.ronda || 0] = rs[i.ronda || 0] || []).push(i); });
+          itsTodos.filter(function(i) { return i.comanda_id === c.id && !esBarra(i) && (i.estado === "listo" || i.estado === "entregado"); }).forEach(function(i) { (rs[i.ronda || 0] = rs[i.ronda || 0] || []).push(i); });
           var todosC = itsTodos.filter(function(x) { return x.comanda_id === c.id; });
           return Object.keys(rs).map(function(r) {
             var items = rs[r], rn = Number(r), rec = listos[c.id + "|" + rn];
@@ -1671,7 +1706,7 @@ function InformeTurno(props) {
     // Cocina: desde «Marchar» hasta que queda listo (se lo entrega al mozo o al cajero). Los pedidos viejos, sin ese registro, se miden hasta la entrega a la mesa.
     var listos = datos.listos || {};
     function listoDe(i) { var r = listos[i.comanda_id + "|" + (i.ronda || 0)]; return r ? r.listo_at : null; }
-    var cocina = itemsT.filter(function(i) { return (i.estado === "entregado" || i.estado === "listo") && i.enviado_at; }).map(function(i) {
+    var cocina = itemsT.filter(function(i) { return !esBarra(i) && (i.estado === "entregado" || i.estado === "listo") && i.enviado_at; }).map(function(i) {
       var l = listoDe(i) || (i.estado === "entregado" ? i.entregado_at : null);
       return l ? { nombre:i.nombre, min:(new Date(l) - new Date(i.enviado_at)) / 60000 } : null;
     }).filter(function(x) { return x && x.min >= 0 && x.min < 240; });
@@ -2038,6 +2073,8 @@ function ComandaDetalle(props) {
   // Marchar (el mosaico de Opciones y el botón de abajo hacen lo mismo): primero el tiempo del delivery, después cómo sale lo nuevo si ya hay cosas en la cocina.
   function pedirMandar() {
     if (!pendientes.length) return;
+    // Si lo que se manda son solo bebidas, no hay nada para la cocina: no se pregunta tiempo ni cómo sale.
+    if (pendientes.every(esDeBarra)) { mandar(); return; }
     if (props.comanda.tipo === "delivery" && !props.entrega) setPreguntaEntrega(true);
     // Delivery con el pedido ya en marcha al que se le suma algo: se ofrece cambiar el tiempo de entrega antes de mandar.
     else if (props.comanda.tipo === "delivery" && props.entrega && mandados.length) setPreguntaTiempoExtra(true);
@@ -2053,17 +2090,22 @@ function ComandaDetalle(props) {
   var [medioDel, setMedioDel] = useState("efectivo");   // cómo paga el delivery que toma el cajero: efectivo al recibir o transferencia al local
   var [preguntaEntrega, setPreguntaEntrega] = useState(false);
   var [preguntaTiempoExtra, setPreguntaTiempoExtra] = useState(false);   // delivery en marcha al que se le suma algo: ¿cambia el tiempo?   // delivery sin tiempo de entrega: se pregunta antes de marchar
+  // Las bebidas no van a la cocina: salen en la comanda de barra y quedan en la cuenta.
+  function esDeBarra(i) { return !!(props.esSinCocina && props.esSinCocina(i.nombre)); }
   function mandar(salida) {
     if (!pendientes.length) return;
     var ronda = mandados.reduce(function(a, i) { return Math.max(a, Number(i.ronda) || 0); }, 0) + 1;
     var ahora = new Date().toISOString();
+    var deCocina = pendientes.filter(function(i) { return !esDeBarra(i); }), deBarra = pendientes.filter(esDeBarra);
     // Lo marcado como entrada sale como una tanda y el resto como la siguiente (el principal): las dos con la misma hora de «Marchar».
-    var hayEntrada = pendientes.some(esEntrada), hayResto = pendientes.some(function(i) { return !esEntrada(i); });
+    var hayEntrada = deCocina.some(esEntrada), hayResto = deCocina.some(function(i) { return !esEntrada(i); });
     var rondasNuevas = hayEntrada && hayResto ? [ronda, ronda + 1] : [ronda];
-    if (salida && props.onSalida) props.onSalida(rondasNuevas, salida);
+    if (salida && deCocina.length && props.onSalida) props.onSalida(rondasNuevas, salida);
     props.onGuardarItems(pendientes.map(function(i) {
+      if (esDeBarra(i)) { var t = notaVisible(i); return { ...i, estado:"listo", ronda:ronda, enviado_at:ahora, nota: MARCA_BARRA + (t ? " | " + t : "") }; }
       return { ...i, estado:"enviado", ronda: hayEntrada && hayResto && !esEntrada(i) ? ronda + 1 : ronda, enviado_at:ahora };
     }));
+    if (deBarra.length && props.onImprimirBarra) props.onImprimirBarra(deBarra, ronda);
   }
 
   var LBL = { display:"block", fontSize:9, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:6 };
@@ -2305,7 +2347,9 @@ function ComandaDetalle(props) {
                   {i.estado === "enviado" && <button onClick={function() { setCambiando(i); }} title="Cambiar por otro producto" style={{ background:"none", border:"1px solid #D4A01766", borderRadius:6, padding:"3px 8px", color:"#D4A017", fontSize:11, cursor:"pointer", whiteSpace:"nowrap" }}>🔄 cambiar</button>}
                   {i.estado === "enviado"
                     ? <span title="La cocina todavía no lo entregó" style={{ border:"1px solid #2A2A2A", borderRadius:6, padding:"3px 9px", color:"#777", fontSize:11, whiteSpace:"nowrap" }}>⏳ en cocina</span>
-                    : <span title="La cocina ya lo entregó" style={{ border:"1px solid #3A7D4466", borderRadius:6, padding:"3px 9px", color:"#4C9A5A", fontSize:11, fontWeight:800, whiteSpace:"nowrap" }}>✅ cocina</span>}
+                    : esBarra(i)
+                      ? <span title="Salió en la comanda de barra" style={{ border:"1px solid #B07CD866", borderRadius:6, padding:"3px 9px", color:"#B07CD8", fontSize:11, fontWeight:800, whiteSpace:"nowrap" }}>🥤 barra</span>
+                      : <span title="La cocina ya lo entregó" style={{ border:"1px solid #3A7D4466", borderRadius:6, padding:"3px 9px", color:"#4C9A5A", fontSize:11, fontWeight:800, whiteSpace:"nowrap" }}>✅ cocina</span>}
                 </div>
               );
                   })}
@@ -3023,6 +3067,45 @@ function NuevaComanda(props) {
     );
   }
 
+// Qué categorías de la carta no pasan por la cocina: salen en la comanda de barra (impresa) y quedan en la cuenta de la mesa.
+function ConfigSinCocina(props) {
+  var cats = [];
+  (props.carta || []).forEach(function(x) { if (x.local !== props.localId) return; var t = String(x.categoria || "").split(" › ")[0]; if (t && cats.indexOf(t) < 0) cats.push(t); });
+  var inicial = props.cfg && Array.isArray(props.cfg.categorias) ? props.cfg.categorias : cats.filter(function(c) { return categoriaSinCocina(c, null); });
+  var [sel, setSel] = useState(null);
+  var [msg, setMsg] = useState("");
+  var [abierto, setAbierto] = useState(false);
+  var actual = sel || inicial;
+  if (!cats.length) return null;
+  function alternar(c) { var l = actual.indexOf(c) >= 0 ? actual.filter(function(x) { return x !== c; }) : actual.concat([c]); setSel(l); }
+  function guardar() {
+    sbGuardarSinCocina(props.localId, actual, props.usuario).then(function(ok) {
+      if (ok) { props.onGuardado(actual); setSel(null); setMsg("✓ Guardado"); } else setMsg("No se pudo guardar");
+      setTimeout(function() { setMsg(""); }, 2500);
+    });
+  }
+  return (
+    <div style={{ background:"#150F1C", border:"1px solid #B07CD855", borderRadius:12, padding:"10px 13px", marginBottom:12 }}>
+      <button onClick={function() { setAbierto(!abierto); }} style={{ display:"flex", justifyContent:"space-between", width:"100%", background:"none", border:"none", padding:0, cursor:"pointer", fontFamily:"'Inter',sans-serif" }}>
+        <span style={{ fontSize:13, fontWeight:800, color:"#D9B8F5" }}>🥤 Categorías que no van a cocina ({actual.length})</span>
+        <span style={{ fontSize:11, color:"#7E7E7E" }}>{abierto ? "▾ ocultar" : "▸ elegir"}</span>
+      </button>
+      {abierto && (
+        <div>
+          <div style={{ fontSize:11.5, color:"#9A9A9A", lineHeight:1.5, margin:"6px 0 8px" }}>Lo que tenga una de estas categorías no le llega a la pantalla de la cocina: sale en la <b>comanda de barra</b> (impresa) y queda sumado en la cuenta de la mesa para cuando se pida el ticket.</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+            {cats.map(function(c) {
+              var on = actual.indexOf(c) >= 0;
+              return <button key={c} onClick={function() { alternar(c); }} style={{ padding:"7px 12px", borderRadius:9, border:"1px solid " + (on ? "#B07CD8" : "#2A2A2A"), background: on ? "#B07CD833" : "#111", color: on ? "#E5CFF8" : "#9A9A9A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, cursor:"pointer" }}>{on ? "🥤 " : ""}{c}</button>;
+            })}
+          </div>
+          <button onClick={guardar} disabled={!sel} style={{ padding:"8px 14px", borderRadius:8, border:"none", background: sel ? "#B07CD8" : "#2A2A2A", color:"#fff", fontFamily:"'Inter',sans-serif", fontSize:12.5, fontWeight:800, cursor: sel ? "pointer" : "default" }}>Guardar</button>
+          {msg && <span style={{ fontSize:12, color:"#8FD19A", marginLeft:10 }}>{msg}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
 // ─── PANTALLA DEL CADETE ──────────────────────────────────────────────
 // El cadete reparte para los 3 locales. Ve solo los pedidos que el cajero le asignó: retira, sale, entrega y cobra (efectivo o ya transferido).
 // El efectivo que cobra lo rinde en cada local (cada local tiene su caja): el cajero de ese local confirma «recibí $X».
@@ -3566,6 +3649,7 @@ export default function PanelComandas(p) {
     sbLeerEntregas().then(setEntregas);
     sbLeerDespachos().then(setDespachos);
     sbLeerPedidosWeb().then(setPedidosWeb);
+    sbLeerSinCocina(localId).then(setCfgSinCocina);
     sbLeerTurnos(localId).then(setTurnos);
     sbLeerListosDesde(new Date(Date.now() - 24 * 3600000).toISOString()).then(setListosMap);
     sbLeerExtrasRecientes().then(setExtrasTodos);
@@ -3584,6 +3668,19 @@ export default function PanelComandas(p) {
   var [coloresCarta, setColoresCarta] = useState({ cats: {}, platos: {} });
   useEffect(function() { sbLeerColoresCarta(localId).then(setColoresCarta); }, [localId, practica]);
   function cargarCarta() { return sbLoadCarta().then(setCarta).catch(function() {}); }
+  // Bebidas: no van a la cocina. Se reconocen por la categoría de la carta (se puede ajustar en la pestaña Carta).
+  var [cfgSinCocina, setCfgSinCocina] = useState(null);
+  function esSinCocina(nombre) {
+    var n = String(nombre || "").trim().toLowerCase();
+    var it = carta.find(function(x) { return x.local === localId && String(x.nombre || "").trim().toLowerCase() === n; });
+    return it ? categoriaSinCocina(it.categoria, cfgSinCocina) : false;
+  }
+  function imprimirBarra(c, its, ronda) {
+    var ahoraISO = new Date().toISOString();
+    sbCrearImpresionBarra({ comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
+      items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i) }; }) });
+    registrar(c, "Comanda de barra", its.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "));
+  }
 
   useEffect(function() {
     var vivo = true;
@@ -3703,7 +3800,12 @@ export default function PanelComandas(p) {
     guardar(nueva);
     fijarEntrega(nueva, minutos, ahoraISO);
     var pend = items.filter(function(i) { return i.comanda_id === c.id && i.estado === "pendiente"; });
-    guardarItems(pend.map(function(i) { return { ...i, estado:"enviado", ronda:1, enviado_at:ahoraISO }; }));
+    guardarItems(pend.map(function(i) {
+      if (esSinCocina(i.nombre)) { var t = notaVisible(i); return { ...i, estado:"listo", ronda:1, enviado_at:ahoraISO, nota: MARCA_BARRA + (t ? " | " + t : "") }; }
+      return { ...i, estado:"enviado", ronda:1, enviado_at:ahoraISO };
+    }));
+    var deBarra = pend.filter(function(i) { return esSinCocina(i.nombre); });
+    if (deBarra.length) imprimirBarra(nueva, deBarra, 1);
     var av = { ...(pedidosWeb[c.id] || {}), comanda_id:c.id, local:c.local, estado:"aceptado", aceptado_at:ahoraISO, aceptado_por:usuario, minutos:minutos, prometida_at:new Date(Date.now() + minutos * 60000).toISOString() };
     setPedidosWeb(function(prev) { return { ...prev, [c.id]: av }; });
     sbGuardarPedidoWeb(av).then(function(ok) { if (!ok) alert("El pedido se aceptó, pero no se pudo avisar al cliente. Avisale por WhatsApp."); });
@@ -4133,7 +4235,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />
@@ -4166,7 +4268,10 @@ export default function PanelComandas(p) {
       ) : vista === "carta" ? (
         (p.soloServicio && !p.puedeEditarCarta)
           ? <CartaConsulta localId={localId} color={color} carta={carta} colores={coloresCarta} />
-          : <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} colores={coloresCarta} setColores={setColoresCarta} />
+          : <>
+              <ConfigSinCocina localId={localId} color={color} carta={carta} cfg={cfgSinCocina} usuario={usuario} onGuardado={function(l) { setCfgSinCocina({ categorias:l }); }} />
+              <Carta localId={localId} local={local} color={color} carta={carta} setCarta={setCarta} cargarCarta={cargarCarta} menuStock={p.menuStock} colores={coloresCarta} setColores={setColoresCarta} />
+            </>
       ) : vista === "mesas" ? (
         mesasLocal.length === 0 ? (
           <div style={{ textAlign:"center", padding:"30px 0" }}>

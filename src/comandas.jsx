@@ -584,11 +584,6 @@ function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[loc
 // ENTRADA: el mozo o el cajero marca al lado de cada producto cuál es entrada. La marca (🥗) va al principio de la aclaración del producto, así no hace falta
 // ninguna columna nueva; en pantalla se ve como una insignia y la aclaración se muestra sin la marca.
 var MARCA_ENTRADA = "🥗";
-// Lo que la cocina dejó listo hace poco (menos de 10 min) es lo que hay que ir a buscar; pasado ese rato ya no es una novedad.
-function listoReciente(listos, comandaId) {
-  var lim = Date.now() - 10 * 60000;
-  return Object.keys(listos || {}).some(function(k) { return k.indexOf(comandaId + "|") === 0 && listos[k] && listos[k].listo_at && new Date(listos[k].listo_at).getTime() >= lim; });
-}
 function esEntrada(i) { return String((i && i.nota) || "").indexOf(MARCA_ENTRADA) === 0; }
 function notaVisible(i) { var n = String((i && i.nota) || ""); return n.indexOf(MARCA_ENTRADA) === 0 ? n.slice(MARCA_ENTRADA.length).replace(/^\s*\|?\s*/, "") : n; }
 function notaConMarca(texto, entrada) { var t = String(texto || "").trim(); return entrada ? MARCA_ENTRADA + (t ? " | " + t : "") : (t || null); }
@@ -879,7 +874,6 @@ function LeyendaColores(props) {
     ["#3A7D44", "#3A7D44", "En cocina, a tiempo", "Ya está en cocina y va bien de tiempo."],
     ["#D4A017", "#D4A017", "En cocina, demorando", "Se acerca al límite de " + L + " min: conviene estar atento."],
     ["#E0452E", "#E0452E", "Rojo titilando", "Se pasó de los " + L + " min en cocina: hay que apurar."],
-    ["#4C9A5A", "#4C9A5A", "🍽️ LISTO", "La cocina lo acaba de entregar (unos minutos): hay que llevarlo a la mesa."],
     ["#FFD60A", "#FFD60A", "Amarillo: comiendo", "La cocina ya entregó todo lo que pidió."],
   ];
   return (
@@ -2263,15 +2257,14 @@ function ComandaDetalle(props) {
         var min = hayEnviado ? minutosDesde(primero) : null;
         var col = min === null ? "#3A7D44" : colorDemora(min, props.limite);
         var todoEntregado = mandados.every(function(i) { return i.estado === "listo" || i.estado === "entregado"; });   // la cocina ya entregó todo
-        var hayListo = mandados.some(function(i) { return i.estado === "listo"; }) && listoReciente(props.listos, c.id);   // la cocina dejó algo listo hace poco: hay que llevarlo
         return (
-          <div style={{ background: hayListo ? "#0B1F12" : "#111", border: hayListo ? "2px solid #4C9A5A" : "1px solid "+col+"55", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+          <div style={{ background:"#111", border:"1px solid "+col+"55", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, gap:9 }}>
               <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", letterSpacing:1 }}>
                 Pedido{primero ? " · desde " + fmtHora(primero) : ""}
               </div>
               <div style={{ fontSize:13, fontWeight:800, color:col, whiteSpace:"nowrap" }}>
-                {todoEntregado && !hayListo ? "✅ la cocina entregó el pedido" : hayEnviado ? "⏱ " + min + " min la mesa" : hayListo ? <span style={{ color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA LLEVAR</span> : ""}
+                {todoEntregado ? "✅ la cocina entregó el pedido" : hayEnviado ? "⏱ " + min + " min la mesa" : ""}
               </div>
             </div>
             {rondasAsc.map(function(r) {
@@ -3945,7 +3938,6 @@ export default function PanelComandas(p) {
         {sectorDe(m) && <div style={{ fontSize:9, color:"#7E7E7E" }}>{sectorDe(m).emoji} {sectorDe(m).nombre}</div>}
         {ocupada && esComandaPrueba(c.id) && <div style={{ fontSize:9, fontWeight:900, color:"#B07CD8" }}>🧪 PRUEBA</div>}
         {ocupada && demora !== null && demora >= limite && <div style={{ fontSize:10, fontWeight:900, color:"#FF8A70", animation:"nktPulso 1.2s infinite" }}>⏰ +{limite} min</div>}
-        {ocupada && listoReciente(listosMap, c.id) && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ fontSize:10, fontWeight:900, color:"#4C9A5A", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO</div>}
         {ocupada ? (
           <>
             <div style={{ fontSize:9, opacity:0.9, fontWeight:demora !== null ? 800 : 400 }}>
@@ -4407,7 +4399,6 @@ export default function PanelComandas(p) {
                         <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{c.cliente || "Sin nombre"}</div>
                         {c.direccion && <div style={{ fontSize:11, color:"#888", marginTop:3 }}>📍 {c.direccion}</div>}
                         {c.telefono && <div style={{ fontSize:11, color:"#666" }}>📞 {c.telefono}</div>}
-                        {listoReciente(listosMap, c.id) && items.some(function(i) { return i.comanda_id === c.id && i.estado === "listo"; }) && <div style={{ display:"inline-block", marginTop:5, marginRight:6, fontSize:12, fontWeight:900, color:"#4C9A5A", background:"#3A7D4426", border:"1px solid #4C9A5A", borderRadius:6, padding:"2px 8px", animation:"nktPulso 1.3s infinite" }}>🍽️ LISTO PARA ENTREGAR</div>}
                         {(function() { var st = estadoEntrega(entregas[c.id], ahora); return st ? <div style={{ display:"inline-block", marginTop:5, fontSize:12, fontWeight:800, color:st.col, background:st.col + "1F", border:"1px solid " + st.col + "66", borderRadius:6, padding:"2px 8px", animation: st.col === "#E0452E" ? "nktPulso 1.2s infinite" : "none" }}>{st.txt}</div> : null; })()}
                       </div>
                       <div style={{ textAlign:"right", whiteSpace:"nowrap" }}>

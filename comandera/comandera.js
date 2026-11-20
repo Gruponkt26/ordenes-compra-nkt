@@ -205,7 +205,7 @@ function enviarUSB(buffer, nombre) {
     const archivo = path.join(os.tmpdir(), "comanda_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6) + ".bin");
     fs.writeFileSync(archivo, buffer);
     const ps = process.env.COMANDERA_POWERSHELL || "powershell.exe";
-    execFile(ps, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 20000, windowsHide: true }, (err, out, errout) => {
+    execFile(ps, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.join(__dirname, "imprimir-usb.ps1"), "-Impresora", nombre, "-Archivo", archivo], { timeout: 60000, windowsHide: true }, (err, out, errout) => {
       try { fs.unlinkSync(archivo); } catch (e) {}
       if (err) return reject(new Error(String(errout || err.message).trim().split("\n").filter(Boolean)[0] || "No se pudo imprimir por USB."));
       resolve();

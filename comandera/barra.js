@@ -17,6 +17,19 @@
 // Opciones (o variables de entorno): --local (l1 Bodegón, l2 Kusama, l3 Colantonio's) · --ip / COMANDERA_IP
 // · --puerto · --ancho · --codepage · --url / NKT_SUPABASE_URL · --key / NKT_SUPABASE_KEY · --cada (segundos, 3).
 
+// Todo lo que muestra la ventana también queda en barra-log.txt (al lado del programa), para poder revisarlo después.
+const ARCHIVO_LOG = require("path").join(__dirname, "barra-log.txt");
+(function () {
+  const fs = require("fs");
+  try { if (fs.existsSync(ARCHIVO_LOG) && fs.statSync(ARCHIVO_LOG).size > 500000) fs.writeFileSync(ARCHIVO_LOG, ""); } catch (e) {}
+  for (const nivel of ["log", "error"]) {
+    const original = console[nivel].bind(console);
+    console[nivel] = function () {
+      original.apply(null, arguments);
+      try { fs.appendFileSync(ARCHIVO_LOG, new Date().toISOString().slice(0, 19).replace("T", " ") + "  " + Array.prototype.slice.call(arguments).join(" ") + "\n"); } catch (e) {}
+    };
+  }
+})();
 const https = require("https");
 const http = require("http");
 const { imprimir, previsualizar, listarImpresorasWindows, impresoraGuardada, CONFIG } = require("./comandera");
@@ -95,6 +108,9 @@ function pedir(url, opc) {
     req.end();
   });
 }
+const MAX_INTENTOS = 3;        // si una comanda falla al imprimir 3 veces, se deja de intentar (para no gastar papel sin parar)
+const ESPERA_REINTENTO_S = parseInt(process.env.NKT_ESPERA || "15", 10); // y entre un intento y otro espera este tiempo
+const intentos = new Map();    // id -> { n, hasta }
 let primeraVuelta = false;
 const avisados = new Set();
 const impresos = new Set();   // por si marcar como impresa falla: no se imprime dos veces
@@ -109,7 +125,9 @@ async function pendientes() {
   return todas.filter((x) => {
     if (impresos.has(x.id)) return false;
     const edadMin = x.job.at ? (Date.now() - new Date(x.job.at).getTime()) / 60000 : 0;
-    if ((x.job.destino || "barra") !== DESTINO) return false;   // las de la otra impresora no se tocan ni se avisan
+    if ((x.job.destino || "barra") !== DESTINO) return false;
+    const it = intentos.get(x.id);
+    if (it && (it.n >= MAX_INTENTOS || Date.now() < it.hasta)) return false;   // las de la otra impresora no se tocan ni se avisan
     const motivo = x.job.prueba && !CON_PRUEBAS ? "es de PRUEBA COMPARTIDA / modo practica (para imprimirlas: --con-pruebas)" : (MAX_EDAD_MIN > 0 && edadMin > MAX_EDAD_MIN ? "tiene mas de " + MAX_EDAD_MIN + " minutos (para imprimirla: --max-edad " + Math.ceil(edadMin + 1) + ")" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : ""));
     if (motivo) { if (!avisados.has(x.id)) { avisados.add(x.id); console.log(new Date().toLocaleTimeString("es-AR") + "  Se saltea " + (x.job.titulo || x.id) + ": " + motivo + "."); } return false; }
     return true;
@@ -144,15 +162,23 @@ async function vuelta() {
     const ticket = ticketDe(fila.job);
     if (SIMULAR) { console.log("\nComanda de " + DESTINO + " pendiente (" + fila.id + "):"); mostrar(ticket); impresos.add(fila.id); continue; }
     let reclamada = false;
+    const t0 = Date.now();
     try {
       reclamada = await reclamar(fila);
       impresos.add(fila.id);
       if (!reclamada) continue;   // otro programa la agarró primero: no se imprime dos veces
       await imprimir(ticket, cfg);
-      console.log(new Date().toLocaleTimeString("es-AR") + "  Impresa: " + ticket.local + " (" + ticket.items.length + " ítem" + (ticket.items.length === 1 ? "" : "s") + ")");
+      intentos.delete(fila.id);
+      console.log(new Date().toLocaleTimeString("es-AR") + "  Impresa: " + ticket.local + " (" + ticket.items.length + " ítem" + (ticket.items.length === 1 ? "" : "s") + ") [" + fila.id + ", " + (Date.now() - t0) + " ms]");
     } catch (e) {
-      console.error(new Date().toLocaleTimeString("es-AR") + "  " + e.message + " (se reintenta)");
-      if (reclamada) { impresos.delete(fila.id); try { await liberar(fila); } catch (e2) { console.error("  " + e2.message); } }
+      const it = intentos.get(fila.id) || { n: 0, hasta: 0 };
+      it.n += 1; it.hasta = Date.now() + ESPERA_REINTENTO_S * 1000; intentos.set(fila.id, it);
+      console.error(new Date().toLocaleTimeString("es-AR") + "  Falló la comanda " + fila.id + " (intento " + it.n + " de " + MAX_INTENTOS + ", " + (Date.now() - t0) + " ms): " + e.message);
+      if (reclamada) {
+        impresos.delete(fila.id);
+        if (it.n < MAX_INTENTOS) { try { await liberar(fila); console.error("  Queda pendiente: se reintenta en " + ESPERA_REINTENTO_S + " segundos."); } catch (e2) { console.error("  " + e2.message); } }
+        else console.error("  Se deja de intentar con esta comanda, para no gastar papel. Revisá la impresora; la comanda quedó marcada como impresa.");
+      }
     }
   }
 }

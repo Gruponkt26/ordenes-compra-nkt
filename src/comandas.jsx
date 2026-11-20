@@ -584,6 +584,11 @@ function limiteDe(cfg, localId) { var n = Number(((cfg || {}).limites || {})[loc
 // ENTRADA: el mozo o el cajero marca al lado de cada producto cuál es entrada. La marca (🥗) va al principio de la aclaración del producto, así no hace falta
 // ninguna columna nueva; en pantalla se ve como una insignia y la aclaración se muestra sin la marca.
 var MARCA_ENTRADA = "🥗";
+// Lo que la cocina dejó listo hace poco (menos de 10 min) es lo que hay que ir a buscar; pasado ese rato ya no es una novedad.
+function listoReciente(listos, comandaId) {
+  var lim = Date.now() - 10 * 60000;
+  return Object.keys(listos || {}).some(function(k) { return k.indexOf(comandaId + "|") === 0 && listos[k] && listos[k].listo_at && new Date(listos[k].listo_at).getTime() >= lim; });
+}
 function esEntrada(i) { return String((i && i.nota) || "").indexOf(MARCA_ENTRADA) === 0; }
 function notaVisible(i) { var n = String((i && i.nota) || ""); return n.indexOf(MARCA_ENTRADA) === 0 ? n.slice(MARCA_ENTRADA.length).replace(/^\s*\|?\s*/, "") : n; }
 function notaConMarca(texto, entrada) { var t = String(texto || "").trim(); return entrada ? MARCA_ENTRADA + (t ? " | " + t : "") : (t || null); }

@@ -132,3 +132,19 @@ programa lo avisa y vuelve a intentar; cada comanda sale una sola vez.
 
 Editar `iniciar-barra.bat` (poner el nombre de la impresora y la clave) y crear en el **Programador de tareas de
 Windows** una tarea «Al iniciar sesión» que ejecute ese archivo.
+
+## Comanda de cocina en papel (opcional)
+
+Además de la pantalla de cocina, el local puede imprimir lo que va a la cocina. Se prende **por local** en
+Comandas, en la tarjeta del tiempo de aviso: «🖨️ Imprimir también en papel lo que va a la cocina» (apagado por defecto,
+para no duplicar si el local ya imprime con otro sistema). Cada «Marchar» deja una comanda de cocina para imprimir;
+las bebidas siguen yendo solo a la barra.
+
+La imprime este mismo programa, con `--destino cocina`, apuntando a la impresora de la cocina:
+
+```
+node barra.js --local l1 --ip 192.168.1.222 --destino cocina
+```
+
+Para la barra se sigue usando el comando de siempre (`--destino barra` es el valor por defecto). Si la cocina y la barra
+imprimen en la misma PC, se dejan dos ventanas corriendo, una con cada destino.

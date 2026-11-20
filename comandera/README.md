@@ -105,7 +105,8 @@ de la barra. No cambia IPs, ni drivers, ni la comparte.
 
 ### Impresora de la barra por USB (Windows)
 
-1. Instalar **Node.js** (LTS) en esa PC y copiar esta carpeta (`comandera`).
+1. Instalar **Node.js** (LTS) en esa PC y copiar esta carpeta (`comandera`). En **Windows 7** instalar la
+   **12.22.12** (`node-v12.22.12-x64.msi`, la última que corre ahí); el programa anda desde Node 12.
 2. Ver cómo se llama la impresora en Windows: `node barra.js --listar` (es el nombre de *Impresoras y escáneres*).
 3. Probar con un ticket de prueba: `node prueba.js --usb "NOMBRE"`. Si los acentos salen raros: `--codepage 2`.
 4. Dejarla andando: `node barra.js --local l1 --usb "NOMBRE" --key LA_CLAVE`

@@ -1493,7 +1493,7 @@ export function PanelCocina(props) {
                     {nv && <div style={{ fontSize:14, fontWeight:900, marginTop:2 }}>+{nv.extra} min de retraso · {nv.txt}</div>}
                   </div>;
                 })()}
-                {g.salida && (
+                {g.salida && c.tipo === "mesa" && (
                   <div style={{ background: g.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:10, padding:"10px 12px", border:"2px solid #fff" }}>
                     <div style={{ fontSize:20, fontWeight:900, letterSpacing:0.5 }}>{g.salida === "junto" ? "🔥 SALE TODO JUNTO" : "📋 SALE POR ORDEN DE COMANDA"}</div>
                     <div style={{ fontSize:13, fontWeight:700, marginTop:2 }}>{g.salida === "junto" ? "Lo agregado va junto con lo que ya está en la cocina." : "Lo agregado sale después de lo anterior."} <span style={{ opacity:0.85 }}>(lo eligió {c.tipo === "mesa" ? "el mozo" : "el cajero"})</span></div>
@@ -1534,7 +1534,7 @@ export function PanelCocina(props) {
                     var mt = t.espera ? null : minutosDesde(t.desde);
                     return (
                       <div key={t.clave} style={{ marginBottom: multiple ? 10 : 0, padding: (agregado || t.curso) ? "6px 8px 8px" : 0, borderRadius:9, background: t.curso === "entrada" ? "#4C9A5A14" : t.curso === "principal" ? "#3A9BC114" : agregado ? "#D4A01712" : "transparent", border: t.curso === "entrada" ? "1px solid #4C9A5A66" : t.curso === "principal" ? "1px solid #3A9BC166" : agregado ? "1px solid #D4A01766" : "none" }}>
-                        {(multiple || agregado || t.curso || t.juntoCon) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ {t.curso === "principal" ? "espera que salga la entrada" : "espera que salga lo anterior"}</span>}{t.salida && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
+                        {(multiple || agregado || t.curso || t.juntoCon) && <div style={{ fontSize:12, fontWeight:900, letterSpacing:0.8, color: t.curso === "entrada" ? "#8FD19A" : t.curso === "principal" ? "#7CC4E4" : agregado ? "#D4A017" : "#8C8C8C", marginBottom:3 }}>{t.curso === "entrada" ? "🥗 ENTRADA " : t.curso === "principal" ? "🍽️ PRINCIPAL " : agregado ? "➕ AGREGADO " : "PEDIDO ORIGINAL "}{t.espera ? "" : horaSeg(t.desde).slice(0, 5)}{t.espera && <span style={{ marginLeft:8, fontSize:13, fontWeight:900, color:"#D4A017" }}>⏳ {t.curso === "principal" ? "espera que salga la entrada" : "espera que salga lo anterior"}</span>}{t.salida && c.tipo === "mesa" && <span style={{ marginLeft:8, background: t.salida === "junto" ? "#E0652E" : "#3A9BC1", color:"#fff", borderRadius:6, padding:"1px 7px", fontSize:11, fontWeight:900 }}>{t.salida === "junto" ? "🔥 TODO JUNTO" : "📋 POR ORDEN"}</span>}{mt !== null && <span style={{ marginLeft:8, fontSize:15, fontWeight:900, color: colorDemora(mt, LIMITE) }}>⏱ {mt} min</span>}</div>}
                         {t.items.map(function(i) {
                           return (
                             <div key={i.id} style={{ padding:"4px 0" }}>
@@ -2043,10 +2043,15 @@ function ComandaDetalle(props) {
     if (props.comanda.tipo === "delivery" && !props.entrega) setPreguntaEntrega(true);
     // Delivery con el pedido ya en marcha al que se le suma algo: se ofrece cambiar el tiempo de entrega antes de mandar.
     else if (props.comanda.tipo === "delivery" && props.entrega && mandados.length) setPreguntaTiempoExtra(true);
-    else if (hayEnCocina) setPreguntaSalida(true);
-    else mandar();
+    else mandarSegunTipo();
   }
-  function seguirTrasTiempo() { if (hayEnCocina) setPreguntaSalida(true); else mandar(); }
+  // En una mesa se pregunta cómo sale lo nuevo; en delivery y mostrador siempre sale todo junto (no se pregunta, queda anotado para que la cocina lo una en un solo bloque).
+  function mandarSegunTipo() {
+    if (!hayEnCocina) { mandar(); return; }
+    if (props.comanda.tipo === "mesa") setPreguntaSalida(true);
+    else mandar("junto");
+  }
+  function seguirTrasTiempo() { mandarSegunTipo(); }
   var [medioDel, setMedioDel] = useState("efectivo");   // cómo paga el delivery que toma el cajero: efectivo al recibir o transferencia al local
   var [preguntaEntrega, setPreguntaEntrega] = useState(false);
   var [preguntaTiempoExtra, setPreguntaTiempoExtra] = useState(false);   // delivery en marcha al que se le suma algo: ¿cambia el tiempo?   // delivery sin tiempo de entrega: se pregunta antes de marchar
@@ -2282,7 +2287,7 @@ function ComandaDetalle(props) {
                     var tardo = entregada && fin && ini ? Math.round((new Date(fin) - new Date(ini)) / 60000) : null;
                     var nombreTanda = inf.curso === "entrada" ? "🥗 Entrada" : inf.curso === "principal" ? "🍽️ Principal" : ((r.ronda || 0) > 1 ? "➕ " : "") + "Tanda " + r.ronda;
                     return <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, margin:"6px 0 2px", fontSize:10, fontWeight:800, letterSpacing:0.8, textTransform:"uppercase", color: inf.curso === "entrada" ? "#8FD19A" : inf.curso === "principal" ? "#7CC4E4" : (r.ronda || 0) > 1 ? "#D4A017" : "#6E6E6E" }}>
-                      <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}{props.extra && props.extra.salidas && props.extra.salidas[r.ronda || 0] && <span style={{ marginLeft:6, color:"#fff", background: props.extra.salidas[r.ronda || 0] === "junto" ? "#E0652E" : "#3A9BC1", borderRadius:5, padding:"0 6px", fontSize:10 }}>{props.extra.salidas[r.ronda || 0] === "junto" ? "🔥 todo junto" : "📋 por orden"}</span>}</span>
+                      <span>{nombreTanda}{!inf.espera && ini ? " · " + fmtHora(ini) : ""}{c.tipo === "mesa" && props.extra && props.extra.salidas && props.extra.salidas[r.ronda || 0] && <span style={{ marginLeft:6, color:"#fff", background: props.extra.salidas[r.ronda || 0] === "junto" ? "#E0652E" : "#3A9BC1", borderRadius:5, padding:"0 6px", fontSize:10 }}>{props.extra.salidas[r.ronda || 0] === "junto" ? "🔥 todo junto" : "📋 por orden"}</span>}</span>
                       <span style={{ fontSize:12, color: entregada ? "#4C9A5A" : inf.espera ? "#D4A017" : minR !== null ? colorDemora(minR, props.limite) : "#4C9A5A", textTransform:"none", letterSpacing:0 }}>
                         {entregada ? "✅ entregada" + (tardo !== null && tardo >= 0 ? " · tardó " + tardo + " min" : "") : inf.espera ? (inf.curso === "principal" ? "⏳ espera que salga la entrada" : "⏳ espera que salga lo anterior") : pendiente ? "⏱ " + minR + " min" : listoR ? "🍽️ lista para llevar" : ""}
                       </span>

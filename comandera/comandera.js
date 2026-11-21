@@ -114,20 +114,26 @@ function armar(ticket, cfg) {
   crudo(CMD.negritaOff);
   crudo(CMD.izquierda);
   linea("-".repeat(c.ancho));
+  // Número, fecha, mozo y dirección en doble alto (mismo ancho: entran los mismos caracteres por línea).
+  crudo(CMD.altoDoble);
+  crudo(CMD.negritaOn);
   linea(dosColumnas(
     ticket.numero ? "Comanda #" + ticket.numero : "",
     ticket.hora || "",
     c.ancho
   ));
+  crudo(CMD.negritaOff);
   if (ticket.mozo) linea("Mozo: " + ticket.mozo);
   if (ticket.direccion) envolver("Dir: " + ticket.direccion, c.ancho, 0).forEach(linea);
   if (ticket.telefono) linea("Tel: " + ticket.telefono);
+  crudo(CMD.normal);
   linea("-".repeat(c.ancho));
   linea();
 
   // Ítems: la cantidad va pegada al margen y el nombre en negrita, porque es lo
   // único que la cocina realmente lee.
   for (const item of ticket.items || []) {
+    crudo(CMD.altoDoble);   // los ítems y sus aclaraciones, más grandes: es lo que la cocina lee de lejos
     const cant = String(item.cant || 1) + "x ";
     const nombre = envolver(item.nombre || "", c.ancho - cant.length, 0);
     crudo(CMD.negritaOn);
@@ -139,6 +145,7 @@ function armar(ticket, cfg) {
     if (item.precio !== undefined && item.precio !== null) {
       linea(dosColumnas("", pesos(item.precio * (item.cant || 1)), c.ancho));
     }
+    crudo(CMD.normal);
     linea();
   }
 
@@ -153,7 +160,9 @@ function armar(ticket, cfg) {
   const notas = (Array.isArray(ticket.nota) ? ticket.nota : [ticket.nota]).filter(Boolean);   // una o varias líneas al pie
   if (notas.length) {
     linea("-".repeat(c.ancho));
+    crudo(CMD.altoDoble);
     for (const n of notas) envolver(n, c.ancho, 0).forEach(linea);
+    crudo(CMD.normal);
   }
 
   crudo(CMD.avanzar(4));

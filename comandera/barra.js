@@ -63,13 +63,15 @@ const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
 
 // La impresora no entiende los símbolos fuera del abecedario con acentos: se cambian por algo que sí se imprime.
 const limpiar = (t) => String(t || "").replace(/[·•]/g, "-").replace(/[→»]/g, ">").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-const hora = (iso) => { try { return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }); } catch (e) { return ""; } };
+const dos = (n) => String(n).padStart(2, "0");
+// Fecha y hora de la comanda (hora del local, la de esta PC): 21/11/2026 09:24. Sale en todas: mesa, mostrador y delivery.
+const fechaHora = (iso) => { try { const d = new Date(iso); if (isNaN(d.getTime())) return ""; return dos(d.getDate()) + "/" + dos(d.getMonth() + 1) + "/" + d.getFullYear() + " " + dos(d.getHours()) + ":" + dos(d.getMinutes()); } catch (e) { return ""; } };
 
 function ticketDe(job) {
   const cocina = job.destino === "cocina";
   const notas = [];
   if (cocina) {
-    if (job.entrega_at) notas.push("ENTREGA AL CLIENTE: " + hora(job.entrega_at));
+    if (job.entrega_at) notas.push("ENTREGA AL CLIENTE: " + fechaHora(job.entrega_at));
     if (job.salida === "junto") notas.push("AGREGADO: SALE TODO JUNTO con lo que ya esta en la cocina.");
     else if (job.salida === "orden") notas.push("AGREGADO: SALE POR ORDEN DE COMANDA, despues de lo anterior.");
   }
@@ -78,7 +80,7 @@ function ticketDe(job) {
     nota: notas.length ? notas : undefined,
     local: limpiar(job.titulo || NOMBRES[job.local] || ""),
     numero: job.numero || undefined,
-    hora: hora(job.at),
+    hora: fechaHora(job.at),
     mozo: limpiar(job.mozo || ""),
     direccion: job.tipo === "delivery" ? limpiar(job.direccion || "") : "",
     items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")) })),

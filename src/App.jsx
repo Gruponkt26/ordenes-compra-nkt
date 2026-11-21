@@ -5424,10 +5424,10 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
             <div style={{fontSize:13,fontWeight:800,color:CONCESION.color}}>{t.m}</div>
             <div style={{fontSize:16,fontWeight:800,color:t.saldo<0?"#C1440E":"#3A7D44"}}>{t.saldo<0?"−":""}{fmtP(Math.abs(t.saldo))}</div>
           </div>
-          <div style={{fontSize:10,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:4}}>Ingresó · {fmtP(t.totE)}</div>
-          {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#999",padding:"3px 0"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
-          <div style={{fontSize:10,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:8}}>Egresó · {fmtP(t.totS)}</div>
-          {t.sal.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:"#999",padding:"3px 0"}}><span style={{minWidth:0}}>{f.label}{(f.medios||[]).length>0&&<span style={{display:"block",fontSize:10.5,color:"#6E6E6E",marginTop:1}}>{f.medios.map(function(m){return m.medio+(f.medios.length>1?" "+fmtP(m.monto):"");}).join(" · ")}</span>}</span><b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(f.monto)}</b></div>;})}
+          <div style={{fontSize:12,fontWeight:800,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:6,paddingBottom:4,borderBottom:"1px solid #3A7D4444"}}>Ingresó · {fmtP(t.totE)}</div>
+          {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:15,fontWeight:800,color:"#F0EDE8",padding:"6px 0",borderBottom:"1px solid #161616"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+          <div style={{fontSize:12,fontWeight:800,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:12,paddingBottom:4,borderBottom:"1px solid #C1440E44"}}>Egresó · {fmtP(t.totS)}</div>
+          {t.sal.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:15,fontWeight:800,color:"#F0EDE8",padding:"6px 0",borderBottom:"1px solid #161616"}}><span style={{minWidth:0}}>{f.label}{(f.medios||[]).length>0&&<span style={{display:"block",fontSize:10.5,color:"#6E6E6E",marginTop:1}}>{f.medios.map(function(m){return m.medio+(f.medios.length>1?" "+fmtP(m.monto):"");}).join(" · ")}</span>}</span><b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(f.monto)}</b></div>;})}
         </div>
       );})}
     </div>
@@ -9439,7 +9439,7 @@ function PanelDeportes(p){
               {props.filas.filter(function(f){return f.cuantas>0;}).map(function(f){
                 return(
                   <div key={f.label} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:9,padding:"5px 0",borderTop:"1px solid #161616"}}>
-                    <div style={{fontSize:12,color:"#999",flex:1,minWidth:0}}>{f.label}</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",flex:1,minWidth:0}}>{f.label}</div>
                     {f.pendiente>0&&<div style={{fontSize:10,color:"#D4A017",whiteSpace:"nowrap"}}>+${Math.round(f.pendiente).toLocaleString("es-AR")} sin {props.verbo}</div>}
                     <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8",whiteSpace:"nowrap"}}>${Math.round(f.cobrado).toLocaleString("es-AR")}</div>
                   </div>

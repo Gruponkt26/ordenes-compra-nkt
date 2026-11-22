@@ -10,6 +10,7 @@
 //   node barra.js --listar                    → muestra los nombres de las impresoras instaladas en Windows
 //   node barra.js --local l1 --simular        → muestra en pantalla cómo saldría, sin imprimir ni marcar nada
 //   node barra.js --demo --simular            → una comanda de mentira, sin conectarse a nada
+//   (el destino «barra» imprime además el ticket de CONTROL / cuenta del cliente, por la misma impresora)
 //   --destino cocina            → imprime las comandas de COCINA en papel (por defecto: barra)
 //   --con-pruebas               → imprime también las de la «Prueba compartida» / modo práctica (para ensayar)
 //   --max-edad 5                → no imprime comandas con más de 5 minutos (por defecto 60; 0 = sin límite)
@@ -69,21 +70,29 @@ const fechaHora = (iso) => { try { const d = new Date(iso); if (isNaN(d.getTime(
 
 function ticketDe(job) {
   const cocina = job.destino === "cocina";
+  const control = job.destino === "control";
   const notas = [];
+  if (control) {
+    const pesos = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
+    notas.push("Subtotal: " + pesos(job.subtotal));
+    if (Number(job.descuento) > 0) notas.push("Descuento" + (job.descuento_motivo ? " (" + limpiar(job.descuento_motivo) + ")" : "") + ": -" + pesos(job.descuento));
+    notas.push("TOTAL: " + pesos(job.total));
+    notas.push("NO VALIDO COMO FACTURA");
+  }
   if (cocina) {
     if (job.entrega_at) notas.push("ENTREGA AL CLIENTE: " + fechaHora(job.entrega_at));
     if (job.salida === "junto") notas.push("AGREGADO: SALE TODO JUNTO con lo que ya esta en la cocina.");
     else if (job.salida === "orden") notas.push("AGREGADO: SALE POR ORDEN DE COMANDA, despues de lo anterior.");
   }
   return {
-    tipo: cocina ? "COCINA" : "BARRA",
+    tipo: control ? "CONTROL" : (cocina ? "COCINA" : "BARRA"),
     nota: notas.length ? notas : undefined,
     local: limpiar(job.titulo || NOMBRES[job.local] || ""),
     numero: job.numero || undefined,
     hora: fechaHora(job.at),
     mozo: limpiar(job.mozo || ""),
     direccion: job.tipo === "delivery" ? limpiar(job.direccion || "") : "",
-    items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")) })),
+    items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")), precio: control ? Number(i.precio) || 0 : undefined })),
   };
 }
 
@@ -127,7 +136,8 @@ async function pendientes() {
   return todas.filter((x) => {
     if (impresos.has(x.id)) return false;
     const edadMin = x.job.at ? (Date.now() - new Date(x.job.at).getTime()) / 60000 : 0;
-    if ((x.job.destino || "barra") !== DESTINO) return false;
+    const dest = x.job.destino || "barra";
+    if (DESTINO === "barra" ? (dest !== "barra" && dest !== "control") : dest !== DESTINO) return false;   // la barra imprime también el ticket de control (misma impresora)
     const it = intentos.get(x.id);
     if (it && (it.n >= MAX_INTENTOS || Date.now() < it.hasta)) return false;   // las de la otra impresora no se tocan ni se avisan
     const motivo = x.job.prueba && !CON_PRUEBAS ? "es de PRUEBA COMPARTIDA / modo practica (para imprimirlas: --con-pruebas)" : (MAX_EDAD_MIN > 0 && edadMin > MAX_EDAD_MIN ? "tiene mas de " + MAX_EDAD_MIN + " minutos (para imprimirla: --max-edad " + Math.ceil(edadMin + 1) + ")" : (LOCAL && x.job.local !== LOCAL ? "es del local " + x.job.local + " y este programa es del " + LOCAL : ""));

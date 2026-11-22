@@ -871,6 +871,13 @@ function VentanaControl(props) {
     t += "TOTAL: " + pesos(props.total) + "\n(No válido como factura)";
     return t;
   }
+  var [mandado, setMandado] = useState(false);
+  // Imprimir: deja el ticket de control para la impresora del local (la que corre el programa de la comandera), sin cuadros del navegador.
+  function imprimirLocal() {
+    if (!props.onImprimirControl || !lineas.length) return;
+    props.onImprimirControl({ items: lineas.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, precio:Number(i.precio) || 0 }; }), subtotal:props.subtotal, descuento:props.descuento || 0, motivo:props.motivoDesc || "", total:props.total });
+    setMandado(true); setTimeout(function() { setMandado(false); }, 4000);
+  }
   function imprimir() {
     var w = window.open("", "_blank", "width=380,height=600");
     if (!w) { alert("El navegador bloqueó la ventana de impresión. Permitila e intentá de nuevo."); return; }
@@ -891,10 +898,12 @@ function VentanaControl(props) {
         </div>
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        <button onClick={imprimir} style={{ flex:1, padding:"11px", borderRadius:9, border:"none", background:"#3A7D44", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>🖨️ Imprimir</button>
+        {props.onImprimirControl
+          ? <button onClick={imprimirLocal} disabled={!lineas.length} style={{ flex:1, padding:"11px", borderRadius:9, border:"none", background:mandado ? "#2E5C36" : "#3A7D44", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>{mandado ? "✓ Mandado a la impresora" : "🖨️ Imprimir"}</button>
+          : <button onClick={imprimir} style={{ flex:1, padding:"11px", borderRadius:9, border:"none", background:"#3A7D44", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>🖨️ Imprimir</button>}
         <button onClick={function() { try { navigator.clipboard.writeText(textoPlano()); alert("Copiado."); } catch (e) {} }} style={{ ...GH, flex:1, padding:"11px", fontSize:13 }}>📋 Copiar</button>
       </div>
-      <div style={{ fontSize:10.5, color:"#777", marginTop:8 }}>Es un control para el cliente, no una factura.</div>
+      <div style={{ fontSize:10.5, color:"#777", marginTop:8 }}>Es un control para el cliente, no una factura.{props.onImprimirControl && <span> · <a onClick={imprimir} style={{ color:"#8C8C8C", textDecoration:"underline", cursor:"pointer" }}>imprimir desde el navegador</a></span>}</div>
     </Ventana>
   );
 }
@@ -2377,7 +2386,7 @@ function ComandaDetalle(props) {
       </div>
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
-      {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onCerrar={function() { setVentana(null); }} />}
+      {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onImprimirControl={props.onImprimirControl} onCerrar={function() { setVentana(null); }} />}
       {preguntaTiempoExtra && (function() {
         var st = estadoEntrega(props.entrega, props.ahora || Date.now());
         var ir = function(fn) { setPreguntaTiempoExtra(false); if (fn) fn(); seguirTrasTiempo(); };
@@ -3686,6 +3695,14 @@ export default function PanelComandas(p) {
       salida: salida || "", entrega_at: e && e.prometida_at ? e.prometida_at : "", at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
       items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i), entrada:esEntrada(i) }; }) });
   }
+  // Ticket de control (precuenta) para el cliente: sale por la impresora de la barra/caja con el programa de la comandera.
+  function imprimirControl(c, d) {
+    sbCrearImpresionBarra({ destino:"control", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "",
+      subtotal:d.subtotal, descuento:d.descuento, descuento_motivo:d.motivo, total:d.total, at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario, items:d.items }).then(function(ok) {
+      if (!ok) alert("No se pudo dejar el ticket para imprimir. Revisá la conexión.");
+    });
+    registrar(c, "Imprimió el control", pesos(d.total));
+  }
   function imprimirBarra(c, its, ronda) {
     var ahoraISO = new Date().toISOString();
     sbCrearImpresionBarra({ destino:"barra", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
@@ -4257,7 +4274,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onImprimirCocina={function(its, ronda, salida, separa) { imprimirCocina(comandaAbierta, its, ronda, salida, separa); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onImprimirCocina={function(its, ronda, salida, separa) { imprimirCocina(comandaAbierta, its, ronda, salida, separa); }} onImprimirControl={function(d) { imprimirControl(comandaAbierta, d); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />

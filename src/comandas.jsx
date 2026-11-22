@@ -860,6 +860,28 @@ function VentanaFactura(props) {
   );
 }
 
+// Anular una cuenta que ya se comandó (error del mozo, se fueron, se hizo de prueba...): queda anotada con el motivo, la mesa se libera y no suma a ninguna caja.
+function VentanaAnular(props) {
+  var [motivo, setMotivo] = useState("");
+  var ok = motivo.trim().length >= 3;
+  var rapidos = ["Se fueron sin consumir", "Error del mozo", "Mesa equivocada", "El cliente se arrepintió", "Era una prueba"];
+  return (
+    <Ventana titulo={"🚫 Anular · " + props.titulo} onCerrar={props.onCerrar}>
+      <div style={{ fontSize:12.5, color:"#E0A090", lineHeight:1.55, marginBottom:10 }}>
+        Se <b>anula toda la cuenta</b>{props.cantItems ? " (" + props.cantItems + " producto" + (props.cantItems === 1 ? "" : "s") + ")" : ""}: la cocina deja de verla, la mesa queda libre y <b>no se cobra ni entra al cierre de caja</b>. Queda anotado quién la anuló y por qué. No se puede deshacer.
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+        {rapidos.map(function(m) { return <button key={m} onClick={function() { setMotivo(m); }} style={{ padding:"6px 10px", borderRadius:8, border:"1px solid " + (motivo === m ? "#E0452E" : "#2A2A2A"), background:motivo === m ? "#E0452E22" : "#151515", color:"#E8D2CC", fontSize:11.5, cursor:"pointer" }}>{m}</button>; })}
+      </div>
+      <input value={motivo} onChange={function(e) { setMotivo(e.target.value); }} placeholder="Motivo (obligatorio)" style={{ ...INP, marginBottom:10 }} />
+      <div style={{ display:"flex", gap:8 }}>
+        <button disabled={!ok} onClick={function() { props.onAnular(motivo.trim()); }} style={{ flex:2, padding:"12px", borderRadius:9, border:"none", background:ok ? "#C1121F" : "#1A1A1A", color:ok ? "#fff" : "#555", fontSize:14, fontWeight:800, cursor:ok ? "pointer" : "not-allowed" }}>🚫 Anular la cuenta</button>
+        <button onClick={props.onCerrar} style={{ ...GH, flex:1, padding:"12px", fontSize:13 }}>Volver</button>
+      </div>
+    </Ventana>
+  );
+}
+
 // El control (precuenta): lo que se le muestra o se le imprime al cliente antes de cobrar. No es una factura.
 function VentanaControl(props) {
   var lineas = props.items;
@@ -2251,7 +2273,7 @@ function ComandaDetalle(props) {
             { id:"control",  txt:"🧾 Control",      sub:"precuenta",                                                                      col:"#8FD19A", off:!mios.length, fn:function() { setVentana("control"); if (props.onExtra) props.onExtra({ ...extra, control_at:new Date().toISOString() }); } },
             { id:"desc",     txt:"🏷️ Descuento",    sub:props.puedeDescuento === false ? "lo aplica el cajero" : (descM > 0 ? "−" + pesos(descM) : "% o $"),                       col:"#D4A017", off:!mios.length || props.puedeDescuento === false, fn:function() { setVentana("descuento"); } },
             { id:"facturar", txt:"🧾 Facturar",     sub:extra.factura ? "anotado" : "datos de factura",                                    col:"#5BB8DC", off:!mios.length, fn:function() { setVentana("factura"); } },
-          ].concat(c.tipo === "mesa" ? [{ id:"personas", txt:"👥 Personas", sub:extra.personas ? extra.personas + " en la mesa" : "cuántos son", col:"#C9A0F0", fn:function() { setVentana("personas"); } }] : []).map(function(b) {
+          ].concat([{ id:"anular", txt:"🚫 Anular", sub:props.puedeDescuento === false ? "lo anula el cajero" : "toda la cuenta", col:"#E0452E", off:props.puedeDescuento === false, fn:function() { setVentana("anular"); } }]).concat(c.tipo === "mesa" ? [{ id:"personas", txt:"👥 Personas", sub:extra.personas ? extra.personas + " en la mesa" : "cuántos son", col:"#C9A0F0", fn:function() { setVentana("personas"); } }] : []).map(function(b) {
             return (
               <button key={b.id} disabled={b.off} onClick={b.fn}
                 style={{ padding:"10px 4px", borderRadius:9, border:"1px solid "+(b.off ? "#1E1E1E" : b.col+"66"), background:b.off ? "#0E0E0E" : b.col+"14", color:b.off ? "#444" : b.col, fontFamily:"'Inter',sans-serif", cursor:b.off ? "not-allowed" : "pointer", textAlign:"center", lineHeight:1.25 }}>
@@ -2418,6 +2440,7 @@ function ComandaDetalle(props) {
       </div>
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
+      {ventana === "anular" && <VentanaAnular titulo={props.titulo} cantItems={mios.length} onCerrar={function() { setVentana(null); }} onAnular={function(m) { setVentana(null); if (props.onAnular) props.onAnular(m); }} />}
       {ventana === "personas" && <ElegirPersonas titulo={props.titulo} color={color} actual={extra.personas}
         onElegir={function(n) { setVentana(null); if (props.onExtra) props.onExtra({ ...extra, personas:n }); }} onCancelar={function() { setVentana(null); }} />}
       {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} personas={extra.personas} onImprimirControl={props.onImprimirControl} onCerrar={function() { setVentana(null); }} />}
@@ -3730,6 +3753,17 @@ export default function PanelComandas(p) {
       salida: salida || "", entrega_at: e && e.prometida_at ? e.prometida_at : "", at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
       items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i), entrada:esEntrada(i) }; }) });
   }
+  // Anular una cuenta ya comandada: los productos pasan a «cancelado» (la cocina deja de verlos), la cuenta queda «cancelada» (no cobra, no entra a la caja) y todo queda en el historial.
+  function anularCuenta(c, motivo) {
+    if (!window.confirm("¿Anular " + tituloDe(c) + "?\n\nMotivo: " + motivo + "\n\nNo se cobra y no se puede deshacer.")) return;
+    var ahoraISO = new Date().toISOString();
+    var propios = items.filter(function(i) { return i.comanda_id === c.id && i.estado !== "cancelado"; });
+    var nota = "Anulada: " + motivo + " (" + usuario + ")";
+    if (propios.length) guardarItems(propios.map(function(i) { return { ...i, estado:"cancelado", nota:nota }; }));
+    guardar({ ...c, estado:"cancelada", cerrada_at:ahoraISO });
+    registrar(c, "Anuló la cuenta", motivo + " · " + propios.length + " producto" + (propios.length === 1 ? "" : "s") + " · por " + usuario);
+    setAbiertaId(null);
+  }
   // Ticket de control (precuenta) para el cliente: sale por la impresora de la barra/caja con el programa de la comandera.
   function imprimirControl(c, d) {
     sbCrearImpresionBarra({ destino:"control", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "",
@@ -4316,7 +4350,7 @@ export default function PanelComandas(p) {
           onCerrar={function(total, sinMandar, subtotal, desc) { cerrar(comandaAbierta, total, sinMandar, subtotal, desc); }}
           extra={extras[comandaAbierta.id]} onExtra={function(e) { guardarExtra(comandaAbierta.id, e); }}
           puedeDescuento={p.puedeDescuento} localNombre={local && local.nombre}
-          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onImprimirCocina={function(its, ronda, salida, separa) { imprimirCocina(comandaAbierta, its, ronda, salida, separa); }} onImprimirControl={function(d) { imprimirControl(comandaAbierta, d); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
+          entrega={entregas[comandaAbierta.id]} ahora={ahora} onEntrega={function(m) { fijarEntrega(comandaAbierta, m); }} onSumarEntrega={function(x) { sumarEntrega(comandaAbierta, x); }} esSinCocina={esSinCocina} onImprimirBarra={function(its, ronda) { imprimirBarra(comandaAbierta, its, ronda); }} onImprimirCocina={function(its, ronda, salida, separa) { imprimirCocina(comandaAbierta, its, ronda, salida, separa); }} onImprimirControl={function(d) { imprimirControl(comandaAbierta, d); }} onAnular={function(m) { anularCuenta(comandaAbierta, m); }} onMedioPago={function(m) { fijarMedioDelivery(comandaAbierta, m); }}
           colores={coloresCarta} limite={limite} exigirCocina={exigirCocina} listos={listosMap} onSalida={function(rondas, salida) { guardarSalida(comandaAbierta.id, rondas, salida); }}
           mozos={mozos} onCambiarMozo={function(nombre) { setUltimoMozo(nombre); registrar(comandaAbierta, "Cambió el mozo", (comandaAbierta.mozo || "—") + " → " + nombre); guardar({ ...comandaAbierta, mozo: nombre }); }}
         />

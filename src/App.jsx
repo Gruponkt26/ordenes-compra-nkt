@@ -15843,7 +15843,7 @@ function PanelNovedades(p){
   var [fechaPlan,setFechaPlan]=useState("");          // saldar entre dependencias: la fecha elegida
   var [cambiandoPlan,setCambiandoPlan]=useState(false);
   var [mesSaldar,setMesSaldar]=useState(null);   // mes de la tarjeta "Saldar dependencias"
-  var [tabNov,setTabNov]=useState("plata"); // plata | deudas | venc | resultados | personal | operacion
+  var [tabNov,setTabNov]=useState("plata"); // plata | socios | deudas | venc | resultados | personal | operacion
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
@@ -16792,7 +16792,7 @@ function PanelNovedades(p){
 
       {/* Pestañas: lo de todos los días queda arriba, el resto se consulta por tema */}
       <div id="nov_tabs" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,scrollMarginTop:8}}>
-        {[["plata","💰 Plata"],["deudas","💳 Deudas"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
+        {[["plata","💰 Plata"],["socios","🤝 Socios"],["deudas","💳 Deudas"],["venc","📅 Vencimientos e impuestos"],["resultados","📈 Resultados"],["personal","👥 Personal"],["operacion","🏪 Operación"]].map(function(t){
           var act=tabNov===t[0];
           return <button key={t[0]} onClick={function(){setTabNov(t[0]);}} style={{padding:"8px 14px",borderRadius:9,border:"1px solid "+(act?"#D4A017":"#222"),background:act?"#D4A01722":"#0C0C0C",color:act?"#F0EDE8":"#8C8C8C",fontFamily:"'Inter',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{t[1]}</button>;
         })}
@@ -17485,7 +17485,30 @@ function PanelNovedades(p){
           )}
         </Seccion>
 
-        <Seccion tab="plata" id="socios" res={"Aportes "+fmt(totalAportes)+" · retiros "+fmt(totalRetiros)} titulo="🤝 Socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
+        {/* Por socio: cuánto puso, cuánto sacó y el saldo del período elegido */}
+        {tabNov==="socios"&&(function(){
+          var porSocio={};
+          aportesR.forEach(function(a){var k=a.socio||"Sin nombre";var o=porSocio[k]||(porSocio[k]={ap:0,re:0});o.ap+=parseFloat(a.monto)||0;});
+          retirosR.forEach(function(r){var k=r.socio||"Sin nombre";var o=porSocio[k]||(porSocio[k]={ap:0,re:0});o.re+=parseFloat(r.monto)||0;});
+          var nombres=Object.keys(porSocio).sort();
+          return(
+            <div style={{background:"#0F0F0F",border:"1px solid #8B2FC933",borderRadius:12,padding:"13px",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:nombres.length?8:0}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#8B2FC9"}}>🤝 Por socio {etiquetaRango}</div>
+                <div style={{fontSize:11,color:"#8C8C8C"}}>aportes {fmt(totalAportes)} · retiros {fmt(totalRetiros)}</div>
+              </div>
+              {nombres.length===0&&<div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>}
+              {nombres.map(function(n,i){var o=porSocio[n];var sd=o.ap-o.re;return(
+                <div key={n} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,padding:"7px 0",borderTop:i===0?"none":"1px solid #161616"}}>
+                  <div><div style={{fontSize:14,fontWeight:800,color:"#F0EDE8"}}>{n}</div>
+                    <div style={{fontSize:11,color:"#8C8C8C"}}><span style={{color:"#4C9A5A"}}>puso {fmt(o.ap)}</span> · <span style={{color:"#E0714A"}}>sacó {fmt(o.re)}</span></div></div>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:800,color:sd>=0?"#4C9A5A":"#E0714A"}}>{sd<0?"−":""}{fmt(Math.abs(sd))}</div>
+                    <div style={{fontSize:9.5,color:"#7E7E7E"}}>{sd>0?"puso de más":sd<0?"sacó de más":"parejo"}</div></div>
+                </div>);})}
+            </div>
+          );
+        })()}
+        <Seccion tab="socios" id="socios" res={"Aportes "+fmt(totalAportes)+" · retiros "+fmt(totalRetiros)} titulo="🤝 Movimientos de socios" color="#8B2FC9" ir={p.irSocios} irTxt="Socios">
           {(aportesR.length+retirosR.length)===0?(
             <div style={vacio}>Sin aportes ni retiros {etiquetaRango}.</div>
           ):(

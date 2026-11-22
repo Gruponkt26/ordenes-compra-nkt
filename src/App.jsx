@@ -8742,7 +8742,12 @@ var DEP_CAMPOS={
   ],
 };
 
-function depNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
+// Acepta «1600», «1.600» y «1.600,50» (con punto de miles, como se escribe acá): sin esto «1.600» se leía como 1,6.
+function depNum(v){
+  var t=String(v==null?"":v).trim().replace(/\$/g,"").replace(/\s/g,"");
+  if(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)||/^\d+,\d+$/.test(t))t=t.replace(/\./g,"").replace(",",".");
+  var n=parseFloat(t); return isNaN(n)?0:n;
+}
 // Los medios con que se pagó un registro: si se dividió, `pagos` ([{medio, monto}]); si no, el
 // medio único de siempre con todo el monto. Así los totales por medio sirven para los dos.
 function depMediosDe(x){
@@ -9093,6 +9098,13 @@ function PanelDeportes(p){
 
   function guardar(){
     if(!reqOk)return;
+    // Algo cobrado o pagado sin monto quedaba en $0 sin avisar: se pide el monto antes de guardar.
+    var campoMonto=fCampos.find(function(c){return c.k==="monto";});
+    var estadoF=form.estado||fEstados[0].id;
+    if(campoMonto&&(estadoF==="cobrado"||estadoF==="pagado")&&!(depNum(form.monto)>0)){
+      alert("Falta el monto: escribilo en «"+campoMonto.label+"». Si todavía no se cobró, dejalo en «A cobrar».");
+      return;
+    }
     var ahora=new Date().toISOString();
     var base=editId?(registros.find(function(x){return x.id===editId;})||{}):{};
     var fila={

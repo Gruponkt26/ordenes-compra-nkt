@@ -1795,6 +1795,13 @@ function InformeTurno(props) {
     filas.forEach(function(f) { var n = personasDe(f); if (n > 0) { var o = porTurnoP[f.turno]; o.p += n; o.m++; o.v += Number(f.pg.total) || 0; } });
     var totPersonas = porTurnoP.mediodia.p + porTurnoP.noche.p, mesasConDato = porTurnoP.mediodia.m + porTurnoP.noche.m, ventasConDato = porTurnoP.mediodia.v + porTurnoP.noche.v;
     var mesasTotal = filas.filter(function(f) { return f.c.tipo === "mesa"; }).length;
+    // Cuántos pedidos de cada tipo se cobraron (mesas, deliveries y mostradores), con la plata y el reparto por turno.
+    var porTipo = [["mesa", "🪑 Mesas"], ["delivery", "🛵 Deliveries"], ["mostrador", "🥡 Mostradores"]].map(function(t) {
+      var l = filas.filter(function(f) { return f.c.tipo === t[0]; });
+      var md = l.filter(function(f) { return f.turno === "mediodia"; }), no = l.filter(function(f) { return f.turno === "noche"; });
+      var suma = function(a) { return a.reduce(function(x, f) { return x + (Number(f.pg.total) || 0); }, 0); };
+      return { id:t[0], label:t[1], n:l.length, v:suma(l), md:md.length, no:no.length };
+    });
     // Cuentas anuladas del día: quién, cuándo, por qué y cuánta plata no se cobró.
     var anuladas = datos.log.filter(function(l) { return l.accion === "Anuló la cuenta" && (turno === "todo" || turnoDe(l.at) === turno); }).map(function(l) {
       var monto = (datos.itsAn || []).filter(function(i) { return i.comanda_id === l.comanda_id && String(i.nota || "").indexOf("Anulada:") === 0; }).reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0);
@@ -1810,8 +1817,22 @@ function InformeTurno(props) {
           {kpi("Tardanza promedio", fmtMin(prom(mesasMin)), "por mesa (" + mesasMin.length + ")", color)}
           {kpi("La que más tardó", mas ? fmtMin(mas.min) : "—", mas ? mas.nombre : "", "#C1440E")}
           {kpi("La más rápida", menos ? fmtMin(menos.min) : "—", menos ? menos.nombre : "", "#3A9BC1")}
+          {kpi("Deliveries", String(porTipo[1].n), porTipo[1].n ? pesos(porTipo[1].v) + " cobrado" : "ninguno", "#3A9BC1")}
+          {kpi("Mostradores", String(porTipo[2].n), porTipo[2].n ? pesos(porTipo[2].v) + " cobrado" : "ninguno", "#D4A017")}
           {kpi("Personas", totPersonas ? String(totPersonas) : "—", totPersonas ? (mesasConDato + " mesa" + (mesasConDato === 1 ? "" : "s") + (mesasConDato < mesasTotal ? " de " + mesasTotal + " (las demás sin el dato)" : "") + " · " + (totPersonas / mesasConDato).toFixed(1).replace(".", ",") + " por mesa · " + pesos(ventasConDato / totPersonas) + " por persona") : "ninguna mesa tiene el dato", "#8B2FC9")}
           {anuladas.length > 0 && kpi("Anuladas", String(anuladas.length), "sin cobrar " + pesos(montoAnulado), "#E0452E")}
+        </div>
+
+        <div style={card}>
+          <div style={h}>🧾 Pedidos cobrados por tipo</div>
+          {porTipo.map(function(t, i) { return (
+            <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:10, padding:"7px 0", borderTop:i === 0 ? "none" : "1px solid #181818" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{t.label} <span style={{ color:"#C9C9C9" }}>· {t.n}</span></div>
+                {turno === "todo" && t.n > 0 && <div style={{ fontSize:11, color:"#8C8C8C" }}>☀️ mediodía {t.md} · 🌙 noche {t.no}</div>}
+              </div>
+              <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8", whiteSpace:"nowrap" }}>{pesos(t.v)}</div>
+            </div>); })}
         </div>
 
         {turno === "todo" && totPersonas > 0 && (

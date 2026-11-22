@@ -15,6 +15,13 @@ var LOCALES_GRUPO = [
 var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {} };
 
 // La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
+// ¿El aviso destacado de este local sigue vigente? Sin fecha, se muestra hasta que se borre; con fecha, hasta ese día inclusive.
+function avisoVigente(d) {
+  if (!d || !String(d.aviso || "").trim()) return false;
+  if (!d.aviso_hasta) return true;
+  var hoy = new Date(), iso = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0") + "-" + String(hoy.getDate()).padStart(2, "0");
+  return iso <= d.aviso_hasta;
+}
 export function urlGrupo() { return URL_PUBLICA + "/grupo/"; }
 function esModoPrueba() { try { return new URLSearchParams(window.location.search).has("prueba"); } catch (e) { return false; } }
 // Descuento del cupón: el del local donde la persona se sumó, si se cargó uno; si no, el general.
@@ -563,6 +570,9 @@ export function GrupoNkt() {
         };
         return (
           <div key={l.id} style={{ position: "relative", overflow: "hidden", background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
+            {avisoVigente(d) && (
+              <div style={{ background: l.color + "26", border: "1px solid " + l.color + "99", borderRadius: 12, padding: "9px 12px", marginBottom: 12, textAlign: "center", color: "#F0EDE8", fontSize: 13.5, fontWeight: 700, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>📣 {d.aviso}</div>
+            )}
             <div style={{ textAlign: "center" }}>
               <div style={{ background: "#fff", borderRadius: 12, padding: "8px 14px", display: "inline-block", maxWidth: "100%" }}>
                 <img src={l.logo} alt={l.nombre} style={{ display: "block", height: l.alto, maxWidth: "100%", width: "auto", margin: "0 auto" }} />
@@ -1580,6 +1590,8 @@ export function PanelComunidad() {
                 <div key={l.id} style={{ borderTop: "1px solid #1A1A1A", marginTop: 10, paddingTop: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: l.color, marginBottom: 6 }}>{l.nombre}</div>
                   <input value={d.direccion || ""} onChange={function (e) { setLocal(l.id, "direccion", e.target.value); }} placeholder="Dirección (calle y número)" style={sel} />
+                  <textarea value={d.aviso || ""} onChange={function (e) { setLocal(l.id, "aviso", e.target.value); }} rows={2} placeholder={"Aviso destacado arriba de la tarjeta (opcional). Ej: Kusama se muda al Bodegón desde el 1 de diciembre"} style={{ ...sel, resize: "vertical" }} />
+                  {d.aviso && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><span style={{ fontSize: 11, color: "#8C8C8C" }}>Mostrar hasta</span><input type="date" value={d.aviso_hasta || ""} onChange={function (e) { setLocal(l.id, "aviso_hasta", e.target.value); }} style={{ ...sel, width: "auto", marginBottom: 0 }} /><span style={{ fontSize: 11, color: "#6E6E6E" }}>(vacío: hasta que lo borres)</span></div>}
                   <input value={d.wsp || ""} onChange={function (e) { setLocal(l.id, "wsp", e.target.value); }} placeholder="WhatsApp para pedidos (ej: 2914123456)" style={sel} />
                   <textarea value={d.horarios || ""} onChange={function (e) { setLocal(l.id, "horarios", e.target.value); }} rows={2} placeholder={"Horarios (ej: Mar a Dom de 20 a 00 h)"} style={{ ...sel, resize: "vertical" }} />
                   <input value={d.carta || ""} onChange={function (e) { setLocal(l.id, "carta", e.target.value); }} placeholder="Enlace de la carta (opcional)" style={sel} />

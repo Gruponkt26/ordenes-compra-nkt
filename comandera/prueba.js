@@ -30,7 +30,7 @@ const ticket = {
   tipo: "MESA 12",
   local: "El Bodegón NKT",
   numero: 1,
-  hora: String(ahora.getHours()).padStart(2, "0") + ":" + String(ahora.getMinutes()).padStart(2, "0"),
+  hora: String(ahora.getDate()).padStart(2, "0") + "/" + String(ahora.getMonth() + 1).padStart(2, "0") + "/" + ahora.getFullYear() + " " + String(ahora.getHours()).padStart(2, "0") + ":" + String(ahora.getMinutes()).padStart(2, "0"),
   mozo: "Prueba",
   items: [
     { cant: 2, nombre: "Provoleta NKT" },

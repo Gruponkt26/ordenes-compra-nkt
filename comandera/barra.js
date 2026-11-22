@@ -61,6 +61,8 @@ const cfg = {
   usb: opcion("usb", process.env.COMANDERA_USB || (tiene("usb-guardada") ? impresoraGuardada() : "")),
 };
 const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
+// Dirección que sale en el ticket de control.
+const DIRECCIONES = { l1: "Villanueva 35 Punta Alta", l2: "Mitre 677 Punta Alta", l3: "Humberto 376 Punta Alta" };
 
 // La impresora no entiende los símbolos fuera del abecedario con acentos: se cambian por algo que sí se imprime.
 const limpiar = (t) => String(t || "").replace(/[·•]/g, "-").replace(/[→»]/g, ">").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
@@ -73,11 +75,15 @@ function ticketDe(job) {
   const control = job.destino === "control";
   const notas = [];
   if (control) {
-    const pesos = (n) => "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
-    notas.push("Subtotal: " + pesos(job.subtotal));
-    if (Number(job.descuento) > 0) notas.push("Descuento" + (job.descuento_motivo ? " (" + limpiar(job.descuento_motivo) + ")" : "") + ": -" + pesos(job.descuento));
-    notas.push("TOTAL: " + pesos(job.total));
-    notas.push("NO VALIDO COMO FACTURA");
+    // Formato del ticket de control de siempre (ver armarControl en comandera.js).
+    const d = job.at ? new Date(job.at) : new Date();
+    const m = /^(?:mesa)\s+(\S+)/i.exec(String(job.titulo || ""));
+    return { control: {
+      local: limpiar(NOMBRES[job.local] || ""), direccion: limpiar(DIRECCIONES[job.local] || ""),
+      mesa: job.tipo === "mesa" && m ? "Mesa: " + m[1] : limpiar(job.titulo || ""),
+      fecha: dos(d.getDate()) + "/" + dos(d.getMonth() + 1) + "/" + d.getFullYear(), horaSolo: dos(d.getHours()) + ":" + dos(d.getMinutes()),
+      mozo: limpiar(job.mozo || ""), personas: job.personas || undefined, items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), precio: Number(i.precio) || 0 })),
+      subtotal: job.subtotal, descuento: job.descuento, motivoDescuento: limpiar(job.descuento_motivo || ""), total: job.total } };
   }
   if (cocina) {
     if (job.entrega_at) notas.push("ENTREGA AL CLIENTE: " + fechaHora(job.entrega_at));
@@ -91,6 +97,7 @@ function ticketDe(job) {
     numero: job.numero || undefined,
     hora: fechaHora(job.at),
     mozo: limpiar(job.mozo || ""),
+    personas: job.personas || undefined,
     direccion: job.tipo === "delivery" ? limpiar(job.direccion || "") : "",
     items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")), precio: control ? Number(i.precio) || 0 : undefined })),
   };

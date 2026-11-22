@@ -61,8 +61,8 @@ const cfg = {
   usb: opcion("usb", process.env.COMANDERA_USB || (tiene("usb-guardada") ? impresoraGuardada() : "")),
 };
 const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
-// Dirección que sale en el ticket de control (completar las de Kusama y Colantonio's).
-const DIRECCIONES = { l1: "Villanueva 35 Punta Alta", l2: "", l3: "" };
+// Dirección que sale en el ticket de control.
+const DIRECCIONES = { l1: "Villanueva 35 Punta Alta", l2: "Mitre 677 Punta Alta", l3: "Humberto 376 Punta Alta" };
 
 // La impresora no entiende los símbolos fuera del abecedario con acentos: se cambian por algo que sí se imprime.
 const limpiar = (t) => String(t || "").replace(/[·•]/g, "-").replace(/[→»]/g, ">").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");

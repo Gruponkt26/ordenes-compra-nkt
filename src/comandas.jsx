@@ -240,6 +240,19 @@ async function sbLeerExtrasRecientes() {
     return o;
   } catch(e) { return {}; }
 }
+// Lo extra de unas cuentas puntuales (para el informe: cantidad de personas): {comanda_id: {...}}.
+async function sbLeerExtrasDe(ids) {
+  var o = {};
+  for (var k = 0; k < ids.length; k += 80) {
+    try {
+      var tanda = ids.slice(k, k + 80).map(function(i) { return "cextra_" + i; }).join(",");
+      var r = await cfetch(SURL + "/rest/v1/pautas?id=in.(" + tanda + ")&limit=200", { headers: {...SH, "Cache-Control":"no-cache"} });
+      var d = await r.json();
+      (Array.isArray(d) ? d : []).forEach(function(f) { try { o[String(f.id).replace(/^cextra_/, "")] = JSON.parse(f.texto) || {}; } catch(e) {} });
+    } catch(e) {}
+  }
+  return o;
+}
 // Tiempo de entrega que el cajero le promete al cliente en delivery y mostrador. Va en pautas, ámbito "comanda_entrega", un registro por comanda.
 async function sbGuardarEntrega(e) {
   try {
@@ -1697,12 +1710,16 @@ function InformeTurno(props) {
       }
       var falt = await sbLeerFaltantes(localId, fecha);
       var log = await sbLeerLogDia(localId, fecha);
+      // Personas de cada mesa cobrada, y lo de las cuentas anuladas del día (con lo que no se cobró).
+      var extras = ids.length ? await sbLeerExtrasDe(ids) : {};
+      var anIds = log.filter(function(l) { return l.accion === "Anuló la cuenta"; }).map(function(l) { return l.comanda_id; }).filter(function(v, i, a) { return a.indexOf(v) === i; });
+      var itsAn = anIds.length ? await sbLoadItems(anIds) : [];
       var ent = await sbLeerEntregas(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var listos = await sbLeerListosDesde(new Date(new Date(fecha + "T00:00:00").getTime() - 86400000).toISOString());
       var cfgC = await sbLeerConfigCom();
       var planoI = await sbLeerPlano(localId);
       var cartaI = (await sbLoadCarta()).filter(function(x) { return x.local === localId; });
-      if (vivo) setDatos({ pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC, plano:planoI, carta:cartaI });
+      if (vivo) setDatos({ extras:extras, itsAn:itsAn, pagos:pagos, coms:coms, items:its, falt:falt, log:log, ent:ent, listos:listos, cfg:cfgC, plano:planoI, carta:cartaI });
     })();
     return function() { vivo = false; };
   }, [fecha, localId, props.refresco]);
@@ -1772,6 +1789,25 @@ function InformeTurno(props) {
     var lentos = Object.keys(porPlato).map(function(k) { return { nombre:k, prom:porPlato[k].t / porPlato[k].n, n:porPlato[k].n }; }).sort(function(a, b) { return b.prom - a.prom; }).slice(0, 5);
     var quitados = itemsT.filter(function(i) { return i.estado === "cancelado"; });
     var falt = datos.falt.filter(function(f) { return turno === "todo" || turnoDe(f.at) === turno; });
+    // Personas por turno (solo mesas con el dato cargado) y ticket por persona.
+    var personasDe = function(f) { return f.c.tipo === "mesa" ? (Number(((datos.extras || {})[f.c.id] || {}).personas) || 0) : 0; };
+    var porTurnoP = { mediodia:{ p:0, m:0, v:0 }, noche:{ p:0, m:0, v:0 } };
+    filas.forEach(function(f) { var n = personasDe(f); if (n > 0) { var o = porTurnoP[f.turno]; o.p += n; o.m++; o.v += Number(f.pg.total) || 0; } });
+    var totPersonas = porTurnoP.mediodia.p + porTurnoP.noche.p, mesasConDato = porTurnoP.mediodia.m + porTurnoP.noche.m, ventasConDato = porTurnoP.mediodia.v + porTurnoP.noche.v;
+    var mesasTotal = filas.filter(function(f) { return f.c.tipo === "mesa"; }).length;
+    // Cuántos pedidos de cada tipo se cobraron (mesas, deliveries y mostradores), con la plata y el reparto por turno.
+    var porTipo = [["mesa", "🪑 Mesas"], ["delivery", "🛵 Deliveries"], ["mostrador", "🥡 Mostradores"]].map(function(t) {
+      var l = filas.filter(function(f) { return f.c.tipo === t[0]; });
+      var md = l.filter(function(f) { return f.turno === "mediodia"; }), no = l.filter(function(f) { return f.turno === "noche"; });
+      var suma = function(a) { return a.reduce(function(x, f) { return x + (Number(f.pg.total) || 0); }, 0); };
+      return { id:t[0], label:t[1], n:l.length, v:suma(l), md:md.length, no:no.length };
+    });
+    // Cuentas anuladas del día: quién, cuándo, por qué y cuánta plata no se cobró.
+    var anuladas = datos.log.filter(function(l) { return l.accion === "Anuló la cuenta" && (turno === "todo" || turnoDe(l.at) === turno); }).map(function(l) {
+      var monto = (datos.itsAn || []).filter(function(i) { return i.comanda_id === l.comanda_id && String(i.nota || "").indexOf("Anulada:") === 0; }).reduce(function(a, i) { return a + (Number(i.precio) || 0) * (Number(i.cant) || 1); }, 0);
+      return { l:l, monto:monto };
+    });
+    var montoAnulado = anuladas.reduce(function(a, x) { return a + x.monto; }, 0);
     var kpi = function(t, v, sub, col) { return <div style={{ flex:"1 1 130px", background:"#111", border:"1px solid " + (col || "#222") + "55", borderRadius:10, padding:"10px 12px" }}><div style={{ fontSize:9, color:"#777", textTransform:"uppercase", letterSpacing:1 }}>{t}</div><div style={{ fontSize:20, fontWeight:800, color:col || "#F0EDE8", margin:"2px 0" }}>{v}</div><div style={{ fontSize:10, color:"#666" }}>{sub}</div></div>; };
     var mas = ordenadas[0], menos = ordenadas[ordenadas.length - 1];
     return (
@@ -1781,7 +1817,51 @@ function InformeTurno(props) {
           {kpi("Tardanza promedio", fmtMin(prom(mesasMin)), "por mesa (" + mesasMin.length + ")", color)}
           {kpi("La que más tardó", mas ? fmtMin(mas.min) : "—", mas ? mas.nombre : "", "#C1440E")}
           {kpi("La más rápida", menos ? fmtMin(menos.min) : "—", menos ? menos.nombre : "", "#3A9BC1")}
+          {kpi("Deliveries", String(porTipo[1].n), porTipo[1].n ? pesos(porTipo[1].v) + " cobrado" : "ninguno", "#3A9BC1")}
+          {kpi("Mostradores", String(porTipo[2].n), porTipo[2].n ? pesos(porTipo[2].v) + " cobrado" : "ninguno", "#D4A017")}
+          {kpi("Personas", totPersonas ? String(totPersonas) : "—", totPersonas ? (mesasConDato + " mesa" + (mesasConDato === 1 ? "" : "s") + (mesasConDato < mesasTotal ? " de " + mesasTotal + " (las demás sin el dato)" : "") + " · " + (totPersonas / mesasConDato).toFixed(1).replace(".", ",") + " por mesa · " + pesos(ventasConDato / totPersonas) + " por persona") : "ninguna mesa tiene el dato", "#8B2FC9")}
+          {anuladas.length > 0 && kpi("Anuladas", String(anuladas.length), "sin cobrar " + pesos(montoAnulado), "#E0452E")}
         </div>
+
+        <div style={card}>
+          <div style={h}>🧾 Pedidos cobrados por tipo</div>
+          {porTipo.map(function(t, i) { return (
+            <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:10, padding:"7px 0", borderTop:i === 0 ? "none" : "1px solid #181818" }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8" }}>{t.label} <span style={{ color:"#C9C9C9" }}>· {t.n}</span></div>
+                {turno === "todo" && t.n > 0 && <div style={{ fontSize:11, color:"#8C8C8C" }}>☀️ mediodía {t.md} · 🌙 noche {t.no}</div>}
+              </div>
+              <div style={{ fontSize:14, fontWeight:800, color:"#F0EDE8", whiteSpace:"nowrap" }}>{pesos(t.v)}</div>
+            </div>); })}
+        </div>
+
+        {turno === "todo" && totPersonas > 0 && (
+          <div style={card}>
+            <div style={h}>👥 Personas por turno (mesas)</div>
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+              {[["mediodia", "☀️ Mediodía"], ["noche", "🌙 Noche"]].map(function(t) { var o = porTurnoP[t[0]]; return (
+                <div key={t[0]} style={{ flex:"1 1 150px", background:"#111", border:"1px solid #8B2FC955", borderRadius:10, padding:"10px 12px" }}>
+                  <div style={{ fontSize:12, color:"#C9A0F0", fontWeight:800 }}>{t[1]}</div>
+                  <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8" }}>{o.p}</div>
+                  <div style={{ fontSize:10.5, color:"#8C8C8C" }}>{o.m ? o.m + " mesa" + (o.m === 1 ? "" : "s") + " · " + pesos(o.v / o.p) + " por persona" : "sin datos"}</div>
+                </div>); })}
+            </div>
+          </div>
+        )}
+
+        {anuladas.length > 0 && (
+          <div style={{ ...card, border:"1px solid #E0452E55" }}>
+            <div style={{ ...h, color:"#E0715A" }}>🚫 Cuentas anuladas · {anuladas.length} · sin cobrar {pesos(montoAnulado)}</div>
+            {anuladas.map(function(x, i) { return (
+              <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:10, padding:"6px 0", borderTop:i === 0 ? "none" : "1px solid #181818" }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:13, color:"#F0EDE8", fontWeight:700 }}>{x.l.titulo || "Cuenta"} <span style={{ color:"#777", fontWeight:400 }}>· {horaSeg(x.l.at).slice(0, 5)}</span></div>
+                  <div style={{ fontSize:11.5, color:"#9A9A9A" }}>{x.l.detalle}</div>
+                </div>
+                <div style={{ fontSize:13, fontWeight:800, color:"#E0715A", whiteSpace:"nowrap" }}>{pesos(x.monto)}</div>
+              </div>); })}
+          </div>
+        )}
 
         <div style={card}>
           <div style={h}>⏱ Cuánto tardó cada una (de la más lenta a la más rápida)</div>

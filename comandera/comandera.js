@@ -93,9 +93,61 @@ function pesos(n) {
   return "$" + Math.round(Number(n) || 0).toLocaleString("es-AR");
 }
 
+// Ticket de control (precuenta) para el cliente, con el formato del que ya se usaba: local y dirección,
+// «Control del Pedido», mesa, fecha, hora y mozo, una tabla Cant. · Descripción · Subtot. · Total, y los totales.
+function armarControl(t, c) {
+  const partes = [];
+  const crudo = (arr) => partes.push(Buffer.from(arr));
+  const linea = (txt) => partes.push(codificar((txt === undefined ? "" : txt) + "\n"));
+  const dinero = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+  const W = c.ancho;
+  crudo(CMD.init); crudo(CMD.sinChino); crudo(CMD.codepage(c.codepage));
+  crudo(CMD.centro);
+  crudo(CMD.grande); linea(t.local || ""); crudo(CMD.normal);
+  if (t.direccion) { crudo(CMD.altoDoble); envolver(t.direccion, W, 0).forEach(linea); crudo(CMD.normal); }
+  linea();
+  crudo(CMD.negritaOn); crudo(CMD.altoDoble); linea("Control del Pedido"); crudo(CMD.normal); crudo(CMD.negritaOff);
+  crudo(CMD.izquierda);
+  crudo(CMD.altoDoble); crudo(CMD.negritaOn);
+  linea(t.mesa || "");
+  crudo(CMD.negritaOff);
+  linea("Fecha: " + (t.fecha || "") + "   Hora: " + (t.horaSolo || ""));
+  if (t.mozo) linea("Mozo: " + t.mozo);
+  crudo(CMD.normal);
+  linea("-".repeat(W));
+  // Columnas: Cant. (5) · Descripción (resto) · Subtot. (9) · Total (10)
+  const wCant = 5, wSub = 9, wTot = 10, wDesc = W - wCant - wSub - wTot - 3;
+  const der = (s, n) => String(s).padStart(n).slice(-n);
+  crudo(CMD.negritaOn);
+  linea("Cant.".padEnd(wCant) + " " + "Descripcion".padEnd(wDesc) + " " + der("Subtot.", wSub) + " " + der("Total", wTot));
+  crudo(CMD.negritaOff);
+  linea("-".repeat(W));
+  crudo(CMD.altoDoble);
+  for (const i of t.items || []) {
+    const cant = Number(i.cant) || 1, unit = Number(i.precio) || 0;
+    const desc = envolver(i.nombre || "", wDesc, 0);
+    linea(String(cant.toFixed(2)).padEnd(wCant).slice(0, wCant) + " " + desc[0].padEnd(wDesc) + " " + der(dinero(unit), wSub) + " " + der(dinero(unit * cant), wTot));
+    for (const resto of desc.slice(1)) linea(" ".repeat(wCant + 1) + resto);
+  }
+  crudo(CMD.normal);
+  linea("-".repeat(W));
+  crudo(CMD.altoDoble);
+  linea(dosColumnas("Subtotal:", dinero(t.subtotal), W));
+  linea(dosColumnas("Descuento:" + (t.motivoDescuento ? " (" + t.motivoDescuento + ")" : ""), Number(t.descuento) > 0 ? "-" + dinero(t.descuento) : "", W));
+  crudo(CMD.negritaOn);
+  linea(dosColumnas("Total:", dinero(t.total), W));
+  crudo(CMD.negritaOff); crudo(CMD.normal);
+  linea();
+  crudo(CMD.centro); crudo(CMD.negritaOn); linea("DOCUMENTO NO VALIDO COMO FACTURA"); crudo(CMD.negritaOff);
+  crudo(CMD.avanzar(4));
+  crudo(CMD.cortar);
+  return Buffer.concat(partes);
+}
+
 // Devuelve el buffer listo para mandarle a la impresora.
 function armar(ticket, cfg) {
   const c = { ...CONFIG, ...(cfg || {}) };
+  if (ticket.control) return armarControl(ticket.control, c);
   const partes = [];
   const crudo = (arr) => partes.push(Buffer.from(arr));
   const linea = (txt) => partes.push(codificar((txt === undefined ? "" : txt) + "\n"));

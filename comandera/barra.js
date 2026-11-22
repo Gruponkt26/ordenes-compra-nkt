@@ -82,7 +82,7 @@ function ticketDe(job) {
       local: limpiar(NOMBRES[job.local] || ""), direccion: limpiar(DIRECCIONES[job.local] || ""),
       mesa: job.tipo === "mesa" && m ? "Mesa: " + m[1] : limpiar(job.titulo || ""),
       fecha: dos(d.getDate()) + "/" + dos(d.getMonth() + 1) + "/" + d.getFullYear(), horaSolo: dos(d.getHours()) + ":" + dos(d.getMinutes()),
-      mozo: limpiar(job.mozo || ""), items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), precio: Number(i.precio) || 0 })),
+      mozo: limpiar(job.mozo || ""), personas: job.personas || undefined, items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), precio: Number(i.precio) || 0 })),
       subtotal: job.subtotal, descuento: job.descuento, motivoDescuento: limpiar(job.descuento_motivo || ""), total: job.total } };
   }
   if (cocina) {
@@ -97,6 +97,7 @@ function ticketDe(job) {
     numero: job.numero || undefined,
     hora: fechaHora(job.at),
     mozo: limpiar(job.mozo || ""),
+    personas: job.personas || undefined,
     direccion: job.tipo === "delivery" ? limpiar(job.direccion || "") : "",
     items: (job.items || []).map((i) => ({ cant: i.cant || 1, nombre: limpiar(i.nombre), nota: limpiar((i.entrada ? "ENTRADA" : "") + (i.entrada && i.nota ? " | " : "") + (i.nota || "")), precio: control ? Number(i.precio) || 0 : undefined })),
   };

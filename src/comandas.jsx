@@ -875,7 +875,7 @@ function VentanaControl(props) {
   // Imprimir: deja el ticket de control para la impresora del local (la que corre el programa de la comandera), sin cuadros del navegador.
   function imprimirLocal() {
     if (!props.onImprimirControl || !lineas.length) return;
-    props.onImprimirControl({ items: lineas.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, precio:Number(i.precio) || 0 }; }), subtotal:props.subtotal, descuento:props.descuento || 0, motivo:props.motivoDesc || "", total:props.total });
+    props.onImprimirControl({ personas:props.personas || null, items: lineas.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, precio:Number(i.precio) || 0 }; }), subtotal:props.subtotal, descuento:props.descuento || 0, motivo:props.motivoDesc || "", total:props.total });
     setMandado(true); setTimeout(function() { setMandado(false); }, 4000);
   }
   function imprimir() {
@@ -1255,6 +1255,7 @@ export function PanelCocina(props) {
           var ex = extras[c.id] || {};
           g.nueva = c.tipo === "mesa" && ex.mesa_nueva === true;
           g.misma = c.tipo === "mesa" && ex.mesa_nueva === false;
+          g.personas = c.tipo === "mesa" ? (ex.personas || null) : null;
           g.salida = (ex.salidas || {})[g.ronda] || null;   // lo que eligió el mozo o el cajero al agregar: «junto» u «orden»
           // Cambios de cantidad o de nota en lo que ya se mandó, desde que se mandó.
           g.cambios = log.filter(function(l) {
@@ -1275,7 +1276,7 @@ export function PanelCocina(props) {
         // Una sola ventana por cuenta: lo que se agrega después a una mesa que ya pidió entra en el mismo ticket, como «agregado».
         var porCom = {};
         lista.forEach(function(g) {
-          var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, orden:g.orden, entrega:g.entrega, nueva:g.nueva, misma:g.misma, tandas:[], items:[], quitados:[], cambios:[], desde:null });
+          var t = porCom[g.comanda.id] || (porCom[g.comanda.id] = { clave:g.comanda.id, comanda:g.comanda, titulo:g.titulo, orden:g.orden, entrega:g.entrega, nueva:g.nueva, misma:g.misma, personas:g.personas, tandas:[], items:[], quitados:[], cambios:[], desde:null });
           t.tandas.push(g); if (g.salida && g.items.length) t.salida = g.salida;
           t.items = t.items.concat(g.items); t.quitados = t.quitados.concat(g.quitados); t.cambios = t.cambios.concat(g.cambios);
           // El contador del ticket es el de lo más viejo que sigue pendiente; cada parte agregada tiene el suyo, y se guarda aparte desde cuándo está la mesa.
@@ -1549,6 +1550,7 @@ export function PanelCocina(props) {
                     {badgePrueba(c)}
                     {g.nueva && <span style={{ display:"inline-block", marginLeft:6, background:"#3A7D44", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>🆕 MESA NUEVA</span>}
                     {g.misma && <span style={{ display:"inline-block", marginLeft:6, background:"#D4A01733", color:"#D4A017", border:"1px solid #D4A017", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:800, letterSpacing:0.8 }}>↩ SIGUE LA MISMA</span>}
+                    {g.personas && <span style={{ display:"inline-block", marginLeft:6, background:"#8B2FC9", color:"#fff", borderRadius:6, padding:"1px 8px", fontSize:11, fontWeight:900, letterSpacing:0.8 }}>👥 {g.personas}</span>}
                     <div style={{ fontSize:26, fontWeight:900, color:T.color, marginTop:4, letterSpacing:0.5 }}>COMANDA {g.orden || "—"}</div>
                     <div style={{ fontSize:22, fontWeight:800, color:"#F0EDE8", marginTop:1, wordBreak:"break-word" }}>{g.titulo}</div>
                     <div style={{ marginTop:5 }}><span style={{ display:"inline-block", background:"#D4A01722", border:"1px solid #D4A017", color:"#FFD36B", borderRadius:8, padding:"3px 10px", fontSize:17, fontWeight:900, letterSpacing:0.3 }}>{c.tipo === "mesa" ? "🧑‍🍳 Mozo" : "🧾 Cajero"}: {c.mozo || "—"}</span>{g.ronda > 1 && <span style={{ fontSize:11, color:"#777", marginLeft:6 }}>tanda {g.ronda}</span>}</div>
@@ -1928,6 +1930,35 @@ function mozosDeLocal(empleados, localId) {
     });
 }
 // ¿Quién toma el pedido? Se pregunta al abrir una mesa, un delivery o un mostrador.
+// ¿Cuántas personas vienen a la mesa? Se pregunta al abrirla y se puede corregir después desde las opciones de la mesa.
+function ElegirPersonas(props) {
+  var color = props.color;
+  var [otro, setOtro] = useState("");
+  var n = parseInt(otro, 10);
+  return (
+    <div onClick={props.onCancelar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid "+color+"55", borderRadius:14, padding:"16px", width:"100%", maxWidth:420 }}>
+        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:3 }}>👥 ¿Cuántas personas son?</div>
+        <div style={{ fontSize:11, color:"#777", marginBottom:12 }}>{props.titulo}{props.actual ? " · hoy: " + props.actual : ""}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:10 }}>
+          {[1,2,3,4,5,6,7,8,9,10,11,12].map(function(k) {
+            var on = props.actual === k;
+            return <button key={k} onClick={function() { props.onElegir(k); }} style={{ padding:"14px 0", borderRadius:10, border:"1px solid "+(on ? color : "#2A2A2A"), background:on ? color+"33" : "#1A1A1A", color:"#F0EDE8", fontFamily:"'Inter',sans-serif", fontSize:18, fontWeight:800, cursor:"pointer" }}>{k}</button>;
+          })}
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <input value={otro} onChange={function(e) { setOtro(e.target.value.replace(/[^0-9]/g, "")); }} placeholder="Otra cantidad (más de 12)" inputMode="numeric" style={{ ...INP, flex:1 }} />
+          <button disabled={!(n > 0)} onClick={function() { props.onElegir(n); }} style={{ padding:"0 16px", borderRadius:8, border:"none", background:n > 0 ? color : "#1A1A1A", color:n > 0 ? "#fff" : "#444", fontWeight:800, fontSize:14, cursor:n > 0 ? "pointer" : "not-allowed" }}>OK</button>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          {props.onOmitir && <button onClick={props.onOmitir} style={{ ...GH, flex:1, padding:"10px", fontSize:12 }}>Seguir sin el dato</button>}
+          <button onClick={props.onCancelar} style={{ ...GH, flex:1, padding:"10px", fontSize:12 }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ElegirMozo(props) {
   var mozos = props.mozos, color = props.color, ultimo = props.ultimo;
   var sectores = [];
@@ -2200,8 +2231,9 @@ function ComandaDetalle(props) {
       </div>
 
       {/* Lo anotado en esta cuenta: descuento, facturación, control */}
-      {(extra.descuento || extra.factura || extra.control_at) && (
+      {(extra.descuento || extra.factura || extra.control_at || extra.personas) && (
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+          {extra.personas && <span style={{ background:"#8B2FC922", border:"1px solid #8B2FC966", color:"#C9A0F0", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>👥 {extra.personas} {extra.personas === 1 ? "persona" : "personas"}</span>}
           {extra.descuento && descM > 0 && <span style={{ background:"#D4A01722", border:"1px solid #D4A01766", color:"#D4A017", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🏷️ Descuento {extra.descuento.tipo === "%" ? extra.descuento.valor + "%" : pesos(extra.descuento.valor)}{extra.descuento.motivo ? " · " + extra.descuento.motivo : ""}</span>}
           {extra.factura && <span style={{ background:"#3A9BC122", border:"1px solid #3A9BC166", color:"#5BB8DC", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🧾 A facturar · {extra.factura.tipo === "A" ? "Factura A" + (extra.factura.razon ? " · " + extra.factura.razon : "") : "Consumidor final"}</span>}
           {extra.control_at && <span style={{ background:"#3A7D4422", border:"1px solid #3A7D4466", color:"#8FD19A", borderRadius:7, padding:"3px 9px", fontSize:11, fontWeight:700 }}>🧾 Control pedido hace {hace(extra.control_at)}</span>}
@@ -2219,7 +2251,7 @@ function ComandaDetalle(props) {
             { id:"control",  txt:"🧾 Control",      sub:"precuenta",                                                                      col:"#8FD19A", off:!mios.length, fn:function() { setVentana("control"); if (props.onExtra) props.onExtra({ ...extra, control_at:new Date().toISOString() }); } },
             { id:"desc",     txt:"🏷️ Descuento",    sub:props.puedeDescuento === false ? "lo aplica el cajero" : (descM > 0 ? "−" + pesos(descM) : "% o $"),                       col:"#D4A017", off:!mios.length || props.puedeDescuento === false, fn:function() { setVentana("descuento"); } },
             { id:"facturar", txt:"🧾 Facturar",     sub:extra.factura ? "anotado" : "datos de factura",                                    col:"#5BB8DC", off:!mios.length, fn:function() { setVentana("factura"); } },
-          ].map(function(b) {
+          ].concat(c.tipo === "mesa" ? [{ id:"personas", txt:"👥 Personas", sub:extra.personas ? extra.personas + " en la mesa" : "cuántos son", col:"#C9A0F0", fn:function() { setVentana("personas"); } }] : []).map(function(b) {
             return (
               <button key={b.id} disabled={b.off} onClick={b.fn}
                 style={{ padding:"10px 4px", borderRadius:9, border:"1px solid "+(b.off ? "#1E1E1E" : b.col+"66"), background:b.off ? "#0E0E0E" : b.col+"14", color:b.off ? "#444" : b.col, fontFamily:"'Inter',sans-serif", cursor:b.off ? "not-allowed" : "pointer", textAlign:"center", lineHeight:1.25 }}>
@@ -2386,7 +2418,9 @@ function ComandaDetalle(props) {
       </div>
 
       {ventana === "quitar" && <VentanaQuitar items={mios} onCerrar={function() { setVentana(null); }} onQuitar={quitar} />}
-      {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} onImprimirControl={props.onImprimirControl} onCerrar={function() { setVentana(null); }} />}
+      {ventana === "personas" && <ElegirPersonas titulo={props.titulo} color={color} actual={extra.personas}
+        onElegir={function(n) { setVentana(null); if (props.onExtra) props.onExtra({ ...extra, personas:n }); }} onCancelar={function() { setVentana(null); }} />}
+      {ventana === "control" && <VentanaControl titulo={props.titulo} localNombre={props.localNombre} items={mios} subtotal={subtotal} descuento={descM} motivoDesc={extra.descuento && extra.descuento.motivo} total={total} personas={extra.personas} onImprimirControl={props.onImprimirControl} onCerrar={function() { setVentana(null); }} />}
       {preguntaTiempoExtra && (function() {
         var st = estadoEntrega(props.entrega, props.ahora || Date.now());
         var ir = function(fn) { setPreguntaTiempoExtra(false); if (fn) fn(); seguirTrasTiempo(); };
@@ -3567,6 +3601,7 @@ export default function PanelComandas(p) {
   var [refInforme, setRefInforme] = useState(0);
   var verInforme = !p.soloServicio || !!p.puedeDescuento;   // el informe lo ven administración y cajeros
   var [eligeMozo, setEligeMozo] = useState(null);   // {titulo, alElegir}
+  var [eligePersonas, setEligePersonas] = useState(null);   // {titulo, alElegir}: cuántas personas vienen a la mesa
   var [ultimoMozo, setUltimoMozo] = useState(null);
   // Pregunta quién toma el pedido; si el local no tiene empleados cargados, sigue con el usuario de siempre.
   function pedirMozo(titulo, alElegir) {
@@ -3691,21 +3726,21 @@ export default function PanelComandas(p) {
   function imprimirCocina(c, its, ronda, salida, separaEntrada) {
     if (!imprimeCocina(cfgCom, localId)) return;
     var e = entregas[c.id];
-    sbCrearImpresionBarra({ destino:"cocina", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda,
+    sbCrearImpresionBarra({ destino:"cocina", personas:(extras[c.id] || {}).personas || null, comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda,
       salida: salida || "", entrega_at: e && e.prometida_at ? e.prometida_at : "", at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
       items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i), entrada:esEntrada(i) }; }) });
   }
   // Ticket de control (precuenta) para el cliente: sale por la impresora de la barra/caja con el programa de la comandera.
   function imprimirControl(c, d) {
     sbCrearImpresionBarra({ destino:"control", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "",
-      subtotal:d.subtotal, descuento:d.descuento, descuento_motivo:d.motivo, total:d.total, at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario, items:d.items }).then(function(ok) {
+      subtotal:d.subtotal, descuento:d.descuento, descuento_motivo:d.motivo, total:d.total, personas:d.personas || null, at:new Date().toISOString(), impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario, items:d.items }).then(function(ok) {
       if (!ok) alert("No se pudo dejar el ticket para imprimir. Revisá la conexión.");
     });
     registrar(c, "Imprimió el control", pesos(d.total));
   }
   function imprimirBarra(c, its, ronda) {
     var ahoraISO = new Date().toISOString();
-    sbCrearImpresionBarra({ destino:"barra", comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
+    sbCrearImpresionBarra({ destino:"barra", personas:(extras[c.id] || {}).personas || null, comanda_id:c.id, local:c.local, tipo:c.tipo, numero:c.numero, titulo:tituloDe(c), mozo:c.mozo || "", cliente:c.cliente || "", direccion:c.direccion || "", ronda:ronda, at:ahoraISO, impreso:false, prueba:esComandaPrueba(c.id) || practica, por:usuario,
       items: its.map(function(i) { return { cant:Number(i.cant) || 1, nombre:i.nombre, nota:notaVisible(i) }; }) });
     registrar(c, "Comanda de barra", its.map(function(i) { return (Number(i.cant) || 1) + "x " + i.nombre; }).join(", "));
   }
@@ -3954,15 +3989,18 @@ export default function PanelComandas(p) {
     if (!puedeAbrirCuenta()) return;
     function seguir(esNueva) {
       pedirMozo("🪑 Mesa " + (mesa.nombre || ""), function(mozo) {
+       setEligePersonas({ titulo:"🪑 Mesa " + (mesa.nombre || "") + " · " + mozo, alElegir:function(personas) {
         var nueva = {
           id: (pruebaVivo ? "cmdp_" : "cmd_") + Date.now(),
           local: localId, tipo: "mesa", mesa_id: mesa.id,
           numero: proximoNumero(), estado: "abierta",
           mozo: mozo, abierta_at: new Date().toISOString(), usuario: usuario,
         };
-        registrar(nueva, "Abrió la mesa", "Mozo: " + mozo + (esNueva ? " · mesa nueva" : " · misma mesa que seguía"));
-        setExtras(function(prev) { return { ...prev, [nueva.id]: { mesa_nueva: esNueva } }; });
-        Promise.all([guardar(nueva), sbGuardarExtra(nueva.id, { mesa_nueva: esNueva }, usuario)]).then(function(r) { if (!r[0]) setAbiertaId(nueva.id); });
+        var extraNueva = personas ? { mesa_nueva: esNueva, personas: personas } : { mesa_nueva: esNueva };
+        registrar(nueva, "Abrió la mesa", "Mozo: " + mozo + (personas ? " · " + personas + " personas" : "") + (esNueva ? " · mesa nueva" : " · misma mesa que seguía"));
+        setExtras(function(prev) { return { ...prev, [nueva.id]: extraNueva }; });
+        Promise.all([guardar(nueva), sbGuardarExtra(nueva.id, extraNueva, usuario)]).then(function(r) { if (!r[0]) setAbiertaId(nueva.id); });
+       } });
       });
     }
     // Una mesa que ya se cobró y se vuelve a tocar es una mesa nueva: se abre directo (sin preguntar) y la cocina lo lee con el cartel «MESA NUEVA».
@@ -4258,6 +4296,10 @@ export default function PanelComandas(p) {
         })}
       </div>
 
+      {eligePersonas && <ElegirPersonas titulo={eligePersonas.titulo} color={color}
+        onElegir={function(n) { var f = eligePersonas.alElegir; setEligePersonas(null); f(n); }}
+        onOmitir={function() { var f = eligePersonas.alElegir; setEligePersonas(null); f(null); }}
+        onCancelar={function() { setEligePersonas(null); }} />}
       {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
         onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
         onCancelar={function() { setEligeMozo(null); }} />}

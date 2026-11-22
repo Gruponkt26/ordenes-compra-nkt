@@ -113,6 +113,7 @@ function armarControl(t, c) {
   crudo(CMD.negritaOff);
   linea("Fecha: " + (t.fecha || "") + "   Hora: " + (t.horaSolo || ""));
   if (t.mozo) linea("Mozo: " + t.mozo);
+  if (t.personas) linea("Personas: " + t.personas);
   crudo(CMD.normal);
   linea("-".repeat(W));
   // Columnas: Cant. (5) · Descripción (resto) · Subtot. (9) · Total (10)
@@ -176,6 +177,7 @@ function armar(ticket, cfg) {
   ));
   crudo(CMD.negritaOff);
   if (ticket.mozo) linea("Mozo: " + ticket.mozo);
+  if (ticket.personas) linea("Personas: " + ticket.personas);
   if (ticket.direccion) envolver("Dir: " + ticket.direccion, c.ancho, 0).forEach(linea);
   if (ticket.telefono) linea("Tel: " + ticket.telefono);
   crudo(CMD.normal);

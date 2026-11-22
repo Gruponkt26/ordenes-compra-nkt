@@ -5296,13 +5296,18 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
   var regs=deportes||[];
   var cargados=(gastos||[]).filter(function(g){return g.local==="dep"&&String(g.id).indexOf("depg_")!==0&&!esGastoDeuda(g);});
   var meses={};
-  regs.forEach(function(x){ if(x.fecha&&((["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&x.estado==="cobrado")||((x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado")))meses[String(x.fecha).slice(0,7)]=1; });
+  regs.forEach(function(x){ if(x.fecha&&((["entrada","clase","turno","uso"].indexOf(x.tipo)!==-1&&(x.estado==="cobrado"||x.estado==="pendiente"))||((x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado")))meses[String(x.fecha).slice(0,7)]=1; });
   cargados.forEach(function(g){ if(g.fecha)meses[String(g.fecha).slice(0,7)]=1; });
   (extras||[]).forEach(function(e){ if(e.mes)meses[e.mes]=1; });
   var lista=Object.keys(meses).sort().reverse().map(function(m){
     var delMes=function(x){return String(x.fecha||"").slice(0,7)===m;};
     var ent=DEP_CONCEPTOS.map(function(c){
       var l=regs.filter(function(x){return c.test(x)&&x.estado==="cobrado"&&delMes(x);});
+      return {label:c.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
+    }).filter(function(f){return f.n>0;});
+    // Lo que está cargado pero todavía «A cobrar»: se ve en el mes para que no parezca que se perdió, pero no suma al ingreso hasta marcarlo Cobrado.
+    var pend=DEP_CONCEPTOS.map(function(c){
+      var l=regs.filter(function(x){return c.test(x)&&x.estado==="pendiente"&&delMes(x);});
       return {label:c.label,monto:l.reduce(function(a,x){return a+num(x.monto);},0),n:l.length};
     }).filter(function(f){return f.n>0;});
     var salReg=regs.filter(function(x){return (x.tipo==="salida"||x.tipo==="obra")&&x.estado==="pagado"&&delMes(x);});
@@ -5319,7 +5324,7 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
     (extras||[]).filter(function(e){return e.mes===m;}).forEach(function(e){ sal.push({label:e.label,monto:e.monto,n:1,medios:juntarMedios(e.medios||[])}); });
     sal=sal.filter(function(f){return f.n>0;}).sort(function(x,y){return y.monto-x.monto;});
     var totE=ent.reduce(function(a,f){return a+f.monto;},0), totS=sal.reduce(function(a,f){return a+f.monto;},0);
-    return {m:m,ent:ent,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
+    return {m:m,ent:ent,pend:pend,sal:sal,totE:totE,totS:totS,saldo:totE-totS};
   });
   var [mesMedios,setMesMedios]=useState("todos");
   // Todo junto, del mes elegido: lo que entró, lo que salió como retiro y como egreso, y con qué plata se pagó.
@@ -5426,6 +5431,10 @@ function ResumenConcesion({deportes, gastos, extras, aportes, retiros}){
           </div>
           <div style={{fontSize:12,fontWeight:800,color:"#3A7D44",textTransform:"uppercase",letterSpacing:1,marginTop:6,paddingBottom:4,borderBottom:"1px solid #3A7D4444"}}>Ingresó · {fmtP(t.totE)}</div>
           {t.ent.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:15,fontWeight:800,color:"#F0EDE8",padding:"6px 0",borderBottom:"1px solid #161616"}}><span>{f.label}</span><b style={{color:"#F0EDE8"}}>{fmtP(f.monto)}</b></div>;})}
+          {(t.pend||[]).length>0&&<div style={{marginTop:8,background:"#D4A01710",border:"1px dashed #D4A01766",borderRadius:8,padding:"6px 10px"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#D4A017",textTransform:"uppercase",letterSpacing:1}}>🕓 A cobrar · {fmtP(t.pend.reduce(function(a,f){return a+f.monto;},0))} <span style={{fontWeight:500,textTransform:"none",letterSpacing:0}}>(no suma hasta marcarlo Cobrado)</span></div>
+            {t.pend.map(function(f){return <div key={f.label} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:13,fontWeight:700,color:"#E5C467",padding:"3px 0"}}><span>{f.label} <span style={{opacity:.7,fontWeight:500}}>({f.n})</span></span><b>{fmtP(f.monto)}</b></div>;})}
+          </div>}
           <div style={{fontSize:12,fontWeight:800,color:"#C1440E",textTransform:"uppercase",letterSpacing:1,marginTop:12,paddingBottom:4,borderBottom:"1px solid #C1440E44"}}>Egresó · {fmtP(t.totS)}</div>
           {t.sal.map(function(f,i){return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,fontSize:15,fontWeight:800,color:"#F0EDE8",padding:"6px 0",borderBottom:"1px solid #161616"}}><span style={{minWidth:0}}>{f.label}{(f.medios||[]).length>0&&<span style={{display:"block",fontSize:10.5,color:"#6E6E6E",marginTop:1}}>{f.medios.map(function(m){return m.medio+(f.medios.length>1?" "+fmtP(m.monto):"");}).join(" · ")}</span>}</span><b style={{color:"#F0EDE8",flexShrink:0}}>{fmtP(f.monto)}</b></div>;})}
         </div>

@@ -77,6 +77,155 @@ async function guardarFila(id, ambito, obj) {
   return r.ok;
 }
 
+// ─── COMERCIOS AMIGOS ───
+// Comercios que no son de Grupo Nkt pero forman parte de la comunidad: aparecen como una tarjeta más (ámbito grupo_comercio, uno por comercio).
+export async function cargarComercios(soloActivos) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_comercio&order=created_at.asc&limit=200", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    var l = Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+    l.sort(function (a, b) { return (Number(a.orden) || 0) - (Number(b.orden) || 0); });
+    return soloActivos ? l.filter(function (c) { return c.activo !== false; }) : l;
+  } catch (e) { return []; }
+}
+async function guardarComercio(c) { var o = { ...c }; var id = o.id; delete o.id; return guardarFila(id, "grupo_comercio", o); }
+async function borrarComercio(id) { try { var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }); return r.ok; } catch (e) { return false; } }
+// El logo se achica en el celular o la compu (hasta 600 px) y se pone sobre fondo blanco, porque la tarjeta lo muestra así.
+function achicarLogo(file) {
+  return new Promise(function (res) {
+    try {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 600 / Math.max(img.width, img.height));
+        var cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        var cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+        cv.toBlob(function (b) { URL.revokeObjectURL(url); res(b || null); }, "image/jpeg", 0.9);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); res(null); };
+      img.src = url;
+    } catch (e) { res(null); }
+  });
+}
+async function subirLogoComercio(blob, id) {
+  try {
+    var r = await fetch(SURL + "/storage/v1/object/fichajes/comercios/" + id + ".jpg", { method: "POST", headers: { apikey: SH.apikey, Authorization: SH.Authorization, "Content-Type": "image/jpeg", "x-upsert": "true" }, body: blob });
+    if (!r.ok) return { ok: false, error: await r.text() };
+    return { ok: true, url: SURL + "/storage/v1/object/public/fichajes/comercios/" + id + ".jpg?v=" + Date.now() };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+}
+// La tarjeta de un comercio amigo, como la de un local pero sin pedidos ni reservas.
+function TarjetaComercio(props) {
+  var c = props.c, color = c.color || "#1A6B8A";
+  var boton = { display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontSize: 13, fontWeight: 700, textDecoration: "none" };
+  var item = function (link, txt) { return link ? <a href={link} target="_blank" rel="noreferrer" style={boton}>{txt}</a> : <span style={{ ...boton, opacity: 0.4, cursor: "not-allowed" }} title="Pronto">{txt}</span>; };
+  return (
+    <div style={{ background: "#111", border: "1px solid " + color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
+      <div style={{ textAlign: "center" }}>
+        {c.logo
+          ? <div style={{ background: "#fff", borderRadius: 12, padding: "8px 14px", display: "inline-block", maxWidth: "100%" }}><img src={c.logo} alt={c.nombre} style={{ display: "block", height: 64, maxWidth: "100%", width: "auto", margin: "0 auto" }} /></div>
+          : <div style={{ fontSize: 22, fontWeight: 800, color: color }}>{c.nombre}</div>}
+        {c.desc && <div style={{ fontSize: 13.5, color: "#C8C8C8", marginTop: 8 }}>{c.desc}</div>}
+      </div>
+      {c.beneficio && <div style={{ background: color + "22", border: "1px dashed " + color + "99", borderRadius: 10, padding: "8px 12px", marginTop: 10, textAlign: "center", fontSize: 13, color: "#F0EDE8", fontWeight: 700 }}>🎟️ Con tu cupón: {c.beneficio}</div>}
+      {(c.direccion || c.horarios) && (
+        <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.6, marginTop: 10, textAlign: "center" }}>
+          {c.direccion && <div>📍 {c.direccion}</div>}
+          {c.horarios && <div style={{ whiteSpace: "pre-wrap" }}>🕒 {c.horarios}</div>}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+        {item(c.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(c.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
+        {item(linkWeb(c.carta), "🍽️ Ver la carta")}
+        {item(linkWsp(c.wsp, "Hola " + c.nombre + "! Los vi en la comunidad de Grupo Nkt."), "💬 Escribinos")}
+        {item(linkWeb(c.instagram, "instagram"), "📸 Instagram")}
+      </div>
+    </div>
+  );
+}
+// Administración: alta, edición y baja de los comercios amigos.
+function PanelComerciosRed(props) {
+  var tarjeta = props.tarjeta;
+  var [lista, setLista] = useState(null);
+  var [abierto, setAbierto] = useState(false);
+  var [form, setForm] = useState(null);   // el comercio que se está cargando o editando
+  var [msg, setMsg] = useState("");
+  var [subiendo, setSubiendo] = useState(false);
+  var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
+  function recargar() { return cargarComercios(false).then(setLista); }
+  useEffect(function () { recargar(); }, []);
+  function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
+  function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
+  function elegirLogo(e) {
+    var file = e.target.files && e.target.files[0]; if (!file) return;
+    setSubiendo(true);
+    achicarLogo(file).then(function (blob) {
+      if (!blob) { setSubiendo(false); setMsg("No se pudo leer esa imagen."); return; }
+      subirLogoComercio(blob, form.id).then(function (r) { setSubiendo(false); if (r.ok) setF("logo", r.url); else setMsg("No se pudo subir el logo: " + (r.error || "")); });
+    });
+  }
+  function guardar() {
+    if (!String(form.nombre || "").trim()) { setMsg("Falta el nombre del comercio."); return; }
+    guardarComercio({ ...form, nombre: form.nombre.trim() }).then(function (ok) {
+      setMsg(ok ? "✓ Guardado" : "No se pudo guardar. Revisá la conexión.");
+      if (ok) { setForm(null); recargar(); }
+      setTimeout(function () { setMsg(""); }, 3000);
+    });
+  }
+  function quitar(c) {
+    if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad? Deja de aparecer en la página.")) return;
+    borrarComercio(c.id).then(function () { recargar(); });
+  }
+  function alternar(c) { guardarComercio({ ...c, activo: c.activo === false }).then(function () { recargar(); }); }
+  return (
+    <div style={tarjeta}>
+      <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800 }}>{abierto ? "▾" : "▸"} 🤝 Comercios amigos de la comunidad{lista ? " (" + lista.length + ")" : ""}</div>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
+          {lista && lista.map(function (c) { return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid #1A1A1A" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: c.activo === false ? "#6E6E6E" : "#F0EDE8" }}>{c.nombre}{c.activo === false ? " · oculto" : ""}</div>
+                <div style={{ fontSize: 11, color: "#8C8C8C" }}>{c.beneficio ? "🎟️ " + c.beneficio : "sin beneficio cargado"}</div>
+              </div>
+              <button onClick={function () { setForm({ ...c }); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>✏️ Editar</button>
+              <button onClick={function () { alternar(c); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>{c.activo === false ? "Mostrar" : "Ocultar"}</button>
+              <button onClick={function () { quitar(c); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 13 }}>🗑️</button>
+            </div>); })}
+          {lista && lista.length === 0 && !form && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>Todavía no hay comercios cargados.</div>}
+          {!form && <button onClick={nuevo} style={{ marginTop: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #1A6B8A88", background: "#1A6B8A22", color: "#7FC4DE", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>+ Sumar un comercio</button>}
+          {form && (
+            <div style={{ marginTop: 10, borderTop: "1px solid #1A1A1A", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{(lista || []).some(function (c) { return c.id === form.id; }) ? "Editar comercio" : "Nuevo comercio"}</div>
+              <input value={form.nombre} onChange={function (e) { setF("nombre", e.target.value); }} placeholder="Nombre (ej: Café San Juan) *" style={sel} />
+              <input value={form.desc} onChange={function (e) { setF("desc", e.target.value); }} placeholder="Descripción corta (ej: Café de especialidad y pastelería)" style={sel} />
+              <input value={form.beneficio} onChange={function (e) { setF("beneficio", e.target.value); }} placeholder="Beneficio para quien muestre el cupón (ej: 10% de descuento)" style={sel} />
+              <input value={form.direccion} onChange={function (e) { setF("direccion", e.target.value); }} placeholder="Dirección (calle y número)" style={sel} />
+              <textarea value={form.horarios} onChange={function (e) { setF("horarios", e.target.value); }} rows={2} placeholder="Horarios (ej: Lun a Sáb de 8 a 20 h)" style={{ ...sel, resize: "vertical" }} />
+              <input value={form.wsp} onChange={function (e) { setF("wsp", e.target.value); }} placeholder="WhatsApp (ej: 2914123456)" style={sel} />
+              <input value={form.carta} onChange={function (e) { setF("carta", e.target.value); }} placeholder="Enlace de la carta (opcional)" style={sel} />
+              <input value={form.instagram} onChange={function (e) { setF("instagram", e.target.value); }} placeholder="Instagram (opcional)" style={sel} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11.5, color: "#8C8C8C" }}>Color de la tarjeta</span>
+                <input type="color" value={form.color || "#1A6B8A"} onChange={function (e) { setF("color", e.target.value); }} style={{ width: 44, height: 30, border: "none", background: "none", padding: 0 }} />
+                <span style={{ fontSize: 11.5, color: "#8C8C8C" }}>Logo</span>
+                <input type="file" accept="image/*" onChange={elegirLogo} style={{ fontSize: 11.5, color: "#C8C8C8", maxWidth: 190 }} />
+                {subiendo && <span style={{ fontSize: 11.5, color: "#D4A017" }}>subiendo…</span>}
+                {form.logo && !subiendo && <img src={form.logo} alt="logo" style={{ height: 28, background: "#fff", borderRadius: 4 }} />}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={guardar} disabled={subiendo} style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Guardar</button>
+                <button onClick={function () { setForm(null); }} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #2A2A2A", background: "none", color: "#8C8C8C", fontSize: 12.5, cursor: "pointer" }}>Cancelar</button>
+              </div>
+            </div>
+          )}
+          {msg && <div style={{ fontSize: 12, color: msg.indexOf("✓") === 0 ? "#4C9A5A" : "#E0914A", marginTop: 8 }}>{msg}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── NOVEDADES ───
 // Las publica administración (módulo Comunidad) y las ve el miembro al entrar a su portal.
 export async function cargarNovedades() {
@@ -331,6 +480,7 @@ export function TarjetaCupon(props) {
 export function GrupoNkt() {
   var [cfg, setCfg] = useState(CONFIG_VACIA);
   var [cfgListo, setCfgListo] = useState(false);   // para no mostrar valores de relleno mientras carga
+  var [comercios, setComercios] = useState([]);   // comercios amigos de la comunidad (los carga administración)
   var [nombre, setNombre] = useState("");
   var [apellido, setApellido] = useState("");
   var [wsp, setWsp] = useState("");
@@ -378,6 +528,7 @@ export function GrupoNkt() {
       var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (mt) mt.setAttribute("content", "Grupo Nkt");
     } catch (e) {}
     cargarConfigGrupo().then(function (c) { setCfg(c); setCfgListo(true); });
+    cargarComercios(true).then(setComercios);
     var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
     if (cg) leerPauta("cupon_" + cg).then(function (c) {
       // Si lo sacaron de la lista, se olvida lo guardado en el celular y se le vuelve a ofrecer sumarse.
@@ -658,6 +809,13 @@ export function GrupoNkt() {
           {cupon && bInstructivo}
           {bInstalar}
           {bLocales}
+          {comercios.length > 0 && (
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8", margin: "6px 0 4px", textAlign: "center" }}>🤝 Comercios amigos de la comunidad</div>
+              <div style={{ fontSize: 12.5, color: "#9A9A9A", textAlign: "center", marginBottom: 12 }}>Mostrá tu cupón y disfrutá sus beneficios.</div>
+              {comercios.map(function (c) { return <TarjetaComercio key={c.id} c={c} />; })}
+            </div>
+          )}
           {hecho !== "ok" && <div style={{ marginTop: 6 }}>{bSumarse}</div>}
         </div>
       ) : (
@@ -1606,6 +1764,8 @@ export function PanelComunidad() {
           </div>
         )}
       </div>
+
+      <PanelComerciosRed tarjeta={tarjeta} />
     </div>
   );
 }

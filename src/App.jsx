@@ -16508,7 +16508,7 @@ function PanelNovedades(p){
                 <div key={i} style={{fontSize:12,color:a.rojo?"#E0714A":(a.socio?"#B07AE0":(a.verde?"#4C9A5A":"#D4A017")),padding:"3px 0",display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",opacity:hecho?0.45:1,textDecoration:hecho?"line-through":"none"}}>
                   <span style={{display:"flex",gap:7,alignItems:"flex-start"}}><input type="checkbox" checked={hecho} onChange={function(){tildar(a);}} style={{marginTop:2,cursor:"pointer",flexShrink:0}}/><span>{a.rojo?"🚨":(a.socio?"🤝":(a.verde?"🎉":"⚠️"))} {a.txt}</span></span>
                   {a.cargarEg&&(
-                    <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
+                    <button onClick={function(){setEgCajaForm({cierre:a.cargarEg,motivo:"",concepto:a.cargarEg.egresos_nota||"",area:"Mantenimiento",monto:String(parseFloat(a.cargarEg.egresos_diarios)),facturado:false,facturacion:""});}} style={{background:"none",border:"1px solid #D4A01755",borderRadius:6,color:"#D4A017",fontSize:10,fontWeight:700,cursor:"pointer",padding:"3px 9px",flexShrink:0,fontFamily:"'Inter',sans-serif"}}>Cargar →</button>
                   )}
                   {a.acciones&&(
                     <span style={{display:"flex",gap:5,flexShrink:0,flexWrap:"wrap"}}>
@@ -16656,7 +16656,7 @@ function PanelNovedades(p){
           if(monto<=0){alert("Cargá un monto mayor a cero.");return;}
           if(egCajaForm.facturado&&!egCajaForm.facturacion){alert("Elegí a qué CUIT está facturado.");return;}
           setGuardandoEgCaja(true);
-          Promise.resolve(p.onCargarEgresoCaja(c,{concepto:egCajaForm.concepto.trim(),area:egCajaForm.area,monto:monto,facturado:!!egCajaForm.facturado,facturacion:egCajaForm.facturado?egCajaForm.facturacion:""})).then(function(ok){
+          Promise.resolve(p.onCargarEgresoCaja(c,{concepto:egCajaForm.concepto.trim(),motivo:(egCajaForm.motivo||"").trim(),area:egCajaForm.area,monto:monto,facturado:!!egCajaForm.facturado,facturacion:egCajaForm.facturado?egCajaForm.facturacion:""})).then(function(ok){
             setGuardandoEgCaja(false);
             if(ok)setEgCajaForm(null);
           });
@@ -16669,6 +16669,10 @@ function PanelNovedades(p){
               <div style={{marginBottom:10}}>
                 <label style={lbl}>En qué se gastó</label>
                 <input value={egCajaForm.concepto} onChange={function(e){setF("concepto",e.target.value);}} placeholder="Ej: hielo" style={campo}/>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={lbl}>Motivo <span style={{textTransform:"none",color:"#6E6E6E"}}>(para qué fue, opcional)</span></label>
+                <input value={egCajaForm.motivo||""} onChange={function(e){setF("motivo",e.target.value);}} placeholder="Ej: para el servicio del sábado" style={campo}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
                 <div>
@@ -31542,15 +31546,15 @@ export default function App() {
     var medio=CAJA_MAYOR_POR_LOCAL[c.local];
     if(!medio||gastos.some(function(g){return g.id==="egcaja_"+c.id;}))return false;
     var quien=cu&&cu.nombre?cu.nombre:"Administración";
-    var notaNueva="Egreso de caja — "+d.concepto+" ("+quien+")";
+    var notaNueva="Egreso de caja — "+d.concepto+(d.motivo?" · motivo: "+d.motivo:"")+" ("+quien+")";
     var cierre={...c,
       retiro_caja:(parseFloat(c.retiro_caja)||0)+d.monto,
       retiro_caja_nota:c.retiro_caja_nota?c.retiro_caja_nota+" · "+notaNueva:notaNueva};
     var ok=await guardarCierre(cierre);
     if(!ok)return false;
-    var g={id:"egcaja_"+c.id,local:c.local,concepto:d.concepto,subramo:"",detalle:"Egreso de caja menor anotado en el cierre del "+c.fecha,
+    var g={id:"egcaja_"+c.id,local:c.local,concepto:d.concepto,subramo:"",detalle:"Egreso de caja menor anotado en el cierre del "+c.fecha+(d.motivo?" · Motivo: "+d.motivo:""),
       monto:d.monto,forma_pago:medio,facturado:!!d.facturado,facturacion:d.facturado?d.facturacion:"",categoria:d.area,area:d.area,
-      notas:"Cargado desde Novedades",fecha:c.fecha,usuario:quien,created_at:new Date().toISOString(),
+      notas:"Cargado desde Novedades"+(d.motivo?" · Motivo: "+d.motivo:""),fecha:c.fecha,usuario:quien,created_at:new Date().toISOString(),
       pagos:[{medio:medio,monto:d.monto}]};
     sbSaveGasto(g);
     setGastos(function(prev){var f=prev.filter(function(x){return x.id!==g.id;});return[g,...f];});

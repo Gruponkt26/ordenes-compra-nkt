@@ -28,5 +28,12 @@
 4. En **Comercios amigos**, cada comercio muestra cuántos reclamos tuvo en los últimos 30 días; con **3 o más** se marca **«revisar»**. Nunca se pausa solo: esa decisión es de administración.
 5. En **Novedades** aparece un aviso cuando hay reclamos nuevos.
 
+## Novedades de los comercios
+1. Desde su portal, cada comercio puede mandar una **novedad** (título, texto corto, foto opcional y fecha de fin; si no la pone, dura 7 días).
+2. **Una novedad por semana por comercio.** Para publicar más, administración habilita una **«➕ Novedad extra»** (se cobra aparte) desde la lista de comercios.
+3. Queda **pendiente**: administración la aprueba (o rechaza con motivo) en **Comercios amigos → Novedades de comercios para aprobar**.
+4. En la página de Comunidad se muestran **primero las novedades del Grupo Nkt** y después, con el título «🤝 De los comercios amigos», las de los comercios, con el nombre del comercio. Se vencen solas, y si el comercio está pausado, no se ven.
+5. Pauta a cuidar al aprobar: sin precios ni promesas que el comercio no pueda sostener.
+
 ## Próximos pasos
 1. Canje del cupón en los comercios y su informe (cuántos socios llegaron a cada uno).

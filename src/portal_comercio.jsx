@@ -3,7 +3,7 @@
 // no se publican hasta que administración los aprueba (Administración → Comunidad → Comercios amigos).
 import React, { useState, useEffect } from "react";
 import { SURL, SH } from "./comun.js";
-import { leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio } from "./grupo.jsx";
+import { leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -28,6 +28,12 @@ export default function PortalComercio() {
   var [enviando, setEnviando] = useState(false);
   var [msg, setMsg] = useState("");
   var [error, setError] = useState("");
+  var [novs, setNovs] = useState([]);                       // las novedades que mandó este comercio
+  var [nov, setNov] = useState({ titulo: "", texto: "", foto_url: "", hasta: "" });
+  var [subiendoFoto, setSubiendoFoto] = useState(false);
+  var [enviandoNov, setEnviandoNov] = useState(false);
+  var [msgNov, setMsgNov] = useState("");
+  var [errorNov, setErrorNov] = useState("");
 
   useEffect(function () {
     document.title = "Portal de comercios · Grupo Nkt";
@@ -40,6 +46,7 @@ export default function PortalComercio() {
       var c = await leerPauta("comcambio_" + id);
       var base = {}; CAMPOS.forEach(function (x) { base[x] = (c && c.estado === "pendiente" && c.datos && c.datos[x] !== undefined) ? c.datos[x] : (p[x] === undefined ? "" : p[x]); });
       if (!base.color) base.color = "#1A6B8A";
+      cargarNovedadesComercios().then(function (l) { setNovs(l.filter(function (n) { return n.comercio_id === id; })); });
       setPub(p); setCambio(c); setForm(base); setAcepta(!!p.pautas_ok_at || !!(c && c.datos && c.datos.pautas_ok)); setEstado("ok");
     })();
   }, []);
@@ -75,6 +82,37 @@ export default function PortalComercio() {
       }).catch(function () { setEnviando(false); setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); });
   }
 
+  // Una novedad por semana; las extra las habilita administración (se cobran aparte).
+  var semana = semanaClave();
+  var usadas = novs.filter(function (n) { return n.semana === semana && n.estado !== "rechazada"; }).length;
+  var extra = pub && pub.novedad_extra && pub.novedad_extra.sem === semana ? Number(pub.novedad_extra.n) || 0 : 0;
+  var puedeNov = usadas < 1 + extra;
+  function elegirFoto(e) {
+    var file = e.target.files && e.target.files[0]; if (!file) return;
+    setSubiendoFoto(true); setErrorNov("");
+    achicarFotoNov(file, 1200).then(function (blob) {
+      if (!blob) { setSubiendoFoto(false); setErrorNov("No se pudo leer esa imagen."); return; }
+      subirFotoNovedad(blob, "c_" + id + "_" + Date.now()).then(function (r) { setSubiendoFoto(false); if (r.ok) setNov(function (n) { return { ...n, foto_url: r.url }; }); else setErrorNov("No se pudo subir la foto. Probá de nuevo."); });
+    });
+  }
+  function enviarNov() {
+    setErrorNov(""); setMsgNov("");
+    if (!String(nov.titulo).trim()) { setErrorNov("Falta el título de la novedad."); return; }
+    if (!String(nov.texto).trim()) { setErrorNov("Contá en pocas palabras de qué se trata."); return; }
+    var hasta = nov.hasta || new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+    if (hasta < hoyISO()) { setErrorNov("La fecha de fin ya pasó."); return; }
+    setEnviandoNov(true);
+    var ahora = new Date().toISOString(), nid = "comnov_" + id + "_" + Date.now();
+    var obj = { comercio_id: id, comercio_nombre: (pub && pub.nombre) || form.nombre || "", color: (pub && pub.color) || "", titulo: nov.titulo.trim(), texto: nov.texto.trim(), foto_url: nov.foto_url || "", hasta: hasta, estado: "pendiente", enviado_at: ahora, semana: semana, activa: true };
+    fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: nid, ambito: "grupo_novedad_comercio", texto: JSON.stringify(obj), usuario: "", created_at: ahora, updated_at: ahora }) })
+      .then(function (r) {
+        setEnviandoNov(false);
+        if (!r.ok) { setErrorNov("No se pudo enviar. Probá de nuevo."); return; }
+        setNovs(function (l) { return [{ id: nid, comercio: true, ...obj }].concat(l); });
+        setNov({ titulo: "", texto: "", foto_url: "", hasta: "" });
+        setMsgNov("✓ Enviada. Administración la revisa y, cuando la apruebe, la ven los socios.");
+      }).catch(function () { setEnviandoNov(false); setErrorNov("No se pudo enviar. Revisá tu conexión."); });
+  }
   var fondo = { minHeight: "100vh", background: "#0D0D0D", color: "#F0EDE8", fontFamily: "'Inter',system-ui,sans-serif", padding: "22px 16px 60px", boxSizing: "border-box" };
   var caja = { maxWidth: 480, margin: "0 auto" };
   var inp = { width: "100%", boxSizing: "border-box", padding: "11px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "inherit", fontSize: 15, marginBottom: 8 };
@@ -157,6 +195,44 @@ export default function PortalComercio() {
       {error && <div style={{ ...tarj, borderColor: "#C1440E88", color: "#F0A090", fontSize: 13.5 }}>{error}</div>}
       <button onClick={enviar} disabled={enviando || subiendo} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: enviando || subiendo ? "#2A2A2A" : "#1A6B8A", color: "#fff", fontFamily: "inherit", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Enviando…" : "Enviar para revisión"}</button>
       <div style={{ fontSize: 11.5, color: "#7E7E7E", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>Lo que envíes no se publica hasta que administración lo apruebe.</div>
+
+      <div style={{ height: 22 }} />
+      <div style={tarj}>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>📣 Tu novedad para los socios</div>
+        <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, marginTop: 3 }}>Un plato nuevo, un evento, algo para contarle a la comunidad. Tenés <b style={{ color: "#F0EDE8" }}>1 novedad por semana</b>. Si querés publicar más, hablá con administración (tiene un costo aparte).</div>
+        {msgNov && <div style={{ marginTop: 8, fontSize: 13, color: "#9FE0AA", fontWeight: 700 }}>{msgNov}</div>}
+        {puedeNov ? (
+          <div>
+            <label style={lbl}>Título *</label>
+            <input value={nov.titulo} onChange={function (e) { var v = e.target.value; setNov(function (n) { return { ...n, titulo: v }; }); }} placeholder="Ej: Nueva torta de la casa" style={inp} />
+            <label style={lbl}>Contalo en pocas palabras *</label>
+            <textarea value={nov.texto} onChange={function (e) { var v = e.target.value; setNov(function (n) { return { ...n, texto: v }; }); }} rows={3} placeholder="Qué es, cuándo y cualquier condición. Sin precios que no puedas sostener." style={{ ...inp, resize: "vertical" }} />
+            <label style={lbl}>Foto (opcional)</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <input type="file" accept="image/*" onChange={elegirFoto} style={{ fontSize: 12.5, color: "#C8C8C8", maxWidth: 220 }} />
+              {subiendoFoto && <span style={{ fontSize: 12, color: "#D4A017" }}>subiendo…</span>}
+              {nov.foto_url && !subiendoFoto && <img src={nov.foto_url} alt="foto" style={{ height: 44, borderRadius: 6 }} />}
+            </div>
+            <label style={lbl}>Se muestra hasta (si lo dejás vacío, 7 días)</label>
+            <input type="date" value={nov.hasta} onChange={function (e) { var v = e.target.value; setNov(function (n) { return { ...n, hasta: v }; }); }} style={inp} />
+            {errorNov && <div style={{ fontSize: 13, color: "#F0A090", marginBottom: 8 }}>{errorNov}</div>}
+            <button onClick={enviarNov} disabled={enviandoNov || subiendoFoto} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: enviandoNov || subiendoFoto ? "#2A2A2A" : "#8B6A1A", color: "#fff", fontFamily: "inherit", fontSize: 14.5, fontWeight: 800, cursor: "pointer" }}>{enviandoNov ? "Enviando…" : "Enviar novedad para revisión"}</button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, background: "#16120A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "#E5C467", lineHeight: 1.45 }}>Ya mandaste tu novedad de esta semana. La próxima podés cargarla desde el lunes. Si necesitás publicar otra antes, hablá con administración.</div>
+        )}
+        {novs.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, marginBottom: 4 }}>Tus novedades</div>
+            {novs.slice(0, 5).map(function (n) { return (
+              <div key={n.id} style={{ borderTop: "1px solid #1A1A1A", padding: "7px 0", fontSize: 13 }}>
+                <b>{n.titulo}</b>
+                <div style={{ fontSize: 11.5, color: n.estado === "aprobada" ? "#8FD19A" : n.estado === "rechazada" ? "#E0714A" : "#E5C467" }}>{n.estado === "aprobada" ? "✓ Publicada" + (n.hasta ? " hasta el " + fechaCorta(n.hasta) : "") : n.estado === "rechazada" ? "✕ No se aprobó" + (n.motivo ? ": " + n.motivo : "") : "📝 En revisión"}</div>
+              </div>); })}
+          </div>
+        )}
+      </div>
+
     </div></div>
   );
 }

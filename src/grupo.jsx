@@ -94,7 +94,7 @@ export async function cargarComercios(soloActivos) {
 // (ámbito grupo_reclamo, un registro por socio, comercio y semana). El comercio no lo ve; administración decide qué le comunica.
 export var MOTIVOS_RECLAMO = ["No me respetaron el beneficio", "Mala atención", "Servicio fallido o demora", "Me cobraron de más", "Otro motivo"];
 export var ESTADOS_RECLAMO = [{ id: "nuevo", txt: "Nuevo", col: "#E0714A" }, { id: "revision", txt: "En revisión", col: "#D4A017" }, { id: "resuelto", txt: "Resuelto", col: "#4C9A5A" }];
-function semanaClave() { var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); var s1 = new Date(d.getFullYear(), 0, 4); return d.getFullYear() + "-S" + String(1 + Math.round(((d - s1) / 864e5 - 3 + ((s1.getDay() + 6) % 7)) / 7)).padStart(2, "0"); }
+export function semanaClave() { var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); var s1 = new Date(d.getFullYear(), 0, 4); return d.getFullYear() + "-S" + String(1 + Math.round(((d - s1) / 864e5 - 3 + ((s1.getDay() + 6) % 7)) / 7)).padStart(2, "0"); }
 export async function cargarReclamos() {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_reclamo&order=created_at.desc&limit=500", { headers: { ...SH, "Cache-Control": "no-cache" } });
@@ -323,9 +323,10 @@ function PanelComerciosRed(props) {
   var [subiendo, setSubiendo] = useState(false);
   var [cambios, setCambios] = useState({});      // lo que cada comercio pidió cambiar desde su portal
   var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
+  var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -348,6 +349,19 @@ function PanelComerciosRed(props) {
   function quitar(c) {
     if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad? Deja de aparecer en la página.")) return;
     borrarComercio(c.id).then(function () { recargar(); });
+  }
+  // Novedades de los comercios: se publican cuando administración las aprueba. Cada comercio puede mandar 1 por semana; las extra las habilita administración (se cobran aparte).
+  function limpiarNov(n) { var o = { ...n }; delete o.id; delete o.comercio; return o; }
+  function aprobarNov(n) { guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "aprobada", aprobada_at: new Date().toISOString() }).then(function () { recargar(); setMsg("✓ Novedad publicada."); setTimeout(function () { setMsg(""); }, 3000); }); }
+  function rechazarNov(n) {
+    var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", "");
+    if (m === null) return;
+    guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "rechazada", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { recargar(); });
+  }
+  function darExtra(c) {
+    if (!window.confirm("¿Habilitar 1 novedad extra esta semana para «" + c.nombre + "»?\n\nSe cobra aparte.")) return;
+    var sem = semanaClave(), ex = c.novedad_extra && c.novedad_extra.sem === sem ? c.novedad_extra.n : 0;
+    guardarComercio({ ...c, novedad_extra: { sem: sem, n: ex + 1 } }).then(function () { recargar(); setMsg("✓ Novedad extra habilitada para " + c.nombre + " esta semana."); setTimeout(function () { setMsg(""); }, 4000); });
   }
   // Pausar: deja de verse en la página y el comercio ve el motivo en su portal. Reactivar lo vuelve a mostrar.
   function pausar(c) {
@@ -387,6 +401,22 @@ function PanelComerciosRed(props) {
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
+          {novs.filter(function (n) { return n.estado === "pendiente"; }).length > 0 && (
+            <div style={{ background: "#12100A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E5C467", marginBottom: 6 }}>📣 Novedades de comercios para aprobar ({novs.filter(function (n) { return n.estado === "pendiente"; }).length})</div>
+              {novs.filter(function (n) { return n.estado === "pendiente"; }).map(function (n) { return (
+                <div key={n.id} style={{ borderTop: "1px solid #1E1A10", padding: "8px 0" }}>
+                  <div style={{ fontSize: 11.5, color: "#8FD1E6", fontWeight: 700 }}>🤝 {n.comercio_nombre}{n.hasta ? " · hasta el " + fechaCorta(n.hasta) : ""}</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#F0EDE8", marginTop: 2 }}>{n.titulo}</div>
+                  <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{n.texto}</div>
+                  {n.foto_url && <img src={n.foto_url} alt="" style={{ marginTop: 6, maxWidth: "100%", maxHeight: 180, borderRadius: 8 }} />}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button onClick={function () { aprobarNov(n); }} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#3A7D44", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>✓ Aprobar y publicar</button>
+                    <button onClick={function () { rechazarNov(n); }} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #C1440E88", background: "none", color: "#E0714A", fontSize: 12.5, cursor: "pointer" }}>✕ Rechazar</button>
+                  </div>
+                </div>); })}
+            </div>
+          )}
           {lista && lista.map(function (c) {
             var cam = cambios[c.id], pend = cam && cam.estado === "pendiente";
             var difs = pend ? Object.keys(ETIQ_COMERCIO).filter(function (k) { return String((cam.datos || {})[k] || "") !== String(c[k] || ""); }) : [];
@@ -399,6 +429,7 @@ function PanelComerciosRed(props) {
                 </div>
                 {reclamosDe(reclamos, c.id) > 0 && <span title="Reclamos de socios en los últimos 30 días" style={{ background: reclamosDe(reclamos, c.id) >= 3 ? "#C1121F" : "#5A3A1A", color: "#fff", borderRadius: 7, padding: "4px 8px", fontSize: 11.5, fontWeight: 800 }}>⚠️ {reclamosDe(reclamos, c.id)} reclamo{reclamosDe(reclamos, c.id) === 1 ? "" : "s"}{reclamosDe(reclamos, c.id) >= 3 ? " · revisar" : ""}</span>}
                 {pend && <button onClick={function () { setVerCambio(verCambio === c.id ? "" : c.id); }} style={{ background: "#D4A01722", border: "1px solid #D4A01788", borderRadius: 7, color: "#E5C467", padding: "5px 9px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>📝 Cambios para aprobar</button>}
+                <button onClick={function () { darExtra(c); }} title="Habilitar una novedad extra esta semana (se cobra aparte)" style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>➕ Novedad extra{c.novedad_extra && c.novedad_extra.sem === semanaClave() ? " (" + c.novedad_extra.n + ")" : ""}</button>
                 <button onClick={function () { copiarLink(c, false); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>🔗 Link</button>
                 <button onClick={function () { setForm({ ...c }); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>✏️ Editar</button>
                 {c.activo === false
@@ -474,7 +505,7 @@ export async function cargarNovedades() {
   } catch (e) { return []; }
 }
 // Foto de una novedad: se achica sola en el celular o la compu (a ~1200 px de ancho, JPEG comprimido, unos 150 a 300 KB) antes de subirla.
-function achicarFotoNov(file, maxLado) {
+export function achicarFotoNov(file, maxLado) {
   return new Promise(function (res) {
     try {
       var url = URL.createObjectURL(file), img = new Image();
@@ -489,7 +520,7 @@ function achicarFotoNov(file, maxLado) {
     } catch (e) { res(null); }
   });
 }
-async function subirFotoNovedad(blob, nombre) {
+export async function subirFotoNovedad(blob, nombre) {
   try {
     var r = await fetch(SURL + "/storage/v1/object/fichajes/novedades/" + nombre + ".jpg", { method: "POST", headers: { apikey: SH.apikey, Authorization: SH.Authorization, "Content-Type": "image/jpeg", "x-upsert": "true" }, body: blob });
     if (!r.ok) return { ok: false, error: await r.text() };
@@ -513,6 +544,15 @@ function MediaNovedad(props) {
       {v && !v.youtube && <a href={v.url} target="_blank" rel="noreferrer" style={{ display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #D4A01788", background: "#D4A01722", color: "#FFD36B", fontSize: 14, fontWeight: 800, textDecoration: "none" }}>▶ Ver el video</a>}
     </div>
   );
+}
+// Novedades que mandan los comercios amigos desde su portal (ámbito grupo_novedad_comercio). Solo se publican las aprobadas y vigentes.
+// Un comercio puede mandar 1 por semana; más novedades las habilita administración (se cobran aparte).
+export async function cargarNovedadesComercios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_novedad_comercio&order=created_at.desc&limit=300", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, comercio: true, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
 }
 function novedadVisible(n) {
   var hoy = new Date().toISOString().substring(0, 10);
@@ -745,7 +785,14 @@ export function GrupoNkt() {
   var [segKey, setSegKey] = useState(0);   // al cerrar el pedido se vuelve a leer el seguimiento
   var [pedirLocal, setPedirLocal] = useState(null);   // el local del que se está armando un pedido de delivery
 
-  useEffect(function () { cargarNovedades().then(function (l) { setNovedades(l.filter(novedadVisible).slice(0, 8)); }); }, []);
+  useEffect(function () {
+    Promise.all([cargarNovedades(), cargarNovedadesComercios(), cargarComercios(true)]).then(function (r) {
+      var activos = {}; r[2].forEach(function (c) { activos[c.id] = true; });
+      var delGrupo = r[0].filter(novedadVisible).slice(0, 8);
+      var deComercios = r[1].filter(function (n) { return n.estado === "aprobada" && novedadVisible(n) && activos[n.comercio_id]; }).slice(0, 6);
+      setNovedades(delGrupo.concat(deComercios));   // primero las del Grupo Nkt, después las de los comercios amigos
+    });
+  }, []);
   // Si el miembro abre el portal desde el ícono de la app (no desde el navegador), queda anotado una vez por visita.
   useEffect(function () {
     if (modoPrueba || !cupon || !cupon.wsp || !enModoApp()) return;
@@ -910,16 +957,20 @@ export function GrupoNkt() {
           <div style={{ textAlign: "center", fontSize: 12, color: "#C8B27A", marginBottom: 8 }}>Promos, platos nuevos y beneficios de Grupo Nkt</div>
           {novedades.map(function (n, i) {
             var l = LOCALES_GRUPO.find(function (x) { return x.id === n.local; });
-            var nuevo = n.creado && (Date.now() - new Date(n.creado).getTime()) < 7 * 86400000;
+            var nuevo = (n.creado || n.enviado_at) && (Date.now() - new Date(n.creado || n.enviado_at).getTime()) < 7 * 86400000;
+            var primeraDeComercio = n.comercio && (i === 0 || !novedades[i - 1].comercio);
             return (
-              <div key={n.id} style={{ background: "rgba(0,0,0,0.35)", border: "1px solid " + (l ? l.color + "88" : "#D4A01755"), borderRadius: 12, padding: "11px 12px", marginTop: 9 }}>
+              <div key={n.id}>
+              {primeraDeComercio && <div style={{ textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#C8B27A", margin: "16px 0 2px", letterSpacing: 0.5 }}>🤝 De los comercios amigos</div>}
+              <div style={{ background: "rgba(0,0,0,0.35)", border: "1px solid " + (n.comercio ? (n.color || "#1A6B8A") + "88" : (l ? l.color + "88" : "#D4A01755")), borderRadius: 12, padding: "11px 12px", marginTop: 9 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 17, fontWeight: 800, color: "#FFF3D0", lineHeight: 1.25 }}>{n.titulo}</span>
                   {nuevo && <span style={{ background: "#3A7D44", color: "#fff", borderRadius: 6, fontSize: 10, fontWeight: 800, padding: "2px 6px", letterSpacing: 1 }}>NUEVO</span>}
                 </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: l ? l.color : "#C8B27A", margin: "3px 0 6px" }}>{l ? "📍 Solo en " + l.nombre : "📍 En los 3 locales"}{n.hasta ? " · válido hasta el " + n.hasta.split("-").reverse().join("/") : ""}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: n.comercio ? "#8FD1E6" : (l ? l.color : "#C8B27A"), margin: "3px 0 6px" }}>{n.comercio ? "🤝 " + (n.comercio_nombre || "Comercio amigo") : (l ? "📍 Solo en " + l.nombre : "📍 En los 3 locales")}{n.hasta ? " · válido hasta el " + n.hasta.split("-").reverse().join("/") : ""}</div>
                 <div style={{ fontSize: 14, color: "#F0EDE8", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{n.texto}</div>
                 <MediaNovedad n={n} />
+              </div>
               </div>
             );
           })}

@@ -19,6 +19,11 @@ function hoyISO() { var h = new Date(); return h.getFullYear() + "-" + String(h.
 export default function PortalComercio() {
   var q = new URLSearchParams(window.location.search);
   var id = q.get("c") || "", clave = q.get("k") || "";
+  var inv = q.get("i") || "";                       // invitación para un comercio NUEVO (formulario vacío): /comercio/?i=CODIGO
+  var modoAlta = !!inv && !id;
+  var [altaRow, setAltaRow] = useState(null);       // la solicitud de alta que ya mandó este comercio: {datos, comercio_id, estado, motivo}
+  var [altaLink, setAltaLink] = useState("");       // su link permanente, cuando ya lo aprobaron
+  var [idAlta] = useState(function () { return "com_" + Date.now(); });
   var [estado, setEstado] = useState("cargando");   // cargando | invalido | ok
   var [pub, setPub] = useState(null);                 // lo que está publicado
   var [cambio, setCambio] = useState(null);           // el último pedido de cambio: {datos, estado, enviado_at, motivo}
@@ -44,6 +49,18 @@ export default function PortalComercio() {
 
   useEffect(function () {
     document.title = "Portal de comercios · Grupo Nkt";
+    if (modoAlta) {
+      (async function () {
+        var invi = await leerPauta("cominv_" + inv);
+        if (!invi) { setEstado("invalido"); return; }
+        var a = await leerPauta("comalta_" + inv);
+        var vacio = {}; CAMPOS.forEach(function (x) { vacio[x] = (a && a.estado === "rechazada" && a.datos && a.datos[x] !== undefined) ? a.datos[x] : ""; });
+        if (!vacio.color) vacio.color = "#1A6B8A";
+        if (a && a.estado === "aprobada" && a.comercio_id) { var k2 = await leerPauta("comkey_" + a.comercio_id); if (k2 && k2.token) setAltaLink(window.location.origin + "/comercio/?c=" + encodeURIComponent(a.comercio_id) + "&k=" + k2.token); }
+        setAltaRow(a); setForm(vacio); setAcepta(false); setEstado("ok");
+      })();
+      return;
+    }
     if (!id || !clave) { setEstado("invalido"); return; }
     (async function () {
       var k = await leerPauta("comkey_" + id);
@@ -65,7 +82,7 @@ export default function PortalComercio() {
     setSubiendo(true); setError("");
     achicarLogo(file).then(function (blob) {
       if (!blob) { setSubiendo(false); setError("No se pudo leer esa imagen."); return; }
-      subirLogoComercio(blob, id + "_" + Date.now()).then(function (r) { setSubiendo(false); if (r.ok) setF("logo", r.url); else setError("No se pudo subir el logo. Probá de nuevo."); });
+      subirLogoComercio(blob, (modoAlta ? idAlta : id) + "_" + Date.now()).then(function (r) { setSubiendo(false); if (r.ok) setF("logo", r.url); else setError("No se pudo subir el logo. Probá de nuevo."); });
     });
   }
   function enviar() {
@@ -76,12 +93,23 @@ export default function PortalComercio() {
       if (form.promo_hasta < hoyISO()) { setError("La fecha de fin de la promo ya pasó."); return; }
       if (form.promo_desde && form.promo_desde > form.promo_hasta) { setError("La promo termina antes de empezar. Revisá las fechas."); return; }
     }
+    if (modoAlta && !String(form.wsp || "").trim()) { setError("Poné tu WhatsApp: lo necesitamos para avisarte cuando tu comercio esté publicado."); return; }
     if (!acepta) { setError("Para enviar tenés que aceptar las pautas de la comunidad."); return; }
     setEnviando(true);
     var ahora = new Date().toISOString();
     var datos = {}; CAMPOS.forEach(function (x) { datos[x] = typeof form[x] === "string" ? form[x].trim() : form[x]; });
     datos.pautas_ok = true;
-    var fila = { id: "comcambio_" + id, ambito: "grupo_comercio_cambio", texto: JSON.stringify({ datos: datos, estado: "pendiente", enviado_at: ahora, nombre: datos.nombre }), usuario: "", created_at: ahora, updated_at: ahora };
+    if (modoAlta) {
+      var idCom = (altaRow && altaRow.comercio_id) || idAlta;
+      var filaA = { id: "comalta_" + inv, ambito: "grupo_comercio_alta", texto: JSON.stringify({ datos: datos, comercio_id: idCom, estado: "pendiente", enviado_at: ahora, nombre: datos.nombre }), usuario: "", created_at: ahora, updated_at: ahora };
+      fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(filaA) })
+        .then(function (r) { setEnviando(false); if (!r.ok) { setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); return; } setAltaRow({ datos: datos, comercio_id: idCom, estado: "pendiente", enviado_at: ahora }); window.scrollTo(0, 0); })
+        .catch(function () { setEnviando(false); setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); });
+      return;
+    }
+    // «base»: lo que estaba publicado cuando el comercio mandó sus cambios. Al aprobar solo se publica lo que de verdad cambió respecto de esto.
+    var baseSnap = {}; CAMPOS.forEach(function (x) { baseSnap[x] = pub && pub[x] !== undefined ? pub[x] : ""; });
+    var fila = { id: "comcambio_" + id, ambito: "grupo_comercio_cambio", texto: JSON.stringify({ datos: datos, base: baseSnap, estado: "pendiente", enviado_at: ahora, nombre: datos.nombre }), usuario: "", created_at: ahora, updated_at: ahora };
     fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(fila) })
       .then(function (r) {
         setEnviando(false);
@@ -173,9 +201,13 @@ export default function PortalComercio() {
     <div style={fondo}><div style={caja}>
       <div style={{ textAlign: "center", marginBottom: 14 }}>
         <div style={{ fontSize: 11, letterSpacing: 2, color: "#8C8C8C", textTransform: "uppercase" }}>Comunidad Grupo Nkt</div>
-        <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>Portal de comercios</div>
-        <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>Completá tu información y tus promos. Administración las revisa y las publica.</div>
+        <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>{modoAlta ? "Sumá tu comercio" : "Portal de comercios"}</div>
+        <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Completá los datos de tu comercio y tu promo para los socios. Administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
       </div>
+
+      {modoAlta && altaRow && altaRow.estado === "pendiente" && <div style={{ ...tarj, borderColor: "#D4A01788", background: "#16120A", textAlign: "center" }}><div style={{ fontSize: 34 }}>✅</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#E5C467" }}>Recibimos tu solicitud</div><div style={{ fontSize: 13.5, color: "#C8B27A", lineHeight: 1.5 }}>Administración de Grupo Nkt la está revisando. Cuando la aprueben te avisamos por WhatsApp con el link de tu portal.</div></div>}
+      {modoAlta && altaRow && altaRow.estado === "aprobada" && <div style={{ ...tarj, borderColor: "#3A7D4488", background: "#0F2415", textAlign: "center" }}><div style={{ fontSize: 34 }}>🎉</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#9FE0AA" }}>¡Tu comercio ya está en la comunidad!</div><div style={{ fontSize: 13.5, color: "#B8D8BE", lineHeight: 1.5 }}>Este es tu portal: ahí editás tu tarjeta, cargás tus novedades y canjeás los cupones. Guardá el link.</div>{altaLink && <a href={altaLink} style={{ display: "block", marginTop: 10, padding: "12px", borderRadius: 10, background: "#3A7D44", color: "#fff", fontWeight: 800, textDecoration: "none" }}>Entrar a mi portal</a>}</div>}
+      {modoAlta && altaRow && altaRow.estado === "rechazada" && <div style={{ ...tarj, borderColor: "#C1440E88", background: "#1F120C", fontSize: 13.5 }}><b style={{ color: "#E0714A" }}>✕ No pudimos aprobar tu solicitud.</b>{altaRow.motivo ? <div style={{ marginTop: 4 }}>Motivo: {altaRow.motivo}</div> : null}<div style={{ marginTop: 4, color: "#B8B8B8" }}>Corregí lo que haga falta y volvé a enviarla.</div></div>}
 
       {msg && <div style={{ ...tarj, borderColor: "#3A7D4488", background: "#0F2415", color: "#9FE0AA", fontSize: 13.5, fontWeight: 700 }}>{msg}</div>}
       {pausado && <div style={{ ...tarj, borderColor: "#C1440E88", background: "#1F120C", fontSize: 13.5, lineHeight: 1.5 }}><b style={{ color: "#E0714A" }}>⏸ Tu tarjeta está pausada por administración.</b>{pub.pausa_motivo ? <div style={{ marginTop: 4 }}>Motivo: {pub.pausa_motivo}</div> : null}<div style={{ marginTop: 4, color: "#B8B8B8" }}>Escribile a administración para resolverlo y volver a aparecer.</div></div>}
@@ -183,11 +215,11 @@ export default function PortalComercio() {
       {cambio && cambio.estado === "rechazado" && <div style={{ ...tarj, borderColor: "#C1440E88", background: "#1F120C", fontSize: 13.5 }}><b style={{ color: "#E0714A" }}>✕ Tu último pedido no se aprobó.</b>{cambio.motivo ? <div style={{ marginTop: 4 }}>Motivo: {cambio.motivo}</div> : null}<div style={{ marginTop: 4, color: "#B8B8B8" }}>Corregilo y volvelo a enviar.</div></div>}
       {cambio && cambio.estado === "aprobado" && !msg && <div style={{ ...tarj, borderColor: "#3A7D4488", fontSize: 13.5, color: "#9FE0AA" }}>✓ Tu último cambio fue aprobado y ya está publicado.</div>}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      {!modoAlta && <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[["tarjeta", "🏪 Mi tarjeta"], ["canje", "🎟️ Canjear cupón"], ["numeros", "📊 Mis números"]].map(function (t) { var on = vista === t[0]; return <button key={t[0]} onClick={function () { setVista(t[0]); }} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: "1px solid " + (on ? "#1A6B8A" : "#2A2A2A"), background: on ? "#1A6B8A33" : "#111", color: on ? "#F0EDE8" : "#9A9A9A", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>; })}
-      </div>
+      </div>}
 
-      {vista === "canje" && (
+      {vista === "canje" && !modoAlta && (
         <div style={tarj}>
           <div style={{ fontSize: 15, fontWeight: 800 }}>🎟️ Canjear cupón de la comunidad</div>
           <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, marginTop: 3 }}>Pedile al cliente el código que le figura en su celular (por ejemplo NKT-4K7P) y escribilo acá.</div>
@@ -219,7 +251,7 @@ export default function PortalComercio() {
         </div>
       )}
 
-      {vista === "numeros" && (function () {
+      {vista === "numeros" && !modoAlta && (function () {
         var r30 = resumenCanjes(canjes, id, 30), rt = resumenCanjes(canjes, id, 0);
         var caja = function (t, v, sub) { return <div style={{ flex: "1 1 120px", background: "#111", border: "1px solid #1E1E1E", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1 }}>{t}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#F0EDE8", lineHeight: 1.15 }}>{v}</div>{sub && <div style={{ fontSize: 11, color: "#7E7E7E" }}>{sub}</div>}</div>; };
         return (
@@ -244,7 +276,7 @@ export default function PortalComercio() {
         );
       })()}
 
-      {vista === "tarjeta" && (
+      {vista === "tarjeta" && !(modoAlta && altaRow && (altaRow.estado === "pendiente" || altaRow.estado === "aprobada")) && (
       <div>
       <div style={tarj}>
         <div style={{ fontSize: 15, fontWeight: 800 }}>Tu comercio</div>
@@ -295,9 +327,10 @@ export default function PortalComercio() {
       </div>
 
       {error && <div style={{ ...tarj, borderColor: "#C1440E88", color: "#F0A090", fontSize: 13.5 }}>{error}</div>}
-      <button onClick={enviar} disabled={enviando || subiendo} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: enviando || subiendo ? "#2A2A2A" : "#1A6B8A", color: "#fff", fontFamily: "inherit", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Enviando…" : "Enviar para revisión"}</button>
+      <button onClick={enviar} disabled={enviando || subiendo} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: enviando || subiendo ? "#2A2A2A" : "#1A6B8A", color: "#fff", fontFamily: "inherit", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Enviando…" : (modoAlta ? "Enviar mi solicitud" : "Enviar para revisión")}</button>
       <div style={{ fontSize: 11.5, color: "#7E7E7E", textAlign: "center", marginTop: 10, lineHeight: 1.5 }}>Lo que envíes no se publica hasta que administración lo apruebe.</div>
 
+      {!modoAlta && (<div>
       <div style={{ height: 22 }} />
       <div style={tarj}>
         <div style={{ fontSize: 15, fontWeight: 800 }}>📣 Tu novedad para los socios</div>
@@ -335,6 +368,7 @@ export default function PortalComercio() {
         )}
       </div>
 
+      </div>)}
       </div>
       )}
     </div></div>

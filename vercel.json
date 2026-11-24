@@ -72,6 +72,14 @@
     {
       "source": "/grupo/:path*",
       "destination": "/index.html"
+    },
+    {
+      "source": "/comercio",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/comercio/:path*",
+      "destination": "/index.html"
     }
   ]
 }

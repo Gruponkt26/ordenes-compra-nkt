@@ -88,10 +88,30 @@ export async function cargarComercios(soloActivos) {
     return soloActivos ? l.filter(function (c) { return c.activo !== false; }) : l;
   } catch (e) { return []; }
 }
+// La promo de un comercio solo se muestra mientras está vigente: pasada la fecha de fin, se oculta sola.
+export function promoVigente(c) {
+  if (!c || !String(c.beneficio || "").trim()) return "";
+  var hoy = new Date(), iso = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0") + "-" + String(hoy.getDate()).padStart(2, "0");
+  if (c.promo_hasta && iso > c.promo_hasta) return "";
+  if (c.promo_desde && iso < c.promo_desde) return "";
+  return String(c.beneficio).trim();
+}
+export function fechaCorta(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : ""; }
+export function nuevoToken() { try { var a = new Uint8Array(12); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); } catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2, 10); } }
+// Lo que cada comercio pidió cambiar desde su portal (ámbito grupo_comercio_cambio, uno por comercio): {comercio_id: {datos, estado, enviado_at}}.
+async function cargarCambiosComercios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_comercio_cambio&limit=300", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json(), o = {};
+    (Array.isArray(d) ? d : []).forEach(function (f) { try { o[String(f.id).replace(/^comcambio_/, "")] = JSON.parse(f.texto); } catch (e) {} });
+    return o;
+  } catch (e) { return {}; }
+}
+var ETIQ_COMERCIO = { nombre: "Nombre", desc: "Descripción", direccion: "Dirección", horarios: "Horarios", wsp: "WhatsApp", carta: "Carta", instagram: "Instagram", color: "Color", logo: "Logo", beneficio: "Promo", promo_desde: "Promo desde", promo_hasta: "Promo hasta", promo_cond: "Condiciones de la promo" };
 async function guardarComercio(c) { var o = { ...c }; var id = o.id; delete o.id; return guardarFila(id, "grupo_comercio", o); }
 async function borrarComercio(id) { try { var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }); return r.ok; } catch (e) { return false; } }
 // El logo se achica en el celular o la compu (hasta 600 px) y se pone sobre fondo blanco, porque la tarjeta lo muestra así.
-function achicarLogo(file) {
+export function achicarLogo(file) {
   return new Promise(function (res) {
     try {
       var url = URL.createObjectURL(file), img = new Image();
@@ -106,15 +126,15 @@ function achicarLogo(file) {
     } catch (e) { res(null); }
   });
 }
-async function subirLogoComercio(blob, id) {
+export async function subirLogoComercio(blob, id) {
   try {
     var r = await fetch(SURL + "/storage/v1/object/fichajes/comercios/" + id + ".jpg", { method: "POST", headers: { apikey: SH.apikey, Authorization: SH.Authorization, "Content-Type": "image/jpeg", "x-upsert": "true" }, body: blob });
     if (!r.ok) return { ok: false, error: await r.text() };
-    return { ok: true, url: SURL + "/storage/v1/object/public/fichajes/comercios/" + id + ".jpg?v=" + Date.now() };
+    return { ok: true, url: SURL + "/storage/v1/object/public/fichajes/comercios/" + id + ".jpg" };
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 }
 // La tarjeta de un comercio amigo, como la de un local pero sin pedidos ni reservas.
-function TarjetaComercio(props) {
+export function TarjetaComercio(props) {
   var c = props.c, color = c.color || "#1A6B8A";
   var boton = { display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontSize: 13, fontWeight: 700, textDecoration: "none" };
   var item = function (link, txt) { return link ? <a href={link} target="_blank" rel="noreferrer" style={boton}>{txt}</a> : <span style={{ ...boton, opacity: 0.4, cursor: "not-allowed" }} title="Pronto">{txt}</span>; };
@@ -126,7 +146,7 @@ function TarjetaComercio(props) {
           : <div style={{ fontSize: 22, fontWeight: 800, color: color }}>{c.nombre}</div>}
         {c.desc && <div style={{ fontSize: 13.5, color: "#C8C8C8", marginTop: 8 }}>{c.desc}</div>}
       </div>
-      {c.beneficio && <div style={{ background: color + "22", border: "1px dashed " + color + "99", borderRadius: 10, padding: "8px 12px", marginTop: 10, textAlign: "center", fontSize: 13, color: "#F0EDE8", fontWeight: 700 }}>🎟️ Con tu cupón: {c.beneficio}</div>}
+      {promoVigente(c) && <div style={{ background: color + "22", border: "1px dashed " + color + "99", borderRadius: 10, padding: "8px 12px", marginTop: 10, textAlign: "center", fontSize: 13, color: "#F0EDE8", fontWeight: 700 }}>🎟️ Con tu cupón: {promoVigente(c)}{c.promo_hasta ? <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "#C8C8C8" }}>válido hasta el {fechaCorta(c.promo_hasta)}</span> : null}{c.promo_cond ? <span style={{ display: "block", fontSize: 11, fontWeight: 500, color: "#C8C8C8" }}>{c.promo_cond}</span> : null}</div>}
       {(c.direccion || c.horarios) && (
         <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.6, marginTop: 10, textAlign: "center" }}>
           {c.direccion && <div>📍 {c.direccion}</div>}
@@ -164,7 +184,7 @@ function FranjaComercios(props) {
                   : <span style={{ fontSize: 15, fontWeight: 800, color: color, lineHeight: 1.15 }}>{c.nombre}</span>}
               </div>
               {c.logo && <div style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1.2 }}>{c.nombre}</div>}
-              <div style={{ fontSize: 11.5, color: "#C8C8C8", lineHeight: 1.35, marginTop: 3 }}>{c.beneficio ? "🎟️ " + c.beneficio : (c.desc || "")}</div>
+              <div style={{ fontSize: 11.5, color: "#C8C8C8", lineHeight: 1.35, marginTop: 3 }}>{promoVigente(c) ? "🎟️ " + promoVigente(c) : (c.desc || "")}</div>
               <div style={{ fontSize: 10.5, color: color, fontWeight: 700, marginTop: 6 }}>{on ? "▾ cerrar" : "▸ ver más"}</div>
             </button>
           );
@@ -182,8 +202,10 @@ function PanelComerciosRed(props) {
   var [form, setForm] = useState(null);   // el comercio que se está cargando o editando
   var [msg, setMsg] = useState("");
   var [subiendo, setSubiendo] = useState(false);
+  var [cambios, setCambios] = useState({});      // lo que cada comercio pidió cambiar desde su portal
+  var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { return cargarComercios(false).then(setLista); }
+  function recargar() { cargarCambiosComercios().then(setCambios); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -207,22 +229,80 @@ function PanelComerciosRed(props) {
     if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad? Deja de aparecer en la página.")) return;
     borrarComercio(c.id).then(function () { recargar(); });
   }
-  function alternar(c) { guardarComercio({ ...c, activo: c.activo === false }).then(function () { recargar(); }); }
+  // Pausar: deja de verse en la página y el comercio ve el motivo en su portal. Reactivar lo vuelve a mostrar.
+  function pausar(c) {
+    var m = window.prompt("Motivo de la pausa (lo va a ver el comercio en su portal):", "");
+    if (m === null) return;
+    guardarComercio({ ...c, activo: false, pausa_motivo: m.trim(), pausa_at: new Date().toISOString() }).then(function () { recargar(); });
+  }
+  function reactivar(c) { guardarComercio({ ...c, activo: true, pausa_motivo: "", pausa_at: "" }).then(function () { recargar(); }); }
+  // Link privado del comercio: lleva su código; si todavía no tiene, se crea. «Regenerar» invalida el anterior.
+  function copiarLink(c, regenerar) {
+    leerPauta("comkey_" + c.id).then(function (k) {
+      var tk = !regenerar && k && k.token ? Promise.resolve(k.token) : (function () { var t = nuevoToken(); return guardarFila("comkey_" + c.id, "grupo_comercio_key", { token: t }).then(function () { return t; }); })();
+      tk.then(function (t) {
+        var url = window.location.origin + "/comercio/?c=" + encodeURIComponent(c.id) + "&k=" + t;
+        // Si el navegador no deja copiar (a veces pasa), se muestra el link para copiarlo a mano.
+        var aMano = function () { window.prompt("Copiá este link y mandáselo al comercio:", url); };
+        try { navigator.clipboard.writeText(url).then(function () { setMsg("✓ Link de " + c.nombre + " copiado. Mandáselo por WhatsApp."); setTimeout(function () { setMsg(""); }, 5000); }, aMano); } catch (e) { aMano(); }
+      });
+    });
+  }
+  function regenerarLink(c) { if (window.confirm("¿Generar un link nuevo para «" + c.nombre + "»? El anterior deja de servir.")) copiarLink(c, true); }
+  function aprobar(c, cam) {
+    var datos = { ...cam.datos }; delete datos.pautas_ok;
+    guardarComercio({ ...c, ...datos, pautas_ok_at: cam.enviado_at || "" }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo publicar. Probá de nuevo."); return; }
+      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "aprobado", resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); setMsg("✓ Publicado."); setTimeout(function () { setMsg(""); }, 3000); });
+    });
+  }
+  function rechazar(c, cam) {
+    var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", "");
+    if (m === null) return;
+    guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "rechazado", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); });
+  }
   return (
     <div style={tarjeta}>
       <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800 }}>{abierto ? "▾" : "▸"} 🤝 Comercios amigos de la comunidad{lista ? " (" + lista.length + ")" : ""}</div>
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
-          {lista && lista.map(function (c) { return (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid #1A1A1A" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: c.activo === false ? "#6E6E6E" : "#F0EDE8" }}>{c.nombre}{c.activo === false ? " · oculto" : ""}</div>
-                <div style={{ fontSize: 11, color: "#8C8C8C" }}>{c.beneficio ? "🎟️ " + c.beneficio : "sin beneficio cargado"}</div>
+          {lista && lista.map(function (c) {
+            var cam = cambios[c.id], pend = cam && cam.estado === "pendiente";
+            var difs = pend ? Object.keys(ETIQ_COMERCIO).filter(function (k) { return String((cam.datos || {})[k] || "") !== String(c[k] || ""); }) : [];
+            return (
+            <div key={c.id} style={{ padding: "8px 0", borderTop: "1px solid #1A1A1A" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 160px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: c.activo === false ? "#6E6E6E" : "#F0EDE8" }}>{c.nombre}{c.activo === false ? " · pausado" : ""}</div>
+                  <div style={{ fontSize: 11, color: "#8C8C8C" }}>{c.activo === false && c.pausa_motivo ? "⏸ " + c.pausa_motivo : (promoVigente(c) ? "🎟️ " + promoVigente(c) + (c.promo_hasta ? " · hasta " + fechaCorta(c.promo_hasta) : "") : (c.beneficio ? "promo vencida o sin empezar" : "sin promo cargada"))}</div>
+                </div>
+                {pend && <button onClick={function () { setVerCambio(verCambio === c.id ? "" : c.id); }} style={{ background: "#D4A01722", border: "1px solid #D4A01788", borderRadius: 7, color: "#E5C467", padding: "5px 9px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>📝 Cambios para aprobar</button>}
+                <button onClick={function () { copiarLink(c, false); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>🔗 Link</button>
+                <button onClick={function () { setForm({ ...c }); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>✏️ Editar</button>
+                {c.activo === false
+                  ? <button onClick={function () { reactivar(c); }} style={{ background: "none", border: "1px solid #3A7D44", borderRadius: 7, color: "#8FD19A", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>▶ Reactivar</button>
+                  : <button onClick={function () { pausar(c); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>⏸ Pausar</button>}
+                <button onClick={function () { quitar(c); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 13 }}>🗑️</button>
               </div>
-              <button onClick={function () { setForm({ ...c }); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>✏️ Editar</button>
-              <button onClick={function () { alternar(c); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>{c.activo === false ? "Mostrar" : "Ocultar"}</button>
-              <button onClick={function () { quitar(c); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 13 }}>🗑️</button>
+              {cam && cam.estado === "rechazado" && <div style={{ fontSize: 11, color: "#B07A6A", marginTop: 4 }}>Último pedido rechazado{cam.motivo ? ": " + cam.motivo : ""}</div>}
+              {pend && verCambio === c.id && (
+                <div style={{ marginTop: 8, background: "#12100A", border: "1px solid #D4A01744", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 6 }}>El comercio pidió estos cambios{cam.enviado_at ? " (" + new Date(cam.enviado_at).toLocaleDateString("es-AR") + ")" : ""}:</div>
+                  {difs.length === 0 && <div style={{ fontSize: 12, color: "#8C8C8C" }}>No hay diferencias con lo publicado.</div>}
+                  {difs.map(function (k) { return (
+                    <div key={k} style={{ fontSize: 12.5, padding: "4px 0", borderTop: "1px solid #1E1A10", lineHeight: 1.4 }}>
+                      <b style={{ color: "#E5C467" }}>{ETIQ_COMERCIO[k]}:</b>{" "}
+                      {k === "logo" ? <span>logo nuevo <img src={(cam.datos || {}).logo} alt="" style={{ height: 24, background: "#fff", borderRadius: 4, verticalAlign: "middle" }} /></span>
+                        : <span><span style={{ color: "#8C8C8C", textDecoration: "line-through" }}>{String(c[k] || "—")}</span> → <span style={{ color: "#F0EDE8" }}>{String((cam.datos || {})[k] || "—")}</span></span>}
+                    </div>); })}
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={function () { aprobar(c, cam); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#3A7D44", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>✓ Aprobar y publicar</button>
+                    <button onClick={function () { rechazar(c, cam); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #C1440E88", background: "none", color: "#E0714A", fontSize: 12.5, cursor: "pointer" }}>✕ Rechazar</button>
+                    <button onClick={function () { regenerarLink(c); }} style={{ marginLeft: "auto", padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "none", color: "#8C8C8C", fontSize: 11, cursor: "pointer" }}>Regenerar link</button>
+                  </div>
+                </div>
+              )}
             </div>); })}
           {lista && lista.length === 0 && !form && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>Todavía no hay comercios cargados.</div>}
           {!form && <button onClick={nuevo} style={{ marginTop: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #1A6B8A88", background: "#1A6B8A22", color: "#7FC4DE", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>+ Sumar un comercio</button>}
@@ -232,6 +312,11 @@ function PanelComerciosRed(props) {
               <input value={form.nombre} onChange={function (e) { setF("nombre", e.target.value); }} placeholder="Nombre (ej: Café San Juan) *" style={sel} />
               <input value={form.desc} onChange={function (e) { setF("desc", e.target.value); }} placeholder="Descripción corta (ej: Café de especialidad y pastelería)" style={sel} />
               <input value={form.beneficio} onChange={function (e) { setF("beneficio", e.target.value); }} placeholder="Beneficio para quien muestre el cupón (ej: 10% de descuento)" style={sel} />
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                <span style={{ fontSize: 11.5, color: "#8C8C8C" }}>Promo desde</span><input type="date" value={form.promo_desde || ""} onChange={function (e) { setF("promo_desde", e.target.value); }} style={{ ...sel, width: "auto", marginBottom: 0 }} />
+                <span style={{ fontSize: 11.5, color: "#8C8C8C" }}>hasta</span><input type="date" value={form.promo_hasta || ""} onChange={function (e) { setF("promo_hasta", e.target.value); }} style={{ ...sel, width: "auto", marginBottom: 0 }} />
+              </div>
+              <input value={form.promo_cond || ""} onChange={function (e) { setF("promo_cond", e.target.value); }} placeholder="Condiciones de la promo (ej: una por mesa, no acumulable)" style={sel} />
               <input value={form.direccion} onChange={function (e) { setF("direccion", e.target.value); }} placeholder="Dirección (calle y número)" style={sel} />
               <textarea value={form.horarios} onChange={function (e) { setF("horarios", e.target.value); }} rows={2} placeholder="Horarios (ej: Lun a Sáb de 8 a 20 h)" style={{ ...sel, resize: "vertical" }} />
               <input value={form.wsp} onChange={function (e) { setF("wsp", e.target.value); }} placeholder="WhatsApp (ej: 2914123456)" style={sel} />

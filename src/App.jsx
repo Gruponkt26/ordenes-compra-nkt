@@ -8154,6 +8154,31 @@ function PanelEgresosSueldos({planillaSueldos, sueldos, empleados, gastos, usuar
         )}
       </div>
 
+      {/* Egresos de Sueldos cargados desde Novedades (egreso de caja del cierre): no son de la planilla, así que se listan acá para poder corregirlos o borrarlos. */}
+      {(function(){
+        var fuera=(gastos||[]).filter(function(g){return String(g.id||"").indexOf("egcaja_")===0&&(g.area==="Sueldos"||g.categoria==="Sueldos");}).sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));});
+        if(!fuera.length||!(p&&p.onDelete))return null;
+        return(
+          <div style={{background:"#14110A",border:"1px solid #D4A01744",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#E5C467"}}>📤 Sueldos cargados por fuera de la planilla</div>
+            <div style={{fontSize:11,color:"#9A9A9A",margin:"3px 0 8px",lineHeight:1.45}}>Vienen de un egreso de caja anotado en un cierre. Si es un error, borralo con el 🗑️: la plata vuelve al cierre y el aviso reaparece en Novedades para cargarlo bien.</div>
+            {fuera.map(function(g){
+              var lo=getLocal(g.local);
+              return(
+                <div key={g.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderTop:"1px solid #2A2410"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#F0EDE8"}}>{g.concepto}{lo?<span style={{fontSize:10,color:lo.color,fontWeight:600}}> · {lo.emoji} {lo.nombre}</span>:null}</div>
+                    <div style={{fontSize:10.5,color:"#8C8C8C"}}>{g.fecha?new Date(g.fecha+"T00:00:00").toLocaleDateString("es-AR"):""} · {g.forma_pago}{g.notas?" · "+g.notas:""}</div>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:"#F0EDE8",fontFamily:"'Playfair Display',serif"}}>{fmt(parseFloat(g.monto)||0)}</div>
+                  <button onClick={function(){if(window.confirm("¿Eliminar «"+g.concepto+"» de "+fmt(parseFloat(g.monto)||0)+"?\n\nSe borra el egreso y la plata vuelve al cierre del día. El aviso reaparece en Novedades para cargarlo de nuevo."))p.onDelete(g.id);}} title="Eliminar" style={{background:"none",border:"none",color:"#B8B8B8",cursor:"pointer",fontSize:15}}>🗑️</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Resumen */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
         <div style={{background:"#111",border:"1px solid #1A1A1A",borderRadius:10,padding:"10px",textAlign:"center"}}>

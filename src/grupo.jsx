@@ -71,7 +71,7 @@ export async function cargarConfigGrupo() {
     return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {} };
   } catch (e) { return CONFIG_VACIA; }
 }
-async function guardarFila(id, ambito, obj) {
+export async function guardarFila(id, ambito, obj) {
   var ahora = new Date().toISOString();
   var r = await fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: id, ambito: ambito, texto: JSON.stringify(obj), usuario: "comunidad", created_at: ahora, updated_at: ahora }) });
   return r.ok;
@@ -89,6 +89,24 @@ export async function cargarComercios(soloActivos) {
   } catch (e) { return []; }
 }
 // La promo de un comercio solo se muestra mientras está vigente: pasada la fecha de fin, se oculta sola.
+// ─── CANJES EN LOS COMERCIOS AMIGOS ───
+// Cuando un comercio canjea el cupón de un socio (por código escrito, como en los locales de Grupo Nkt), el cupón se marca usado, al socio le llega
+// el siguiente y queda un registro del canje (ámbito grupo_canje_comercio) con el que se arma el informe de cada comercio. Sin límite de uso por ahora.
+export async function cargarCanjesComercios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_canje_comercio&order=created_at.desc&limit=2000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+// Números de un comercio en un período: canjes, socios distintos, cuántos volvieron (2 o más canjes) y el gasto que anotó el comercio.
+export function resumenCanjes(lista, comercioId, dias) {
+  var desde = dias ? Date.now() - dias * 864e5 : 0;
+  var l = (lista || []).filter(function (x) { return (!comercioId || x.comercio_id === comercioId) && new Date(x.at).getTime() >= desde; });
+  var porSocio = {}; l.forEach(function (x) { porSocio[x.wsp] = (porSocio[x.wsp] || 0) + 1; });
+  var socios = Object.keys(porSocio);
+  return { canjes: l.length, socios: socios.length, volvieron: socios.filter(function (k) { return porSocio[k] > 1; }).length, gasto: l.reduce(function (a, x) { return a + (Number(x.monto) || 0); }, 0), lista: l };
+}
 // ─── RECLAMOS DE LOS SOCIOS ───
 // Un socio con cupón puede avisar a administración que tuvo un problema en un comercio amigo. Es privado: lo ve solo administración
 // (ámbito grupo_reclamo, un registro por socio, comercio y semana). El comercio no lo ve; administración decide qué le comunica.
@@ -324,9 +342,10 @@ function PanelComerciosRed(props) {
   var [cambios, setCambios] = useState({});      // lo que cada comercio pidió cambiar desde su portal
   var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
   var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
+  var [canjes, setCanjes] = useState([]);        // canjes registrados por los comercios (para sus resultados)
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -401,6 +420,17 @@ function PanelComerciosRed(props) {
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
+          {lista && lista.length > 0 && (
+            <div style={{ background: "#0C1218", border: "1px solid #1A6B8A55", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#7FC4DE", marginBottom: 6 }}>📊 Resultados por comercio · últimos 30 días</div>
+              {lista.map(function (c, i) { var r = resumenCanjes(canjes, c.id, 30); return (
+                <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid #14202A", fontSize: 12.5 }}>
+                  <b style={{ color: "#F0EDE8" }}>{c.nombre}</b>
+                  <span style={{ color: "#B8C8D0", textAlign: "right" }}>{r.canjes} canje{r.canjes === 1 ? "" : "s"} · {r.socios} socio{r.socios === 1 ? "" : "s"}{r.volvieron > 0 ? " · " + r.volvieron + " volvió" + (r.volvieron === 1 ? "" : "ron") : ""}{r.gasto > 0 ? " · $" + Math.round(r.gasto).toLocaleString("es-AR") : ""}</span>
+                </div>); })}
+              <div style={{ fontSize: 10.5, color: "#6E7E88", marginTop: 6 }}>El gasto suma lo que cada comercio anotó al canjear (es opcional).</div>
+            </div>
+          )}
           {novs.filter(function (n) { return n.estado === "pendiente"; }).length > 0 && (
             <div style={{ background: "#12100A", border: "1px solid #D4A01755", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E5C467", marginBottom: 6 }}>📣 Novedades de comercios para aprobar ({novs.filter(function (n) { return n.estado === "pendiente"; }).length})</div>
@@ -563,7 +593,7 @@ function novedadVisible(n) {
 // Un cupón por persona (por su WhatsApp): código único, vencimiento y un solo canje. Se guarda en pautas con id "cupon_<CÓDIGO>".
 var LETRAS_CUPON = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function codigoNuevo() { var c = "NKT-"; for (var i = 0; i < 4; i++) c += LETRAS_CUPON[Math.floor(Math.random() * LETRAS_CUPON.length)]; return c; }
-function normCodigo(s) { var t = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (t.indexOf("NKT") === 0) t = t.slice(3); return t.length ? "NKT-" + t : ""; }
+export function normCodigo(s) { var t = String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (t.indexOf("NKT") === 0) t = t.slice(3); return t.length ? "NKT-" + t : ""; }
 export async function leerPauta(id) {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id) + "&limit=1", { headers: SH });
@@ -605,7 +635,7 @@ export async function cuponesCanjeadosLocal(localId) {
       });
   } catch (e) { return []; }
 }
-function estadoCupon(c) {
+export function estadoCupon(c) {
   if (!c) return "no existe";
   if (c.estado === "usado") return "usado";
   if (c.vence && new Date(c.vence).getTime() < Date.now()) return "vencido";

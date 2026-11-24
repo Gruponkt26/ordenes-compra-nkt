@@ -142,6 +142,38 @@ function TarjetaComercio(props) {
     </div>
   );
 }
+// Franja de comercios amigos, justo debajo del cupón: se desliza de costado y, al tocar uno, se abre su tarjeta completa.
+function FranjaComercios(props) {
+  var lista = props.comercios || [];
+  var [abierto, setAbierto] = useState("");
+  if (!lista.length) return null;
+  var sel = lista.find(function (c) { return c.id === abierto; });
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 2px 8px" }}>
+        <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8" }}>🤝 Comercios amigos</div>
+        <div style={{ fontSize: 11.5, color: "#8C8C8C" }}>mostrá tu cupón{lista.length > 1 ? " · deslizá →" : ""}</div>
+      </div>
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+        {lista.map(function (c) {
+          var color = c.color || "#1A6B8A", on = abierto === c.id;
+          return (
+            <button key={c.id} onClick={function () { setAbierto(on ? "" : c.id); }} style={{ flex: "0 0 172px", textAlign: "left", cursor: "pointer", background: on ? color + "33" : "#111", border: "1px solid " + (on ? color : color + "66"), borderRadius: 14, padding: "10px 11px", color: "#F0EDE8", fontFamily: "'Inter',sans-serif" }}>
+              <div style={{ height: 38, display: "flex", alignItems: "center", marginBottom: 7 }}>
+                {c.logo ? <span style={{ background: "#fff", borderRadius: 8, padding: "3px 8px", display: "inline-block" }}><img src={c.logo} alt={c.nombre} style={{ display: "block", height: 30, maxWidth: 130, width: "auto" }} /></span>
+                  : <span style={{ fontSize: 15, fontWeight: 800, color: color, lineHeight: 1.15 }}>{c.nombre}</span>}
+              </div>
+              {c.logo && <div style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1.2 }}>{c.nombre}</div>}
+              <div style={{ fontSize: 11.5, color: "#C8C8C8", lineHeight: 1.35, marginTop: 3 }}>{c.beneficio ? "🎟️ " + c.beneficio : (c.desc || "")}</div>
+              <div style={{ fontSize: 10.5, color: color, fontWeight: 700, marginTop: 6 }}>{on ? "▾ cerrar" : "▸ ver más"}</div>
+            </button>
+          );
+        })}
+      </div>
+      {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} /></div>}
+    </div>
+  );
+}
 // Administración: alta, edición y baja de los comercios amigos.
 function PanelComerciosRed(props) {
   var tarjeta = props.tarjeta;
@@ -805,17 +837,11 @@ export function GrupoNkt() {
           <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
           {bNovedades}
           {bCupon}
+          <FranjaComercios comercios={comercios} />
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
           {cupon && bInstructivo}
           {bInstalar}
           {bLocales}
-          {comercios.length > 0 && (
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8", margin: "6px 0 4px", textAlign: "center" }}>🤝 Comercios amigos de la comunidad</div>
-              <div style={{ fontSize: 12.5, color: "#9A9A9A", textAlign: "center", marginBottom: 12 }}>Mostrá tu cupón y disfrutá sus beneficios.</div>
-              {comercios.map(function (c) { return <TarjetaComercio key={c.id} c={c} />; })}
-            </div>
-          )}
           {hecho !== "ok" && <div style={{ marginTop: 6 }}>{bSumarse}</div>}
         </div>
       ) : (

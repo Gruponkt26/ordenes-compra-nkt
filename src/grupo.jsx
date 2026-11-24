@@ -51,7 +51,7 @@ function numeroWsp(w) {
   if (n.length === 10) return "549" + n;
   return n.length <= 10 ? "54" + n : n;
 }
-function linkWsp(w, texto) {
+export function linkWsp(w, texto) {
   var n = numeroWsp(w); if (!n) return "";
   return "https://wa.me/" + n + (texto ? "?text=" + encodeURIComponent(texto) : "");
 }
@@ -261,8 +261,7 @@ export function TarjetaComercio(props) {
 function FranjaComercios(props) {
   var lista = props.comercios || [];
   var [abierto, setAbierto] = useState("");
-  var linkSumar = linkWsp(props.wspAdmin, "Hola! Tengo un comercio y quiero sumarme a la comunidad de Grupo Nkt. ¿Me cuentan cómo es?");
-  if (!lista.length && !linkSumar) return null;
+  var linkConsulta = linkWsp(props.wspAdmin, "Hola! Tengo un comercio y quiero sumarme a la comunidad de Grupo Nkt. ¿Me cuentan cómo es?");
   var sel = lista.find(function (c) { return c.id === abierto; });
   return (
     <div style={{ marginBottom: 14 }}>
@@ -287,7 +286,8 @@ function FranjaComercios(props) {
         })}
       </div>
       {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
-      {linkSumar && <a href={linkSumar} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "10px", borderRadius: 10, border: "1px dashed #3A3A3A", color: "#B8B8B8", fontSize: 12.5, textDecoration: "none" }}>🤝 ¿Tenés un comercio? Sumalo a la comunidad →</a>}
+      <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "10px", borderRadius: 10, border: "1px dashed #3A3A3A", color: "#B8B8B8", fontSize: 12.5, textDecoration: "none" }}>🤝 ¿Tenés un comercio? Sumalo a la comunidad →</a>
+      {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6, textAlign: "center", padding: "6px", color: "#8C8C8C", fontSize: 11.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}
     </div>
   );
 }
@@ -410,6 +410,21 @@ function PanelComerciosRed(props) {
       copiarUrl(window.location.origin + "/comercio/?i=" + t, "✓ Invitación copiada. Mandásela por WhatsApp: sirve una sola vez.");
     });
   }
+  // Invitar por WhatsApp: se pide el número del comercio, se crea la invitación y queda lista la barra para abrir el chat con el mensaje y el link.
+  function invitarPorWsp() {
+    var num = window.prompt("WhatsApp del comercio que querés invitar (con código de área, sin 0 ni 15). Ej: 2914123456", "");
+    if (num === null) return;
+    if (!numeroWsp(num)) { setMsg("Ese número de WhatsApp no parece válido."); setTimeout(function () { setMsg(""); }, 4000); return; }
+    var nom = window.prompt("¿Cómo se llama el comercio o la persona? (opcional)", "");
+    if (nom === null) return;
+    var t = nuevoToken();
+    guardarFila("cominv_" + t, "grupo_comercio_invitacion", { creada_at: new Date().toISOString(), nota: (nom || "").trim(), wsp: num }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo crear la invitación. Probá de nuevo."); return; }
+      var url = window.location.origin + "/comercio/?i=" + t;
+      var texto = "Hola" + (nom && nom.trim() ? " " + nom.trim() : "") + "! Te invitamos a sumar tu comercio a la comunidad de Grupo Nkt: lo mostramos a nuestros socios y ellos reciben un beneficio para visitarte. Completá tus datos y tu promo acá, sin compromiso, y lo revisamos: " + url;
+      setAvisoCom({ nombre: (nom && nom.trim()) || "el comercio", link: linkWsp(num, texto), invitar: true });
+    });
+  }
   function aprobarAlta(a) {
     var d = { ...a.datos }; delete d.pautas_ok;
     var cid = a.comercio_id;
@@ -510,8 +525,8 @@ function PanelComerciosRed(props) {
           )}
           {avisoCom && (
             <div style={{ background: "#0F2415", border: "1px solid #3A7D4488", borderRadius: 10, padding: "9px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ flex: "1 1 180px", fontSize: 12.5, color: "#9FE0AA", fontWeight: 700 }}>✓ Listo. ¿Le avisás a {avisoCom.nombre}?</span>
-              {avisoCom.link ? <a href={avisoCom.link} target="_blank" rel="noreferrer" style={{ padding: "7px 12px", borderRadius: 8, background: "#25D366", color: "#08240F", fontSize: 12.5, fontWeight: 800, textDecoration: "none" }}>💬 Avisar por WhatsApp</a> : <span style={{ fontSize: 12, color: "#B8A070" }}>Este comercio no tiene WhatsApp cargado.</span>}
+              <span style={{ flex: "1 1 180px", fontSize: 12.5, color: "#9FE0AA", fontWeight: 700 }}>{avisoCom.invitar ? "✓ Invitación lista para " + avisoCom.nombre + "." : "✓ Listo. ¿Le avisás a " + avisoCom.nombre + "?"}</span>
+              {avisoCom.link ? <a href={avisoCom.link} target="_blank" rel="noreferrer" style={{ padding: "7px 12px", borderRadius: 8, background: "#25D366", color: "#08240F", fontSize: 12.5, fontWeight: 800, textDecoration: "none" }}>{avisoCom.invitar ? "💬 Enviar invitación por WhatsApp" : "💬 Avisar por WhatsApp"}</a> : <span style={{ fontSize: 12, color: "#B8A070" }}>Este comercio no tiene WhatsApp cargado.</span>}
               <button onClick={function () { setAvisoCom(null); }} style={{ background: "none", border: "none", color: "#8C8C8C", cursor: "pointer", fontSize: 12 }}>✕ Ahora no</button>
             </div>
           )}
@@ -583,6 +598,7 @@ function PanelComerciosRed(props) {
               )}
             </div>); })}
           {lista && lista.length === 0 && !form && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>Todavía no hay comercios cargados.</div>}
+          {!form && <button onClick={invitarPorWsp} style={{ marginTop: 8, marginRight: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #25D36688", background: "#25D36622", color: "#6FE0A0", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>💬 Invitar por WhatsApp</button>}
           {!form && <button onClick={invitar} style={{ marginTop: 8, marginRight: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🔗 Invitar a un comercio nuevo</button>}
           {!form && <button onClick={nuevo} style={{ marginTop: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #1A6B8A88", background: "#1A6B8A22", color: "#7FC4DE", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>+ Sumar un comercio</button>}
           {form && (

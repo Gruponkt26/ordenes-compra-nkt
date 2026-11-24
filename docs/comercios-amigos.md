@@ -9,10 +9,21 @@
 6. Entiendo que administración puede pausar mi tarjeta si no se cumplen estas pautas.
 
 ## Cómo se suma un comercio nuevo
-1. **Primer contacto por WhatsApp:** en la página de Comunidad, bajo *Comercios amigos*, hay un botón **«🤝 ¿Tenés un comercio? Sumalo a la comunidad»** que abre el WhatsApp de administración con el mensaje armado. El número se configura en Comunidad → *Datos que se muestran en la página* → «WhatsApp de administración» (si queda vacío se usa el del Bodegón).
-2. **Invitación:** en Comercios amigos, **🔗 Invitar a un comercio nuevo** crea un link con el formulario **vacío**, **de un solo uso** (se puede anotar a quién se le dio). Se lo mandás por WhatsApp.
-3. **El comercio completa todo** (nombre, logo, dirección, horarios, WhatsApp —obligatorio—, promo con fecha de fin) y acepta las pautas. Queda **pendiente**; no se ve en la página.
-4. **Aprobación:** en **🆕 Comercios nuevos para aprobar** (y con aviso en Novedades) se **aprueba y crea** o se rechaza con motivo. Al aprobar, el comercio queda publicado con su **link permanente**, y la app ofrece mandárselo por WhatsApp. Si se rechaza, el comercio ve el motivo en la misma invitación y puede corregir y reenviar.
+Hay dos caminos; los dos terminan en la misma lista de aprobación.
+
+**A. El comercio se anota solo, desde la página de Comunidad (camino normal)**
+1. En la página, bajo *Comercios amigos*, el botón **«🤝 ¿Tenés un comercio? Sumalo a la comunidad»** abre **directo el formulario vacío** (`/comercio/?alta=1`). Debajo hay una opción **«Prefiero consultar primero por WhatsApp»** que abre el chat con administración.
+2. El comercio completa todo (nombre, logo, dirección, horarios, **WhatsApp —obligatorio—**, promo con fecha de fin) y acepta las pautas. Queda **pendiente**; no se ve en la página. Si vuelve a abrir el link desde el mismo celular, ve el estado de su solicitud.
+3. Al enviar, le aparece **«💬 Avisar a administración por WhatsApp»** con el mensaje armado: ese mensaje es el aviso que le llega a administración al celular.
+
+**B. Administración invita a un comercio puntual**
+1. En *Comercios amigos*: **💬 Invitar por WhatsApp** (pide el número y el nombre del comercio, crea una invitación de **un solo uso** y deja lista la barra para abrir el chat con el mensaje y el link) o **🔗 Invitar a un comercio nuevo** (solo copia el link).
+2. El comercio completa el mismo formulario desde ese link.
+
+**Aprobación (en los dos caminos)**
+- En **🆕 Comercios nuevos para aprobar** (con aviso en Novedades) se **aprueba y crea** o se rechaza con motivo. Al aprobar, el comercio queda publicado con su **link permanente**, y la app ofrece mandárselo por WhatsApp. Si se rechaza, el comercio ve el motivo y puede corregir y reenviar.
+- El número de WhatsApp de administración se configura en Comunidad → *Datos que se muestran en la página* (si queda vacío se usa el del Bodegón).
+- Como el formulario abierto es público, cualquiera puede mandar una solicitud (también con datos falsos): por eso **nada se publica sin aprobación**.
 
 ## Circuito
 1. **Alta manual (alternativa):** en Administración → Comunidad → *Comercios amigos* → **+ Sumar un comercio** (alcanza con el nombre).

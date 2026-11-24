@@ -1675,6 +1675,8 @@ export function PanelComunidad() {
   var [msg, setMsg] = useState("");
   var [copiado, setCopiado] = useState(false);
   var [verDatos, setVerDatos] = useState(false);
+  var [verCup, setVerCup] = useState(false);   // «Cupones otorgados» y «La comunidad»: cerrados para que el panel no sea tan largo
+  var [verSoc, setVerSoc] = useState(false);
   var [cupones, setCupones] = useState([]);
   var [msgPrueba, setMsgPrueba] = useState("");
   var [filtroCup, setFiltroCup] = useState("todos");
@@ -2079,13 +2081,14 @@ export function PanelComunidad() {
         var lista = todos.filter(function (c) { return filtroCup === "todos" || est(c) === filtroCup; });
         return (
           <div style={tarjeta}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#D4A017" }}>🎟️ Cupones otorgados · {todos.length}</div>
-              <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: verCup ? 8 : 0 }}>
+              <div onClick={function () { setVerCup(!verCup); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#D4A017" }}>{verCup ? "▾ " : "▸ "}🎟️ Cupones otorgados · {todos.length}<span style={{ fontWeight: 600, color: "#6E6E6E", fontSize: 11.5 }}> · {verCup ? "ocultar" : "ver"}</span></div>
+              {verCup && <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={cargarCupones} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 11.5, cursor: "pointer" }}>↻ Actualizar</button>
                 {todos.length > 0 && <button onClick={csvCupones} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #333", background: "#161616", color: "#F0EDE8", fontSize: 11.5, cursor: "pointer" }}>⬇️ Excel</button>}
-              </div>
+              </div>}
             </div>
+            {verCup && (<div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {[["todos", "Todos"], ["vigentes", "Vigentes"], ["usados", "Usados"], ["vencidos", "Vencidos"]].map(function (t) {
                 var act = filtroCup === t[0];
@@ -2111,6 +2114,7 @@ export function PanelComunidad() {
               );
             })}
             {lista.length > 100 && <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6 }}>Se muestran los últimos 100. Bajá el Excel para verlos a todos.</div>}
+            </div>)}
           </div>
         );
       })()}
@@ -2141,7 +2145,8 @@ export function PanelComunidad() {
       </div>
 
       <div style={tarjeta}>
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>👥 La comunidad · {miembros === null ? "…" : reales.length + " miembro" + (reales.length === 1 ? "" : "s")}{pruebas.length > 0 ? " (+ " + pruebas.length + " de prueba)" : ""}</div>
+        <div onClick={function () { setVerSoc(!verSoc); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, marginBottom: verSoc ? 6 : 0 }}>{verSoc ? "▾ " : "▸ "}👥 La comunidad · {miembros === null ? "…" : reales.length + " miembro" + (reales.length === 1 ? "" : "s")}{pruebas.length > 0 ? " (+ " + pruebas.length + " de prueba)" : ""}<span style={{ fontWeight: 600, color: "#6E6E6E", fontSize: 11.5 }}> · {verSoc ? "ocultar" : "ver"}</span></div>
+        {verSoc && (<div>
         {miembros && miembros.length > 0 && <div style={{ fontSize: 11.5, color: "#9A9A9A", marginBottom: 8 }}>{conCumple} dejaron su cumpleaños.{cumples.length > 0 ? " 🎂 Hoy cumple: " + cumples.map(function (m) { return m.nombre; }).join(", ") + "." : ""}</div>}
         {miembros && miembros.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E" }}>Todavía no se sumó nadie.</div>}
         {miembros && miembros.length > 0 && (
@@ -2212,6 +2217,7 @@ export function PanelComunidad() {
             {miembros.length > 100 && <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6 }}>Se muestran los últimos 100. Bajá la lista para verlos a todos.</div>}
           </div>
         )}
+        </div>)}
       </div>
 
       <div style={tarjeta}>

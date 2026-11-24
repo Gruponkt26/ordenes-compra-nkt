@@ -150,9 +150,9 @@ function FranjaComercios(props) {
   var sel = lista.find(function (c) { return c.id === abierto; });
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "0 2px 8px" }}>
+      <div style={{ margin: "0 4px 8px" }}>
         <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8" }}>🤝 Comercios amigos</div>
-        <div style={{ fontSize: 11.5, color: "#8C8C8C" }}>mostrá tu cupón{lista.length > 1 ? " · deslizá →" : ""}</div>
+        <div style={{ fontSize: 11.5, color: "#8C8C8C", marginTop: 1 }}>Mostrá tu cupón y disfrutá sus beneficios{lista.length > 1 ? " · deslizá →" : ""}</div>
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
         {lista.map(function (c) {
@@ -525,6 +525,7 @@ export function GrupoNkt() {
   var modoPrueba = esModoPrueba();   // /grupo/?prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
+  var [localesAbiertos, setLocalesAbiertos] = useState({});   // tarjetas de los locales: compactas, se abren con «ver más»
   var [verInstructivo, setVerInstructivo] = useState(false);   // «¿Sabés cómo usar tus cupones?»: cerrado, se abre al tocarlo
   var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
   var [cupon, setCupon] = useState(null);
@@ -760,30 +761,54 @@ export function GrupoNkt() {
             {avisoVigente(d) && (
               <div style={{ background: l.color + "26", border: "1px solid " + l.color + "99", borderRadius: 12, padding: "9px 12px", marginBottom: 12, textAlign: "center", color: "#F0EDE8", fontSize: 13.5, fontWeight: 700, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>📣 {d.aviso}</div>
             )}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "8px 14px", display: "inline-block", maxWidth: "100%" }}>
-                <img src={l.logo} alt={l.nombre} style={{ display: "block", height: l.alto, maxWidth: "100%", width: "auto", margin: "0 auto" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ background: "#fff", borderRadius: 10, padding: "5px 9px", flex: "0 0 auto" }}>
+                <img src={l.logo} alt={l.nombre} style={{ display: "block", height: "auto", maxHeight: 40, maxWidth: 118, width: "auto" }} />
               </div>
-              <div style={{ fontSize: 13.5, color: "#C8C8C8", marginTop: 8 }}>{l.desc}</div>
-            </div>
-            {(d.direccion || d.horarios) && (
-              <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.6, marginTop: 10, textAlign: "center" }}>
-                {d.direccion && <div>📍 {d.direccion}</div>}
-                {d.horarios && <div style={{ whiteSpace: "pre-wrap" }}>🕒 {d.horarios}</div>}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8" }}>{l.nombre}</div>
+                <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.35 }}>{l.desc}</div>
               </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
-              {/* Delivery: se habilita por local en administración (Comunidad → datos de cada local). Mientras no esté habilitado queda como "Próximamente". */}
-              {d.delivery === true && cupon
-                ? <button onClick={function () { setPedirLocal(l); }} style={{ ...boton, cursor: "pointer", background: l.color, borderColor: l.color, color: "#fff" }}>🛵 Pedir delivery</button>
-                : <span style={{ ...boton, opacity: 0.6, cursor: "default", background: "#161616" }}>🛵 Pedir delivery<span style={{ display: "block", fontSize: 10.5, color: "#D4A017", fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", marginTop: 2 }}>{d.delivery === true ? "Un momento…" : "Próximamente"}</span></span>}
-              {l.id === "l3" && itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" })}   {/* El Bodegón y Kusama no toman reservas por acá */}
-              {itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar")}
-              {itemLocal(linkWeb(d.carta), "🍽️ Ver la carta")}
-              {itemLocal(consulta, "💬 Escribinos")}
-              {itemLocal(linkWeb(d.instagram, "instagram"), "📸 Instagram")}
-              <a href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>
             </div>
+            {(function () {
+              // Botón principal de cada local: Pedir delivery si lo tiene habilitado; Reservar en Colantonio's; si no, Cómo llegar. El resto se abre con «ver más».
+              var abierto = !!localesAbiertos[l.id];
+              var hayDelivery = d.delivery === true && cupon;
+              var pk = hayDelivery ? "delivery" : (l.id === "l3" ? "reserva" : "llegar");
+              var todas = [
+                ["delivery", hayDelivery
+                  ? <button key="delivery" onClick={function () { setPedirLocal(l); }} style={{ ...boton, cursor: "pointer", background: l.color, borderColor: l.color, color: "#fff" }}>🛵 Pedir delivery</button>
+                  : <span key="delivery" style={{ ...boton, opacity: 0.6, cursor: "default", background: "#161616" }}>🛵 Pedir delivery<span style={{ display: "block", fontSize: 10.5, color: "#D4A017", fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>Próximamente</span></span>],
+                ["reserva", l.id === "l3" ? React.cloneElement(itemLocal(reserva, "📅 Reservar mesa", { background: "#1F4D2A", borderColor: "#3A7D44" }), { key: "reserva" }) : null],   // El Bodegón y Kusama no toman reservas por acá
+                ["llegar", React.cloneElement(itemLocal(d.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(d.direccion + " Punta Alta") : "", "📍 Cómo llegar"), { key: "llegar" })],
+                ["carta", React.cloneElement(itemLocal(linkWeb(d.carta), "🍽️ Ver la carta"), { key: "carta" })],
+                ["wsp", React.cloneElement(itemLocal(consulta, "💬 Escribinos"), { key: "wsp" })],
+                ["ig", React.cloneElement(itemLocal(linkWeb(d.instagram, "instagram"), "📸 Instagram"), { key: "ig" })],
+                ["opinion", <a key="opinion" href={"/?opinar=" + l.id + "&c=salon" + (modoPrueba ? "&prueba" : "")} style={boton}>⭐ Dejar mi opinión</a>],
+              ].filter(function (x) { return x[1]; });
+              var principal = todas.find(function (x) { return x[0] === pk; });
+              return (
+                <div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>{principal && principal[1]}</div>
+                    <button onClick={function () { setLocalesAbiertos(function (m) { var n = { ...m }; n[l.id] = !m[l.id]; return n; }); }} aria-expanded={abierto} style={{ ...boton, flex: "0 0 auto", cursor: "pointer", background: "none", padding: "11px 14px" }}>{abierto ? "ver menos ▴" : "ver más ▾"}</button>
+                  </div>
+                  {abierto && (
+                    <div>
+                      {(d.direccion || d.horarios) && (
+                        <div style={{ fontSize: 12.5, color: "#B8B8B8", lineHeight: 1.6, marginTop: 10, textAlign: "center" }}>
+                          {d.direccion && <div>📍 {d.direccion}</div>}
+                          {d.horarios && <div style={{ whiteSpace: "pre-wrap" }}>🕒 {d.horarios}</div>}
+                        </div>
+                      )}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                        {todas.filter(function (x) { return x[0] !== pk; }).map(function (x) { return x[1]; })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
       });
@@ -839,13 +864,16 @@ export function GrupoNkt() {
       {esParte ? (
         <div>
           <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
-          {bNovedades}
           {bCupon}
-          <FranjaComercios comercios={comercios} />
+          {bNovedades}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Dónde usar tu cupón</div>
+          <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8", margin: "0 4px 8px" }}>🍷 Nuestros locales</div>
+          {bLocales}
+          <FranjaComercios comercios={comercios} />
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Ayuda</div>
           {cupon && bInstructivo}
           {bInstalar}
-          {bLocales}
           {hecho !== "ok" && <div style={{ marginTop: 6 }}>{bSumarse}</div>}
         </div>
       ) : (

@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos, cargarCambiosComercios, cargarNovedadesComercios } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas, { PanelCocina, PantallaCadete, mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -15846,7 +15846,16 @@ function PanelNovedades(p){
   var [tabNov,setTabNov]=useState("plata"); // plata | socios | deudas | venc | resultados | personal | operacion
   // Reclamos nuevos que mandaron los socios sobre los comercios amigos (se leen una vez al abrir Novedades).
   var [reclamosNuevos,setReclamosNuevos]=useState(0);
-  useEffect(function(){ var vivo=true; cargarReclamos().then(function(l){ if(vivo)setReclamosNuevos((l||[]).filter(function(r){return r.estado==="nuevo";}).length); }); return function(){vivo=false;}; },[]);
+  var [comPend,setComPend]=useState({cambios:0,novedades:0});   // lo que mandaron los comercios amigos y espera aprobación
+  useEffect(function(){
+    var vivo=true;
+    cargarReclamos().then(function(l){ if(vivo)setReclamosNuevos((l||[]).filter(function(r){return r.estado==="nuevo";}).length); });
+    Promise.all([cargarCambiosComercios(),cargarNovedadesComercios()]).then(function(r){
+      if(!vivo)return;
+      setComPend({cambios:Object.keys(r[0]||{}).filter(function(k){return r[0][k]&&r[0][k].estado==="pendiente";}).length,novedades:(r[1]||[]).filter(function(n){return n.estado==="pendiente";}).length});
+    });
+    return function(){vivo=false;};
+  },[]);
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
@@ -16371,6 +16380,8 @@ function PanelNovedades(p){
           avisos.push({rojo:false, cargarEg:c,
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
+        if(comPend.cambios>0)avisos.push({rojo:false,txt:comPend.cambios+(comPend.cambios===1?" comercio amigo mandó cambios":" comercios amigos mandaron cambios")+" de su tarjeta para aprobar",ir:p.irComunidad});
+        if(comPend.novedades>0)avisos.push({rojo:false,txt:comPend.novedades+(comPend.novedades===1?" novedad":" novedades")+" de comercios amigos para aprobar",ir:p.irComunidad});
         if(reclamosNuevos>0)avisos.push({rojo:true,txt:reclamosNuevos+(reclamosNuevos===1?" reclamo nuevo":" reclamos nuevos")+" de socios sobre comercios amigos — hay que revisarlo",ir:p.irComunidad});
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
         // Un mismo celular que ficha por dos personas distintas: alguien está fichando por otro.

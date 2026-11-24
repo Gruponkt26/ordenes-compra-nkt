@@ -182,7 +182,7 @@ export function promoVigente(c) {
 export function fechaCorta(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : ""; }
 export function nuevoToken() { try { var a = new Uint8Array(12); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); } catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2, 10); } }
 // Lo que cada comercio pidió cambiar desde su portal (ámbito grupo_comercio_cambio, uno por comercio): {comercio_id: {datos, estado, enviado_at}}.
-async function cargarCambiosComercios() {
+export async function cargarCambiosComercios() {
   try {
     var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_comercio_cambio&limit=300", { headers: { ...SH, "Cache-Control": "no-cache" } });
     var d = await r.json(), o = {};
@@ -343,6 +343,7 @@ function PanelComerciosRed(props) {
   var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
   var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
   var [canjes, setCanjes] = useState([]);        // canjes registrados por los comercios (para sus resultados)
+  var [avisoCom, setAvisoCom] = useState(null);  // después de aprobar o rechazar: el mensaje de WhatsApp para avisarle al comercio {nombre, link}
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
   function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); return cargarComercios(false).then(setLista); }
@@ -369,13 +370,15 @@ function PanelComerciosRed(props) {
     if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad? Deja de aparecer en la página.")) return;
     borrarComercio(c.id).then(function () { recargar(); });
   }
+  // Después de resolver algo, se ofrece avisarle al comercio por WhatsApp (el mensaje ya viene armado).
+  function ofrecerAviso(c, texto) { setAvisoCom({ nombre: (c && c.nombre) || "el comercio", link: c && c.wsp ? linkWsp(c.wsp, texto) : "" }); }
   // Novedades de los comercios: se publican cuando administración las aprueba. Cada comercio puede mandar 1 por semana; las extra las habilita administración (se cobran aparte).
   function limpiarNov(n) { var o = { ...n }; delete o.id; delete o.comercio; return o; }
-  function aprobarNov(n) { guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "aprobada", aprobada_at: new Date().toISOString() }).then(function () { recargar(); setMsg("✓ Novedad publicada."); setTimeout(function () { setMsg(""); }, 3000); }); }
+  function aprobarNov(n) { guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "aprobada", aprobada_at: new Date().toISOString() }).then(function () { recargar(); setMsg("✓ Novedad publicada."); setTimeout(function () { setMsg(""); }, 3000); ofrecerAviso((lista || []).find(function (x) { return x.id === n.comercio_id; }), "Hola! Tu novedad «" + n.titulo + "» ya está publicada para los socios de la comunidad de Grupo Nkt. ¡Gracias!"); }); }
   function rechazarNov(n) {
     var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", "");
     if (m === null) return;
-    guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "rechazada", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { recargar(); });
+    guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "rechazada", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { recargar(); ofrecerAviso((lista || []).find(function (x) { return x.id === n.comercio_id; }), "Hola! No pudimos aprobar tu novedad «" + n.titulo + "» en la comunidad de Grupo Nkt" + (m.trim() ? ": " + m.trim() : "") + ". Podés corregirla desde tu portal."); });
   }
   function darExtra(c) {
     if (!window.confirm("¿Habilitar 1 novedad extra esta semana para «" + c.nombre + "»?\n\nSe cobra aparte.")) return;
@@ -406,13 +409,13 @@ function PanelComerciosRed(props) {
     var datos = { ...cam.datos }; delete datos.pautas_ok;
     guardarComercio({ ...c, ...datos, pautas_ok_at: cam.enviado_at || "" }).then(function (ok) {
       if (!ok) { setMsg("No se pudo publicar. Probá de nuevo."); return; }
-      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "aprobado", resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); setMsg("✓ Publicado."); setTimeout(function () { setMsg(""); }, 3000); });
+      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "aprobado", resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); setMsg("✓ Publicado."); setTimeout(function () { setMsg(""); }, 3000); ofrecerAviso({ ...c, ...datos }, "Hola! Tu tarjeta en la comunidad de Grupo Nkt ya está publicada con los cambios que mandaste. ¡Gracias!"); });
     });
   }
   function rechazar(c, cam) {
     var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", "");
     if (m === null) return;
-    guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "rechazado", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); });
+    guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "rechazado", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); ofrecerAviso(c, "Hola! No pudimos aprobar los cambios de tu tarjeta en la comunidad de Grupo Nkt" + (m.trim() ? ": " + m.trim() : "") + ". Corregilos desde tu portal y volvé a enviarlos."); });
   }
   return (
     <div style={tarjeta}>
@@ -420,6 +423,13 @@ function PanelComerciosRed(props) {
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
+          {avisoCom && (
+            <div style={{ background: "#0F2415", border: "1px solid #3A7D4488", borderRadius: 10, padding: "9px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ flex: "1 1 180px", fontSize: 12.5, color: "#9FE0AA", fontWeight: 700 }}>✓ Listo. ¿Le avisás a {avisoCom.nombre}?</span>
+              {avisoCom.link ? <a href={avisoCom.link} target="_blank" rel="noreferrer" style={{ padding: "7px 12px", borderRadius: 8, background: "#25D366", color: "#08240F", fontSize: 12.5, fontWeight: 800, textDecoration: "none" }}>💬 Avisar por WhatsApp</a> : <span style={{ fontSize: 12, color: "#B8A070" }}>Este comercio no tiene WhatsApp cargado.</span>}
+              <button onClick={function () { setAvisoCom(null); }} style={{ background: "none", border: "none", color: "#8C8C8C", cursor: "pointer", fontSize: 12 }}>✕ Ahora no</button>
+            </div>
+          )}
           {lista && lista.length > 0 && (
             <div style={{ background: "#0C1218", border: "1px solid #1A6B8A55", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: "#7FC4DE", marginBottom: 6 }}>📊 Resultados por comercio · últimos 30 días</div>

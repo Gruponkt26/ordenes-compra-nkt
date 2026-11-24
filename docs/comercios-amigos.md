@@ -42,6 +42,10 @@
 5. **Mis números** (portal del comercio): canjes, socios distintos, cuántos volvieron y el gasto anotado, últimos 30 días y total, más la lista de los últimos canjes.
 6. **Resultados por comercio** (administración, en Comercios amigos): los mismos números de todos los comercios, últimos 30 días. Es lo que se le muestra al comercio para que renueve.
 
+## Avisos
+- **A administración:** en **Novedades** aparecen avisos cuando hay **cambios de tarjeta**, **novedades** o **reclamos** de comercios amigos esperando, con acceso directo a Comunidad.
+- **Al comercio:** al aprobar o rechazar un cambio o una novedad, la app ofrece **«💬 Avisar por WhatsApp»** con el mensaje ya armado (incluye el motivo si se rechazó). Si el comercio no tiene WhatsApp cargado, lo avisa. No hay notificaciones al celular ni mails automáticos.
+
 ## Próximos pasos
 1. La propuesta comercial para presentarle a un comercio qué se le ofrece y cuánto cuesta.
 2. Si hace falta, un límite de canjes por socio y por comercio (hoy no hay).

@@ -3,7 +3,7 @@
 // no se publican hasta que administración los aprueba (Administración → Comunidad → Comercios amigos).
 import React, { useState, useEffect } from "react";
 import { SURL, SH } from "./comun.js";
-import { leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
+import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -20,7 +20,10 @@ export default function PortalComercio() {
   var q = new URLSearchParams(window.location.search);
   var id = q.get("c") || "", clave = q.get("k") || "";
   var inv = q.get("i") || "";                       // invitación para un comercio NUEVO (formulario vacío): /comercio/?i=CODIGO
-  var modoAlta = !!inv && !id;
+  var abierta = q.has("alta");                      // formulario abierto, sin invitación: /comercio/?alta=1 (el botón de la página de Comunidad)
+  var modoAlta = (!!inv || abierta) && !id;
+  var [altaKey, setAltaKey] = useState(inv);        // con qué clave se guarda la solicitud (la invitación, o una propia si el formulario es abierto)
+  var [wspAdm, setWspAdm] = useState("");           // WhatsApp de administración, para avisar que se mandó la solicitud
   var [altaRow, setAltaRow] = useState(null);       // la solicitud de alta que ya mandó este comercio: {datos, comercio_id, estado, motivo}
   var [altaLink, setAltaLink] = useState("");       // su link permanente, cuando ya lo aprobaron
   var [idAlta] = useState(function () { return "com_" + Date.now(); });
@@ -51,9 +54,11 @@ export default function PortalComercio() {
     document.title = "Portal de comercios · Grupo Nkt";
     if (modoAlta) {
       (async function () {
-        var invi = await leerPauta("cominv_" + inv);
-        if (!invi) { setEstado("invalido"); return; }
-        var a = await leerPauta("comalta_" + inv);
+        cargarConfigGrupo().then(function (cfg) { setWspAdm((cfg && cfg.wspAdmin) || ((cfg && cfg.locales && cfg.locales.l1) || {}).wsp || ""); });
+        var clave2 = inv;
+        if (inv) { var invi = await leerPauta("cominv_" + inv); if (!invi) { setEstado("invalido"); return; } }
+        else { try { clave2 = localStorage.getItem("nkt_comercio_alta") || ""; } catch (e) { clave2 = ""; } setAltaKey(clave2); }
+        var a = clave2 ? await leerPauta("comalta_" + clave2) : null;
         var vacio = {}; CAMPOS.forEach(function (x) { vacio[x] = (a && a.estado === "rechazada" && a.datos && a.datos[x] !== undefined) ? a.datos[x] : ""; });
         if (!vacio.color) vacio.color = "#1A6B8A";
         if (a && a.estado === "aprobada" && a.comercio_id) { var k2 = await leerPauta("comkey_" + a.comercio_id); if (k2 && k2.token) setAltaLink(window.location.origin + "/comercio/?c=" + encodeURIComponent(a.comercio_id) + "&k=" + k2.token); }
@@ -101,7 +106,9 @@ export default function PortalComercio() {
     datos.pautas_ok = true;
     if (modoAlta) {
       var idCom = (altaRow && altaRow.comercio_id) || idAlta;
-      var filaA = { id: "comalta_" + inv, ambito: "grupo_comercio_alta", texto: JSON.stringify({ datos: datos, comercio_id: idCom, estado: "pendiente", enviado_at: ahora, nombre: datos.nombre }), usuario: "", created_at: ahora, updated_at: ahora };
+      var claveA = altaKey || ("abierta_" + idAlta);
+      if (!altaKey) { setAltaKey(claveA); if (!inv) { try { localStorage.setItem("nkt_comercio_alta", claveA); } catch (e) {} } }
+      var filaA = { id: "comalta_" + claveA, ambito: "grupo_comercio_alta", texto: JSON.stringify({ datos: datos, comercio_id: idCom, estado: "pendiente", enviado_at: ahora, nombre: datos.nombre }), usuario: "", created_at: ahora, updated_at: ahora };
       fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(filaA) })
         .then(function (r) { setEnviando(false); if (!r.ok) { setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); return; } setAltaRow({ datos: datos, comercio_id: idCom, estado: "pendiente", enviado_at: ahora }); window.scrollTo(0, 0); })
         .catch(function () { setEnviando(false); setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); });
@@ -205,7 +212,7 @@ export default function PortalComercio() {
         <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Completá los datos de tu comercio y tu promo para los socios. Administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
       </div>
 
-      {modoAlta && altaRow && altaRow.estado === "pendiente" && <div style={{ ...tarj, borderColor: "#D4A01788", background: "#16120A", textAlign: "center" }}><div style={{ fontSize: 34 }}>✅</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#E5C467" }}>Recibimos tu solicitud</div><div style={{ fontSize: 13.5, color: "#C8B27A", lineHeight: 1.5 }}>Administración de Grupo Nkt la está revisando. Cuando la aprueben te avisamos por WhatsApp con el link de tu portal.</div></div>}
+      {modoAlta && altaRow && altaRow.estado === "pendiente" && <div style={{ ...tarj, borderColor: "#D4A01788", background: "#16120A", textAlign: "center" }}><div style={{ fontSize: 34 }}>✅</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#E5C467" }}>Recibimos tu solicitud</div><div style={{ fontSize: 13.5, color: "#C8B27A", lineHeight: 1.5 }}>Administración de Grupo Nkt la está revisando. Cuando la aprueben te avisamos por WhatsApp con el link de tu portal.</div>{wspAdm && <a href={linkWsp(wspAdm, "Hola! Acabo de mandar la solicitud de mi comercio" + ((altaRow.datos || {}).nombre ? " «" + altaRow.datos.nombre + "»" : "") + " para sumarme a la comunidad de Grupo Nkt.")} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, padding: "12px", borderRadius: 10, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 14 }}>💬 Avisar a administración por WhatsApp</a>}</div>}
       {modoAlta && altaRow && altaRow.estado === "aprobada" && <div style={{ ...tarj, borderColor: "#3A7D4488", background: "#0F2415", textAlign: "center" }}><div style={{ fontSize: 34 }}>🎉</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#9FE0AA" }}>¡Tu comercio ya está en la comunidad!</div><div style={{ fontSize: 13.5, color: "#B8D8BE", lineHeight: 1.5 }}>Este es tu portal: ahí editás tu tarjeta, cargás tus novedades y canjeás los cupones. Guardá el link.</div>{altaLink && <a href={altaLink} style={{ display: "block", marginTop: 10, padding: "12px", borderRadius: 10, background: "#3A7D44", color: "#fff", fontWeight: 800, textDecoration: "none" }}>Entrar a mi portal</a>}</div>}
       {modoAlta && altaRow && altaRow.estado === "rechazada" && <div style={{ ...tarj, borderColor: "#C1440E88", background: "#1F120C", fontSize: 13.5 }}><b style={{ color: "#E0714A" }}>✕ No pudimos aprobar tu solicitud.</b>{altaRow.motivo ? <div style={{ marginTop: 4 }}>Motivo: {altaRow.motivo}</div> : null}<div style={{ marginTop: 4, color: "#B8B8B8" }}>Corregí lo que haga falta y volvé a enviarla.</div></div>}
 

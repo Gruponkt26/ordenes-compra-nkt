@@ -200,6 +200,11 @@ export async function cargarAltasComercios() {
 }
 var ETIQ_COMERCIO = { nombre: "Nombre", desc: "Descripción", direccion: "Dirección", horarios: "Horarios", wsp: "WhatsApp", carta: "Carta", instagram: "Instagram", color: "Color", logo: "Logo", beneficio: "Promo", promo_desde: "Promo desde", promo_hasta: "Promo hasta", promo_cond: "Condiciones de la promo" };
 async function guardarComercio(c) { var o = { ...c }; var id = o.id; delete o.id; return guardarFila(id, "grupo_comercio", o); }
+// Borra varias filas de pautas de una vez (por id).
+async function borrarFilas(ids) {
+  if (!ids || !ids.length) return true;
+  try { var r = await fetch(SURL + "/rest/v1/pautas?id=in.(" + ids.map(function (x) { return encodeURIComponent(x); }).join(",") + ")", { method: "DELETE", headers: SH }); return r.ok; } catch (e) { return false; }
+}
 async function borrarComercio(id) { try { var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }); return r.ok; } catch (e) { return false; } }
 // El logo se achica en el celular o la compu (hasta 600 px) y se pone sobre fondo blanco, porque la tarjeta lo muestra así.
 export function achicarLogo(file) {
@@ -378,8 +383,12 @@ function PanelComerciosRed(props) {
     });
   }
   function quitar(c) {
-    if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad? Deja de aparecer en la página.")) return;
-    borrarComercio(c.id).then(function () { recargar(); });
+    if (!window.confirm("¿Borrar «" + c.nombre + "» de la comunidad?\n\nDeja de aparecer en la página y su link deja de servir. Se borran también su código de acceso, sus novedades y su solicitud de alta. Se conservan, como historia, sus canjes y reclamos.\n\nNo se puede deshacer. Si solo querés frenarlo, usá ⏸ Pausar.")) return;
+    // Todo lo que le pertenece: su código, el último pedido de cambios, sus novedades y su solicitud de alta (con la invitación que usó).
+    var ids = ["comkey_" + c.id, "comcambio_" + c.id];
+    novs.filter(function (n) { return n.comercio_id === c.id; }).forEach(function (n) { ids.push(n.id); });
+    altas.filter(function (a) { return a.comercio_id === c.id; }).forEach(function (a) { ids.push(a.id); ids.push("cominv_" + String(a.id).replace(/^comalta_/, "")); });
+    borrarFilas(ids).then(function () { return borrarComercio(c.id); }).then(function () { recargar(); setMsg("🗑️ " + c.nombre + " se borró de la comunidad."); setTimeout(function () { setMsg(""); }, 4000); });
   }
   // Después de resolver algo, se ofrece avisarle al comercio por WhatsApp (el mensaje ya viene armado).
   function ofrecerAviso(c, texto) { setAvisoCom({ nombre: (c && c.nombre) || "el comercio", link: c && c.wsp ? linkWsp(c.wsp, texto) : "" }); }

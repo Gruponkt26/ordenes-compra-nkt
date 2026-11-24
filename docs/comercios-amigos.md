@@ -66,3 +66,10 @@ Hay dos caminos; los dos terminan en la misma lista de aprobación.
 ## Próximos pasos
 1. La propuesta comercial para presentarle a un comercio qué se le ofrece y cuánto cuesta.
 2. Si hace falta, un límite de canjes por socio y por comercio (hoy no hay).
+
+
+## Qué pasa al borrar un comercio
+
+Se borran: el comercio, su código de acceso (el link deja de servir), su último pedido de cambios, sus novedades, su solicitud de alta y la invitación que usó.
+Se conservan, como historia: sus canjes y reclamos.
+No se puede deshacer; para frenarlo sin perderlo, usar Pausar.

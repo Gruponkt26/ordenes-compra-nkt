@@ -731,7 +731,7 @@ export function GrupoNkt() {
   var modoPrueba = esModoPrueba();   // /grupo/?prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
-  var [localesAbiertos, setLocalesAbiertos] = useState({});   // tarjetas de los locales: compactas, se abren con «ver más»
+  var [localSel, setLocalSel] = useState("");   // el local cuya tarjeta está abierta (se elige tocando su logo)
   var [verInstructivo, setVerInstructivo] = useState(false);   // «¿Sabés cómo usar tus cupones?»: cerrado, se abre al tocarlo
   var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
   var [cupon, setCupon] = useState(null);
@@ -951,7 +951,8 @@ export function GrupoNkt() {
       })}
     </div>
   );
-  var bLocales = LOCALES_GRUPO.map(function (l) {
+  var cartasLocales = {};
+  LOCALES_GRUPO.forEach(function (l) {
         var d = cfg.locales[l.id] || {};
         var wa = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero hacer un pedido de delivery.");
         var reserva = linkWsp(d.wsp, "Hola " + l.nombre + "! Quiero reservar una mesa. Día: ___ · Hora: ___ · Personas: ___ · A nombre de: ___");
@@ -962,23 +963,18 @@ export function GrupoNkt() {
             ? <a href={link} target="_blank" rel="noreferrer" style={{ ...boton, ...(estilo || {}) }}>{txt}</a>
             : <span style={{ ...boton, opacity: 0.4, cursor: "not-allowed" }} title="Pronto">{txt}</span>;
         };
-        return (
+        cartasLocales[l.id] = (
           <div key={l.id} style={{ position: "relative", overflow: "hidden", background: "#111", border: "1px solid " + l.color + "55", borderRadius: 16, padding: "16px", marginBottom: 14 }}>
             {avisoVigente(d) && (
               <div style={{ background: l.color + "26", border: "1px solid " + l.color + "99", borderRadius: 12, padding: "9px 12px", marginBottom: 12, textAlign: "center", color: "#F0EDE8", fontSize: 13.5, fontWeight: 700, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>📣 {d.aviso}</div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ background: "#fff", borderRadius: 10, padding: "5px 9px", flex: "0 0 auto" }}>
-                <img src={l.logo} alt={l.nombre} style={{ display: "block", height: "auto", maxHeight: 40, maxWidth: 118, width: "auto" }} />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8" }}>{l.nombre}</div>
-                <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.35 }}>{l.desc}</div>
-              </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: l.color === "#1A6B8A" ? "#4CB6DC" : "#F0EDE8" }}>{l.nombre}</div>
+              <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.35 }}>{l.desc}</div>
             </div>
             {(function () {
               // Botón principal de cada local: Pedir delivery si lo tiene habilitado; Reservar en Colantonio's; si no, Cómo llegar. El resto se abre con «ver más».
-              var abierto = !!localesAbiertos[l.id];
+              var abierto = true;   // la tarjeta ya se abrió al tocar el logo: se ve todo
               var hayDelivery = d.delivery === true && cupon;
               var pk = hayDelivery ? "delivery" : (l.id === "l3" ? "reserva" : "llegar");
               var todas = [
@@ -997,7 +993,7 @@ export function GrupoNkt() {
                 <div>
                   <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>{principal && principal[1]}</div>
-                    <button onClick={function () { setLocalesAbiertos(function (m) { var n = { ...m }; n[l.id] = !m[l.id]; return n; }); }} aria-expanded={abierto} style={{ ...boton, flex: "0 0 auto", cursor: "pointer", background: "none", padding: "11px 14px" }}>{abierto ? "ver menos ▴" : "ver más ▾"}</button>
+                    <button onClick={function () { setLocalSel(""); }} style={{ ...boton, flex: "0 0 auto", cursor: "pointer", background: "none", padding: "11px 14px" }}>cerrar ▴</button>
                   </div>
                   {abierto && (
                     <div>
@@ -1018,6 +1014,25 @@ export function GrupoNkt() {
           </div>
         );
       });
+  // Los tres locales de Grupo Nkt, como una fila de logos: al tocar uno se abre su tarjeta con todo lo que se puede hacer (uno a la vez).
+  var bLocales = (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: localSel ? 10 : 14 }}>
+        {LOCALES_GRUPO.map(function (l) {
+          var d = cfg.locales[l.id] || {}, on = localSel === l.id, hayDelivery = d.delivery === true && cupon;
+          return (
+            <button key={l.id} onClick={function () { setLocalSel(on ? "" : l.id); }} aria-pressed={on} aria-label={l.nombre} style={{ position: "relative", cursor: "pointer", background: on ? l.color + "26" : "#111", border: "2px solid " + (on ? l.color : l.color + "66"), borderRadius: 14, padding: "10px 6px", minHeight: 74, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
+              <span style={{ background: "#fff", borderRadius: 9, padding: "4px 6px", display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: 44, boxSizing: "border-box" }}>
+                <img src={l.logo} alt={l.nombre} style={{ maxWidth: "100%", maxHeight: 34, width: "auto", height: "auto", objectFit: "contain", display: "block" }} />
+              </span>
+              {hayDelivery && <span title="Se puede pedir delivery" style={{ position: "absolute", top: -7, right: -5, width: 23, height: 23, borderRadius: 12, background: l.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🛵</span>}
+            </button>
+          );
+        })}
+      </div>
+      {localSel && cartasLocales[localSel]}
+    </div>
+  );
   var bSumarse = (
 <div style={{ background: "#14100A", border: "1px solid #D4A01766", borderRadius: 16, padding: "16px", marginTop: 6 }}>
         {hecho === "ok" ? (

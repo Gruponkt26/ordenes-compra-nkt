@@ -52,9 +52,9 @@ export default function PortalComercio() {
 
   useEffect(function () {
     document.title = "Portal de comercios · Grupo Nkt";
+    cargarConfigGrupo().then(function (cfg) { setWspAdm((cfg && cfg.wspAdmin) || ((cfg && cfg.locales && cfg.locales.l1) || {}).wsp || ""); });
     if (modoAlta) {
       (async function () {
-        cargarConfigGrupo().then(function (cfg) { setWspAdm((cfg && cfg.wspAdmin) || ((cfg && cfg.locales && cfg.locales.l1) || {}).wsp || ""); });
         var clave2 = inv;
         if (inv) { var invi = await leerPauta("cominv_" + inv); if (!invi) { setEstado("invalido"); return; } }
         else { try { clave2 = localStorage.getItem("nkt_comercio_alta") || ""; } catch (e) { clave2 = ""; } setAltaKey(clave2); }
@@ -199,6 +199,7 @@ export default function PortalComercio() {
       <div style={{ fontSize: 40 }}>🔒</div>
       <div style={{ fontSize: 18, fontWeight: 800, margin: "10px 0 6px" }}>Este link no es válido</div>
       <div style={{ fontSize: 14, color: "#9A9A9A", lineHeight: 1.5 }}>Puede estar mal copiado o haberse reemplazado por uno nuevo. Pedile a administración de Grupo Nkt que te mande tu link de nuevo.</div>
+      {wspAdm && <a href={linkWsp(wspAdm, "Hola! Me llegó un link de la comunidad de Grupo Nkt pero no me funciona. ¿Me lo pueden mandar de nuevo?")} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 16, padding: "12px", borderRadius: 10, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 14 }}>💬 Comunicarme con administración</a>}
     </div></div>
   );
 
@@ -210,6 +211,7 @@ export default function PortalComercio() {
         <div style={{ fontSize: 11, letterSpacing: 2, color: "#8C8C8C", textTransform: "uppercase" }}>Comunidad Grupo Nkt</div>
         <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>{modoAlta ? "Sumá tu comercio" : "Portal de comercios"}</div>
         <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Completá los datos de tu comercio y tu promo para los socios. Administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
+        {wspAdm && <a href={linkWsp(wspAdm, modoAlta ? "Hola! Recibí la invitación para sumar mi comercio a la comunidad de Grupo Nkt y tengo una consulta." : "Hola! Soy un comercio de la comunidad de Grupo Nkt" + (pub && pub.nombre ? " («" + pub.nombre + "»)" : "") + " y tengo una consulta.")} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 10, padding: "9px 16px", borderRadius: 999, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 13 }}>💬 Comunicarme con administración</a>}
       </div>
 
       {modoAlta && altaRow && altaRow.estado === "pendiente" && <div style={{ ...tarj, borderColor: "#D4A01788", background: "#16120A", textAlign: "center" }}><div style={{ fontSize: 34 }}>✅</div><div style={{ fontSize: 16, fontWeight: 800, margin: "4px 0", color: "#E5C467" }}>Recibimos tu solicitud</div><div style={{ fontSize: 13.5, color: "#C8B27A", lineHeight: 1.5 }}>Administración de Grupo Nkt la está revisando. Cuando la aprueben te avisamos por WhatsApp con el link de tu portal.</div>{wspAdm && <a href={linkWsp(wspAdm, "Hola! Acabo de mandar la solicitud de mi comercio" + ((altaRow.datos || {}).nombre ? " «" + altaRow.datos.nombre + "»" : "") + " para sumarme a la comunidad de Grupo Nkt.")} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 12, padding: "12px", borderRadius: 10, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 14 }}>💬 Avisar a administración por WhatsApp</a>}</div>}

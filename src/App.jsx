@@ -32040,6 +32040,20 @@ export default function App() {
     // Borrar una parte de un pago de vencimiento partido entre los tres locales borra el pago entero:
     // si no, al volver a pagarlo las otras dos partes contarían el gasto dos veces.
     var base=baseEgresoVenc(id);
+    // Un egreso cargado desde el aviso de Novedades (id «egcaja_<cierre>») ya sacó esa plata de la caja menor del cierre.
+    // Al borrarlo se devuelve al cierre: si no, al volver a cargarlo desde Novedades se descontaría dos veces.
+    if(String(base).indexOf("egcaja_")===0){
+      var gEg=gastos.find(function(x){return x.id===base;});
+      var cEg=gEg&&cierres.find(function(x){return x.id===String(base).slice(7);});
+      if(cEg){
+        var mot=((gEg.detalle||"").split(" · Motivo: ")[1]||"").trim();
+        var nota="Egreso de caja — "+gEg.concepto+(mot?" · motivo: "+mot:"")+" ("+gEg.usuario+")";
+        var nt=String(cEg.retiro_caja_nota||"");
+        nt=nt.indexOf(nota+" · ")>=0?nt.replace(nota+" · ",""):nt.indexOf(" · "+nota)>=0?nt.replace(" · "+nota,""):nt===nota?"":nt;
+        var rn=(parseFloat(cEg.retiro_caja)||0)-(parseFloat(gEg.monto)||0);
+        guardarCierre({...cEg,retiro_caja:Math.abs(rn)<0.5?0:rn,retiro_caja_nota:nt});
+      }
+    }
     borrarEgresoSolo(base);
     despagarPorEgreso(base);
   }

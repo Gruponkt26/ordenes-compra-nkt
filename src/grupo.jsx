@@ -89,6 +89,71 @@ export async function cargarComercios(soloActivos) {
   } catch (e) { return []; }
 }
 // La promo de un comercio solo se muestra mientras está vigente: pasada la fecha de fin, se oculta sola.
+// ─── RECLAMOS DE LOS SOCIOS ───
+// Un socio con cupón puede avisar a administración que tuvo un problema en un comercio amigo. Es privado: lo ve solo administración
+// (ámbito grupo_reclamo, un registro por socio, comercio y semana). El comercio no lo ve; administración decide qué le comunica.
+export var MOTIVOS_RECLAMO = ["No me respetaron el beneficio", "Mala atención", "Servicio fallido o demora", "Me cobraron de más", "Otro motivo"];
+export var ESTADOS_RECLAMO = [{ id: "nuevo", txt: "Nuevo", col: "#E0714A" }, { id: "revision", txt: "En revisión", col: "#D4A017" }, { id: "resuelto", txt: "Resuelto", col: "#4C9A5A" }];
+function semanaClave() { var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); var s1 = new Date(d.getFullYear(), 0, 4); return d.getFullYear() + "-S" + String(1 + Math.round(((d - s1) / 864e5 - 3 + ((s1.getDay() + 6) % 7)) / 7)).padStart(2, "0"); }
+export async function cargarReclamos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_reclamo&order=created_at.desc&limit=500", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+// Cuántos reclamos tiene un comercio en los últimos 30 días (para marcar los que conviene revisar).
+export function reclamosDe(lista, comercioId) { var desde = Date.now() - 30 * 864e5; return (lista || []).filter(function (x) { return x.comercio_id === comercioId && new Date(x.at).getTime() >= desde; }).length; }
+function VentanaReclamo(props) {
+  var c = props.c, cupon = props.cupon;
+  var [motivo, setMotivo] = useState("");
+  var [texto, setTexto] = useState("");
+  var [enviando, setEnviando] = useState(false);
+  var [msg, setMsg] = useState("");
+  var [listo, setListo] = useState(false);
+  function enviar() {
+    if (!motivo) { setMsg("Elegí qué pasó."); return; }
+    setEnviando(true); setMsg("");
+    var id = "reclamo_" + c.id + "_" + cupon.wsp + "_" + semanaClave();
+    leerPauta(id).then(function (ya) {
+      if (ya) { setEnviando(false); setMsg("Ya recibimos tu reclamo sobre este comercio esta semana. Si hay algo nuevo, te escribimos nosotros."); return; }
+      var ahora = new Date().toISOString();
+      var obj = { comercio_id: c.id, comercio_nombre: c.nombre, wsp: cupon.wsp, nombre: cupon.nombre || "", motivo: motivo, comentario: texto.trim(), at: ahora, estado: "nuevo", nota: "" };
+      fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: id, ambito: "grupo_reclamo", texto: JSON.stringify(obj), usuario: "", created_at: ahora, updated_at: ahora }) })
+        .then(function (r) { setEnviando(false); if (r.ok) setListo(true); else setMsg("No se pudo enviar. Probá de nuevo."); })
+        .catch(function () { setEnviando(false); setMsg("No se pudo enviar. Revisá tu conexión."); });
+    });
+  }
+  var inp = { width: "100%", boxSizing: "border-box", padding: "11px 12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "inherit", fontSize: 14, marginBottom: 8 };
+  return (
+    <div onClick={props.onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={function (e) { e.stopPropagation(); }} style={{ background: "#141414", border: "1px solid #C1440E66", borderRadius: 16, padding: 16, width: "100%", maxWidth: 420, maxHeight: "88vh", overflowY: "auto", color: "#F0EDE8" }}>
+        {listo ? (
+          <div style={{ textAlign: "center", padding: "10px 4px" }}>
+            <div style={{ fontSize: 34 }}>✅</div>
+            <div style={{ fontSize: 16, fontWeight: 800, margin: "6px 0" }}>Recibimos tu reclamo</div>
+            <div style={{ fontSize: 13.5, color: "#B8B8B8", lineHeight: 1.5 }}>Lo ve administración de Grupo Nkt. Si hace falta, te escribimos por WhatsApp. Gracias por avisarnos.</div>
+            <button onClick={props.onCerrar} style={{ marginTop: 14, padding: "11px 22px", borderRadius: 10, border: "none", background: "#1A6B8A", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Cerrar</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>⚠️ Tuve un problema en {c.nombre}</div>
+            <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, margin: "4px 0 12px" }}>Esto lo ve solo administración de Grupo Nkt, no el comercio. Nos sirve para que la comunidad funcione bien.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+              {MOTIVOS_RECLAMO.map(function (m) { var on = motivo === m; return <button key={m} onClick={function () { setMotivo(m); }} style={{ textAlign: "left", padding: "10px 12px", borderRadius: 10, border: "1px solid " + (on ? "#E0714A" : "#2A2A2A"), background: on ? "#E0714A22" : "#161616", color: "#F0EDE8", fontFamily: "inherit", fontSize: 14, cursor: "pointer" }}>{on ? "● " : "○ "}{m}</button>; })}
+            </div>
+            <textarea value={texto} onChange={function (e) { setTexto(e.target.value); }} rows={3} placeholder="Contanos qué pasó (opcional, pero nos ayuda)" style={{ ...inp, resize: "vertical" }} />
+            {msg && <div style={{ fontSize: 12.5, color: "#F0A090", marginBottom: 8, lineHeight: 1.4 }}>{msg}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={enviar} disabled={enviando} style={{ flex: 2, padding: "12px", borderRadius: 10, border: "none", background: enviando ? "#2A2A2A" : "#C1440E", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{enviando ? "Enviando…" : "Enviar a administración"}</button>
+              <button onClick={props.onCerrar} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid #2A2A2A", background: "none", color: "#9A9A9A", fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 export function promoVigente(c) {
   if (!c || !String(c.beneficio || "").trim()) return "";
   var hoy = new Date(), iso = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0") + "-" + String(hoy.getDate()).padStart(2, "0");
@@ -136,6 +201,8 @@ export async function subirLogoComercio(blob, id) {
 // La tarjeta de un comercio amigo, como la de un local pero sin pedidos ni reservas.
 export function TarjetaComercio(props) {
   var c = props.c, color = c.color || "#1A6B8A";
+  var [reclamando, setReclamando] = useState(false);
+  var [reclamando, setReclamando] = useState(false);
   var boton = { display: "block", textAlign: "center", padding: "11px 8px", borderRadius: 10, border: "1px solid #2A2A2A", background: "#161616", color: "#F0EDE8", fontSize: 13, fontWeight: 700, textDecoration: "none" };
   var item = function (link, txt) { return link ? <a href={link} target="_blank" rel="noreferrer" style={boton}>{txt}</a> : <span style={{ ...boton, opacity: 0.4, cursor: "not-allowed" }} title="Pronto">{txt}</span>; };
   return (
@@ -159,6 +226,8 @@ export function TarjetaComercio(props) {
         {item(linkWsp(c.wsp, "Hola " + c.nombre + "! Los vi en la comunidad de Grupo Nkt."), "💬 Escribinos")}
         {item(linkWeb(c.instagram, "instagram"), "📸 Instagram")}
       </div>
+      {props.cupon && props.cupon.wsp && <button onClick={function () { setReclamando(true); }} style={{ display: "block", width: "100%", marginTop: 10, padding: "9px", borderRadius: 10, border: "1px solid #3A3A3A", background: "none", color: "#B0A090", fontFamily: "inherit", fontSize: 12.5, cursor: "pointer" }}>⚠️ Tuve un problema con este comercio</button>}
+      {reclamando && <VentanaReclamo c={c} cupon={props.cupon} onCerrar={function () { setReclamando(false); }} />}
     </div>
   );
 }
@@ -190,7 +259,57 @@ function FranjaComercios(props) {
           );
         })}
       </div>
-      {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} /></div>}
+      {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
+    </div>
+  );
+}
+// Administración: los reclamos que mandaron los socios sobre los comercios amigos (privados: el comercio no los ve).
+function PanelReclamos(props) {
+  var tarjeta = props.tarjeta;
+  var [lista, setLista] = useState(null);
+  var [abierto, setAbierto] = useState(false);
+  var [filtro, setFiltro] = useState("abiertos");   // abiertos (nuevos y en revisión) | resueltos | todos
+  var [notas, setNotas] = useState({});
+  function recargar() { return cargarReclamos().then(setLista); }
+  useEffect(function () { recargar(); }, []);
+  function cambiar(r, estado) { var o = { ...r }; delete o.id; guardarFila(r.id, "grupo_reclamo", { ...o, estado: estado, nota: notas[r.id] !== undefined ? notas[r.id] : (r.nota || ""), resuelto_at: estado === "resuelto" ? new Date().toISOString() : "" }).then(function () { recargar(); }); }
+  var nuevos = (lista || []).filter(function (r) { return r.estado === "nuevo"; }).length;
+  var vista = (lista || []).filter(function (r) { return filtro === "todos" || (filtro === "resueltos" ? r.estado === "resuelto" : r.estado !== "resuelto"); });
+  return (
+    <div style={tarjeta}>
+      <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800 }}>{abierto ? "▾" : "▸"} ⚠️ Reclamos de los socios{nuevos > 0 ? <span style={{ marginLeft: 8, background: "#C1440E", color: "#fff", borderRadius: 99, padding: "1px 8px", fontSize: 11 }}>{nuevos} nuevo{nuevos === 1 ? "" : "s"}</span> : (lista ? " (" + lista.length + ")" : "")}</div>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Lo que los socios cuentan desde la tarjeta de un comercio amigo. Es privado: el comercio no lo ve; vos decidís qué le decís y si lo pausás.</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {[["abiertos", "Abiertos"], ["resueltos", "Resueltos"], ["todos", "Todos"]].map(function (t) { var on = filtro === t[0]; return <button key={t[0]} onClick={function () { setFiltro(t[0]); }} style={{ padding: "5px 11px", borderRadius: 8, border: "1px solid " + (on ? "#D4A017" : "#2A2A2A"), background: on ? "#D4A01722" : "none", color: on ? "#F0EDE8" : "#8C8C8C", fontSize: 12, cursor: "pointer" }}>{t[1]}</button>; })}
+          </div>
+          {lista && vista.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>No hay reclamos {filtro === "abiertos" ? "abiertos" : filtro === "resueltos" ? "resueltos" : ""}.</div>}
+          {vista.map(function (r) {
+            var est = ESTADOS_RECLAMO.find(function (e) { return e.id === r.estado; }) || ESTADOS_RECLAMO[0];
+            var wa = linkWsp(r.wsp, "Hola " + (r.nombre || "") + "! Te escribimos de Grupo Nkt por lo que nos contaste de " + (r.comercio_nombre || "un comercio amigo") + ". Queremos entender qué pasó para resolverlo. ¿Podés contarnos un poco más?");
+            return (
+              <div key={r.id} style={{ borderTop: "1px solid #1A1A1A", padding: "9px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{r.comercio_nombre || "Comercio"} <span style={{ color: est.col, fontSize: 11, fontWeight: 700 }}>· {est.txt}</span></div>
+                  <div style={{ fontSize: 11, color: "#7E7E7E", whiteSpace: "nowrap" }}>{r.at ? new Date(r.at).toLocaleDateString("es-AR") : ""}</div>
+                </div>
+                <div style={{ fontSize: 12.5, color: "#E0A090", fontWeight: 700, marginTop: 2 }}>{r.motivo}</div>
+                {r.comentario && <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.45, marginTop: 2, whiteSpace: "pre-wrap" }}>“{r.comentario}”</div>}
+                <div style={{ fontSize: 11.5, color: "#8C8C8C", marginTop: 3 }}>🙋 {r.nombre || "Socio"} · {r.wsp}</div>
+                <input value={notas[r.id] !== undefined ? notas[r.id] : (r.nota || "")} onChange={function (e) { var v = e.target.value; setNotas(function (n) { var m = { ...n }; m[r.id] = v; return m; }); }} placeholder="Nota interna (qué se habló, qué se decidió)" style={{ width: "100%", boxSizing: "border-box", marginTop: 6, padding: "7px 9px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12 }} />
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {wa && <a href={wa} target="_blank" rel="noreferrer" style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #3A7D44", color: "#8FD19A", fontSize: 12, textDecoration: "none" }}>💬 Escribirle al socio</a>}
+                  {r.estado !== "revision" && r.estado !== "resuelto" && <button onClick={function () { cambiar(r, "revision"); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #D4A01788", background: "none", color: "#E5C467", fontSize: 12, cursor: "pointer" }}>En revisión</button>}
+                  {r.estado !== "resuelto" && <button onClick={function () { cambiar(r, "resuelto"); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #3A7D44", background: "none", color: "#8FD19A", fontSize: 12, cursor: "pointer" }}>✓ Resuelto</button>}
+                  {r.estado === "resuelto" && <button onClick={function () { cambiar(r, "nuevo"); }} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "none", color: "#9A9A9A", fontSize: 12, cursor: "pointer" }}>Reabrir</button>}
+                  {notas[r.id] !== undefined && notas[r.id] !== (r.nota || "") && <button onClick={function () { cambiar(r, r.estado); }} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#1A6B8A", color: "#fff", fontSize: 12, cursor: "pointer" }}>Guardar nota</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -203,9 +322,10 @@ function PanelComerciosRed(props) {
   var [msg, setMsg] = useState("");
   var [subiendo, setSubiendo] = useState(false);
   var [cambios, setCambios] = useState({});      // lo que cada comercio pidió cambiar desde su portal
+  var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarCambiosComercios().then(setCambios); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -277,6 +397,7 @@ function PanelComerciosRed(props) {
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: c.activo === false ? "#6E6E6E" : "#F0EDE8" }}>{c.nombre}{c.activo === false ? " · pausado" : ""}</div>
                   <div style={{ fontSize: 11, color: "#8C8C8C" }}>{c.activo === false && c.pausa_motivo ? "⏸ " + c.pausa_motivo : (promoVigente(c) ? "🎟️ " + promoVigente(c) + (c.promo_hasta ? " · hasta " + fechaCorta(c.promo_hasta) : "") : (c.beneficio ? "promo vencida o sin empezar" : "sin promo cargada"))}</div>
                 </div>
+                {reclamosDe(reclamos, c.id) > 0 && <span title="Reclamos de socios en los últimos 30 días" style={{ background: reclamosDe(reclamos, c.id) >= 3 ? "#C1121F" : "#5A3A1A", color: "#fff", borderRadius: 7, padding: "4px 8px", fontSize: 11.5, fontWeight: 800 }}>⚠️ {reclamosDe(reclamos, c.id)} reclamo{reclamosDe(reclamos, c.id) === 1 ? "" : "s"}{reclamosDe(reclamos, c.id) >= 3 ? " · revisar" : ""}</span>}
                 {pend && <button onClick={function () { setVerCambio(verCambio === c.id ? "" : c.id); }} style={{ background: "#D4A01722", border: "1px solid #D4A01788", borderRadius: 7, color: "#E5C467", padding: "5px 9px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>📝 Cambios para aprobar</button>}
                 <button onClick={function () { copiarLink(c, false); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>🔗 Link</button>
                 <button onClick={function () { setForm({ ...c }); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>✏️ Editar</button>
@@ -955,7 +1076,7 @@ export function GrupoNkt() {
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Dónde usar tu cupón</div>
           <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8", margin: "0 4px 8px" }}>🍷 Nuestros locales</div>
           {bLocales}
-          <FranjaComercios comercios={comercios} />
+          <FranjaComercios comercios={comercios} cupon={cupon} />
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Ayuda</div>
           {cupon && bInstructivo}
           {bInstalar}
@@ -1908,6 +2029,7 @@ export function PanelComunidad() {
         )}
       </div>
 
+      <PanelReclamos tarjeta={tarjeta} />
       <PanelComerciosRed tarjeta={tarjeta} />
     </div>
   );

@@ -19,8 +19,14 @@
 ## Límites a tener presentes
 - El link es una clave larga y difícil de adivinar, pero la app guarda sus datos con una clave pública: por eso **nada que envíe un comercio se publica sin aprobación**. Con muchos comercios convendría una validación del lado del servidor.
 - Todavía no hay **canje del cupón** en los comercios ni **informe por comercio** (cuántos socios llegaron).
-- Todavía no hay **reclamos de los socios** (botón «Tuve un problema») ni lista de reclamos para administración.
+- Los reclamos son privados: ve el reclamo solo administración. Si hay que avisarle algo al comercio, lo hace administración.
+
+## Reclamos de los socios
+1. En la tarjeta de cada comercio amigo, un socio con cupón ve **«⚠️ Tuve un problema con este comercio»**. Elige qué pasó (no me respetaron el beneficio, mala atención, servicio fallido o demora, me cobraron de más, otro motivo) y puede contar los detalles.
+2. Se admite **un reclamo por socio, por comercio y por semana**, para evitar abusos.
+3. Administración los ve en **Comunidad → Reclamos de los socios**: comercio, motivo, comentario y datos del socio, con **💬 Escribirle al socio** (WhatsApp con el mensaje armado), **nota interna** y estados **Nuevo → En revisión → Resuelto** (se puede reabrir).
+4. En **Comercios amigos**, cada comercio muestra cuántos reclamos tuvo en los últimos 30 días; con **3 o más** se marca **«revisar»**. Nunca se pausa solo: esa decisión es de administración.
+5. En **Novedades** aparece un aviso cuando hay reclamos nuevos.
 
 ## Próximos pasos
-1. Reclamos de los socios (privados, solo para administración) con contador por comercio y aviso en Novedades.
-2. Canje del cupón en los comercios y su informe.
+1. Canje del cupón en los comercios y su informe (cuántos socios llegaron a cada uno).

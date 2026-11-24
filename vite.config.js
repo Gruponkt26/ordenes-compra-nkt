@@ -15,6 +15,9 @@ function paginaGrupo() {
       if (!fs.existsSync(origen)) return;
       fs.mkdirSync(path.join(dist, "grupo"), { recursive: true });
       fs.copyFileSync(origen, path.join(dist, "grupo", "index.html"));
+      // El portal de los comercios amigos vive en /comercio/, igual que /grupo/.
+      fs.mkdirSync(path.join(dist, "comercio"), { recursive: true });
+      fs.copyFileSync(origen, path.join(dist, "comercio", "index.html"));
     },
   };
 }

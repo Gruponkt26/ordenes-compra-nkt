@@ -525,6 +525,7 @@ export function GrupoNkt() {
   var modoPrueba = esModoPrueba();   // /grupo/?prueba: no usa lo guardado en el celular y todo lo que se carga queda marcado de prueba
   var [hecho, setHecho] = useState(function () { if (modoPrueba) return ""; try { return localStorage.getItem("nkt_comunidad") ? "ya" : ""; } catch (e) { return ""; } });
   var [instalar, setInstalar] = useState(null);
+  var [verInstructivo, setVerInstructivo] = useState(false);   // «¿Sabés cómo usar tus cupones?»: cerrado, se abre al tocarlo
   var [verPasos, setVerPasos] = useState(function () { try { return new URLSearchParams(window.location.search).has("instalar"); } catch (e) { return false; } });
   var [cupon, setCupon] = useState(null);
   var cuponRef = useRef(null); cuponRef.current = cupon;
@@ -722,8 +723,11 @@ export function GrupoNkt() {
   // Instructivo rápido para el miembro: cómo se usa el cupón.
   var bInstructivo = (
     <div style={{ background: "#0F1620", border: "1px solid #1A6B8A88", borderRadius: 16, padding: "14px", marginBottom: 14 }}>
-      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#5BB8DC", textAlign: "center", marginBottom: 10 }}>🤔 ¿Sabés cómo usar tus cupones?</div>
-      {[
+      <button onClick={function () { setVerInstructivo(!verInstructivo); }} aria-expanded={verInstructivo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "'Playfair Display',serif", fontSize: 19, fontWeight: 800, color: "#5BB8DC", textAlign: "left", marginBottom: verInstructivo ? 10 : 0 }}>
+        <span>🤔 ¿Sabés cómo usar tus cupones?</span>
+        <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, color: "#8CC9E0", whiteSpace: "nowrap" }}>{verInstructivo ? "▾ cerrar" : "▸ ver cómo"}</span>
+      </button>
+      {verInstructivo && [
         ["1", "Mostrá tu código", "Elegí cualquiera de los 3 locales y mostrale tu código (por ejemplo NKT-4K7P) al cajero. Podés guardar el cupón en tu celular para tenerlo sin internet."],
         ["2", "También sentado en la mesa", "Si estás sentado en la mesa del local, también podés usarlo. Pedí que lo canjeen antes de pagar la cuenta. Ojo: se puede usar un solo cupón por mesa."],
         ["3", "Pedí que lo canjeen antes de pagar", "El cajero lo busca y te aplica lo que corresponde en ese local: puede ser un descuento o un beneficio especial. Mirá arriba lo que vale hoy en cada uno."],

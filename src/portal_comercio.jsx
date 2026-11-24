@@ -3,7 +3,7 @@
 // no se publican hasta que administración los aprueba (Administración → Comunidad → Comercios amigos).
 import React, { useState, useEffect } from "react";
 import { SURL, SH } from "./comun.js";
-import { leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta } from "./grupo.jsx";
+import { leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -34,6 +34,13 @@ export default function PortalComercio() {
   var [enviandoNov, setEnviandoNov] = useState(false);
   var [msgNov, setMsgNov] = useState("");
   var [errorNov, setErrorNov] = useState("");
+  var [vista, setVista] = useState("tarjeta");               // tarjeta | canje | numeros
+  var [codigo, setCodigo] = useState("");
+  var [cuponC, setCuponC] = useState(null);                   // el cupón que se está mirando para canjear
+  var [msgC, setMsgC] = useState("");
+  var [ocupadoC, setOcupadoC] = useState(false);
+  var [montoC, setMontoC] = useState("");
+  var [canjes, setCanjes] = useState([]);                     // los canjes de este comercio
 
   useEffect(function () {
     document.title = "Portal de comercios · Grupo Nkt";
@@ -47,6 +54,7 @@ export default function PortalComercio() {
       var base = {}; CAMPOS.forEach(function (x) { base[x] = (c && c.estado === "pendiente" && c.datos && c.datos[x] !== undefined) ? c.datos[x] : (p[x] === undefined ? "" : p[x]); });
       if (!base.color) base.color = "#1A6B8A";
       cargarNovedadesComercios().then(function (l) { setNovs(l.filter(function (n) { return n.comercio_id === id; })); });
+      cargarCanjesComercios().then(function (l) { setCanjes(l.filter(function (x) { return x.comercio_id === id; })); });
       setPub(p); setCambio(c); setForm(base); setAcepta(!!p.pautas_ok_at || !!(c && c.datos && c.datos.pautas_ok)); setEstado("ok");
     })();
   }, []);
@@ -82,6 +90,37 @@ export default function PortalComercio() {
       }).catch(function () { setEnviando(false); setError("No se pudo enviar. Revisá tu conexión y probá de nuevo."); });
   }
 
+  // Canje por código escrito, igual que en los locales de Grupo Nkt: el cupón se usa una sola vez y al socio le llega el siguiente.
+  function buscarCupon() {
+    var c = normCodigo(codigo); if (!c) return;
+    setOcupadoC(true); setMsgC(""); setCuponC(null);
+    leerPauta("cupon_" + c).then(function (x) { setOcupadoC(false); if (!x) setMsgC("No existe un cupón con el código " + c + "."); else setCuponC(x); });
+  }
+  function canjear() {
+    if (!cuponC || estadoCupon(cuponC) !== "activo") return;
+    var promo = promoVigente(pub);
+    if (pub && pub.activo === false) { setMsgC("Tu tarjeta está pausada por administración: no se pueden registrar canjes."); return; }
+    if (!promo) { setMsgC("Tu tarjeta no tiene una promo vigente. Cargala en «Mi tarjeta» para poder canjear."); return; }
+    var nombrePila = String(cuponC.nombre || "").split(" ")[0] || "el socio";
+    if (!window.confirm("¿Registrar el canje del cupón " + cuponC.codigo + " de " + nombrePila + "?\n\nLe das: " + promo + ".\nDespués no se puede volver a usar.")) return;
+    setOcupadoC(true);
+    leerPauta("cupon_" + cuponC.codigo).then(function (fresco) {
+      if (fresco && fresco.estado === "usado") { setOcupadoC(false); setCuponC(fresco); setMsgC("Ese cupón ya fue canjeado."); return; }
+      var ahora = new Date().toISOString();
+      var nuevo = { ...cuponC, estado: "usado", usado_at: ahora, usado_local: (pub && pub.nombre) || "", usado_comercio: id, beneficio: promo };
+      guardarFila("cupon_" + cuponC.codigo, "cupon", nuevo).then(function (ok) {
+        if (!ok) { setOcupadoC(false); setMsgC("No se pudo guardar el canje. Probá de nuevo."); return; }
+        var monto = parseFloat(String(montoC).replace(",", ".")) || 0;
+        var reg = { comercio_id: id, comercio_nombre: (pub && pub.nombre) || "", codigo: cuponC.codigo, wsp: cuponC.wsp, nombre: nombrePila, beneficio: promo, monto: monto, at: ahora, prueba: cuponC.prueba ? 1 : 0 };
+        guardarFila("comcanje_" + id + "_" + cuponC.codigo, "grupo_canje_comercio", reg).then(function () {
+          setCanjes(function (l) { return [{ id: "comcanje_" + id + "_" + cuponC.codigo, ...reg }].concat(l); });
+          cargarConfigGrupo().then(function (cfg) { return renovarCupon(cuponC.wsp, cfg); }).then(function () {
+            setOcupadoC(false); setCuponC(nuevo); setMontoC(""); setCodigo(""); setMsgC("✅ Canjeado. Dale: " + promo + ".");
+          });
+        });
+      });
+    });
+  }
   // Una novedad por semana; las extra las habilita administración (se cobran aparte).
   var semana = semanaClave();
   var usadas = novs.filter(function (n) { return n.semana === semana && n.estado !== "rechazada"; }).length;
@@ -144,6 +183,69 @@ export default function PortalComercio() {
       {cambio && cambio.estado === "rechazado" && <div style={{ ...tarj, borderColor: "#C1440E88", background: "#1F120C", fontSize: 13.5 }}><b style={{ color: "#E0714A" }}>✕ Tu último pedido no se aprobó.</b>{cambio.motivo ? <div style={{ marginTop: 4 }}>Motivo: {cambio.motivo}</div> : null}<div style={{ marginTop: 4, color: "#B8B8B8" }}>Corregilo y volvelo a enviar.</div></div>}
       {cambio && cambio.estado === "aprobado" && !msg && <div style={{ ...tarj, borderColor: "#3A7D4488", fontSize: 13.5, color: "#9FE0AA" }}>✓ Tu último cambio fue aprobado y ya está publicado.</div>}
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {[["tarjeta", "🏪 Mi tarjeta"], ["canje", "🎟️ Canjear cupón"], ["numeros", "📊 Mis números"]].map(function (t) { var on = vista === t[0]; return <button key={t[0]} onClick={function () { setVista(t[0]); }} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: "1px solid " + (on ? "#1A6B8A" : "#2A2A2A"), background: on ? "#1A6B8A33" : "#111", color: on ? "#F0EDE8" : "#9A9A9A", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>; })}
+      </div>
+
+      {vista === "canje" && (
+        <div style={tarj}>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>🎟️ Canjear cupón de la comunidad</div>
+          <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, marginTop: 3 }}>Pedile al cliente el código que le figura en su celular (por ejemplo NKT-4K7P) y escribilo acá.</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <input value={codigo} onChange={function (e) { setCodigo(e.target.value); }} placeholder="NKT-XXXX" style={{ ...inp, marginBottom: 0, flex: 1, letterSpacing: 2, textTransform: "uppercase", fontSize: 16 }} />
+            <button onClick={buscarCupon} disabled={ocupadoC} style={{ padding: "0 18px", borderRadius: 10, border: "none", background: "#1A6B8A", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>{ocupadoC ? "…" : "Buscar"}</button>
+          </div>
+          {msgC && <div style={{ fontSize: 13.5, color: msgC.indexOf("✅") === 0 ? "#8FD19A" : "#F0A090", marginTop: 10, lineHeight: 1.45, fontWeight: 700 }}>{msgC}</div>}
+          {cuponC && (function () {
+            var est = estadoCupon(cuponC), ok = est === "activo", col = ok ? "#4C9A5A" : "#E0714A", promo = promoVigente(pub);
+            return (
+              <div style={{ marginTop: 10, border: "1px solid " + col + "66", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{String(cuponC.nombre || "").split(" ")[0] || "Socio"} · <span style={{ color: col }}>{ok ? "✅ válido" : est === "usado" ? "❌ ya usado" : "❌ vencido"}</span></div>
+                <div style={{ fontSize: 12.5, color: "#B8B8B8", marginTop: 4, lineHeight: 1.55 }}>
+                  Código {cuponC.codigo} · vence el {new Date(cuponC.vence).toLocaleDateString("es-AR")}
+                  {cuponC.usado_at && <div>Canjeado el {new Date(cuponC.usado_at).toLocaleString("es-AR")}{cuponC.usado_local ? " en " + cuponC.usado_local : ""}</div>}
+                  {ok && (promo ? <div style={{ color: "#F0EDE8", fontWeight: 700, marginTop: 4 }}>🎁 Le corresponde: {promo}</div> : <div style={{ color: "#E5C467", marginTop: 4 }}>⚠️ Tu tarjeta no tiene una promo vigente.</div>)}
+                </div>
+                {ok && promo && (
+                  <div>
+                    <label style={lbl}>¿Cuánto gastó? (opcional, es para tus números)</label>
+                    <input value={montoC} onChange={function (e) { setMontoC(e.target.value); }} inputMode="decimal" placeholder="Ej: 8500" style={inp} />
+                    <button onClick={canjear} disabled={ocupadoC} style={{ width: "100%", padding: "13px", borderRadius: 10, border: "none", background: "#3A7D44", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>✅ Registrar canje</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {vista === "numeros" && (function () {
+        var r30 = resumenCanjes(canjes, id, 30), rt = resumenCanjes(canjes, id, 0);
+        var caja = function (t, v, sub) { return <div style={{ flex: "1 1 120px", background: "#111", border: "1px solid #1E1E1E", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10, color: "#8C8C8C", textTransform: "uppercase", letterSpacing: 1 }}>{t}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#F0EDE8", lineHeight: 1.15 }}>{v}</div>{sub && <div style={{ fontSize: 11, color: "#7E7E7E" }}>{sub}</div>}</div>; };
+        return (
+          <div>
+            <div style={{ fontSize: 13, color: "#9A9A9A", margin: "0 2px 8px", lineHeight: 1.45 }}>Lo que la comunidad de Grupo Nkt te trajo, en los últimos 30 días.</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              {caja("Canjes", String(r30.canjes), rt.canjes + " en total")}
+              {caja("Socios distintos", String(r30.socios), rt.socios + " en total")}
+              {caja("Volvieron", String(r30.volvieron), "usaron 2 veces o más")}
+              {caja("Gasto anotado", r30.gasto > 0 ? "$" + Math.round(r30.gasto).toLocaleString("es-AR") : "—", r30.gasto > 0 ? "de los canjes con monto" : "anotalo al canjear")}
+            </div>
+            <div style={tarj}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>Últimos canjes</div>
+              {rt.lista.length === 0 && <div style={{ fontSize: 13, color: "#7E7E7E" }}>Todavía no registraste canjes.</div>}
+              {rt.lista.slice(0, 15).map(function (x, i) { return (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 0", borderTop: i === 0 ? "none" : "1px solid #1A1A1A", fontSize: 13 }}>
+                  <span><b>{x.nombre}</b> <span style={{ color: "#8C8C8C" }}>· {x.beneficio}</span></span>
+                  <span style={{ color: "#8C8C8C", whiteSpace: "nowrap" }}>{new Date(x.at).toLocaleDateString("es-AR")}{x.monto > 0 ? " · $" + Math.round(x.monto).toLocaleString("es-AR") : ""}</span>
+                </div>); })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {vista === "tarjeta" && (
+      <div>
       <div style={tarj}>
         <div style={{ fontSize: 15, fontWeight: 800 }}>Tu comercio</div>
         <label style={lbl}>Nombre *</label>
@@ -233,6 +335,9 @@ export default function PortalComercio() {
         )}
       </div>
 
+      </div>
+      )}
     </div></div>
   );
 }
+

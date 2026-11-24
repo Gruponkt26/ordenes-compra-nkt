@@ -18,7 +18,6 @@
 
 ## Límites a tener presentes
 - El link es una clave larga y difícil de adivinar, pero la app guarda sus datos con una clave pública: por eso **nada que envíe un comercio se publica sin aprobación**. Con muchos comercios convendría una validación del lado del servidor.
-- Todavía no hay **canje del cupón** en los comercios ni **informe por comercio** (cuántos socios llegaron).
 - Los reclamos son privados: ve el reclamo solo administración. Si hay que avisarle algo al comercio, lo hace administración.
 
 ## Reclamos de los socios
@@ -35,5 +34,14 @@
 4. En la página de Comunidad se muestran **primero las novedades del Grupo Nkt** y después, con el título «🤝 De los comercios amigos», las de los comercios, con el nombre del comercio. Se vencen solas, y si el comercio está pausado, no se ven.
 5. Pauta a cuidar al aprobar: sin precios ni promesas que el comercio no pueda sostener.
 
+## Canje del cupón en los comercios
+1. En el portal, pestaña **«🎟️ Canjear cupón»**: el comercio **escribe el código** que le muestra el socio (como en los locales de Grupo Nkt; no hay QR).
+2. Ve el **nombre de pila** del socio (nunca su teléfono), si el cupón está **válido, usado o vencido** y la **promo que le corresponde**. Puede anotar **cuánto gastó** (opcional).
+3. Al **Registrar canje**, el cupón queda **usado** (un código vale una sola vez) y **al socio le llega el siguiente automáticamente**, igual que en los locales. **Sin límite de usos por ahora.**
+4. No se puede canjear si la tarjeta está **pausada** o si no tiene una **promo vigente**.
+5. **Mis números** (portal del comercio): canjes, socios distintos, cuántos volvieron y el gasto anotado, últimos 30 días y total, más la lista de los últimos canjes.
+6. **Resultados por comercio** (administración, en Comercios amigos): los mismos números de todos los comercios, últimos 30 días. Es lo que se le muestra al comercio para que renueve.
+
 ## Próximos pasos
-1. Canje del cupón en los comercios y su informe (cuántos socios llegaron a cada uno).
+1. La propuesta comercial para presentarle a un comercio qué se le ofrece y cuánto cuesta.
+2. Si hace falta, un límite de canjes por socio y por comercio (hoy no hay).

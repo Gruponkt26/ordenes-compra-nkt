@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas, { PanelCocina, PantallaCadete, mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -15844,6 +15844,9 @@ function PanelNovedades(p){
   var [cambiandoPlan,setCambiandoPlan]=useState(false);
   var [mesSaldar,setMesSaldar]=useState(null);   // mes de la tarjeta "Saldar dependencias"
   var [tabNov,setTabNov]=useState("plata"); // plata | socios | deudas | venc | resultados | personal | operacion
+  // Reclamos nuevos que mandaron los socios sobre los comercios amigos (se leen una vez al abrir Novedades).
+  var [reclamosNuevos,setReclamosNuevos]=useState(0);
+  useEffect(function(){ var vivo=true; cargarReclamos().then(function(l){ if(vivo)setReclamosNuevos((l||[]).filter(function(r){return r.estado==="nuevo";}).length); }); return function(){vivo=false;}; },[]);
   var [expandido,setExpandido]=useState({}); // qué listas se abrieron enteras
   var [notas,setNotas]=useState([]);
   var [notaNueva,setNotaNueva]=useState("");
@@ -16368,6 +16371,7 @@ function PanelNovedades(p){
           avisos.push({rojo:false, cargarEg:c,
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
+        if(reclamosNuevos>0)avisos.push({rojo:true,txt:reclamosNuevos+(reclamosNuevos===1?" reclamo nuevo":" reclamos nuevos")+" de socios sobre comercios amigos — hay que revisarlo",ir:p.irComunidad});
         if(faltanCerrar.length>0)avisos.push({txt:(faltanCerrar.length===1?"Anoche no cerró ":"Anoche no cerraron ")+faltanCerrar.map(function(l){return l.nombre;}).join(", ")+" ("+fmtDate(ayer)+")",rojo:true});
         // Un mismo celular que ficha por dos personas distintas: alguien está fichando por otro.
         (function(){
@@ -32711,6 +32715,7 @@ export default function App() {
               irCierres={function(){abrirModulo("admin","cierres");}}
               irVencimientos={irAVencimientos}
               irSocios={function(){abrirModulo("socios","socios_aportes");}}
+              irComunidad={function(){abrirModulo("comunidad","comunidad_inicio");}}
               irVacaciones={function(){abrirModulo("personal","vacaciones");}}
               irFaltantes={function(){abrirModulo("personal","faltantes");}}
               planSaldar={planSaldar} onPlanSaldar={function(o){guardarOfPauta("saldar_plan",{id:"sp_"+String(Date.now()),...o});}}

@@ -1,7 +1,7 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
-import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos, cargarCambiosComercios, cargarNovedadesComercios } from "./grupo.jsx";
+import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos, cargarCambiosComercios, cargarNovedadesComercios, cargarAltasComercios } from "./grupo.jsx";
 import { SURL, SKEY, SH, LOCALES, CONCESION, getLocal, fmtDate, fmtHora, fechaHora, INP, BS, GH } from "./comun.js";
 import PanelComandas, { PanelCocina, PantallaCadete, mediosDeLocal, normalizarMedio, cargarPagosComandas, turnoDe as turnoDeComanda, turnosLocal } from "./comandas.jsx";
 import ChatEquipo from "./chat.jsx";
@@ -15846,13 +15846,13 @@ function PanelNovedades(p){
   var [tabNov,setTabNov]=useState("plata"); // plata | socios | deudas | venc | resultados | personal | operacion
   // Reclamos nuevos que mandaron los socios sobre los comercios amigos (se leen una vez al abrir Novedades).
   var [reclamosNuevos,setReclamosNuevos]=useState(0);
-  var [comPend,setComPend]=useState({cambios:0,novedades:0});   // lo que mandaron los comercios amigos y espera aprobación
+  var [comPend,setComPend]=useState({cambios:0,novedades:0,altas:0});   // lo que mandaron los comercios amigos y espera aprobación
   useEffect(function(){
     var vivo=true;
     cargarReclamos().then(function(l){ if(vivo)setReclamosNuevos((l||[]).filter(function(r){return r.estado==="nuevo";}).length); });
-    Promise.all([cargarCambiosComercios(),cargarNovedadesComercios()]).then(function(r){
+    Promise.all([cargarCambiosComercios(),cargarNovedadesComercios(),cargarAltasComercios()]).then(function(r){
       if(!vivo)return;
-      setComPend({cambios:Object.keys(r[0]||{}).filter(function(k){return r[0][k]&&r[0][k].estado==="pendiente";}).length,novedades:(r[1]||[]).filter(function(n){return n.estado==="pendiente";}).length});
+      setComPend({cambios:Object.keys(r[0]||{}).filter(function(k){return r[0][k]&&r[0][k].estado==="pendiente";}).length,novedades:(r[1]||[]).filter(function(n){return n.estado==="pendiente";}).length,altas:(r[2]||[]).filter(function(a){return a.estado==="pendiente";}).length});
     });
     return function(){vivo=false;};
   },[]);
@@ -16380,6 +16380,7 @@ function PanelNovedades(p){
           avisos.push({rojo:false, cargarEg:c,
             txt:"Egreso de caja en "+(l?l.nombre:c.local)+" ("+fmtDate(c.fecha)+") — "+fmt(parseFloat(c.egresos_diarios))+(c.egresos_nota?" · "+c.egresos_nota:"")});
         });
+        if(comPend.altas>0)avisos.push({rojo:false,txt:comPend.altas+(comPend.altas===1?" comercio nuevo pidió sumarse":" comercios nuevos pidieron sumarse")+" a la comunidad",ir:p.irComunidad});
         if(comPend.cambios>0)avisos.push({rojo:false,txt:comPend.cambios+(comPend.cambios===1?" comercio amigo mandó cambios":" comercios amigos mandaron cambios")+" de su tarjeta para aprobar",ir:p.irComunidad});
         if(comPend.novedades>0)avisos.push({rojo:false,txt:comPend.novedades+(comPend.novedades===1?" novedad":" novedades")+" de comercios amigos para aprobar",ir:p.irComunidad});
         if(reclamosNuevos>0)avisos.push({rojo:true,txt:reclamosNuevos+(reclamosNuevos===1?" reclamo nuevo":" reclamos nuevos")+" de socios sobre comercios amigos — hay que revisarlo",ir:p.irComunidad});

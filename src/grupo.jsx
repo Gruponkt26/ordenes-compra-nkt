@@ -12,7 +12,7 @@ var LOCALES_GRUPO = [
   { id: "l2", emoji: "🍣", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", emoji: "🍕", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {} };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {}, wspAdmin: "" };
 
 // La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
 // ¿El aviso destacado de este local sigue vigente? Sin fecha, se muestra hasta que se borre; con fecha, hasta ese día inclusive.
@@ -68,7 +68,7 @@ export async function cargarConfigGrupo() {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {} };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {}, wspAdmin: (x && x.wspAdmin) || "" };
   } catch (e) { return CONFIG_VACIA; }
 }
 export async function guardarFila(id, ambito, obj) {
@@ -190,6 +190,14 @@ export async function cargarCambiosComercios() {
     return o;
   } catch (e) { return {}; }
 }
+// Solicitudes de comercios nuevos que entraron por una invitación (ámbito grupo_comercio_alta): [{id, datos, comercio_id, estado, enviado_at}].
+export async function cargarAltasComercios() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_comercio_alta&limit=300", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
 var ETIQ_COMERCIO = { nombre: "Nombre", desc: "Descripción", direccion: "Dirección", horarios: "Horarios", wsp: "WhatsApp", carta: "Carta", instagram: "Instagram", color: "Color", logo: "Logo", beneficio: "Promo", promo_desde: "Promo desde", promo_hasta: "Promo hasta", promo_cond: "Condiciones de la promo" };
 async function guardarComercio(c) { var o = { ...c }; var id = o.id; delete o.id; return guardarFila(id, "grupo_comercio", o); }
 async function borrarComercio(id) { try { var r = await fetch(SURL + "/rest/v1/pautas?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: SH }); return r.ok; } catch (e) { return false; } }
@@ -253,7 +261,8 @@ export function TarjetaComercio(props) {
 function FranjaComercios(props) {
   var lista = props.comercios || [];
   var [abierto, setAbierto] = useState("");
-  if (!lista.length) return null;
+  var linkSumar = linkWsp(props.wspAdmin, "Hola! Tengo un comercio y quiero sumarme a la comunidad de Grupo Nkt. ¿Me cuentan cómo es?");
+  if (!lista.length && !linkSumar) return null;
   var sel = lista.find(function (c) { return c.id === abierto; });
   return (
     <div style={{ marginBottom: 14 }}>
@@ -278,6 +287,7 @@ function FranjaComercios(props) {
         })}
       </div>
       {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
+      {linkSumar && <a href={linkSumar} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "10px", borderRadius: 10, border: "1px dashed #3A3A3A", color: "#B8B8B8", fontSize: 12.5, textDecoration: "none" }}>🤝 ¿Tenés un comercio? Sumalo a la comunidad →</a>}
     </div>
   );
 }
@@ -343,10 +353,11 @@ function PanelComerciosRed(props) {
   var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
   var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
   var [canjes, setCanjes] = useState([]);        // canjes registrados por los comercios (para sus resultados)
+  var [altas, setAltas] = useState([]);          // solicitudes de comercios nuevos
   var [avisoCom, setAvisoCom] = useState(null);  // después de aprobar o rechazar: el mensaje de WhatsApp para avisarle al comercio {nombre, link}
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); cargarAltasComercios().then(setAltas); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -385,6 +396,42 @@ function PanelComerciosRed(props) {
     var sem = semanaClave(), ex = c.novedad_extra && c.novedad_extra.sem === sem ? c.novedad_extra.n : 0;
     guardarComercio({ ...c, novedad_extra: { sem: sem, n: ex + 1 } }).then(function () { recargar(); setMsg("✓ Novedad extra habilitada para " + c.nombre + " esta semana."); setTimeout(function () { setMsg(""); }, 4000); });
   }
+  // Invitación para un comercio NUEVO: un link con el formulario vacío, de un solo uso. El comercio completa todo y queda pendiente de aprobación.
+  function copiarUrl(url, ok) {
+    var aMano = function () { window.prompt("Copiá este link y mandáselo:", url); };
+    try { navigator.clipboard.writeText(url).then(function () { setMsg(ok); setTimeout(function () { setMsg(""); }, 5000); }, aMano); } catch (e) { aMano(); }
+  }
+  function invitar() {
+    var nota = window.prompt("¿Para quién es la invitación? (opcional: te sirve para acordarte a quién se la diste)", "");
+    if (nota === null) return;
+    var t = nuevoToken();
+    guardarFila("cominv_" + t, "grupo_comercio_invitacion", { creada_at: new Date().toISOString(), nota: (nota || "").trim() }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo crear la invitación. Probá de nuevo."); return; }
+      copiarUrl(window.location.origin + "/comercio/?i=" + t, "✓ Invitación copiada. Mandásela por WhatsApp: sirve una sola vez.");
+    });
+  }
+  function aprobarAlta(a) {
+    var d = { ...a.datos }; delete d.pautas_ok;
+    var cid = a.comercio_id;
+    guardarComercio({ id: cid, ...d, activo: true, orden: ((lista || []).length + 1) * 10, pautas_ok_at: a.enviado_at || "" }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo crear el comercio. Probá de nuevo."); return; }
+      var t = nuevoToken();
+      guardarFila("comkey_" + cid, "grupo_comercio_key", { token: t }).then(function () {
+        var o = { ...a }; delete o.id;
+        guardarFila(a.id, "grupo_comercio_alta", { ...o, estado: "aprobada", resuelto_at: new Date().toISOString() }).then(function () {
+          recargar(); setMsg("✓ Comercio creado y publicado.");
+          var url = window.location.origin + "/comercio/?c=" + encodeURIComponent(cid) + "&k=" + t;
+          ofrecerAviso({ nombre: d.nombre, wsp: d.wsp }, "Hola! Tu comercio ya está en la comunidad de Grupo Nkt 🎉. Este es tu link para editar tu tarjeta, cargar novedades y canjear cupones. Guardalo: " + url);
+        });
+      });
+    });
+  }
+  function rechazarAlta(a) {
+    var m = window.prompt("Motivo del rechazo (lo ve el comercio):", "");
+    if (m === null) return;
+    var o = { ...a }; delete o.id;
+    guardarFila(a.id, "grupo_comercio_alta", { ...o, estado: "rechazada", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { recargar(); ofrecerAviso({ nombre: (a.datos || {}).nombre, wsp: (a.datos || {}).wsp }, "Hola! No pudimos aprobar la solicitud de tu comercio en la comunidad de Grupo Nkt" + (m.trim() ? ": " + m.trim() : "") + ". Podés corregirla con el mismo link que te pasamos y volver a enviarla."); });
+  }
   // Pausar: deja de verse en la página y el comercio ve el motivo en su portal. Reactivar lo vuelve a mostrar.
   function pausar(c) {
     var m = window.prompt("Motivo de la pausa (lo va a ver el comercio en su portal):", "");
@@ -405,11 +452,26 @@ function PanelComerciosRed(props) {
     });
   }
   function regenerarLink(c) { if (window.confirm("¿Generar un link nuevo para «" + c.nombre + "»? El anterior deja de servir.")) copiarLink(c, true); }
+  // Campos que el comercio de verdad cambió: se comparan con lo que estaba publicado cuando mandó su pedido («base»). Lo que no tocó no se pisa,
+  // aunque administración lo haya editado después.
+  function camposCambiados(cam) {
+    var d = cam.datos || {}, base = cam.base || null;
+    return Object.keys(ETIQ_COMERCIO).filter(function (k) { return base ? String(d[k] || "") !== String(base[k] || "") : true; });
+  }
   function aprobar(c, cam) {
-    var datos = { ...cam.datos }; delete datos.pautas_ok;
-    guardarComercio({ ...c, ...datos, pautas_ok_at: cam.enviado_at || "" }).then(function (ok) {
+    var d = cam.datos || {}, ks = camposCambiados(cam), aplicar = {}, anterior = {};
+    ks.forEach(function (k) { aplicar[k] = d[k] === undefined ? "" : d[k]; anterior[k] = c[k] === undefined ? "" : c[k]; });
+    guardarComercio({ ...c, ...aplicar, pautas_ok_at: cam.enviado_at || c.pautas_ok_at || "" }).then(function (ok) {
       if (!ok) { setMsg("No se pudo publicar. Probá de nuevo."); return; }
-      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "aprobado", resuelto_at: new Date().toISOString() }).then(function () { setVerCambio(""); recargar(); setMsg("✓ Publicado."); setTimeout(function () { setMsg(""); }, 3000); ofrecerAviso({ ...c, ...datos }, "Hola! Tu tarjeta en la comunidad de Grupo Nkt ya está publicada con los cambios que mandaste. ¡Gracias!"); });
+      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, estado: "aprobado", resuelto_at: new Date().toISOString(), anterior: anterior, aplicado: ks, deshecho: false }).then(function () { setVerCambio(""); recargar(); setMsg("✓ Publicado."); setTimeout(function () { setMsg(""); }, 3000); ofrecerAviso({ ...c, ...aplicar }, "Hola! Tu tarjeta en la comunidad de Grupo Nkt ya está publicada con los cambios que mandaste. ¡Gracias!"); });
+    });
+  }
+  // Deshacer la última aprobación: vuelve a los valores que había antes de aprobar.
+  function deshacer(c, cam) {
+    if (!window.confirm("¿Deshacer la última aprobación de «" + c.nombre + "»?\n\nVuelve a lo que estaba publicado antes (" + (cam.aplicado || []).map(function (k) { return ETIQ_COMERCIO[k]; }).join(", ") + ").")) return;
+    guardarComercio({ ...c, ...cam.anterior }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo deshacer. Probá de nuevo."); return; }
+      guardarFila("comcambio_" + c.id, "grupo_comercio_cambio", { ...cam, deshecho: true, deshecho_at: new Date().toISOString() }).then(function () { recargar(); setMsg("↩️ Deshecho: volvió a lo anterior."); setTimeout(function () { setMsg(""); }, 4000); });
     });
   }
   function rechazar(c, cam) {
@@ -423,6 +485,29 @@ function PanelComerciosRed(props) {
       {abierto && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.5, marginBottom: 8 }}>Comercios que no son de Grupo Nkt pero forman parte de la comunidad. Aparecen en la página como una tarjeta más, debajo de los tres locales, con su beneficio para quien muestre el cupón.</div>
+          {altas.filter(function (a) { return a.estado === "pendiente"; }).length > 0 && (
+            <div style={{ background: "#0C1A12", border: "1px solid #3A7D4466", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#8FD19A", marginBottom: 6 }}>🆕 Comercios nuevos para aprobar ({altas.filter(function (a) { return a.estado === "pendiente"; }).length})</div>
+              {altas.filter(function (a) { return a.estado === "pendiente"; }).map(function (a) { var d = a.datos || {}; return (
+                <div key={a.id} style={{ borderTop: "1px solid #14281C", padding: "8px 0" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {d.logo ? <img src={d.logo} alt="" style={{ height: 34, background: "#fff", borderRadius: 6 }} /> : null}
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#F0EDE8" }}>{d.nombre}</div>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.5, marginTop: 3 }}>
+                    {d.desc && <div>{d.desc}</div>}
+                    {d.direccion && <div>📍 {d.direccion}</div>}
+                    {d.horarios && <div>🕒 {d.horarios}</div>}
+                    {d.wsp && <div>💬 {d.wsp}</div>}
+                    {d.beneficio && <div style={{ color: "#F0EDE8", fontWeight: 700 }}>🎟️ {d.beneficio}{d.promo_hasta ? " · hasta " + fechaCorta(d.promo_hasta) : ""}{d.promo_cond ? " · " + d.promo_cond : ""}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button onClick={function () { aprobarAlta(a); }} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#3A7D44", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>✓ Aprobar y crear</button>
+                    <button onClick={function () { rechazarAlta(a); }} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #C1440E88", background: "none", color: "#E0714A", fontSize: 12.5, cursor: "pointer" }}>✕ Rechazar</button>
+                  </div>
+                </div>); })}
+            </div>
+          )}
           {avisoCom && (
             <div style={{ background: "#0F2415", border: "1px solid #3A7D4488", borderRadius: 10, padding: "9px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ flex: "1 1 180px", fontSize: 12.5, color: "#9FE0AA", fontWeight: 700 }}>✓ Listo. ¿Le avisás a {avisoCom.nombre}?</span>
@@ -459,7 +544,7 @@ function PanelComerciosRed(props) {
           )}
           {lista && lista.map(function (c) {
             var cam = cambios[c.id], pend = cam && cam.estado === "pendiente";
-            var difs = pend ? Object.keys(ETIQ_COMERCIO).filter(function (k) { return String((cam.datos || {})[k] || "") !== String(c[k] || ""); }) : [];
+            var difs = pend ? camposCambiados(cam).filter(function (k) { return String((cam.datos || {})[k] || "") !== String(c[k] || "") || (cam.base && String(c[k] || "") !== String(cam.base[k] || "")); }) : [];
             return (
             <div key={c.id} style={{ padding: "8px 0", borderTop: "1px solid #1A1A1A" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -477,6 +562,7 @@ function PanelComerciosRed(props) {
                   : <button onClick={function () { pausar(c); }} style={{ background: "none", border: "1px solid #2A2A2A", borderRadius: 7, color: "#C8C8C8", padding: "5px 9px", fontSize: 11.5, cursor: "pointer" }}>⏸ Pausar</button>}
                 <button onClick={function () { quitar(c); }} title="Borrar" style={{ background: "none", border: "none", color: "#6E6E6E", cursor: "pointer", fontSize: 13 }}>🗑️</button>
               </div>
+              {cam && cam.estado === "aprobado" && cam.anterior && !cam.deshecho && <div style={{ marginTop: 4 }}><button onClick={function () { deshacer(c, cam); }} style={{ background: "none", border: "1px solid #5A4A2A", borderRadius: 7, color: "#C8B27A", padding: "4px 9px", fontSize: 11.5, cursor: "pointer" }}>↩️ Deshacer la última aprobación ({(cam.aplicado || []).map(function (k) { return ETIQ_COMERCIO[k]; }).join(", ")})</button></div>}
               {cam && cam.estado === "rechazado" && <div style={{ fontSize: 11, color: "#B07A6A", marginTop: 4 }}>Último pedido rechazado{cam.motivo ? ": " + cam.motivo : ""}</div>}
               {pend && verCambio === c.id && (
                 <div style={{ marginTop: 8, background: "#12100A", border: "1px solid #D4A01744", borderRadius: 10, padding: "10px 12px" }}>
@@ -486,7 +572,7 @@ function PanelComerciosRed(props) {
                     <div key={k} style={{ fontSize: 12.5, padding: "4px 0", borderTop: "1px solid #1E1A10", lineHeight: 1.4 }}>
                       <b style={{ color: "#E5C467" }}>{ETIQ_COMERCIO[k]}:</b>{" "}
                       {k === "logo" ? <span>logo nuevo <img src={(cam.datos || {}).logo} alt="" style={{ height: 24, background: "#fff", borderRadius: 4, verticalAlign: "middle" }} /></span>
-                        : <span><span style={{ color: "#8C8C8C", textDecoration: "line-through" }}>{String(c[k] || "—")}</span> → <span style={{ color: "#F0EDE8" }}>{String((cam.datos || {})[k] || "—")}</span></span>}
+                        : <span><span style={{ color: "#8C8C8C", textDecoration: "line-through" }}>{String(c[k] || "—")}</span> → <span style={{ color: "#F0EDE8" }}>{String((cam.datos || {})[k] || "—")}</span>{cam.base && String(c[k] || "") !== String(cam.base[k] || "") ? <span style={{ color: "#E0A050", fontSize: 11 }}> ⚠️ vos lo cambiaste desde que el comercio lo envió</span> : null}</span>}
                     </div>); })}
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button onClick={function () { aprobar(c, cam); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#3A7D44", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>✓ Aprobar y publicar</button>
@@ -497,6 +583,7 @@ function PanelComerciosRed(props) {
               )}
             </div>); })}
           {lista && lista.length === 0 && !form && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "6px 0" }}>Todavía no hay comercios cargados.</div>}
+          {!form && <button onClick={invitar} style={{ marginTop: 8, marginRight: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🔗 Invitar a un comercio nuevo</button>}
           {!form && <button onClick={nuevo} style={{ marginTop: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #1A6B8A88", background: "#1A6B8A22", color: "#7FC4DE", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>+ Sumar un comercio</button>}
           {form && (
             <div style={{ marginTop: 10, borderTop: "1px solid #1A1A1A", paddingTop: 10 }}>
@@ -1182,7 +1269,7 @@ export function GrupoNkt() {
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Dónde usar tu cupón</div>
           <div style={{ fontSize: 14.5, fontWeight: 800, color: "#F0EDE8", margin: "0 4px 8px" }}>🍷 Nuestros locales</div>
           {bLocales}
-          <FranjaComercios comercios={comercios} cupon={cupon} />
+          <FranjaComercios comercios={comercios} cupon={cupon} wspAdmin={cfg.wspAdmin || (cfg.locales.l1 || {}).wsp || ""} />
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Ayuda</div>
           {cupon && bInstructivo}
           {bInstalar}
@@ -2110,6 +2197,8 @@ export function PanelComunidad() {
             <input value={cfg.frase} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, frase: v }; }); }} placeholder="Tres lugares de Punta Alta, una misma comunidad." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Invitación que ve quien termina de opinar (qué se lleva si se suma)</div>
             <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
+            <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>WhatsApp de administración (el botón «Sumá tu comercio» de la página abre este chat)</div>
+            <input value={cfg.wspAdmin || ""} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, wspAdmin: v }; }); }} inputMode="tel" placeholder="Ej: 2914123456 (si queda vacío, se usa el del Bodegón)" style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Mensaje al sumarse (ej: un beneficio de bienvenida)</div>
             <input value={cfg.bienvenida} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, bienvenida: v }; }); }} placeholder="Mostrá este mensaje en caja y te regalamos un café." style={sel} />
             {LOCALES_GRUPO.map(function (l) {

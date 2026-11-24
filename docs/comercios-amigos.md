@@ -8,11 +8,17 @@
 5. Respondo a administración dentro de las 48 horas ante un reclamo.
 6. Entiendo que administración puede pausar mi tarjeta si no se cumplen estas pautas.
 
+## Cómo se suma un comercio nuevo
+1. **Primer contacto por WhatsApp:** en la página de Comunidad, bajo *Comercios amigos*, hay un botón **«🤝 ¿Tenés un comercio? Sumalo a la comunidad»** que abre el WhatsApp de administración con el mensaje armado. El número se configura en Comunidad → *Datos que se muestran en la página* → «WhatsApp de administración» (si queda vacío se usa el del Bodegón).
+2. **Invitación:** en Comercios amigos, **🔗 Invitar a un comercio nuevo** crea un link con el formulario **vacío**, **de un solo uso** (se puede anotar a quién se le dio). Se lo mandás por WhatsApp.
+3. **El comercio completa todo** (nombre, logo, dirección, horarios, WhatsApp —obligatorio—, promo con fecha de fin) y acepta las pautas. Queda **pendiente**; no se ve en la página.
+4. **Aprobación:** en **🆕 Comercios nuevos para aprobar** (y con aviso en Novedades) se **aprueba y crea** o se rechaza con motivo. Al aprobar, el comercio queda publicado con su **link permanente**, y la app ofrece mandárselo por WhatsApp. Si se rechaza, el comercio ve el motivo en la misma invitación y puede corregir y reenviar.
+
 ## Circuito
-1. **Alta:** en Administración → Comunidad → *Comercios amigos* se suma el comercio (alcanza con el nombre).
+1. **Alta manual (alternativa):** en Administración → Comunidad → *Comercios amigos* → **+ Sumar un comercio** (alcanza con el nombre).
 2. **Link privado:** botón **🔗 Link** copia el link del comercio (`/comercio/?c=…&k=…`) para mandárselo por WhatsApp. **Regenerar link** invalida el anterior.
 3. **Portal:** el comercio completa su información y su promo (con fecha de fin obligatoria), ve cómo va a quedar su tarjeta, acepta las pautas y envía.
-4. **Aprobación:** lo que envía queda como **pendiente** (no se publica). Administración ve el **antes → después** y **aprueba y publica** o **rechaza** con motivo (el comercio ve el motivo en su portal).
+4. **Aprobación:** lo que envía queda como **pendiente** (no se publica). Administración ve el **antes → después** y **aprueba y publica** o **rechaza** con motivo (el comercio ve el motivo en su portal). **Solo se publica lo que el comercio realmente cambió** respecto de lo que estaba publicado cuando envió su pedido: lo que no tocó (por ejemplo, algo que administración editó después) no se pisa. Si una edición de administración choca con un cambio del comercio, se marca con ⚠️. La **última aprobación se puede deshacer** con **↩️ Deshacer** (vuelve a los valores anteriores).
 5. **Promo vigente:** la promo se muestra sola entre su fecha de inicio y de fin; pasada la fecha de fin, desaparece de la tarjeta.
 6. **Pausa:** **⏸ Pausar** (con motivo) saca al comercio de la página; el comercio ve en su portal «pausada por administración» y el motivo. **▶ Reactivar** lo vuelve a mostrar.
 

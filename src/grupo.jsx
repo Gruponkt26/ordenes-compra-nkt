@@ -263,10 +263,23 @@ export function TarjetaComercio(props) {
   );
 }
 // Franja de comercios amigos, justo debajo del cupón: se desliza de costado y, al tocar uno, se abre su tarjeta completa.
+// Invitación a los comercios: bloque destacado + consulta por WhatsApp. Lo ven todos (socios y quien todavía no se unió).
+function CtaComercio(props) {
+  var linkConsulta = linkWsp(props.wspAdmin, "Hola! Tengo un comercio y quiero sumarme a la comunidad de Grupo Nkt. ¿Me cuentan cómo es?");
+  return (
+    <div>
+      <div style={{ marginTop: 12, background: "linear-gradient(135deg,#C1440E,#E8602A)", borderRadius: 16, padding: "16px 16px 14px", textAlign: "center", boxShadow: "0 4px 18px #C1440E55" }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>🤝 ¿Tenés un comercio?</div>
+        <div style={{ fontSize: 13.5, color: "#FFE9DD", marginTop: 5, lineHeight: 1.4 }}>Sumalo a la comunidad: los socios te conocen, llegan con un beneficio y los primeros 2 meses no pagás nada.</div>
+        <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 12, padding: "13px", borderRadius: 12, background: "#fff", color: "#C1440E", fontSize: 15, fontWeight: 800, textDecoration: "none" }}>Sumá tu comercio →</a>
+      </div>
+      {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "6px", color: "#B8B8B8", fontSize: 12.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}
+    </div>
+  );
+}
 function FranjaComercios(props) {
   var lista = props.comercios || [];
   var [abierto, setAbierto] = useState("");
-  var linkConsulta = linkWsp(props.wspAdmin, "Hola! Tengo un comercio y quiero sumarme a la comunidad de Grupo Nkt. ¿Me cuentan cómo es?");
   var sel = lista.find(function (c) { return c.id === abierto; });
   return (
     <div style={{ marginBottom: 14 }}>
@@ -291,12 +304,7 @@ function FranjaComercios(props) {
         })}
       </div>
       {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
-      <div style={{ marginTop: 12, background: "linear-gradient(135deg,#C1440E,#E8602A)", borderRadius: 16, padding: "16px 16px 14px", textAlign: "center", boxShadow: "0 4px 18px #C1440E55" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>🤝 ¿Tenés un comercio?</div>
-        <div style={{ fontSize: 13.5, color: "#FFE9DD", marginTop: 5, lineHeight: 1.4 }}>Sumalo a la comunidad: los socios te conocen, llegan con un beneficio y los primeros 2 meses no pagás nada.</div>
-        <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 12, padding: "13px", borderRadius: 12, background: "#fff", color: "#C1440E", fontSize: 15, fontWeight: 800, textDecoration: "none" }}>Sumá tu comercio →</a>
-      </div>
-      {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "6px", color: "#B8B8B8", fontSize: 12.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}
+      <CtaComercio wspAdmin={props.wspAdmin} />
     </div>
   );
 }
@@ -1323,6 +1331,7 @@ export function GrupoNkt() {
           {bIngresar}
           <div style={{ marginBottom: 14 }}>{bSumarse}</div>
           {bInstalar}
+          <CtaComercio wspAdmin={cfg.wspAdmin || (cfg.locales.l1 || {}).wsp || ""} />
         </div>
       )}
       {pedirLocal && cupon && <PedirDelivery local={pedirLocal} info={cfg.locales[pedirLocal.id]} miembro={{ nombre: cupon.nombre, wsp: cupon.wsp }} prueba={modoPrueba || !!cupon.prueba} onCerrar={function () { setPedirLocal(null); setSegKey(function (k) { return k + 1; }); }} />}

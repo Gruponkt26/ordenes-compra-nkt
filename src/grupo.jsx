@@ -108,6 +108,32 @@ function TarjetaTickets(props) {
   );
 }
 
+// ─── OPINAR DESPUÉS DE CANJEAR ───
+// El socio solo ve «Opiná y jugá» si canjeó su cupón en uno de los 3 locales en las últimas 24 horas: así la opinión viene de una visita real.
+export function ultimoCanjeLocal(historial) {
+  var lim = Date.now() - 24 * 3600 * 1000, mejor = null;
+  (historial || []).forEach(function (c) {
+    if (!c || c.estado !== "usado" || !c.usado_at || new Date(c.usado_at).getTime() < lim) return;
+    var l = LOCALES_GRUPO.find(function (x) { return x.nombre === c.usado_local; });
+    if (l && (!mejor || c.usado_at > mejor.at)) mejor = { local: l, at: c.usado_at };
+  });
+  return mejor;
+}
+function TarjetaOpinar(props) {
+  var u = ultimoCanjeLocal(props.historial);
+  if (!u) return null;
+  // Si ya opinó de ese local hace poco desde este celular, no se le ofrece de nuevo (la opinión tiene un descanso de 6 horas).
+  try { var t = parseInt(localStorage.getItem("opinion_" + u.local.id + "_salon") || "0", 10); if (t > 0 && Date.now() - t < 6 * 3600 * 1000) return null; } catch (e) {}
+  var color = u.local.color;
+  return (
+    <div style={{ background: "linear-gradient(135deg," + color + "26,#161616)", border: "1.5px solid " + color + "99", borderRadius: 16, padding: "14px", marginBottom: 14, textAlign: "center" }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: "#F0EDE8" }}>{u.local.emoji} ¿Cómo te fue en {u.local.nombre}?</div>
+      <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.45, margin: "4px 0 10px" }}>{props.conJuego ? "Contanos en un minuto y jugá para ganar tickets del sorteo." : "Contanos en un minuto: tu opinión nos ayuda a mejorar."}</div>
+      <a href={"/?opinar=" + u.local.id + "&c=salon" + (props.prueba ? "&prueba" : "")} style={{ display: "block", padding: "12px", borderRadius: 12, background: color, color: "#fff", fontSize: 15, fontWeight: 800, textDecoration: "none" }}>{props.conJuego ? "🎟️ Opiná y jugá" : "⭐ Dejar mi opinión"}</a>
+    </div>
+  );
+}
+
 // ─── COMERCIOS AMIGOS ───
 // Comercios que no son de Grupo Nkt pero forman parte de la comunidad: aparecen como una tarjeta más (ámbito grupo_comercio, uno por comercio).
 export async function cargarComercios(soloActivos) {
@@ -1511,6 +1537,7 @@ export function GrupoNkt() {
           <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
           {bCupon}
           {cfg.ticketsActivo && cupon && <TarjetaTickets wsp={cupon.wsp} premio={cfg.ticketsPremio} />}
+          {cupon && <TarjetaOpinar historial={historial} conJuego={!!cfg.ticketsActivo} prueba={modoPrueba || !!cupon.prueba} />}
           {bNovedades}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Dónde usar tu cupón</div>

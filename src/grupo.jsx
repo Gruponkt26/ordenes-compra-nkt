@@ -291,8 +291,12 @@ function FranjaComercios(props) {
         })}
       </div>
       {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
-      <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "10px", borderRadius: 10, border: "1px dashed #3A3A3A", color: "#B8B8B8", fontSize: 12.5, textDecoration: "none" }}>🤝 ¿Tenés un comercio? Sumalo a la comunidad →</a>
-      {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 6, textAlign: "center", padding: "6px", color: "#8C8C8C", fontSize: 11.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}
+      <div style={{ marginTop: 12, background: "linear-gradient(135deg,#C1440E,#E8602A)", borderRadius: 16, padding: "16px 16px 14px", textAlign: "center", boxShadow: "0 4px 18px #C1440E55" }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>🤝 ¿Tenés un comercio?</div>
+        <div style={{ fontSize: 13.5, color: "#FFE9DD", marginTop: 5, lineHeight: 1.4 }}>Sumalo a la comunidad: los socios te conocen, llegan con un beneficio y los primeros 2 meses no pagás nada.</div>
+        <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 12, padding: "13px", borderRadius: 12, background: "#fff", color: "#C1440E", fontSize: 15, fontWeight: 800, textDecoration: "none" }}>Sumá tu comercio →</a>
+      </div>
+      {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "6px", color: "#B8B8B8", fontSize: 12.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}
     </div>
   );
 }

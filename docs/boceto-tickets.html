@@ -57,12 +57,37 @@ h1{font-size:23px;margin:0 0 4px}.sub{color:#777;margin:0 0 14px;font-size:14px}
 .mis b{display:block;font-size:15px}.mis span{font-size:12px;color:#bdbdbd}
 .nov{background:#111;border:1px solid #2a2a2a;border-radius:14px;padding:11px 12px;margin-top:12px}
 .nov b{display:block;font-size:14px}.nov small{color:#9a9a9a}
+/* fondo claro (crema), igual que las placas */
+.tel.claro{background:#f4ecdc;color:#1d1a16;border-color:#d8cdb6;box-shadow:0 8px 30px #0003}
+.claro .mu{color:#6b6256}
+.claro .logo{border:1px solid #e3dccd;box-shadow:0 2px 10px #0002}
+.claro .card{background:#fff;border-color:#e3dccd}
+.claro .titulo,.claro .gr{color:#1d1a16}
+.claro .sonido{background:#fff;border-color:#d8cdb6;color:#4a4339}
+.claro .paso{color:#9a8f7e}
+.claro .premio{background:#fff;border-color:#cdbfa8;color:#4a4339}
+.claro .slide{background:linear-gradient(90deg,#fbe6d6,#f6cfb2);border-color:#e8a07a}
+.claro .slide .txt{color:#b2420d}
+.claro .relleno{background:linear-gradient(90deg,#e8602a55,#e8602aaa)!important}
+.claro .barra{background:#ece3d1;border-color:#d8cdb6}
+.claro .z1{background:#e3d8c2}.claro .z2{background:#f2c4a0}.claro .z3{background:#c1440e}
+.claro .puntero{background:#1d1a16;box-shadow:0 0 12px #1d1a1688}
+.claro .rot{color:#6b6256}
+.claro .tot,.claro .tot b{background:#e6f3e8;border-color:#3a7d4466;color:#2a6a36}
+.claro .cup{background:#e6f3e8;border-color:#3a7d4488}
+.claro .cup div:last-child{color:#2a6a36!important}.claro .cup div:first-child{color:#6b6256!important}.claro .cup .big{color:#2f7a3d}.claro .cup .cod{color:#1d1a16}
+.claro .mis{background:linear-gradient(135deg,#fff0e6,#fff);border-color:#c1440e88}
+.claro .mis span{color:#6b6256}
+.claro .nov{background:#fff;border-color:#e3dccd}.claro .nov small{color:#6b6256}
+.claro .bg{background:#fff;color:#4a4339;border-color:#d8cdb6}
+.claro .t{box-shadow:0 2px 8px #c1440e44}
+.tabs .sep{flex:1}
 </style></head><body><div class="wrap">
 <h1>Boceto · tickets por dejar una opinión</h1>
 <p class="sub">Probá las dos pantallas del celular. Al lado, las reglas. Es un borrador: todavía no está en la app. <b>Subí el volumen</b>: tiene sonido.</p>
-<div class="tabs"><button id="tab1" class="on" onclick="modo(1)">1 · Al dejar la opinión</button><button id="tab2" onclick="modo(2)">2 · Mi pantalla de la comunidad</button></div>
+<div class="tabs"><button id="tab1" class="on" onclick="modo(1)">1 · Al dejar la opinión</button><button id="tab2" onclick="modo(2)">2 · Mi pantalla de la comunidad</button><span class="sep"></span><button id="fondo" onclick="alternarFondo()">☀️ Fondo claro</button></div>
 <div class="cols">
-  <div class="tel" id="tel"></div>
+  <div class="tel claro" id="tel"></div>
   <div class="notas">
     <h3>Cómo funciona</h3>
     <ul>
@@ -114,7 +139,7 @@ h1{font-size:23px;margin:0 0 4px}.sub{color:#777;margin:0 0 14px;font-size:14px}
 </div>
 </div>
 <script>
-var tel=document.getElementById('tel'),total=7,resultado=0,silencio=false,ac=null,raf=null;
+var claro=true,tel=document.getElementById('tel'),total=7,resultado=0,silencio=false,ac=null,raf=null;
 /* ---------- sonido de nave espacial (se genera en el momento, sin archivos) ---------- */
 var bus=null,zum=null;
 function audio(){
@@ -183,6 +208,7 @@ function melodia(n){
 function alternarSonido(){silencio=!silencio;if(silencio)zumbidoOff();document.querySelectorAll('.sonido').forEach(function(b){b.textContent=silencio?'🔇 sin sonido':'🔊 sonido'});if(!silencio)ping(880,.2,.12)}
 function btnSonido(){return '<button class="sonido" onclick="alternarSonido()">'+(silencio?'🔇 sin sonido':'🔊 sonido')+'</button>'}
 /* ---------- pantallas ---------- */
+function alternarFondo(){claro=!claro;tel.className='tel'+(claro?' claro':'');document.getElementById('fondo').textContent=claro?'☀️ Fondo claro':'🌙 Fondo oscuro'}
 function modo(m){document.getElementById('tab1').className=m===1?'on':'';document.getElementById('tab2').className=m===2?'on':'';m===1?pantalla(1):comunidad()}
 function comunidad(){
   cancelAnimationFrame(raf);

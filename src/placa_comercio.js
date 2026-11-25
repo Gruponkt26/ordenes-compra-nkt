@@ -48,28 +48,28 @@ function dibujar(c, alto, logoNkt, logoCom) {
   var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   var ctx = cv.getContext("2d");
   var color = /^#[0-9a-f]{6}$/i.test(c.color || "") ? c.color : "#C1440E";
-  ctx.fillStyle = "#0d0d0d"; ctx.fillRect(0, 0, W, H);
-  var g1 = ctx.createRadialGradient(W * 0.85, 0, 0, W * 0.85, 0, 760); g1.addColorStop(0, "#c1440e66"); g1.addColorStop(1, "#c1440e00");
+  ctx.fillStyle = "#f4ecdc"; ctx.fillRect(0, 0, W, H);
+  var g1 = ctx.createRadialGradient(W * 0.85, 0, 0, W * 0.85, 0, 760); g1.addColorStop(0, "#c1440e40"); g1.addColorStop(1, "#c1440e00");
   ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H);
-  var g2 = ctx.createRadialGradient(0, H, 0, 0, H, 640); g2.addColorStop(0, "#c1440e33"); g2.addColorStop(1, "#c1440e00");
+  var g2 = ctx.createRadialGradient(0, H, 0, 0, H, 640); g2.addColorStop(0, "#c1440e1f"); g2.addColorStop(1, "#c1440e00");
   ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = "alphabetic";
   var y = vert ? 150 : 84;
   // marca de la comunidad
   if (logoNkt) { rect(ctx, 76, y - 20, 96, 96, 22); ctx.save(); ctx.clip(); ctx.drawImage(logoNkt, 76, y - 20, 96, 96); ctx.restore(); }
-  ctx.fillStyle = "#b8b8b8"; ctx.font = "500 28px " + FUENTE; if (ctx.letterSpacing !== undefined) ctx.letterSpacing = "6px";
+  ctx.fillStyle = "#6b6256"; ctx.font = "500 28px " + FUENTE; if (ctx.letterSpacing !== undefined) ctx.letterSpacing = "6px";
   ctx.fillText("COMUNIDAD", 196, y + 22);
-  ctx.fillStyle = "#f0ede8"; ctx.font = "800 34px " + FUENTE; ctx.fillText("GRUPO NKT", 196, y + 64);
+  ctx.fillStyle = "#1d1a16"; ctx.font = "800 34px " + FUENTE; ctx.fillText("GRUPO NKT", 196, y + 64);
   if (ctx.letterSpacing !== undefined) ctx.letterSpacing = "0px";
   // titular
   y += vert ? 320 : 150;
-  ctx.fillStyle = "#cfcfcf"; ctx.font = "500 46px " + FUENTE; ctx.fillText("Somos parte de la", 76, y);
-  ctx.fillStyle = "#f0ede8"; ctx.font = "800 " + (vert ? 108 : 96) + "px " + FUENTE; ctx.fillText("Comunidad", 76, y + (vert ? 112 : 100));
-  ctx.fillStyle = "#e8602a"; ctx.fillText("Grupo Nkt", 76, y + (vert ? 228 : 204));
+  ctx.fillStyle = "#4a4339"; ctx.font = "500 46px " + FUENTE; ctx.fillText("Somos parte de la", 76, y);
+  ctx.fillStyle = "#1d1a16"; ctx.font = "800 " + (vert ? 108 : 96) + "px " + FUENTE; ctx.fillText("Comunidad", 76, y + (vert ? 112 : 100));
+  ctx.fillStyle = "#c1440e"; ctx.fillText("Grupo Nkt", 76, y + (vert ? 228 : 204));
   y += vert ? 330 : 270;
   // el comercio: logo + nombre
   var lado = vert ? 220 : 170;
-  rect(ctx, 76, y, lado, lado, 36); ctx.fillStyle = "#ffffff"; ctx.fill();
+  rect(ctx, 76, y, lado, lado, 36); ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#e3dccd"; ctx.stroke();
   if (logoCom) {
     var k = Math.min((lado - 28) / logoCom.width, (lado - 28) / logoCom.height), w = logoCom.width * k, h = logoCom.height * k;
     ctx.drawImage(logoCom, 76 + (lado - w) / 2, y + (lado - h) / 2, w, h);
@@ -77,24 +77,24 @@ function dibujar(c, alto, logoNkt, logoCom) {
     ctx.fillStyle = color; ctx.font = "800 " + Math.round(lado * 0.55) + "px " + FUENTE; ctx.textAlign = "center";
     ctx.fillText(String(c.nombre || "?").trim().charAt(0).toUpperCase(), 76 + lado / 2, y + lado * 0.7); ctx.textAlign = "left";
   }
-  ctx.fillStyle = "#f0ede8"; ctx.font = "800 " + (vert ? 64 : 56) + "px " + FUENTE;
+  ctx.fillStyle = "#1d1a16"; ctx.font = "800 " + (vert ? 64 : 56) + "px " + FUENTE;
   var n = parrafo(ctx, c.nombre || "Mi comercio", 76 + lado + 36, y + (vert ? 90 : 78), W - 76 - (76 + lado + 36), vert ? 72 : 62, 2);
-  if (c.direccion) { ctx.fillStyle = "#b8b8b8"; ctx.font = "500 30px " + FUENTE; parrafo(ctx, c.direccion, 76 + lado + 36, y + (vert ? 90 : 78) + (n > 1 ? (vert ? 72 : 62) : 0) + 52, W - 76 - (76 + lado + 36), 38, 1); }
+  if (c.direccion) { ctx.fillStyle = "#6b6256"; ctx.font = "500 30px " + FUENTE; parrafo(ctx, c.direccion, 76 + lado + 36, y + (vert ? 90 : 78) + (n > 1 ? (vert ? 72 : 62) : 0) + 52, W - 76 - (76 + lado + 36), 38, 1); }
   y += lado + (vert ? 70 : 52);
   // promo vigente
   var promo = promoVigente(c);
   var cajaH = vert ? 190 : 150;
-  rect(ctx, 76, y, W - 152, cajaH, 30); ctx.fillStyle = "#1a1a1a"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = color; ctx.stroke();
+  rect(ctx, 76, y, W - 152, cajaH, 30); ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = color; ctx.stroke();
   ctx.textAlign = "center";
-  ctx.fillStyle = "#b8b8b8"; ctx.font = "500 28px " + FUENTE; ctx.fillText("Mostrá tu cupón de socio y llevate", W / 2, y + (vert ? 62 : 48));
-  ctx.fillStyle = "#f0ede8"; ctx.font = "800 " + (promo.length > 22 ? 46 : 60) + "px " + FUENTE;
+  ctx.fillStyle = "#6b6256"; ctx.font = "500 28px " + FUENTE; ctx.fillText("Mostrá tu cupón de socio y llevate", W / 2, y + (vert ? 62 : 48));
+  ctx.fillStyle = "#1d1a16"; ctx.font = "800 " + (promo.length > 22 ? 46 : 60) + "px " + FUENTE;
   parrafo(ctx, promo || "un beneficio exclusivo", W / 2, y + (vert ? 140 : 112), W - 220, 56, 1);
   ctx.textAlign = "left";
   // pie
   var pie = H - (vert ? 110 : 64);
-  ctx.textAlign = "center"; ctx.fillStyle = "#f0ede8"; ctx.font = "800 38px " + FUENTE; ctx.fillText("Sumate a la comunidad", W / 2, pie - 56);
-  ctx.fillStyle = "#e8602a"; ctx.font = "800 34px " + FUENTE; ctx.fillText(window.location.host + "/grupo/", W / 2, pie - 12);
-  ctx.fillStyle = "#8c8c8c"; ctx.font = "500 26px " + FUENTE; ctx.fillText("Tus lugares en Punta Alta", W / 2, pie + 30);
+  ctx.textAlign = "center"; ctx.fillStyle = "#1d1a16"; ctx.font = "800 38px " + FUENTE; ctx.fillText("Sumate a la comunidad", W / 2, pie - 56);
+  ctx.fillStyle = "#c1440e"; ctx.font = "800 34px " + FUENTE; ctx.fillText(window.location.host + "/grupo/", W / 2, pie - 12);
+  ctx.fillStyle = "#6b6256"; ctx.font = "500 26px " + FUENTE; ctx.fillText("Tus lugares en Punta Alta", W / 2, pie + 30);
   ctx.textAlign = "left";
   return cv;
 }

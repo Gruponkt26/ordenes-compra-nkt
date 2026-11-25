@@ -108,6 +108,30 @@ function TarjetaTickets(props) {
   );
 }
 
+// ─── DE QUÉ COMERCIO VINO EL SOCIO ───
+// El cartel de mostrador de cada comercio amigo lleva un QR a /grupo/?de=<id del comercio>. Se recuerda en el celular y, si la persona se suma, queda anotado en su ficha
+// (origen): así cada comercio ve cuántos socios nuevos trajo. Quien ya era socio conserva su origen original.
+export function origenGuardado() { try { var d = localStorage.getItem("nkt_de") || ""; return /^com_[A-Za-z0-9_]+$/.test(d) ? d : ""; } catch (e) { return ""; } }
+function recordarOrigenDeUrl() {
+  try { var d = new URLSearchParams(window.location.search).get("de") || ""; if (/^com_[A-Za-z0-9_]+$/.test(d)) localStorage.setItem("nkt_de", d); } catch (e) {}
+}
+// Socios que se sumaron por el QR de cada comercio: {comercio_id: {total, mes}} (sin pruebas).
+export async function cargarSociosPorComercio() {
+  try {
+    var patron = encodeURIComponent('*"origen":"com_*');
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.comunidad&texto=like." + patron + "&limit=3000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json(), out = {}, mes = mesClave();
+    (Array.isArray(d) ? d : []).forEach(function (f) {
+      try {
+        var t = JSON.parse(f.texto); if (!t.origen || t.prueba) return;
+        var o = out[t.origen] = out[t.origen] || { total: 0, mes: 0 };
+        o.total++; var fe = new Date(t.fecha || f.created_at); if (!isNaN(fe.getTime()) && mesClave(fe) === mes) o.mes++;
+      } catch (e) {}
+    });
+    return out;
+  } catch (e) { return {}; }
+}
+
 // ─── OPINAR DESPUÉS DE CANJEAR ───
 // El socio solo ve «Opiná y jugá» si canjeó su cupón en uno de los 3 locales en las últimas 24 horas: así la opinión viene de una visita real.
 export function ultimoCanjeLocal(historial) {
@@ -551,6 +575,7 @@ function PanelComerciosRed(props) {
   var [form, setForm] = useState(null);   // el comercio que se está cargando o editando
   var [msg, setMsg] = useState("");
   var [subiendo, setSubiendo] = useState(false);
+  var [sociosQR, setSociosQR] = useState({});   // socios que se sumaron por el QR de cada comercio
   var [verMat, setVerMat] = useState(false);       // «Material para comercios»: cerrado hasta que se toca
   var [nomMat, setNomMat] = useState("");          // el nombre que reemplaza a [nombre] en los mensajes
   var [copiadoMat, setCopiadoMat] = useState("");
@@ -567,7 +592,7 @@ function PanelComerciosRed(props) {
   var [avisoCom, setAvisoCom] = useState(null);  // después de aprobar o rechazar: el mensaje de WhatsApp para avisarle al comercio {nombre, link}
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); cargarAltasComercios().then(setAltas); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarSociosPorComercio().then(setSociosQR); cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); cargarAltasComercios().then(setAltas); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -760,7 +785,7 @@ function PanelComerciosRed(props) {
               {lista.map(function (c, i) { var r = resumenCanjes(canjes, c.id, 30); return (
                 <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid #14202A", fontSize: 12.5 }}>
                   <b style={{ color: "#F0EDE8" }}>{c.nombre}</b>
-                  <span style={{ color: "#B8C8D0", textAlign: "right" }}>{r.canjes} canje{r.canjes === 1 ? "" : "s"} · {r.socios} socio{r.socios === 1 ? "" : "s"}{r.volvieron > 0 ? " · " + r.volvieron + " volvió" + (r.volvieron === 1 ? "" : "ron") : ""}{r.gasto > 0 ? " · $" + Math.round(r.gasto).toLocaleString("es-AR") : ""}</span>
+                  <span style={{ color: "#B8C8D0", textAlign: "right" }}>{r.canjes} canje{r.canjes === 1 ? "" : "s"} · {r.socios} socio{r.socios === 1 ? "" : "s"}{r.volvieron > 0 ? " · " + r.volvieron + " volvió" + (r.volvieron === 1 ? "" : "ron") : ""}{r.gasto > 0 ? " · $" + Math.round(r.gasto).toLocaleString("es-AR") : ""}{(sociosQR[c.id] || {}).total ? " · 👥 " + sociosQR[c.id].total + " socio" + (sociosQR[c.id].total === 1 ? "" : "s") + " nuevo" + (sociosQR[c.id].total === 1 ? "" : "s") + " con su QR" : ""}</span>
                 </div>); })}
               <div style={{ fontSize: 10.5, color: "#6E7E88", marginTop: 6 }}>El gasto suma lo que cada comercio anotó al canjear (es opcional).</div>
             </div>
@@ -1050,6 +1075,7 @@ async function emitirCupon(socio, cfg) {
 export async function sumarSocio(socio, cfg) {
   if (!socio.prueba && await esEmpleadoWsp(socio.wsp, nombreCompleto(socio))) return { empleado: true };   // los empleados ya tienen un descuento aparte
   var previo = await leerPauta("com_" + socio.wsp);
+  socio = { ...socio, origen: previo && previo.origen ? previo.origen : (origenGuardado() || undefined) };
   var ok = await guardarFila("com_" + socio.wsp, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
   if (!ok) return null;
   if (!socio.prueba) { try { localStorage.setItem("nkt_comunidad", "1"); } catch (e) {} }
@@ -1212,6 +1238,7 @@ export function GrupoNkt() {
       var lm = document.querySelector('link[rel="manifest"]'); if (lm) lm.setAttribute("href", "/manifest-grupo.json");
       var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (mt) mt.setAttribute("content", "Grupo Nkt");
     } catch (e) {}
+    recordarOrigenDeUrl();
     cargarConfigGrupo().then(function (c) { setCfg(c); setCfgListo(true); });
     cargarComercios(true).then(setComercios);
     var cg = ""; try { if (!modoPrueba) cg = localStorage.getItem("nkt_cupon") || ""; } catch (e) {}
@@ -1266,12 +1293,12 @@ export function GrupoNkt() {
     if (!nombre.trim() || !apellido.trim() || w.length < 8) { setError("Escribí tu nombre, tu apellido y tu WhatsApp."); return; }
     if (!acepta) { setError("Tildá la casilla para sumarte."); return; }
     setEnviando(true); setError("");
-    var socio = { nombre: nombre.trim().slice(0, 60), apellido: apellido.trim().slice(0, 60), disp: idDispositivo(), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
+    var socio = { nombre: nombre.trim().slice(0, 60), apellido: apellido.trim().slice(0, 60), disp: idDispositivo(), wsp: w.slice(0, 20), dia: parseInt(dia, 10) || 0, mes: parseInt(mes, 10) || 0, fav: fav, origen: origenGuardado() || undefined, fecha: new Date().toISOString(), prueba: modoPrueba ? 1 : 0 };
     (modoPrueba ? Promise.resolve(false) : esEmpleadoWsp(w, nombre.trim() + " " + apellido.trim())).then(function (esEmp) {
       if (esEmp) { setError(MSG_EMPLEADO); setEnviando(false); return null; }
       return leerPauta("com_" + w).then(function (previo) {
       // Si ya estaba, se conserva su cupón y su fecha de alta.
-        return guardarFila("com_" + w, "comunidad", { ...socio, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
+        return guardarFila("com_" + w, "comunidad", { ...socio, origen: previo && previo.origen ? previo.origen : socio.origen, cupon: previo && previo.cupon ? previo.cupon : undefined, fecha: previo && previo.fecha ? previo.fecha : socio.fecha });
       }).then(function (ok) {
       if (ok === null) return;   // era empleado: ya se avisó
       if (!ok) { setError("No pudimos sumarte. Probá de nuevo."); setEnviando(false); return; }

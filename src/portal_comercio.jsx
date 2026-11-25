@@ -2,6 +2,7 @@
 // El comercio entra con su link privado, completa su información y sus promos, y manda los cambios a revisión:
 // no se publican hasta que administración los aprueba (Administración → Comunidad → Comercios amigos).
 import React, { useState, useEffect } from "react";
+import { descargarPlaca } from "./placa_comercio.js";
 import { SURL, SH } from "./comun.js";
 import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
@@ -48,6 +49,13 @@ export default function PortalComercio() {
   var [msgC, setMsgC] = useState("");
   var [ocupadoC, setOcupadoC] = useState(false);
   var [montoC, setMontoC] = useState("");
+  var [haciendoPlaca, setHaciendoPlaca] = useState("");   // "post" | "historia" mientras se arma la imagen
+  var [msgPlaca, setMsgPlaca] = useState("");
+  function bajarPlaca(formato) {
+    setHaciendoPlaca(formato); setMsgPlaca("");
+    descargarPlaca(pub, formato).then(function () { setHaciendoPlaca(""); setMsgPlaca("✓ Listo, se bajó la imagen."); setTimeout(function () { setMsgPlaca(""); }, 5000); },
+      function () { setHaciendoPlaca(""); setMsgPlaca("No se pudo armar la imagen. Probá de nuevo."); });
+  }
   var [canjes, setCanjes] = useState([]);                     // los canjes de este comercio
 
   useEffect(function () {
@@ -376,6 +384,20 @@ export default function PortalComercio() {
           </div>
         )}
       </div>
+
+      {pub && !pausado && (
+        <div style={tarj}>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>📣 Tu placa para redes</div>
+          <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, marginTop: 3 }}>Una imagen lista para publicar: «Somos parte de la Comunidad Grupo Nkt», con tu logo, tu nombre y tu promo de hoy. Publicala en tus redes y etiquetá a Grupo Nkt: te ayuda a vos y a la comunidad.</div>
+          {msgPlaca && <div style={{ marginTop: 8, fontSize: 13, color: "#9FE0AA", fontWeight: 700 }}>{msgPlaca}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {[["post", "⬇️ Para publicación"], ["historia", "⬇️ Para historias"]].map(function (t) {
+              return <button key={t[0]} disabled={haciendoPlaca} onClick={function () { bajarPlaca(t[0]); }} style={{ flex: "1 1 150px", padding: "11px", borderRadius: 10, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>{haciendoPlaca === t[0] ? "Armando…" : t[1]}</button>;
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: "#7E7E7E", marginTop: 8, lineHeight: 1.45 }}>Muestra lo que está publicado hoy en tu tarjeta. Si cambiás tu promo, volvé a bajarla cuando se apruebe.</div>
+        </div>
+      )}
 
       </div>)}
       </div>

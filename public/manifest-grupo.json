@@ -1,8 +1,8 @@
 {
   "id": "/grupo/",
-  "name": "Grupo Nkt",
+  "name": "Comunidad Grupo Nkt",
   "short_name": "Grupo Nkt",
-  "description": "La comunidad de Grupo Nkt: El Bodegón, Kusama y Colantonio's",
+  "description": "Comunidad Grupo Nkt · tus lugares en Punta Alta",
   "start_url": "/grupo/",
   "scope": "/grupo/",
   "display": "standalone",

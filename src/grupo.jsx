@@ -960,7 +960,7 @@ export function GrupoNkt() {
     }).catch(function () {});
   }, [cupon && cupon.codigo]);
   useEffect(function () {
-    document.title = "GrupoNkt";
+    document.title = "Comunidad Grupo Nkt";
     // Al agregarla al inicio, el celular instala "Grupo Nkt" (no la app de gestión) y la abre siempre en esta página.
     try {
       var lm = document.querySelector('link[rel="manifest"]'); if (lm) lm.setAttribute("href", "/manifest-grupo.json");

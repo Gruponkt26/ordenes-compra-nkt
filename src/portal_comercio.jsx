@@ -51,7 +51,7 @@ export default function PortalComercio() {
   var [canjes, setCanjes] = useState([]);                     // los canjes de este comercio
 
   useEffect(function () {
-    document.title = "Portal de comercios · Grupo Nkt";
+    document.title = "Portal de comercios · Comunidad Grupo Nkt";
     cargarConfigGrupo().then(function (cfg) { setWspAdm((cfg && cfg.wspAdmin) || ((cfg && cfg.locales && cfg.locales.l1) || {}).wsp || ""); });
     if (modoAlta) {
       (async function () {

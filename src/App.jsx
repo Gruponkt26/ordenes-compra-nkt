@@ -12767,6 +12767,15 @@ function fechaLocal(d){
 // medianoche: para la caja, esa madrugada sigue siendo el mismo día de negocio en que
 // abrieron, no el día calendario nuevo. Antes de las 6 de la mañana, "hoy" es todavía ayer.
 var HORA_CORTE_DIA_NEGOCIO=6;
+// Día del turno al que pertenece una marca: la salida de madrugada (antes de la hora de corte) es del turno del día anterior.
+// Sirve para saber en qué local le tocaba trabajar ese día (ej: la salida del lunes a la 1 am figura con fecha del martes).
+function fechaTurnoDeMarca(f){
+  var d=String((f&&f.fecha)||"").substring(0,10);
+  if(f&&f.tipo==="salida"&&String(f.hora||"99")<String(HORA_CORTE_DIA_NEGOCIO).padStart(2,"0")+":00"){
+    var q=d.split("-"); return fechaLocal(new Date(parseInt(q[0],10),parseInt(q[1],10)-1,parseInt(q[2],10)-1));
+  }
+  return d;
+}
 function diaDeNegocio(d){
   var x=d||new Date();
   if(x.getHours()<HORA_CORTE_DIA_NEGOCIO)x=new Date(x.getTime()-86400000);
@@ -14774,7 +14783,7 @@ function PanelFichajes(p){
         function fila(f){
           var emp=empleados.find(function(e){return e.id===f.empleado_id;});
           var loc=getLocal(f.local);
-          var otro=emp&&emp.local&&f.local&&emp.local!==f.local&&!esLocalFijoDelDia(emp,f.fecha,f.local);
+          var otro=emp&&emp.local&&f.local&&emp.local!==f.local&&!esLocalFijoDelDia(emp,fechaTurnoDeMarca(f),f.local);
           var lej=lejosDe(f);
           var tarde=tardeDe(f,emp), cel=celularDeOtro(f);
           var resalte=cel?"#9B59D0":(tarde?"#E07B00":null);
@@ -15704,7 +15713,7 @@ function TarjetaCambiosPersonal(p){
         items.push({tipo:"franco",emp:e,pedido:mf[1],hecho:(function(){var tf=jornadaDe(e)?turnoDe(e,fe):null;return !!(tf&&!tf.franco);})(),fecha:fe,nombre:e.nombre,local:e.local,txt:"vino en su franco"+(francoMin[e.id+"_"+fe]?" y trabajó "+fmtHs(francoMin[e.id+"_"+fe]):"")+(mf[1]?" y lo pasó al "+DSN[new Date(mf[1]+"T12:00:00").getDay()]+" "+fmtDate(mf[1]):"")+(mf[2]?" · “"+mf[2]+"”":"")});
       }
       if(!mf&&!vistos["f"+k]&&jornadaDe(e)){ var tt=turnoDe(e,fe); if(tt&&tt.franco){ vistos["f"+k]=1; items.push({tipo:"franco",emp:e,pedido:"",hecho:false,fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó un día que no le tocaba (franco)"+(francoMin[e.id+"_"+fe]?" durante "+fmtHs(francoMin[e.id+"_"+fe]):"")+", sin aclarar el motivo"}); } }
-      if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual&&!esLocalFijoDelDia(e,f.fecha,f.local)))&&!vistos["l"+k]){ vistos["l"+k]=1;
+      if((mc||(e.local&&f.local&&e.local!==f.local&&!f.manual&&!esLocalFijoDelDia(e,fechaTurnoDeMarca(f),f.local)))&&!vistos["l"+k]){ vistos["l"+k]=1;
         items.push({tipo:"local",fecha:fe,nombre:e.nombre,local:e.local,txt:"trabajó en "+(loc.emoji||"")+" "+(loc.nombre||f.local)+(mc&&mc[1]?" reemplazando a "+mc[1]:(mc?" de refuerzo":""))});
       }
     });
@@ -17352,7 +17361,7 @@ function PanelNovedades(p){
           (p.fichajes||[]).forEach(function(f){
             if(f.manual||!f.fecha||String(f.fecha).substring(0,10)<desdeF)return;
             var emp=(p.empleados||[]).find(function(e){return e.id===f.empleado_id;});
-            if(!emp||!emp.local||!f.local||emp.local===f.local||esLocalFijoDelDia(emp,f.fecha,f.local))return;
+            if(!emp||!emp.local||!f.local||emp.local===f.local||esLocalFijoDelDia(emp,fechaTurnoDeMarca(f),f.local))return;
             var k=f.empleado_id+"_"+String(f.fecha).substring(0,10)+"_"+f.local;
             if(vistos[k]){ vistos[k].horas.push(f.tipo+" "+f.hora); return; }
             vistos[k]={emp:emp,f:f,horas:[f.tipo+" "+f.hora]}; otros.push(vistos[k]);

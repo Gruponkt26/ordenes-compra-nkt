@@ -5,6 +5,7 @@
 //
 // Las opiniones se guardan en la tabla pautas que ya existe, con ámbito "opinion" (no hace falta crear
 // nada en Supabase). La app principal no las trae a su lista de pautas (ver sbLoadPautas).
+import JuegoTickets from "./juego_tickets.jsx";
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 import { SURL, SH, LOCALES } from "./comun.js";
@@ -302,6 +303,11 @@ export function Opinar() {
             <a href={cfg.google[localId]} target="_blank" rel="noreferrer" style={{ display: "block", padding: "14px", borderRadius: 12, background: "#fff", color: "#222", fontWeight: 800, fontSize: 15, textDecoration: "none" }}>⭐ Dejar mi reseña en Google</a>
           </div>
         )}
+        {/* Tickets del sorteo: solo si administración los encendió. Juega quien ya es socio; a los demás se les cuenta que pueden sumar tickets. */}
+        {hecho === "ok" && cfgGrupo && cfgGrupo.ticketsActivo && (cuponNuevo || cuponYa) && !(cuponNuevo && cuponNuevo.sinCupon) &&
+          <JuegoTickets key={(cuponNuevo || cuponYa).wsp} wsp={(cuponNuevo || cuponYa).wsp} localId={localId} prueba={modoPrueba} opinionId={opReg ? opReg.id : ""} />}
+        {hecho === "ok" && cfgGrupo && cfgGrupo.ticketsActivo && !(cuponNuevo || cuponYa) &&
+          <div style={{ marginTop: 18, background: "#F4ECDC", color: "#1D1A16", borderRadius: 14, padding: "12px 14px", fontSize: 13.5, lineHeight: 1.45 }}>🎟️ <b>¿Sabías que por opinar ganás tickets para el sorteo del mes?</b> Es para los socios de la comunidad: ingresá o sumate acá abajo y jugá.</div>}
         {invitacionComunidad()}
         <div style={{ fontSize: 13, color: local.color, marginTop: 18, fontWeight: 700 }}>{local.emoji} {local.nombre}</div>
       </div></div>

@@ -3206,7 +3206,7 @@ function PautasFichaje(){
       "Si marcás en un local que no es el tuyo, queda avisado a administración."]},
     {t:"⏱️ Entrada, tolerancia y llegadas tarde",l:[
       "La entrada se puede marcar desde "+ANTICIPO_ENTRADA_MIN+" minutos antes de tu horario. Antes de eso la app no deja marcar.",
-      "La tolerancia es de "+TOLERANCIA_ATRASO_MIN+" minutos. Si tu turno es a las 18:30, hasta las 18:40 llegás a horario; a las 18:41 se te anota llegada tarde.",
+      "La tolerancia es de "+TOLERANCIA_ATRASO_MIN+" minutos. Si tu turno es a las 18:30, hasta las 18:"+(30+TOLERANCIA_ATRASO_MIN)+" llegás a horario; a las 18:"+(31+TOLERANCIA_ATRASO_MIN)+" se te anota llegada tarde.",
       "A la tercera llegada tarde del mes se pierde el presentismo. Al marcar, la app te avisa cuántas llevás.",
       "Salir antes de tu horario con más de "+TOLERANCIA_ATRASO_MIN+" minutos de diferencia también queda registrado en tu ficha."]},
     {t:"🚪 Salida",l:[
@@ -13545,7 +13545,7 @@ function PanelFichar(p){
     if(mias.some(function(x){return x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===f;}))return null;   // reingreso: no es llegar tarde
     var ini=new Date(f+"T"+t.desde+":00");
     var min=Math.round((ahora-ini)/60000);
-    if(min<=TOLERANCIA_ATRASO_MIN)return null;
+    if(min<=toleranciaDe(f))return null;
     var previas=resumenAsistencia(emp,fichajes,f.substring(0,7),p.vacaciones,p.justificativos).tarde.filter(function(x){return x.fecha!==f;}).length;
     return {min:min,nro:previas+1};
   }
@@ -14782,7 +14782,7 @@ function PanelFichajes(p){
           if(fichajes.some(function(x){return x.empleado_id===f.empleado_id&&x.tipo==="entrada"&&String(x.fecha||"").substring(0,10)===dia&&String(x.momento||x.hora)<String(f.momento||f.hora);}))return 0;
           var a=String(f.hora||"").split(":"), b=t.desde.split(":");
           var min=(parseInt(a[0],10)*60+parseInt(a[1],10))-(parseInt(b[0],10)*60+parseInt(b[1],10));
-          return min>TOLERANCIA_ATRASO_MIN?min:0;
+          return min>toleranciaDe(dia)?min:0;
         }
         function fila(f){
           var emp=empleados.find(function(e){return e.id===f.empleado_id;});
@@ -25762,7 +25762,10 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
 // antes de hora), sus faltas con el estado del justificativo, las vacaciones, la antigüedad y —sólo para
 // administración— los sueldos y las observaciones. No carga datos nuevos: junta los de Jornadas, Fichaje,
 // Vacaciones y Sueldos. El empleado ve la suya sin sueldos ni observaciones.
-var TOLERANCIA_ATRASO_MIN=10;
+var TOLERANCIA_ATRASO_MIN=5;            // tolerancia vigente (llegar tarde / salir antes), desde TOLERANCIA_NUEVA_DESDE
+var TOLERANCIA_ATRASO_ANTES=10;         // la que valía antes de esa fecha: los días anteriores se siguen midiendo con ella
+var TOLERANCIA_NUEVA_DESDE="2026-11-25";
+function toleranciaDe(fecha){ return String(fecha||"").substring(0,10)>=TOLERANCIA_NUEVA_DESDE?TOLERANCIA_ATRASO_MIN:TOLERANCIA_ATRASO_ANTES; }
 var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
 // Horas que cuentan como trabajadas los días de vacaciones (sin marcar): las de su jornada de ese día, como si hubiera ido.
 // Las licencias ("[Licencia]") no entran. Los francos no suman. Un día con marcas ya cuenta por sus marcas.
@@ -25841,8 +25844,8 @@ function resumenAsistencia(emp, fichajes, mes, vacaciones, justificativos){
     var ini=new Date(f+"T"+t.desde+":00"), fin=new Date(f+"T"+t.hasta+":00");
     if(fin<=ini)fin=new Date(fin.getTime()+86400000);
     var dT=Math.round((new Date(j.entrada.momento)-ini)/60000);
-    if(dT>TOLERANCIA_ATRASO_MIN)tarde.push({fecha:f,min:dT});
-    if(j.salida){ var dA=Math.round((fin-new Date(j.salida.momento))/60000); if(dA>TOLERANCIA_ATRASO_MIN)antes.push({fecha:f,min:dA}); }
+    if(dT>toleranciaDe(f))tarde.push({fecha:f,min:dT});
+    if(j.salida){ var dA=Math.round((fin-new Date(j.salida.momento))/60000); if(dA>toleranciaDe(f))antes.push({fecha:f,min:dA}); }
   });
   var tieneJornada=!!jornadaDe(emp);
   if(tieneJornada){
@@ -26095,7 +26098,7 @@ function FichaLaboral(p){
             {res.francosTrabajados>0&&<div>📅 Trabajó {res.francosTrabajados} día{res.francosTrabajados===1?"":"s"} de franco.</div>}
           </div>
         )}
-        <div style={{fontSize:9.5,color:"#5E5E5E",marginTop:6}}>Atrasos y salidas antes con más de {TOLERANCIA_ATRASO_MIN} minutos de diferencia con su horario.</div>
+        <div style={{fontSize:9.5,color:"#5E5E5E",marginTop:6}}>Atrasos y salidas antes con más de {TOLERANCIA_ATRASO_MIN} minutos de diferencia con su horario (hasta el 24/11 la tolerancia era de {TOLERANCIA_ATRASO_ANTES}).</div>
       </div>
 
       <div style={CAJA}>

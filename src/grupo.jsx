@@ -412,8 +412,8 @@ function CtaComercio(props) {
   return (
     <div>
       <div style={{ marginTop: 12, background: "linear-gradient(135deg,#C1440E,#E8602A)", borderRadius: 16, padding: "16px 16px 14px", textAlign: "center", boxShadow: "0 4px 18px #C1440E55" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>🤝 ¿Tenés un comercio?</div>
-        <div style={{ fontSize: 13.5, color: "#FFE9DD", marginTop: 5, lineHeight: 1.4 }}>Sumalo a la comunidad: los socios te conocen, llegan con un beneficio y los primeros 2 meses no pagás nada.</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>🤝 ¿Tenés un comercio gastronómico?</div>
+        <div style={{ fontSize: 13.5, color: "#FFE9DD", marginTop: 5, lineHeight: 1.4 }}>Somos la comunidad gastronómica de Punta Alta y buscamos cafés, bares, restaurantes y todo lo relacionado con la gastronomía en la ciudad y la zona. Sumalo: los socios te conocen, llegan con un beneficio y los primeros 2 meses no pagás nada.</div>
         <a href="/comercio/?alta=1" style={{ display: "block", marginTop: 12, padding: "13px", borderRadius: 12, background: "#fff", color: "#C1440E", fontSize: 15, fontWeight: 800, textDecoration: "none" }}>Sumá tu comercio →</a>
       </div>
       {linkConsulta && <a href={linkConsulta} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 8, textAlign: "center", padding: "6px", color: "#B8B8B8", fontSize: 12.5, textDecoration: "underline" }}>Prefiero consultar primero por WhatsApp</a>}

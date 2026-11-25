@@ -93,23 +93,66 @@ export async function cargarTicketsSocio(wsp) {
 }
 // La tarjeta «Tus tickets» de la pantalla de la comunidad. Solo se muestra si administración activó los tickets.
 function TarjetaTickets(props) {
+  var wsp = props.wsp;
   var [t, setT] = useState(null);
   var [premios, setPremios] = useState([]);
-  useEffect(function () { cargarTicketsSocio(props.wsp).then(setT); cargarPremios(false).then(setPremios); }, [props.wsp]);
-  premios = premios.filter(function (pr) { return esPremioAmigo(pr) ? props.amigos !== false : props.grupo !== false; });
+  var [partic, setPartic] = useState([]);
+  var [sorteos, setSorteos] = useState([]);
+  var [ocupado, setOcupado] = useState("");
+  var [aviso, setAviso] = useState("");
+  function recargar() { return Promise.all([cargarTicketsSocio(wsp), cargarPremios(false), cargarParticipaciones(wsp), cargarSorteos()]).then(function (r) { setT(r[0]); setPremios(r[1]); setPartic(r[2]); setSorteos(r[3]); }); }
+  useEffect(function () { recargar(); }, [wsp]);
+  var visibles = premios.filter(function (pr) { return esPremioAmigo(pr) ? props.amigos !== false : props.grupo !== false; });
+  var gastados = partic.reduce(function (a, x) { return a + (Number(x.n) || 0); }, 0);
+  var disponibles = t ? Math.max(0, t.total - gastados) : 0;
+  function misTickets(pr) { var ronda = pr.ronda || 1; return partic.filter(function (x) { return x.premio_id === pr.id && (x.ronda || 1) === ronda; }).reduce(function (a, x) { return a + (Number(x.n) || 0); }, 0); }
+  // Antes de sumar se vuelve a leer el saldo, para no pasarse si se tocó dos veces o desde otro celular.
+  function sumar(pr, cuanto) {
+    if (ocupado) return;
+    setOcupado(pr.id); setAviso("");
+    Promise.all([cargarTicketsSocio(wsp), cargarParticipaciones(wsp), cargarSorteos()]).then(function (r) {
+      var disp = Math.max(0, r[0].total - r[1].reduce(function (a, x) { return a + (Number(x.n) || 0); }, 0));
+      if (!premioAbierto(pr, r[2])) { setOcupado(""); setAviso("Este sorteo ya cerró."); recargar(); return null; }
+      var n = cuanto === "todos" ? disp : Math.min(cuanto, disp);
+      if (n <= 0) { setOcupado(""); setAviso("No tenés tickets disponibles. Sumá más dejando tu opinión."); return null; }
+      return guardarFila("part_" + wsp + "_" + pr.id + "_" + (pr.ronda || 1) + "_" + Date.now(), "grupo_participacion", { wsp: wsp, premio_id: pr.id, ronda: pr.ronda || 1, n: n, fecha: new Date().toISOString() }).then(function (ok) {
+        setOcupado(""); setAviso(ok ? "✓ Sumaste " + n + " ticket" + (n === 1 ? "" : "s") + " a «" + pr.premio + "»." : "No se pudo sumar. Probá de nuevo."); recargar();
+      });
+    });
+  }
+  var chico = { padding: "6px 11px", borderRadius: 8, border: "1px solid #C1440E88", background: "#C1440E22", color: "#FFB28A", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "'Inter',sans-serif" };
   return (
     <div style={{ background: "linear-gradient(135deg,#2A1208,#1A1A1A)", border: "1.5px solid #C1440E99", borderRadius: 16, padding: "13px 14px", marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ fontSize: 40, fontWeight: 900, color: "#E8602A", lineHeight: 1, minWidth: 58, textAlign: "center" }}>{t ? t.mes : "…"}</div>
+        <div style={{ fontSize: 40, fontWeight: 900, color: "#E8602A", lineHeight: 1, minWidth: 58, textAlign: "center" }}>{t ? disponibles : "…"}</div>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8" }}>🎟️ Tus tickets este mes</div>
-          <div style={{ fontSize: 12, color: "#BDBDBD", lineHeight: 1.4, marginTop: 2 }}>Entran a todos los sorteos del mes. Sumá más dejando tu opinión en cualquiera de nuestros locales.</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8" }}>🎟️ Tickets disponibles</div>
+          <div style={{ fontSize: 12, color: "#BDBDBD", lineHeight: 1.4, marginTop: 2 }}>{t ? "Ganaste " + t.total + " en total" + (gastados ? " · ya sumaste " + gastados : "") + ". " : ""}Sumalos al sorteo que quieras. Ganás más dejando tu opinión en cualquiera de nuestros locales.</div>
         </div>
       </div>
-      {premios.length > 0 && (
+      {aviso && <div style={{ marginTop: 8, fontSize: 12.5, color: aviso.charAt(0) === "✓" ? "#9FE0AA" : "#E5C467", fontWeight: 700 }}>{aviso}</div>}
+      {visibles.length > 0 && (
         <div style={{ marginTop: 10, background: "#141414", border: "1px dashed #444", borderRadius: 12, padding: "9px 11px" }}>
-          <div style={{ fontSize: 12, color: "#E5C467", fontWeight: 800, marginBottom: 4 }}>🎁 Este mes se sortea{premios.length > 1 ? "n" : ""}:</div>
-          {premios.map(function (pr) { return <div key={pr.id} style={{ fontSize: 12.5, color: "#CFCFCF", padding: "2px 0" }}>• <b style={{ color: "#F0EDE8" }}>{pr.premio}</b>{pr.de_nombre ? <span style={{ color: "#9A9A9A" }}> · de {pr.de_nombre}</span> : null}</div>; })}
+          <div style={{ fontSize: 12, color: "#E5C467", fontWeight: 800, marginBottom: 2 }}>🎁 Sorteos abiertos · elegí dónde sumar tus tickets</div>
+          {visibles.map(function (pr) {
+            var abierto = premioAbierto(pr, sorteos), mios = misTickets(pr), sorteado = sorteos.some(function (x) { return x.premio_id === pr.id && (x.ronda || 1) === (pr.ronda || 1); });
+            return (
+              <div key={pr.id} style={{ borderTop: "1px solid #1E1E1E", padding: "8px 0" }}>
+                <div style={{ fontSize: 13, color: "#F0EDE8", fontWeight: 800 }}>{pr.premio}</div>
+                <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>{pr.de_nombre ? "de " + pr.de_nombre : "Grupo Nkt"}{pr.fecha_sorteo ? " · se sortea el " + fechaLarga(pr.fecha_sorteo) : ""}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 5 }}>
+                  <span style={{ fontSize: 12, color: mios ? "#9FE0AA" : "#8C8C8C" }}>{mios ? "🎟️ Tenés " + mios + " acá" : "Todavía no sumaste tickets"}</span>
+                  {abierto ? (
+                    <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                      <button onClick={function () { sumar(pr, 1); }} disabled={!!ocupado || disponibles < 1} style={{ ...chico, opacity: disponibles < 1 ? 0.4 : 1 }}>➕ 1</button>
+                      <button onClick={function () { sumar(pr, "todos"); }} disabled={!!ocupado || disponibles < 2} style={{ ...chico, opacity: disponibles < 2 ? 0.4 : 1 }}>Sumar todos</button>
+                    </span>
+                  ) : <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#E5C467" }}>{sorteado ? "✔ Sorteo realizado" : "⏱ Cerrado"}</span>}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10.5, color: "#7E7E7E", marginTop: 4 }}>Los tickets que sumás a un sorteo no se pueden pasar a otro.</div>
         </div>
       )}
     </div>
@@ -470,6 +513,24 @@ export async function cargarSorteos() {
     return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
   } catch (e) { return []; }
 }
+// Cada socio reparte sus tickets entre los sorteos que quiera: una fila por cada vez que suma (ámbito grupo_participacion, id part_<wsp>_<premio>_<ronda>_<momento>):
+// {wsp, premio_id, ronda, n}. Los tickets sumados a un sorteo no se pueden mover. Disponibles = tickets ganados − tickets sumados.
+export async function cargarParticipaciones(wsp) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_participacion" + (wsp ? "&id=like." + encodeURIComponent("part_" + wsp + "_*") : "") + "&limit=5000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+function hoyIso() { var d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function fechaLarga(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ""); return m ? m[3] + "/" + m[2] + "/" + m[1] : ""; }
+// ¿Ese premio todavía recibe tickets? Cierra al pasar la fecha del sorteo o cuando ya se sorteó (en su ronda actual).
+function premioAbierto(pr, sorteos) {
+  var ronda = pr.ronda || 1;
+  if ((sorteos || []).some(function (x) { return x.premio_id === pr.id && (x.ronda || 1) === ronda; })) return false;
+  if (pr.fecha_sorteo && hoyIso() > pr.fecha_sorteo) return false;
+  return true;
+}
 // Los premios del sorteo (ámbito grupo_premio). Pueden ser varios al mismo tiempo; cada uno dice de quién es (un local del grupo o un comercio amigo).
 // Todos los tickets del mes participan en todos los premios; cada premio se sortea por separado.
 export async function cargarPremios(todos) {
@@ -493,7 +554,8 @@ function PanelSorteo(props) {
   var [premios, setPremios] = useState([]);
   var [comercios, setComercios] = useState([]);
   var [mes, setMes] = useState(mesClave());
-  var [nuevo, setNuevo] = useState({ premio: "", de: "grupo" });
+  var [partic, setPartic] = useState([]);   // tickets que los socios sumaron a cada sorteo
+  var [nuevo, setNuevo] = useState({ premio: "", de: "grupo", fecha: "" });
   var [noRepetir, setNoRepetir] = useState(true);   // un mismo socio no gana dos premios del mismo mes
   var [ult, setUlt] = useState(null);      // el sorteo recién hecho (para avisarle y publicarlo)
   var [msg, setMsg] = useState("");
@@ -506,7 +568,7 @@ function PanelSorteo(props) {
       setMsg(ok ? "✓ Guardado" : "No se pudo guardar. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 2500);
     });
   }
-  function recargar() { return Promise.all([cargarTicketsTodos(), cargarSorteos(), cargarPremios(true), cargarComercios(false)]).then(function (r) { setTickets(r[0]); setSorteos(r[1]); setPremios(r[2]); setComercios(r[3]); }); }
+  function recargar() { return Promise.all([cargarTicketsTodos(), cargarSorteos(), cargarPremios(true), cargarComercios(false), cargarParticipaciones()]).then(function (r) { setTickets(r[0]); setSorteos(r[1]); setPremios(r[2]); setComercios(r[3]); setPartic(r[4]); }); }
   useEffect(function () { if (abierto && tickets === null) recargar(); }, [abierto]);
   var meses = []; for (var i = 0; i < 6; i++) { var d = new Date(); d.setMonth(d.getMonth() - i, 1); meses.push(mesClave(d)); }
   // Los tickets del mes, sumados por persona, solo de quienes siguen en la comunidad (no pruebas ni empleados).
@@ -524,27 +586,50 @@ function PanelSorteo(props) {
   function agregarPremio() {
     if (!nuevo.premio.trim()) { setMsg("Escribí cuál es el premio."); setTimeout(function () { setMsg(""); }, 3000); return; }
     var id = "prem_" + Date.now();
-    guardarFila(id, "grupo_premio", { premio: nuevo.premio.trim(), de_id: nuevo.de, de_nombre: nombreDe(nuevo.de), activo: true, creado: new Date().toISOString() }).then(function (ok) {
-      if (ok) { setNuevo({ premio: "", de: nuevo.de }); recargar(); setMsg("✓ Premio agregado: ya lo ven los socios."); } else setMsg("No se pudo guardar el premio.");
+    guardarFila(id, "grupo_premio", { premio: nuevo.premio.trim(), de_id: nuevo.de, de_nombre: nombreDe(nuevo.de), fecha_sorteo: nuevo.fecha || "", ronda: 1, activo: true, creado: new Date().toISOString() }).then(function (ok) {
+      if (ok) { setNuevo({ premio: "", de: nuevo.de, fecha: "" }); recargar(); setMsg("✓ Premio agregado: ya lo ven los socios."); } else setMsg("No se pudo guardar el premio.");
       setTimeout(function () { setMsg(""); }, 3500);
     });
+  }
+  // Quiénes sumaron tickets a ese sorteo (en su ronda actual), solo socios reales de la comunidad.
+  function inscriptos(pr) {
+    var ronda = pr.ronda || 1, por = {};
+    partic.forEach(function (x) { if (x.premio_id === pr.id && (x.ronda || 1) === ronda && porWsp[x.wsp]) por[x.wsp] = (por[x.wsp] || 0) + (Number(x.n) || 0); });
+    var lista = Object.keys(por).map(function (w) { return { wsp: w, n: por[w], m: porWsp[w] }; }).sort(function (a, b) { return b.n - a.n; });
+    return { lista: lista, socios: lista.length, tickets: lista.reduce(function (a, r) { return a + r.n; }, 0) };
+  }
+  function guardarPremio(pr, cambios) { var o = { ...pr }; delete o.id; return guardarFila(pr.id, "grupo_premio", { ...o, ...cambios }).then(function () { return recargar(); }); }
+  function cambiarFecha(pr) {
+    var v = window.prompt("Fecha del sorteo de «" + pr.premio + "» (AAAA-MM-DD, ej: 2026-12-30). Vacío = sin fecha.", pr.fecha_sorteo || "");
+    if (v === null) return; v = v.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { setMsg("Escribí la fecha así: 2026-12-30"); setTimeout(function () { setMsg(""); }, 3500); return; }
+    guardarPremio(pr, { fecha_sorteo: v });
+  }
+  function reabrir(pr) {
+    var v = window.prompt("Se abre una nueva ronda de «" + pr.premio + "»: los socios vuelven a sumar tickets desde cero.\n\nFecha del próximo sorteo (AAAA-MM-DD, vacío = sin fecha):", "");
+    if (v === null) return; v = v.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) { setMsg("Escribí la fecha así: 2026-12-30"); setTimeout(function () { setMsg(""); }, 3500); return; }
+    guardarPremio(pr, { ronda: (pr.ronda || 1) + 1, fecha_sorteo: v });
   }
   function pausarPremio(pr) { var o = { ...pr }; delete o.id; guardarFila(pr.id, "grupo_premio", { ...o, activo: pr.activo === false }).then(function () { recargar(); }); }
   function quitarPremio(pr) { if (!window.confirm("¿Borrar el premio «" + pr.premio + "»? Los sorteos ya hechos se conservan.")) return; borrarFilas([pr.id]).then(function () { recargar(); }); }
   function sortear(pr) {
     if (ocupado) return;
     if (esPremioAmigo(pr) ? cfg.ticketsAmigos === false : cfg.ticketsGrupo === false) return;
-    var elegibles = ranking.filter(function (r) { return !(noRepetir && yaGanaron[r.wsp]); });
+    var ins = inscriptos(pr), mesSorteo = mesClave();
+    // Quienes ya ganaron otro premio este mes (si está tildado «No repetir ganadores»).
+    var ganadoresMes = {}; sorteos.forEach(function (x) { if (x.mes === mesSorteo) ganadoresMes[x.ganador_wsp] = true; });
+    var elegibles = ins.lista.filter(function (r) { return !(noRepetir && ganadoresMes[r.wsp]); });
     var total = elegibles.reduce(function (a, r) { return a + r.n; }, 0);
-    if (!elegibles.length) { setMsg(ranking.length ? "Todos los socios con tickets ya ganaron un premio este mes. Destildá «No repetir ganadores» para sortear igual." : "Todavía no hay tickets este mes."); setTimeout(function () { setMsg(""); }, 5000); return; }
-    var previo = hechosMes.find(function (x) { return x.premio_id === pr.id; });
-    var extra = previo ? "\n\n⚠️ Este premio ya se sorteó en " + mesNombreLargo(mes) + " (ganó " + previo.ganador_nombre + "). Esto hace otro sorteo distinto." : "";
-    if (!window.confirm("¿Sortear «" + pr.premio + "»" + (pr.de_nombre ? " (de " + pr.de_nombre + ")" : "") + "?\n\nParticipan " + elegibles.length + " socio" + (elegibles.length === 1 ? "" : "s") + " con " + total + " ticket" + (total === 1 ? "" : "s") + " de " + mesNombreLargo(mes) + ". Cada ticket es una chance." + (noRepetir && Object.keys(yaGanaron).length ? " Quedan afuera quienes ya ganaron otro premio este mes." : "") + extra + "\n\nEl resultado queda guardado y no se puede deshacer.")) return;
+    if (!elegibles.length) { setMsg(ins.lista.length ? "Todos los que sumaron tickets a este sorteo ya ganaron otro premio este mes. Destildá «No repetir ganadores» para sortear igual." : "Nadie sumó tickets a este sorteo todavía."); setTimeout(function () { setMsg(""); }, 5000); return; }
+    var previo = sorteos.find(function (x) { return x.premio_id === pr.id && (x.ronda || 1) === (pr.ronda || 1); });
+    var extra = previo ? "\n\n⚠️ Este sorteo ya se hizo (ganó " + previo.ganador_nombre + "). Esto hace otro distinto." : "";
+    if (!window.confirm("¿Sortear «" + pr.premio + "»" + (pr.de_nombre ? " (de " + pr.de_nombre + ")" : "") + "?\n\nParticipan " + elegibles.length + " socio" + (elegibles.length === 1 ? "" : "s") + " con " + total + " ticket" + (total === 1 ? "" : "s") + " sumados a este sorteo. Cada ticket es una chance." + (noRepetir && elegibles.length < ins.lista.length ? " Quedan afuera quienes ya ganaron otro premio este mes." : "") + extra + "\n\nEl resultado queda guardado y no se puede deshacer.")) return;
     setOcupado(true);
     var pos = aleatorioEntero(total), acum = 0, ganador = elegibles[0];
     for (var k = 0; k < elegibles.length; k++) { acum += elegibles[k].n; if (pos < acum) { ganador = elegibles[k]; break; } }
-    var fila = { mes: mes, premio_id: pr.id, premio: pr.premio, premio_de_id: pr.de_id || "", premio_de_nombre: pr.de_nombre || "", ganador_wsp: ganador.wsp, ganador_nombre: nombreCompleto(ganador.m), ganador_publico: publico(ganador.m), tickets_ganador: ganador.n, tickets_total: total, participantes: elegibles.length, fecha: new Date().toISOString(), publicado: false };
-    var id = "sorteo_" + mes + "_" + Date.now();
+    var fila = { mes: mesSorteo, ronda: pr.ronda || 1, premio_id: pr.id, premio: pr.premio, premio_de_id: pr.de_id || "", premio_de_nombre: pr.de_nombre || "", ganador_wsp: ganador.wsp, ganador_nombre: nombreCompleto(ganador.m), ganador_publico: publico(ganador.m), tickets_ganador: ganador.n, tickets_total: total, participantes: elegibles.length, fecha: new Date().toISOString(), publicado: false };
+    var id = "sorteo_" + mesSorteo + "_" + Date.now();
     guardarFila(id, "grupo_sorteo", fila).then(function (ok) {
       setOcupado(false);
       if (!ok) { setMsg("No se pudo guardar el sorteo. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 4000); return; }
@@ -594,25 +679,29 @@ function PanelSorteo(props) {
                 <select value={mes} onChange={function (e) { setMes(e.target.value); setUlt(null); }} style={inp}>{meses.map(function (m) { return <option key={m} value={m}>{mesNombreLargo(m)}</option>; })}</select>
                 <button onClick={recargar} style={{ ...btn, border: "1px solid #333", background: "#161616", color: "#F0EDE8" }}>↻ Actualizar</button>
               </div>
-              <div style={{ fontSize: 12.5, color: "#C8C8C8", marginBottom: 8 }}><b style={{ color: "#F0EDE8" }}>{totalTickets}</b> ticket{totalTickets === 1 ? "" : "s"} entre <b style={{ color: "#F0EDE8" }}>{ranking.length}</b> socio{ranking.length === 1 ? "" : "s"} en {mesNombreLargo(mes)}.{fuera > 0 ? " (" + fuera + " ticket" + (fuera === 1 ? "" : "s") + " de pruebas o de personas que ya no están en la comunidad no participan.)" : ""}</div>
+              <div style={{ fontSize: 12.5, color: "#C8C8C8", marginBottom: 8 }}>Tickets ganados (informativo): <b style={{ color: "#F0EDE8" }}>{totalTickets}</b> ticket{totalTickets === 1 ? "" : "s"} entre <b style={{ color: "#F0EDE8" }}>{ranking.length}</b> socio{ranking.length === 1 ? "" : "s"} en {mesNombreLargo(mes)}.{fuera > 0 ? " (" + fuera + " ticket" + (fuera === 1 ? "" : "s") + " de pruebas o de personas que ya no están en la comunidad no participan.)" : ""}</div>
               {ranking.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "4px 0 8px" }}>Todavía no hay tickets este mes.</div>}
               {ranking.slice(0, 15).map(function (r) {
                 return <div key={r.wsp} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}><span>{nombreCompleto(r.m)}{yaGanaron[r.wsp] ? " 🏆" : ""}</span><span style={{ color: "#8C8C8C" }}>{r.n} ticket{r.n === 1 ? "" : "s"} · {totalTickets ? Math.round(r.n / totalTickets * 1000) / 10 : 0} %</span></div>;
               })}
               {ranking.length > 15 && <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 4 }}>… y {ranking.length - 15} más.</div>}
 
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E5C467", margin: "16px 0 4px" }}>🎁 Premios (puede haber varios a la vez)</div>
-              <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45, marginBottom: 6 }}>Todos los tickets del mes participan en todos los premios; cada premio se sortea por separado. Los socios ven la lista de premios activos en su pantalla.</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E5C467", margin: "16px 0 4px" }}>🎁 Sorteos (puede haber varios a la vez)</div>
+              <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45, marginBottom: 6 }}>Cada sorteo tiene su premio, su dueño y su fecha. Los socios eligen a cuál sumar sus tickets (hasta la fecha del sorteo) y solo participan en los que eligieron. Cada sorteo se hace por separado.</div>
               {premios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "4px 0" }}>Todavía no cargaste ningún premio.</div>}
               {premios.map(function (pr) {
-                var h = hechosMes.filter(function (x) { return x.premio_id === pr.id; });
+                var ins = inscriptos(pr), sorteado = sorteos.find(function (x) { return x.premio_id === pr.id && (x.ronda || 1) === (pr.ronda || 1); });
+                var abierto = premioAbierto(pr, sorteos);
                 var tipoApagado = esPremioAmigo(pr) ? cfg.ticketsAmigos === false : cfg.ticketsGrupo === false;
                 return (
                   <div key={pr.id} style={{ borderTop: "1px solid #161616", padding: "8px 0", opacity: pr.activo === false || tipoApagado ? 0.55 : 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 800 }}>{pr.premio}</div>
-                    <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>de <b style={{ color: "#C8C8C8" }}>{pr.de_nombre || "Grupo Nkt"}</b>{opciones.find(function (o) { return o.id === pr.de_id && o.amigo; }) ? " · comercio amigo" : ""}{pr.activo === false ? " · ⏸ pausado" : ""}{tipoApagado ? " · 🚫 sorteos de " + (esPremioAmigo(pr) ? "comercios amigos" : "nuestros locales") + " apagados" : ""}{h.length ? " · 🏆 " + mesNombreLargo(mes) + ": " + h[0].ganador_publico : ""}</div>
+                    <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>de <b style={{ color: "#C8C8C8" }}>{pr.de_nombre || "Grupo Nkt"}</b>{opciones.find(function (o) { return o.id === pr.de_id && o.amigo; }) ? " · comercio amigo" : ""}{pr.activo === false ? " · ⏸ pausado" : ""}{tipoApagado ? " · 🚫 sorteos de " + (esPremioAmigo(pr) ? "comercios amigos" : "nuestros locales") + " apagados" : ""}</div>
+                    <div style={{ fontSize: 11.5, color: "#C8C8C8", marginTop: 2 }}>📅 {pr.fecha_sorteo ? "Se sortea el " + fechaLarga(pr.fecha_sorteo) : "Sin fecha"} · {sorteado ? <span style={{ color: "#9FE0AA" }}>🏆 sorteado: {sorteado.ganador_publico}</span> : abierto ? <span style={{ color: "#8FD19A" }}>abierto</span> : <span style={{ color: "#E5C467" }}>cerrado (pasó la fecha, falta sortear)</span>} · 👥 {ins.socios} socio{ins.socios === 1 ? "" : "s"} · 🎟️ {ins.tickets} ticket{ins.tickets === 1 ? "" : "s"}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-                      <button onClick={function () { sortear(pr); }} disabled={ocupado || pr.activo === false || tipoApagado} style={{ ...btn, padding: "6px 12px", border: "none", background: pr.activo === false || tipoApagado ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 12 }}>{h.length ? "🎲 Sortear de nuevo" : "🎲 Sortear este premio"}</button>
+                      {!sorteado && <button onClick={function () { sortear(pr); }} disabled={ocupado || pr.activo === false || tipoApagado} style={{ ...btn, padding: "6px 12px", border: "none", background: pr.activo === false || tipoApagado ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 12 }}>🎲 Sortear este premio</button>}
+                      {sorteado && <button onClick={function () { reabrir(pr); }} style={{ ...btn, padding: "6px 12px", border: "1px solid #D4A017", background: "#D4A01722", color: "#E5C467", fontSize: 12 }}>🔁 Nueva ronda</button>}
+                      <button onClick={function () { cambiarFecha(pr); }} style={{ ...btn, padding: "6px 10px", border: "1px solid #333", background: "#161616", color: "#C8C8C8", fontSize: 12 }}>📅 Fecha</button>
                       <button onClick={function () { pausarPremio(pr); }} style={{ ...btn, padding: "6px 10px", border: "1px solid #333", background: "#161616", color: "#C8C8C8", fontSize: 12 }}>{pr.activo === false ? "▶ Reactivar" : "⏸ Pausar"}</button>
                       <button onClick={function () { quitarPremio(pr); }} title="Borrar el premio" style={{ ...btn, padding: "6px 10px", border: "1px solid #333", background: "#161616", color: "#C8C8C8", fontSize: 12 }}>🗑️</button>
                     </div>
@@ -620,16 +709,18 @@ function PanelSorteo(props) {
                 );
               })}
               <div style={{ background: "#0E0E0E", border: "1px solid #1E1E1E", borderRadius: 10, padding: "10px 12px", marginTop: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>+ Agregar un premio</div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>+ Agregar un sorteo</div>
                 <input value={nuevo.premio} onChange={function (e) { var v = e.target.value; setNuevo(function (n) { return { ...n, premio: v }; }); }} placeholder="Ej: una cena para dos" style={{ ...inp, width: "100%", marginBottom: 6 }} />
                 <div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 3 }}>¿De quién es el premio?</div>
                 <select value={nuevo.de} onChange={function (e) { var v = e.target.value; setNuevo(function (n) { return { ...n, de: v }; }); }} style={{ ...inp, width: "100%" }}>
                   <optgroup label="Grupo Nkt">{opciones.filter(function (o) { return !o.amigo; }).map(function (o) { return <option key={o.id} value={o.id}>{o.nombre}</option>; })}</optgroup>
                   {opciones.some(function (o) { return o.amigo; }) && <optgroup label="Comercios amigos">{opciones.filter(function (o) { return o.amigo; }).map(function (o) { return <option key={o.id} value={o.id}>{o.nombre}</option>; })}</optgroup>}
                 </select>
+                <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 3px" }}>Fecha del sorteo (opcional; hasta ese día los socios pueden sumar tickets)</div>
+                <input type="date" value={nuevo.fecha} onChange={function (e) { var v = e.target.value; setNuevo(function (n) { return { ...n, fecha: v }; }); }} style={{ ...inp, width: "100%" }} />
                 <button onClick={agregarPremio} style={{ ...btn, marginTop: 8, border: "none", background: "#1A6B8A", color: "#fff" }}>Agregar premio</button>
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "#C8C8C8", marginTop: 10 }}><input type="checkbox" checked={noRepetir} onChange={function (e) { setNoRepetir(e.target.checked); }} /> No repetir ganadores: quien ya ganó un premio este mes no entra a los demás sorteos (🏆)</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "#C8C8C8", marginTop: 10 }}><input type="checkbox" checked={noRepetir} onChange={function (e) { setNoRepetir(e.target.checked); }} /> No repetir ganadores: quien ya ganó un premio este mes no entra a los demás sorteos de este mes (🏆)</label>
               <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6, lineHeight: 1.45 }}>El resultado de cada sorteo queda guardado. Antes del primer sorteo real, confirmá con el abogado las bases (docs/sorteo-preguntas.md).</div>
               {msg && <div style={{ fontSize: 12.5, color: "#8FD19A", marginTop: 8, fontWeight: 700 }}>{msg}</div>}
               {ult && (

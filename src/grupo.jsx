@@ -335,7 +335,7 @@ function FranjaComercios(props) {
         })}
       </div>
       {sel && <div style={{ marginTop: 8 }}><TarjetaComercio c={sel} cupon={props.cupon} /></div>}
-      <CtaComercio wspAdmin={props.wspAdmin} />
+      {!props.sinCta && <CtaComercio wspAdmin={props.wspAdmin} />}
     </div>
   );
 }
@@ -1526,6 +1526,8 @@ export function GrupoNkt() {
         <div>
           {bNovedades}
           {bValores}
+          {/* Los comercios amigos también los ve quien todavía no se unió: es lo que le muestra a un comercio (y a un cliente) cómo se ve la red. */}
+          {comercios.length > 0 && <FranjaComercios comercios={comercios} cupon={null} wspAdmin={cfg.wspAdmin || (cfg.locales.l1 || {}).wsp || ""} sinCta />}
           {bIngresar}
           <div style={{ marginBottom: 14 }}>{bSumarse}</div>
           {bInstalar}

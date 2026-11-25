@@ -13,7 +13,7 @@ var LOCALES_GRUPO = [
   { id: "l2", emoji: "🍣", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", emoji: "🍕", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {}, wspAdmin: "" };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {}, wspAdmin: "", ticketsActivo: false, ticketsPremio: "" };
 
 // La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
 // ¿El aviso destacado de este local sigue vigente? Sin fecha, se muestra hasta que se borre; con fecha, hasta ese día inclusive.
@@ -69,13 +69,43 @@ export async function cargarConfigGrupo() {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {}, wspAdmin: (x && x.wspAdmin) || "" };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {}, wspAdmin: (x && x.wspAdmin) || "", ticketsActivo: !!(x && x.ticketsActivo), ticketsPremio: (x && x.ticketsPremio) || "" };
   } catch (e) { return CONFIG_VACIA; }
 }
 export async function guardarFila(id, ambito, obj) {
   var ahora = new Date().toISOString();
   var r = await fetch(SURL + "/rest/v1/pautas", { method: "POST", headers: { ...SH, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ id: id, ambito: ambito, texto: JSON.stringify(obj), usuario: "comunidad", created_at: ahora, updated_at: ahora }) });
   return r.ok;
+}
+
+// ─── TICKETS DEL SORTEO ───
+// Cada premio de tickets es una fila (ámbito grupo_ticket, id tk_<wsp>_<momento>): {wsp, n, mes, local, fecha, origen}. El total del socio es la suma de sus filas del mes.
+export function mesClave(d) { d = d || new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+export async function cargarTicketsSocio(wsp) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_ticket&id=like." + encodeURIComponent("tk_" + wsp + "_*") + "&limit=1000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    var mes = mesClave(), n = 0, total = 0;
+    (Array.isArray(d) ? d : []).forEach(function (f) { try { var t = JSON.parse(f.texto); var c = Number(t.n) || 0; total += c; if (t.mes === mes) n += c; } catch (e) {} });
+    return { mes: n, total: total };
+  } catch (e) { return { mes: 0, total: 0 }; }
+}
+// La tarjeta «Tus tickets» de la pantalla de la comunidad. Solo se muestra si administración activó los tickets.
+function TarjetaTickets(props) {
+  var [t, setT] = useState(null);
+  useEffect(function () { cargarTicketsSocio(props.wsp).then(setT); }, [props.wsp]);
+  return (
+    <div style={{ background: "linear-gradient(135deg,#2A1208,#1A1A1A)", border: "1.5px solid #C1440E99", borderRadius: 16, padding: "13px 14px", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 40, fontWeight: 900, color: "#E8602A", lineHeight: 1, minWidth: 58, textAlign: "center" }}>{t ? t.mes : "…"}</div>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#F0EDE8" }}>🎟️ Tus tickets este mes</div>
+          <div style={{ fontSize: 12, color: "#BDBDBD", lineHeight: 1.4, marginTop: 2 }}>Entran al sorteo del mes. Sumá más dejando tu opinión en cualquiera de nuestros locales.</div>
+        </div>
+      </div>
+      {props.premio && <div style={{ marginTop: 10, background: "#141414", border: "1px dashed #444", borderRadius: 12, padding: "9px 11px", fontSize: 12.5, color: "#CFCFCF" }}>🎁 Este mes se sortea: <b>{props.premio}</b></div>}
+    </div>
+  );
 }
 
 // ─── COMERCIOS AMIGOS ───
@@ -1352,6 +1382,7 @@ export function GrupoNkt() {
         <div>
           <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
           {bCupon}
+          {cfg.ticketsActivo && cupon && <TarjetaTickets wsp={cupon.wsp} premio={cfg.ticketsPremio} />}
           {bNovedades}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase", color: "#9A9A9A", margin: "18px 4px 8px" }}>Dónde usar tu cupón</div>
@@ -2294,6 +2325,15 @@ export function PanelComunidad() {
             <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>WhatsApp de administración (el botón «Sumá tu comercio» de la página abre este chat)</div>
             <input value={cfg.wspAdmin || ""} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, wspAdmin: v }; }); }} inputMode="tel" placeholder="Ej: 2914123456 (si queda vacío, se usa el del Bodegón)" style={sel} />
+            <div style={{ margin: "12px 0 6px", padding: "10px 12px", border: "1px solid " + (cfg.ticketsActivo ? "#3A7D4488" : "#2A2A2A"), borderRadius: 10, background: cfg.ticketsActivo ? "#3A7D4414" : "#0E0E0E" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+                <input type="checkbox" checked={!!cfg.ticketsActivo} onChange={function (e) { var v = e.target.checked; setCfg(function (c) { return { ...c, ticketsActivo: v }; }); }} />
+                🎟️ Tickets del sorteo {cfg.ticketsActivo ? "· ENCENDIDO" : "· apagado"}
+              </label>
+              <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45, margin: "4px 0 6px" }}>Cuando está encendido, los socios ven «Tus tickets» en su pantalla de la comunidad. Dejalo apagado hasta tener el visto bueno del abogado. Acordate de tocar Guardar.</div>
+              <div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Premio del mes (se muestra a los socios)</div>
+              <input value={cfg.ticketsPremio || ""} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, ticketsPremio: v }; }); }} placeholder="Ej: una cena para dos en El Bodegón" style={sel} />
+            </div>
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Mensaje al sumarse (ej: un beneficio de bienvenida)</div>
             <input value={cfg.bienvenida} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, bienvenida: v }; }); }} placeholder="Mostrá este mensaje en caja y te regalamos un café." style={sel} />
             {LOCALES_GRUPO.map(function (l) {

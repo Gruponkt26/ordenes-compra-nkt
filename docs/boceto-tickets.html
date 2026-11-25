@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boceto · tickets por opinar</title>
+<style>
+:root{--bg:#0d0d0d;--tx:#f0ede8;--mu:#9a9a9a;--pg:#e9e4dc;--or:#e8602a}
+@media (prefers-color-scheme: dark){:root{--pg:#1b1b1b}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{margin:0;background:var(--pg);color:#222;font:15px/1.45 'Jost','Futura','Century Gothic',system-ui,sans-serif}
+@media (prefers-color-scheme: dark){body{color:#ddd}}
+.wrap{max-width:960px;margin:0 auto;padding:22px 14px 60px}
+h1{font-size:23px;margin:0 0 4px}.sub{color:#777;margin:0 0 14px;font-size:14px}
+.tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
+.tabs button{border:1px solid #bbb;background:transparent;color:inherit;border-radius:999px;padding:8px 15px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
+.tabs button.on{background:var(--or);border-color:var(--or);color:#fff}
+.cols{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.tel{width:390px;max-width:100%;min-height:680px;background:var(--bg);color:var(--tx);border-radius:28px;padding:22px 18px 28px;box-shadow:0 8px 30px #0006;border:1px solid #2a2a2a;position:relative;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:pan-y}
+.notas{flex:1 1 300px;font-size:14px;line-height:1.55}
+.notas h3{margin:18px 0 6px;font-size:15px}.notas h3:first-child{margin-top:0}
+.notas ul{padding-left:20px;margin:6px 0}.notas li{margin:5px 0}
+.warn{background:#fff3b0;color:#4a3d00;border-radius:10px;padding:9px 12px;font-size:13px;margin-top:10px}
+@media (prefers-color-scheme: dark){.warn{background:#3a3100;color:#f3e08a}}
+.pill{display:inline-block;background:#e8602a22;color:var(--or);border-radius:999px;padding:2px 10px;font-weight:800;font-size:12px}
+.logo{width:72px;height:72px;border-radius:18px;background:#fff;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#000;letter-spacing:1px;line-height:1}
+.ctr{text-align:center}
+.gr{font-size:27px;font-weight:800;margin:10px 0 4px}
+.mu{color:var(--mu);font-size:14px}
+.card{background:#141414;border:1px solid #2a2a2a;border-radius:18px;padding:18px 16px;margin-top:16px}
+.titulo{font-size:19px;font-weight:800}
+.btn{display:block;width:100%;border:none;border-radius:14px;padding:15px;font:inherit;font-size:17px;font-weight:800;margin-top:14px;cursor:pointer}
+.bn{background:var(--or);color:#fff}.bg{background:#1f1f1f;color:#ddd;border:1px solid #333;font-size:14px;padding:11px}
+.paso{position:absolute;top:10px;right:14px;font-size:11px;color:#666}
+.sonido{position:absolute;top:8px;left:12px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+.premio{margin-top:14px;background:#141414;border:1px dashed #444;border-radius:14px;padding:10px 12px;font-size:13px;color:#cfcfcf}
+/* deslizar para jugar */
+.slide{position:relative;height:62px;border-radius:31px;background:linear-gradient(90deg,#2a1a12,#4a2412);border:2px solid #5a2a14;margin-top:18px;overflow:hidden}
+.slide .txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#e8a07a;letter-spacing:.5px;padding-left:52px;animation:brillo 1.8s infinite}
+@keyframes brillo{0%,100%{opacity:.55}50%{opacity:1}}
+.slide .mango{position:absolute;top:3px;left:3px;width:52px;height:52px;border-radius:50%;background:var(--or);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 2px 14px #e8602a99;cursor:grab;touch-action:none}
+.slide .relleno{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#c1440e55,#e8602a99)}
+/* barra de zonas */
+.barra{position:relative;height:50px;border-radius:25px;background:#222;border:2px solid #333;margin:18px 0 6px;overflow:hidden}
+.zona{position:absolute;top:0;bottom:0}
+.z1{left:0;width:60%;background:#2f2f2f}.z2{left:60%;width:30%;background:#5a2a14}.z3{left:90%;width:10%;background:#c1440e}
+.puntero{position:absolute;top:-2px;bottom:-2px;width:8px;border-radius:4px;background:#fff;box-shadow:0 0 14px #fff}
+.rot{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);padding:0 4px}
+.latir{animation:latir .5s infinite}@keyframes latir{50%{transform:scale(1.06)}}
+.tk{font-size:64px;font-weight:900;color:var(--or);line-height:1;margin:6px 0}
+.tickets{display:flex;gap:7px;justify-content:center;margin:12px 0;flex-wrap:wrap}
+.t{width:54px;height:38px;border-radius:8px;background:linear-gradient(135deg,#e8602a,#c1440e);color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:17px;transform:scale(0);animation:pop .35s forwards}
+@keyframes pop{to{transform:scale(1)}}
+.tot{background:#0f2415;border:1px solid #3a7d4466;border-radius:14px;padding:11px;margin-top:14px;color:#9fe0aa;font-weight:800;text-align:center}
+/* pantalla de la comunidad */
+.cup{background:#0f2415;border:2px dashed #3a7d4488;border-radius:16px;padding:14px;text-align:center;margin-top:14px}
+.cup .big{font-size:34px;font-weight:900;color:#4c9a5a;line-height:1.1}
+.cup .cod{font-size:22px;font-weight:900;letter-spacing:2px;margin:6px 0 2px}
+.mis{background:linear-gradient(135deg,#2a1208,#1a1a1a);border:1.5px solid #c1440e99;border-radius:16px;padding:13px 14px;margin-top:14px;display:flex;align-items:center;gap:12px}
+.mis .n{font-size:40px;font-weight:900;color:var(--or);line-height:1;min-width:58px;text-align:center}
+.mis b{display:block;font-size:15px}.mis span{font-size:12px;color:#bdbdbd}
+.nov{background:#111;border:1px solid #2a2a2a;border-radius:14px;padding:11px 12px;margin-top:12px}
+.nov b{display:block;font-size:14px}.nov small{color:#9a9a9a}
+/* fondo claro (crema), igual que las placas */
+.tel.claro{background:#f4ecdc;color:#1d1a16;border-color:#d8cdb6;box-shadow:0 8px 30px #0003}
+.claro .mu{color:#6b6256}
+.claro .logo{border:1px solid #e3dccd;box-shadow:0 2px 10px #0002}
+.claro .card{background:#fff;border-color:#e3dccd}
+.claro .titulo,.claro .gr{color:#1d1a16}
+.claro .sonido{background:#fff;border-color:#d8cdb6;color:#4a4339}
+.claro .paso{color:#9a8f7e}
+.claro .premio{background:#fff;border-color:#cdbfa8;color:#4a4339}
+.claro .slide{background:linear-gradient(90deg,#fbe6d6,#f6cfb2);border-color:#e8a07a}
+.claro .slide .txt{color:#b2420d}
+.claro .relleno{background:linear-gradient(90deg,#e8602a55,#e8602aaa)!important}
+.claro .barra{background:#ece3d1;border-color:#d8cdb6}
+.claro .z1{background:#e3d8c2}.claro .z2{background:#f2c4a0}.claro .z3{background:#c1440e}
+.claro .puntero{background:#1d1a16;box-shadow:0 0 12px #1d1a1688}
+.claro .rot{color:#6b6256}
+.claro .tot,.claro .tot b{background:#e6f3e8;border-color:#3a7d4466;color:#2a6a36}
+.claro .cup{background:#e6f3e8;border-color:#3a7d4488}
+.claro .cup div:last-child{color:#2a6a36!important}.claro .cup div:first-child{color:#6b6256!important}.claro .cup .big{color:#2f7a3d}.claro .cup .cod{color:#1d1a16}
+.claro .mis{background:linear-gradient(135deg,#fff0e6,#fff);border-color:#c1440e88}
+.claro .mis span{color:#6b6256}
+.claro .nov{background:#fff;border-color:#e3dccd}.claro .nov small{color:#6b6256}
+.claro .bg{background:#fff;color:#4a4339;border-color:#d8cdb6}
+.claro .t{box-shadow:0 2px 8px #c1440e44}
+.tabs .sep{flex:1}
+</style></head><body><div class="wrap">
+<h1>Boceto · tickets por dejar una opinión</h1>
+<p class="sub">Probá las dos pantallas del celular. Al lado, las reglas. Es un borrador: todavía no está en la app. <b>Subí el volumen</b>: tiene sonido.</p>
+<div class="tabs"><button id="tab1" class="on" onclick="modo(1)">1 · Al dejar la opinión</button><button id="tab2" onclick="modo(2)">2 · Mi pantalla de la comunidad</button></div>
+<div class="cols">
+  <div class="tel claro" id="tel"></div>
+  <div class="notas">
+    <h3>Cómo se ve <span class="pill">decidido</span></h3>
+    <ul>
+      <li><b>El juego del sorteo</b> (¡Gracias!, deslizar, barra y resultado) va en <b>crema</b>, como las placas.</li>
+      <li><b>La pantalla de la comunidad</b> se queda <b>oscura</b>, como la página de hoy. Solo se le suma la tarjeta «Tus tickets».</li>
+    </ul>
+    <h3>Cómo funciona</h3>
+    <ul>
+      <li>El socio escanea el QR del local y deja su opinión, como hoy.</li>
+      <li>En el «¡Gracias!» <b>desliza el botón</b> hacia la derecha para jugar.</li>
+      <li>Aparece la barra con un <b>sonido de suspenso</b>: los pings se van espaciando hasta que se detiene.</li>
+      <li>Gana <b>1, 2 o 5 tickets</b>. Siempre gana al menos 1.</li>
+    </ul>
+    <h3>Dónde ve el socio sus tickets <span class="pill">decidido</span></h3>
+    <ul>
+      <li>En su <b>pantalla de la comunidad</b>, arriba, junto al cupón: «Tus tickets».</li>
+      <li>Los ve igual si entra <b>por el QR de la comunidad o por el link</b>: es la misma pantalla.</li>
+      <li>También los ve al terminar de jugar, con el total del mes.</li>
+    </ul>
+    <h3>Sonido y vibración</h3>
+    <ul>
+      <li>Mientras desliza: un zumbido de motor que sube de tono con el dedo, y un «fiuuum» de despegue al llegar al final.</li>
+      <li>En la barra: pings de sonar que suben de tono y se van espaciando (expectativa), y un golpe grave de compuerta al frenar.</li>
+      <li>Al final: un chirrido ascendente con ping; si toca el premio mayor, un salto al hiperespacio con acorde brillante y chispas. Vibra el celular si lo permite.</li>
+      <li>Hay un botón 🔊/🔇 para silenciarlo.</li>
+      <li class="warn" style="list-style:none;margin-left:-20px">⚠️ En iPhone el sonido no suena si el celular está en <b>silencio</b> (el interruptor del costado). Por eso lo visual tiene que funcionar bien solo.</li>
+    </ul>
+    <h3>Reparto sugerido <span class="pill">se puede cambiar</span></h3>
+    <ul>
+      <li><b>60 %</b> de las veces: 1 ticket · <b>30 %</b>: 2 · <b>10 %</b>: 5</li>
+      <li>Promedio: <b>1,7 tickets</b> por opinión. Así nadie junta demasiados.</li>
+    </ul>
+    <div class="warn">⚠️ Dónde frena es <b>azar</b>: no depende de la habilidad. Mejor que se vea claro, sin trampas.</div>
+    <h3>Para que no se abuse</h3>
+    <ul>
+      <li>Solo socios identificados (con su WhatsApp de la comunidad).</li>
+      <li><b>Una opinión premiada por local y por día</b>, por persona y por celular.</li>
+      <li>Mejor aún: atada a una visita real, por ejemplo un cupón canjeado ese día.</li>
+      <li>El ticket se da por opinar, <b>sea buena o mala</b>. No se premia la nota.</li>
+    </ul>
+    <h3>Dónde se guarda</h3>
+    <ul>
+      <li>Una fila por premio: socio, fecha, local, cantidad. El total es la suma.</li>
+      <li>El sorteo se hace desde administración, con un botón, y el ganador sale en Novedades.</li>
+      <li>Los premios los ponen los comercios amigos: es visibilidad para ellos.</li>
+    </ul>
+    <h3>Lo que falta decidir</h3>
+    <ul>
+      <li><b>Lo legal:</b> un «rasca y gana» y un sorteo pueden necesitar autorización de la lotería provincial. Consultarlo con el abogado antes de lanzarlo.</li>
+      <li>Qué premios y cuántos por mes.</li>
+      <li>Hasta cuándo vale cada ticket (¿se reinician cada mes?).</li>
+    </ul>
+  </div>
+</div>
+</div>
+<script>
+var claro=true,tel=document.getElementById('tel'),total=7,resultado=0,silencio=false,ac=null,raf=null;
+/* ---------- sonido de nave espacial (se genera en el momento, sin archivos) ---------- */
+var bus=null,zum=null;
+function audio(){
+  try{
+    if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();
+      // todo pasa por un eco corto: es lo que da el aire «espacial»
+      bus=ac.createGain();bus.gain.value=0.9;bus.connect(ac.destination);
+      var d=ac.createDelay(1);d.delayTime.value=0.19;var fb=ac.createGain();fb.gain.value=0.38;var wet=ac.createGain();wet.gain.value=0.45;
+      bus.connect(d);d.connect(fb);fb.connect(d);d.connect(wet);wet.connect(ac.destination);}
+    if(ac.state==='suspended')ac.resume();
+  }catch(e){ac=null}
+  return ac;
+}
+function vibrar(p){try{if(!silencio&&navigator.vibrate)navigator.vibrate(p)}catch(e){}}
+// barrido de frecuencia (el «fiuuum» de la nave); filtro opcional que se abre o se cierra
+function barrido(f0,f1,dur,tipo,vol,delay,filtro0,filtro1){
+  if(silencio)return;var c=audio();if(!c)return;
+  var t=c.currentTime+(delay||0),o=c.createOscillator(),g=c.createGain(),n=o;
+  o.type=tipo||'sawtooth';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  if(filtro0){var fl=c.createBiquadFilter();fl.type='lowpass';fl.Q.value=6;fl.frequency.setValueAtTime(filtro0,t);fl.frequency.exponentialRampToValueAtTime(filtro1||filtro0,t+dur);o.connect(fl);n=fl}
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol||0.12,t+Math.min(0.05,dur/3));g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  n.connect(g);g.connect(bus);o.start(t);o.stop(t+dur+0.03);
+}
+// «ping» de sonar: sinusoide corta y aguda con eco
+function ping(f,dur,vol,delay){barrido(f*1.0,f*0.98,dur||.16,'sine',vol||.16,delay||0)}
+// zumbido de motor mientras se desliza: sube de tono con el dedo
+function zumbidoOn(){
+  if(silencio)return;var c=audio();if(!c||zum)return;
+  var o=c.createOscillator(),o2=c.createOscillator(),g=c.createGain(),fl=c.createBiquadFilter();
+  o.type='sawtooth';o2.type='square';o.frequency.value=80;o2.frequency.value=40;fl.type='lowpass';fl.Q.value=8;fl.frequency.value=300;
+  g.gain.value=0.0001;g.gain.exponentialRampToValueAtTime(0.1,c.currentTime+0.08);
+  o.connect(fl);o2.connect(fl);fl.connect(g);g.connect(bus);o.start();o2.start();
+  zum={o:o,o2:o2,g:g,fl:fl};
+}
+function zumbidoVa(p){ // p de 0 a 1
+  if(!zum||!ac)return;var t=ac.currentTime;
+  zum.o.frequency.setTargetAtTime(80+p*520,t,0.03);zum.o2.frequency.setTargetAtTime(40+p*260,t,0.03);
+  zum.fl.frequency.setTargetAtTime(300+p*3200,t,0.03);zum.g.gain.setTargetAtTime(0.09+p*0.07,t,0.03);
+}
+function zumbidoOff(){
+  if(!zum||!ac)return;var z=zum;zum=null;var t=ac.currentTime;
+  z.g.gain.cancelScheduledValues(t);z.g.gain.setTargetAtTime(0.0001,t,0.05);
+  setTimeout(function(){try{z.o.stop();z.o2.stop()}catch(e){}},300);
+}
+function ignicion(){ // se completó el deslizamiento: la nave arranca
+  barrido(120,1400,.5,'sawtooth',.14,0,400,6000);barrido(900,1800,.25,'square',.05,.25);ping(1760,.3,.1,.45);vibrar([30,30,90]);
+}
+function sonar(e){ // cada paso de la barra: ping que sube de tono y, al frenar, se espacia
+  ping(520+e*980,.14,.15);barrido(90,70,.1,'sine',.1,0);vibrar(6);
+}
+function bloqueo(){ // la barra frenó: cierre grave, como una compuerta
+  barrido(700,70,.4,'sawtooth',.14,0,3000,150);ping(220,.25,.14,.02);
+}
+function melodia(n){
+  var C5=523.25,E5=659.25,G5=783.99,C6=1046.5,E6=1318.5;
+  if(n===1){ // chirrido de nave que sube y un ping
+    barrido(300,1100,.28,'triangle',.13,0,2000,5000);ping(C6,.4,.13,.22);ping(E6,.4,.09,.3);
+  }else if(n===2){ // arpegio ascendente
+    barrido(250,1300,.34,'sawtooth',.11,0,1500,6000);[C5,E5,G5,C6].forEach(function(f,i){ping(f,.3,.13,.16+i*.09)});
+  }else{ // premio mayor: salto al hiperespacio + acorde brillante + chispas
+    barrido(60,1900,1.1,'sawtooth',.16,0,250,9000);barrido(120,2600,1.1,'square',.05,0,400,9000);
+    [C5,E5,G5,C6,E6].forEach(function(f,i){barrido(f,f*1.003,1.3,'sine',.1,1.0+i*.05)});
+    for(var i=0;i<7;i++)ping(1800+Math.random()*2200,.18,.08,1.1+i*.1);
+  }
+}
+function alternarSonido(){silencio=!silencio;if(silencio)zumbidoOff();document.querySelectorAll('.sonido').forEach(function(b){b.textContent=silencio?'🔇 sin sonido':'🔊 sonido'});if(!silencio)ping(880,.2,.12)}
+function btnSonido(){return '<button class="sonido" onclick="alternarSonido()">'+(silencio?'🔇 sin sonido':'🔊 sonido')+'</button>'}
+/* ---------- pantallas ---------- */
+function modo(m){document.getElementById('tab1').className=m===1?'on':'';document.getElementById('tab2').className=m===2?'on':'';m===1?pantalla(1):comunidad()}
+function comunidad(){
+  cancelAnimationFrame(raf);tel.className='tel';   // la pantalla de la comunidad queda oscura, como la página de hoy
+  tel.innerHTML=btnSonido()+'<div class="ctr" style="margin-top:22px"><div class="logo">GRUPO<br>NKT</div><div style="font-size:20px;font-weight:800;margin-top:6px">Comunidad Grupo Nkt</div><div class="mu">Tus lugares en Punta Alta</div></div>'+
+  '<div class="cup"><div style="font-size:11px;color:#9a9a9a;letter-spacing:1.5px">TU CUPÓN</div><div class="big">10%</div><div class="cod">NKT-7QX2</div><div style="font-size:12px;color:#9fd5a8">Válido hasta el 30/12</div></div>'+
+  '<div class="mis"><div class="n">'+total+'</div><div><b>🎟️ Tus tickets este mes</b><span>Entran al sorteo del mes. Sumá más dejando tu opinión en cualquier local.</span></div></div>'+
+  '<div class="premio">🎁 Este mes se sortea: <b>una cena para dos en El Bodegón</b> y otros premios de los comercios amigos. <i>(ejemplo)</i></div>'+
+  '<div class="nov"><b>📣 Novedades</b><small>…acá siguen las novedades de siempre.</small></div>';
+}
+function pantalla(n){
+  cancelAnimationFrame(raf);tel.className='tel claro';   // el juego del sorteo va en crema
+  if(n===1){
+    tel.innerHTML=btnSonido()+'<div class="paso">1 de 3</div><div class="ctr" style="margin-top:22px"><div class="logo">GRUPO<br>NKT</div><div class="gr">¡Gracias!</div><div class="mu">Tu opinión nos ayuda a mejorar.</div></div>'+
+    '<div class="card ctr"><div style="font-size:42px">🎟️</div><div class="titulo">¡Ganaste una jugada!</div><div class="mu" style="margin-top:4px">Deslizá y descubrí cuántos tickets sumás para el sorteo del mes.</div>'+
+    '<div class="slide" id="slide"><div class="relleno" id="rel"></div><div class="txt">Deslizá para jugar</div><div class="mango" id="mango">➜</div></div></div>'+
+    '<div class="premio">🎁 Este mes se sortea: <b>una cena para dos en El Bodegón</b> y otros premios de los comercios amigos. <i>(ejemplo)</i></div>';
+    armarSlide();
+  }
+  if(n===2){
+    tel.innerHTML=btnSonido()+'<div class="paso">2 de 3</div><div class="ctr"><div class="titulo latir" style="margin-top:40px">¿Cuántos te tocan?</div><div class="mu">Mirá dónde frena…</div></div>'+
+    '<div class="card"><div class="barra"><div class="zona z1"></div><div class="zona z2"></div><div class="zona z3"></div><div class="puntero" id="pt"></div></div>'+
+    '<div class="rot"><span>1 ticket</span><span>2 tickets</span><span>5 tickets</span></div></div>';
+    correrBarra();
+  }
+  if(n===3){
+    var tks='';for(var i=0;i<resultado;i++)tks+='<div class="t" style="animation-delay:'+(i*0.12)+'s">🎟️</div>';
+    tel.innerHTML=btnSonido()+'<div class="paso">3 de 3</div><div class="ctr"><div class="gr" style="margin-top:34px">'+(resultado>=5?'¡PREMIO MAYOR!':resultado===2?'¡Muy bien!':'¡Sumaste!')+'</div><div class="tk">+'+resultado+'</div><div class="mu">ticket'+(resultado>1?'s':'')+' para el sorteo</div><div class="tickets">'+tks+'</div></div>'+
+    '<div class="mis"><div class="n">'+total+'</div><div><b>🎟️ Tus tickets este mes</b><span>Los ves siempre en tu pantalla de la comunidad.</span></div></div>'+
+    '<div class="premio">Volvé a opinar en otro local (o mañana en el mismo) y seguí sumando.</div>'+
+    '<button class="btn bn" onclick="modo(2)">Ver mi pantalla de la comunidad</button>'+
+    '<button class="btn bg" onclick="total=7;modo(1)">↺ Probar de nuevo</button>';
+    melodia(resultado);vibrar(resultado>=5?[80,40,80,40,200]:resultado===2?[60,40,120]:[80]);
+  }
+}
+/* ---------- deslizar para jugar ---------- */
+function armarSlide(){
+  var slide=document.getElementById('slide'),m=document.getElementById('mango'),rel=document.getElementById('rel');
+  var arrastrando=false,x0=0,max=0,ultimo=0;
+  function pos(x){return Math.max(0,Math.min(max,x))}
+  function mover(x){m.style.left=(3+x)+'px';rel.style.width=(x+55)+'px'}
+  m.addEventListener('pointerdown',function(e){arrastrando=true;max=slide.clientWidth-58-6;x0=e.clientX-(parseFloat(m.style.left||3)-3);m.setPointerCapture(e.pointerId);m.style.transition='none';rel.style.transition='none';audio();zumbidoOn();ultimo=0});
+  m.addEventListener('pointermove',function(e){
+    if(!arrastrando)return;var x=pos(e.clientX-x0);mover(x);
+    var p=x/max;zumbidoVa(p);if(p-ultimo>0.12){ultimo=p;vibrar(8)}
+    if(p>=0.97){arrastrando=false;m.releasePointerCapture(e.pointerId);zumbidoOff();jugar()}
+  });
+  function soltar(){zumbidoOff();if(!arrastrando)return;arrastrando=false;m.style.transition='left .25s';rel.style.transition='width .25s';mover(0)}
+  m.addEventListener('pointerup',soltar);m.addEventListener('pointercancel',soltar);
+}
+function jugar(){
+  var r=Math.random();resultado=r<0.6?1:r<0.9?2:5;total+=resultado;
+  ignicion();
+  setTimeout(function(){pantalla(2)},250);
+}
+/* ---------- la barra frena con tic-tic cada vez más lento ---------- */
+function correrBarra(){
+  var pt=document.getElementById('pt');
+  // destino según lo sorteado (la barra se acomoda a lo que ya salió)
+  var destino=resultado===1?(8+Math.random()*48):resultado===2?(64+Math.random()*22):(93+Math.random()*4);
+  var inicio=performance.now(),dur=4200,vueltas=2.5; // 2 idas y vueltas y media y frena
+  var ult=-1;
+  function f(ahora){
+    var t=Math.min(1,(ahora-inicio)/dur),e=1-Math.pow(1-t,3);          // frena suave al final
+    var recorrido=e*(vueltas*2*100+destino);                             // % total recorrido
+    var ciclo=recorrido%200,p=ciclo<=100?ciclo:200-ciclo;                // ida y vuelta
+    pt.style.left='calc('+p+'% - '+(p/100*8)+'px)';
+    var paso=Math.floor(recorrido/9);                                    // un tic cada 9 % recorrido: se espacian al frenar
+    if(paso!==ult){ult=paso;sonar(e)}
+    if(t<1){raf=requestAnimationFrame(f)}
+    else{bloqueo();setTimeout(function(){pantalla(3)},800)}
+  }
+  raf=requestAnimationFrame(f);
+}
+pantalla(1);
+</script></body></html>

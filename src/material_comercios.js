@@ -1,0 +1,24 @@
+// Mensajes de WhatsApp para comercios que quieren sumarse a la comunidad (los mismos de docs/mensajes-comercios.md).
+// «[nombre]» se cambia por el nombre que se escribe en el panel; «{socios}» por la cantidad de socios de hoy.
+export var MENSAJES_COMERCIOS = [
+  { id: "m1", titulo: "1. Cuando te escribe por primera vez", cuando: "Respondé rápido, mejor en el día.",
+    texto: "Hola [nombre]! Gracias por escribirnos 🙌 Te cuento: la Comunidad Grupo Nkt reúne a los clientes del Bodegón, Kusama y Colantonio's, hoy somos {socios} socios. Los comercios que se suman aparecen en nuestra página y los socios los visitan con un cupón de beneficio. ¿Qué tipo de comercio tenés?" },
+  { id: "m2", titulo: "2. Cuando ya te contó y le interesa", cuando: "Mandá el PDF de la propuesta junto con este mensaje.",
+    texto: "Genial! Te paso la propuesta con todo: qué te damos, qué te pedimos y cómo se suma. Los primeros 2 meses son sin cargo. Leela tranquilo/a y cualquier duda me escribís 👇" },
+  { id: "m3", titulo: "3. Cuando dice que quiere sumarse", cuando: "Mandá el link de alta (botón «💬 Invitar por WhatsApp»).",
+    texto: "Perfecto! Completá tus datos y tu promo en este link, son unos minutos. Lo revisamos y te avisamos cuando esté publicado:" },
+  { id: "m4", titulo: "4. Seguimiento a los 3 días, si no respondió", cuando: "Mandá uno solo. Si no contesta, no insistas más.",
+    texto: "Hola [nombre], ¿pudiste ver la propuesta? Si tenés alguna duda te la respondo por acá. Y si preferís que lo hablemos por llamada, también se puede 🙂" },
+  { id: "d1", titulo: "¿Cuánto sale?", cuando: "Mientras no esté definido el precio, no inventes uno.",
+    texto: "Los primeros 2 meses no pagás nada. Antes de que terminen te contamos el valor de la cuota y vos decidís si seguís, sin compromiso." },
+  { id: "d2", titulo: "¿Cuántos socios hay? ¿Me va a traer clientes?", cuando: "",
+    texto: "Hoy somos {socios} socios y estamos creciendo. En tu portal vas a ver cuántos cupones se canjearon en tu comercio y cuántos socios vuelven, así lo medís vos mismo en los 2 meses sin cargo." },
+  { id: "d3", titulo: "No tengo tiempo para cargar cosas", cuando: "",
+    texto: "Es un formulario de pocos minutos, una sola vez. Después, si querés, solo cargás una novedad por semana." },
+  { id: "d4", titulo: "¿Y si no me sirve?", cuando: "",
+    texto: "Podés dejar la red cuando quieras, avisándonos. En los 2 meses sin cargo no perdés nada." },
+  { id: "d5", titulo: "¿Tengo que hacer descuentos grandes?", cuando: "",
+    texto: "No, vos elegís el beneficio y las condiciones. Lo importante es que lo respetes con todos los socios." },
+  { id: "m6", titulo: "6. Recordatorio antes de terminar los 2 meses", cuando: "Alrededor del día 50.", pendiente: "Todavía no se puede mandar: falta definir el precio de la cuota.",
+    texto: "Hola [nombre]! Se te están por terminar los 2 meses sin cargo. En tu portal podés ver cómo te fue. El valor de la cuota es de $[precio]. ¿Querés seguir en la comunidad?" },
+];

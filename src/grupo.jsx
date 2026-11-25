@@ -1,6 +1,7 @@
 // Grupo Nkt para el público: la página que se abre con el QR (sin usuario ni clave) y el panel donde se arma y se ve la comunidad.
 //  · <GrupoNkt/>        la página pública: quiénes somos, los locales, pedir por WhatsApp, opinar y sumarse a la comunidad.
 //  · <PanelComunidad/>  para administración: datos de cada local, el enlace con su QR y la lista de miembros.
+import { MENSAJES_COMERCIOS } from "./material_comercios.js";
 import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { SURL, SH } from "./comun.js";
@@ -366,6 +367,14 @@ function PanelComerciosRed(props) {
   var [form, setForm] = useState(null);   // el comercio que se está cargando o editando
   var [msg, setMsg] = useState("");
   var [subiendo, setSubiendo] = useState(false);
+  var [verMat, setVerMat] = useState(false);       // «Material para comercios»: cerrado hasta que se toca
+  var [nomMat, setNomMat] = useState("");          // el nombre que reemplaza a [nombre] en los mensajes
+  var [copiadoMat, setCopiadoMat] = useState("");
+  function copiarMensaje(m) {
+    var txt = m.texto.replace(/\[nombre\]/g, nomMat.trim() || "[nombre]").replace(/\{socios\}/g, String(props.socios > 0 ? props.socios : 70));
+    var aMano = function () { window.prompt("Copiá este mensaje:", txt); };
+    try { navigator.clipboard.writeText(txt).then(function () { setCopiadoMat(m.id); setTimeout(function () { setCopiadoMat(""); }, 3000); }, aMano); } catch (e) { aMano(); }
+  }
   var [cambios, setCambios] = useState({});      // lo que cada comercio pidió cambiar desde su portal
   var [reclamos, setReclamos] = useState([]);    // para marcar a los comercios con reclamos en los últimos 30 días
   var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
@@ -633,6 +642,36 @@ function PanelComerciosRed(props) {
           {!form && <button onClick={enviarLinkComunidad} style={{ marginTop: 8, marginRight: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #25D36688", background: "#25D36622", color: "#6FE0A0", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>📲 Enviar link de la comunidad</button>}
           {!form && <button onClick={invitar} style={{ marginTop: 8, marginRight: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🔗 Invitar a un comercio nuevo</button>}
           {!form && <button onClick={nuevo} style={{ marginTop: 8, padding: "9px 14px", borderRadius: 8, border: "1px solid #1A6B8A88", background: "#1A6B8A22", color: "#7FC4DE", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>+ Sumar un comercio</button>}
+          {!form && (
+            <div style={{ marginTop: 14, borderTop: "1px solid #1E1E1E", paddingTop: 10 }}>
+              <div onClick={function () { setVerMat(!verMat); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800 }}>{verMat ? "▾" : "▸"} 📁 Material para comercios</div>
+              {verMat && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.45, marginBottom: 8 }}>Para mandar a los comercios que quieren sumarse. La propuesta va cuando ya mostraron interés; las placas, en redes y mensajes.</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[["/material/Propuesta-Comunidad-Grupo-Nkt.pdf", "📄 Propuesta (PDF)", "Propuesta-Comunidad-Grupo-Nkt.pdf"], ["/material/placa-comercios-cuadrada.png", "🖼️ Placa cuadrada", "placa-comercios-cuadrada.png"], ["/material/placa-comercios-historia.png", "📱 Placa para historias", "placa-comercios-historia.png"]].map(function (a) {
+                      return <a key={a[0]} href={a[0]} download={a[2]} target="_blank" rel="noreferrer" style={{ padding: "9px 13px", borderRadius: 8, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>{a[1]}</a>;
+                    })}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, margin: "14px 0 4px" }}>💬 Mensajes de WhatsApp</div>
+                  <input value={nomMat} onChange={function (e) { setNomMat(e.target.value); }} placeholder="Nombre del comercio o de la persona (reemplaza a [nombre])" style={{ ...sel, marginBottom: 8 }} />
+                  {MENSAJES_COMERCIOS.map(function (m) {
+                    var vista = m.texto.replace(/\[nombre\]/g, nomMat.trim() || "[nombre]").replace(/\{socios\}/g, String(props.socios > 0 ? props.socios : 70));
+                    return (
+                      <div key={m.id} style={{ borderTop: "1px solid #161616", padding: "8px 0" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800 }}>{m.titulo}</div>
+                        {m.cuando && <div style={{ fontSize: 11, color: "#8C8C8C" }}>{m.cuando}</div>}
+                        <div style={{ fontSize: 12, color: "#C8C8C8", lineHeight: 1.45, background: "#0E0E0E", borderRadius: 8, padding: "7px 9px", margin: "5px 0" }}>{vista}</div>
+                        {m.pendiente ? <div style={{ fontSize: 11.5, color: "#E5C467" }}>⏳ {m.pendiente}</div>
+                          : <button onClick={function () { copiarMensaje(m); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #25D36688", background: "#25D36622", color: "#6FE0A0", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{copiadoMat === m.id ? "✓ Copiado" : "📋 Copiar"}</button>}
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6, lineHeight: 1.45 }}>La cantidad de socios sale de la comunidad de hoy. No prometas fechas ni precios de la cadetería, y no inventes el valor de la cuota mientras no esté definido.</div>
+                </div>
+              )}
+            </div>
+          )}
           {form && (
             <div style={{ marginTop: 10, borderTop: "1px solid #1A1A1A", paddingTop: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{(lista || []).some(function (c) { return c.id === form.id; }) ? "Editar comercio" : "Nuevo comercio"}</div>
@@ -2281,7 +2320,7 @@ export function PanelComunidad() {
       </div>
 
       <PanelReclamos tarjeta={tarjeta} />
-      <PanelComerciosRed tarjeta={tarjeta} />
+      <PanelComerciosRed tarjeta={tarjeta} socios={reales.length} />
     </div>
   );
 }

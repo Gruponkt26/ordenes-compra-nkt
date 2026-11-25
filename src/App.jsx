@@ -3206,7 +3206,7 @@ function PautasFichaje(){
       "Si marcás en un local que no es el tuyo, queda avisado a administración."]},
     {t:"⏱️ Entrada, tolerancia y llegadas tarde",l:[
       "La entrada se puede marcar desde "+ANTICIPO_ENTRADA_MIN+" minutos antes de tu horario. Antes de eso la app no deja marcar.",
-      "La tolerancia es de "+TOLERANCIA_ATRASO_MIN+" minutos. Si tu turno es a las 18:30, hasta las 18:40 llegás a horario; a las 18:41 se te anota llegada tarde.",
+      "La tolerancia es de "+TOLERANCIA_ATRASO_MIN+" minutos. Si tu turno es a las 18:30, hasta las 18:"+(30+TOLERANCIA_ATRASO_MIN)+" llegás a horario; a las 18:"+(31+TOLERANCIA_ATRASO_MIN)+" se te anota llegada tarde.",
       "A la tercera llegada tarde del mes se pierde el presentismo. Al marcar, la app te avisa cuántas llevás.",
       "Salir antes de tu horario con más de "+TOLERANCIA_ATRASO_MIN+" minutos de diferencia también queda registrado en tu ficha."]},
     {t:"🚪 Salida",l:[
@@ -25762,7 +25762,7 @@ function PanelFaltantesSueldos({empleados, planilla, sueldos, adelantos, soloPer
 // antes de hora), sus faltas con el estado del justificativo, las vacaciones, la antigüedad y —sólo para
 // administración— los sueldos y las observaciones. No carga datos nuevos: junta los de Jornadas, Fichaje,
 // Vacaciones y Sueldos. El empleado ve la suya sin sueldos ni observaciones.
-var TOLERANCIA_ATRASO_MIN=10;
+var TOLERANCIA_ATRASO_MIN=5;
 var ANTICIPO_ENTRADA_MIN=5;   // cuánto antes de su horario se puede marcar la entrada
 // Horas que cuentan como trabajadas los días de vacaciones (sin marcar): las de su jornada de ese día, como si hubiera ido.
 // Las licencias ("[Licencia]") no entran. Los francos no suman. Un día con marcas ya cuenta por sus marcas.

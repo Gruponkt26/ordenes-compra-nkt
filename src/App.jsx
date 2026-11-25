@@ -1,4 +1,5 @@
 // v5.0 - Gestión Grupo NKT - Módulos Compras/Admin + Gastos + Stock
+import { decidirCelular, CELULAR_BLOQUEO_DESDE } from "./celulares.js";
 import React, { useState, useEffect, useRef } from "react";
 import { jsPDF } from "jspdf";
 import { PanelComunidad, PanelComunidadCajero, MovimientoComunidad, setEmpleadosGrupo, cuponesCanjeadosLocal, cargarReclamos, cargarCambiosComercios, cargarNovedadesComercios, cargarAltasComercios, cargarOfertasPremio } from "./grupo.jsx";
@@ -309,6 +310,20 @@ async function sbSubirFotoFichaje(blob, path) {
     if(!r.ok){ return {ok:false, error:await r.text()}; }
     return {ok:true, url:SURL+"/storage/v1/object/public/fichajes/"+path};
   } catch(e) { return {ok:false, error:e&&e.message?e.message:String(e)}; }
+}
+
+// ─── CELULARES DE LOS COLABORADORES ───
+// La regla (cada celular de una sola persona, desde el 26/11/2026) está en celulares.js; acá el acceso a la lista guardada.
+async function sbLeerFdisp(d){
+  try{ var r=await fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent("fdisp_"+d)+"&limit=1",{headers:{...SH,"Cache-Control":"no-cache"}}); var x=await r.json(); return Array.isArray(x)&&x[0]?JSON.parse(x[0].texto):null; }catch(e){ return undefined; }   // undefined = no se pudo leer
+}
+async function sbGuardarFdisp(d,obj){
+  try{ var ahora=new Date().toISOString(); var r=await fetch(SURL+"/rest/v1/pautas",{method:"POST",headers:{...SH,"Prefer":"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:"fdisp_"+d,ambito:"fichaje_dispositivo",texto:JSON.stringify(obj),usuario:"fichaje",created_at:ahora,updated_at:ahora})}); return r.ok; }catch(e){ return false; }
+}
+async function sbBorrarFdisp(d){ try{ await fetch(SURL+"/rest/v1/pautas?id=eq."+encodeURIComponent("fdisp_"+d),{method:"DELETE",headers:SH}); return true; }catch(e){ return false; } }
+async function sbListarFdisp(){
+  try{ var r=await fetch(SURL+"/rest/v1/pautas?ambito=eq.fichaje_dispositivo&limit=1000",{headers:{...SH,"Cache-Control":"no-cache"}}); var d=await r.json();
+    return Array.isArray(d)?d.map(function(f){ try{ return {disp:String(f.id).replace(/^fdisp_/,""),...JSON.parse(f.texto)}; }catch(e){ return null; } }).filter(Boolean):[]; }catch(e){ return []; }
 }
 
 // Cuando "no guarda" hay que saber QUÉ no guarda: la tabla, una columna, el permiso o el
@@ -13445,6 +13460,22 @@ function PanelFichar(p){
       return d;
     }catch(e){ return "sinid"; }
   }
+  // ¿Este celular puede usarse para esa persona? (la regla está en celulares.js). Devuelve {ok:true} o {ok:false, msg}.
+  async function verificarCelular(emp){
+    var hoy=fechaLocal();
+    if(kiosco||libre||!emp||hoy<CELULAR_BLOQUEO_DESDE)return {ok:true};
+    var d=idDispositivo(); if(d==="sinid")return {ok:true};
+    var reg=await sbLeerFdisp(d);
+    var todos=reg===null?await sbListarFdisp():[];
+    var r=decidirCelular({hoy:hoy,kiosco:kiosco,libre:libre,emp:emp,d:d,reg:reg,todos:todos,fichajes:fichajes,empleados:empleados});
+    if(r.crear)await sbGuardarFdisp(d,r.crear);
+    return r;
+  }
+  async function vincularCelular(emp){
+    var v=await verificarCelular(emp);
+    if(!v.ok){ alert(v.msg); return false; }
+    guardarMiEmp(emp.id); return true;
+  }
   function guardarMiEmp(id){
     setMiEmp(id);
     try{ if(id)window.localStorage.setItem("nkt_fichaje_empleado",id); else window.localStorage.removeItem("nkt_fichaje_empleado"); }catch(e){}
@@ -13487,7 +13518,7 @@ function PanelFichar(p){
     setPin(""); setPinMal(false);
     // Sin PIN cargado no hay nada que comprobar: se ata directo o se abre la cámara.
     // El PIN se pide en cada marca, también con el celular propio ya vinculado; sin PIN cargado no hay nada que comprobar.
-    if(!pinDe(emp)){ if(vinculandoEf){ guardarMiEmp(emp.id); setVinculando(false); setElegido(null); return; } seguirDespuesDelPin(emp); return; }
+    if(!pinDe(emp)){ if(vinculandoEf){ vincularCelular(emp).then(function(ok){ if(ok){ setVinculando(false); } setElegido(null); }); return; } seguirDespuesDelPin(emp); return; }
     setFase("pin");
   }
   function volver(){ cancelarVuelta(); setFase("lista"); setElegido(null); setCara(null); setErrCam(""); setPin(""); setPinMal(false); setOlvido(null); }
@@ -13528,7 +13559,7 @@ function PanelFichar(p){
     if(v.length===4){
       if(v===pinDe(elegido)){
         setPin("");
-        if(vinculandoEf){ guardarMiEmp(elegido.id); setVinculando(false); setElegido(null); setFase("lista"); return; }
+        if(vinculandoEf){ vincularCelular(elegido).then(function(ok){ if(ok){ setVinculando(false); } setElegido(null); setFase("lista"); }); return; }
         seguirDespuesDelPin(elegido);
       }
       else { setPinMal(true); setTimeout(function(){ setPin(""); },450); }
@@ -13588,6 +13619,8 @@ function PanelFichar(p){
       if(muyTemp){ alert("Todavía es temprano: tu turno empieza a las "+muyTemp.turno+" y podés marcar la entrada desde las "+muyTemp.desde+"."); return; }
     }
     setFase("guardando");
+    var vCel=await verificarCelular(elegido);
+    if(!vCel.ok){ alert(vCel.msg); volver(); return; }
     var ahora=new Date();
     // Desde un celular (no la tablet del local) hay que estar en el local: se compara la ubicación con la cargada del local.
     var posChk=ubicRef.current||await ubicacionAhora();
@@ -14210,6 +14243,41 @@ function PanelCambios(p){
   );
 }
 
+// Administración: los celulares asociados a cada colaborador. Se aprueban los nuevos y se liberan los que cambiaron de dueño o de celular.
+function PanelCelulares(){
+  var [lista,setLista]=useState(null);
+  var [msg,setMsg]=useState("");
+  function recargar(){ return sbListarFdisp().then(setLista); }
+  useEffect(function(){ recargar(); },[]);
+  function aprobar(r){ var o={...r}; delete o.disp; sbGuardarFdisp(r.disp,{...o,estado:"aprobado",aprobado_at:new Date().toISOString()}).then(function(){ recargar(); setMsg("✓ Celular aprobado."); setTimeout(function(){setMsg("");},3000); }); }
+  function liberar(r){
+    if(!window.confirm("¿Liberar este celular de "+r.empleado_nombre+"?\n\nQuien lo use después queda asociado al celular como primer dueño (si no tiene otro aprobado)."))return;
+    sbBorrarFdisp(r.disp).then(function(){ recargar(); setMsg("✓ Celular liberado."); setTimeout(function(){setMsg("");},3000); });
+  }
+  var pend=(lista||[]).filter(function(r){return r.estado==="pendiente";});
+  return(
+    <div style={{background:"#111",border:"1px solid #1E1E1E",borderRadius:12,padding:"12px 14px",marginTop:14}}>
+      <div style={{fontSize:13,fontWeight:800,color:"#F0EDE8"}}>📱 Celulares de los colaboradores</div>
+      <div style={{fontSize:11.5,color:"#8C8C8C",lineHeight:1.5,margin:"3px 0 8px"}}>Desde el {fmtDate(CELULAR_BLOQUEO_DESDE)} cada celular queda asociado a una sola persona y no se puede marcar con el celular de un compañero. El primer celular de cada uno se aprueba solo; si cambia de celular, el nuevo queda pendiente hasta que lo aprobés. Para pasar un celular a otra persona, liberalo.</div>
+      {msg&&<div style={{fontSize:12.5,color:"#8FD19A",fontWeight:700,marginBottom:6}}>{msg}</div>}
+      {lista===null&&<div style={{fontSize:12,color:"#8C8C8C"}}>Cargando…</div>}
+      {lista&&lista.length===0&&<div style={{fontSize:12,color:"#6E6E6E"}}>Todavía no hay celulares asociados. Se van sumando cuando cada uno marca.</div>}
+      {pend.length>0&&<div style={{background:"#2A1E00",border:"1px solid #D4A01788",borderRadius:8,padding:"6px 10px",fontSize:12.5,color:"#E5C467",fontWeight:800,marginBottom:6}}>⏳ {pend.length} celular{pend.length===1?"":"es"} esperando aprobación</div>}
+      {(lista||[]).slice().sort(function(a,b){return (a.estado==="pendiente"?0:1)-(b.estado==="pendiente"?0:1)||String(a.empleado_nombre).localeCompare(String(b.empleado_nombre));}).map(function(r){
+        return(
+          <div key={r.disp} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"7px 0",borderTop:"1px solid #1A1A1A",fontSize:12.5}}>
+            <b style={{color:"#F0EDE8"}}>{r.empleado_nombre||"—"}</b>
+            <span style={{color:r.estado==="pendiente"?"#E5C467":"#8FD19A",fontSize:11.5}}>{r.estado==="pendiente"?"⏳ pendiente":"✓ aprobado"}</span>
+            <span style={{color:"#6E6E6E",fontSize:11}}>celular {String(r.disp).slice(0,6)} · {r.origen||""}{r.desde?" · "+fmtDate(String(r.desde).substring(0,10)):""}</span>
+            <span style={{marginLeft:"auto",display:"flex",gap:6}}>
+              {r.estado==="pendiente"&&<button onClick={function(){aprobar(r);}} style={{padding:"5px 10px",borderRadius:7,border:"none",background:"#3A7D44",color:"#fff",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>✅ Aprobar</button>}
+              <button onClick={function(){liberar(r);}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #333",background:"#161616",color:"#C8C8C8",fontSize:11.5,cursor:"pointer"}}>Liberar</button>
+            </span>
+          </div>);
+      })}
+    </div>
+  );
+}
 function PanelPines(p){
   var empleados=(p.empleados||[]).filter(function(e){return e.activo!==false;});
   var [localF,setLocalF]=useState("all");
@@ -32619,7 +32687,7 @@ export default function App() {
                 :vista==="fichajes_jornadas"
                 ?<PanelJornadas empleados={empleados} onSaveEmpleado={guardarEmpleado} onCambioJornada={function(c){guardarOfPauta("cambio_jornada",{id:"cjor_"+c.empleado_id+"_"+Date.now(),...c,fecha:fechaLocal(),usuario:cu.nombre});}}/>
                 :vista==="fichajes_pines"
-                ?<PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/>
+                ?<div><PanelPines empleados={empleados} usuarios={users} onSaveEmpleado={guardarEmpleado}/><PanelCelulares/></div>
                 :vista==="fichajes_cambios"
                 ?<PanelCambios fichajes={fichajes} empleados={empleados} cambiosJornada={cambiosJornada}/>
                 :vista==="fichajes_faltas"||vista==="fichajes_tardes"

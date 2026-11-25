@@ -14,7 +14,7 @@ var PAUTAS = [
   "No cobro de más ni pongo condiciones extra por usar el cupón.",
   "Mantengo mi información y mis promos al día (horarios, vigencia, condiciones).",
   "Respondo a administración dentro de las 48 horas ante un reclamo.",
-  "Aporto al menos un premio por mes para el sorteo de la comunidad (cuando los sorteos estén en marcha).",
+  "Aporto al menos un premio por mes para el sorteo de la comunidad.",
   "Entiendo que administración puede pausar mi tarjeta si no se cumplen estas pautas.",
 ];
 function hoyISO() { var h = new Date(); return h.getFullYear() + "-" + String(h.getMonth() + 1).padStart(2, "0") + "-" + String(h.getDate()).padStart(2, "0"); }
@@ -379,12 +379,13 @@ export default function PortalComercio() {
               ["🔑", "Tu portal propio", "editás tu información y tus promos cuando quieras."],
               ["🖼️", "Tu placa para redes", "una imagen con tu logo y tu promo, lista para publicar."],
               ["🖨️", "Tu cartel de mostrador", "una hoja con tu logo, tu promo y un QR: ves cuántos socios nuevos trajiste."],
+              ["🎁", "Sorteos con tu premio", "los socios suman tickets al sorteo que prefieran; vos aportás el premio y figurás como su dueño."],
               ["📲", "Te difundimos en nuestras redes", "El Bodegón, Kusama, Colantonio's y Grupo Nkt."]].map(function (b, i) {
               return <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.4 }}><span style={{ fontSize: 18, lineHeight: 1.2 }}>{b[0]}</span><span><b style={{ color: "#F0EDE8" }}>{b[1]}</b> <span style={{ color: "#B8B8B8" }}>· {b[2]}</span></span></div>;
             })}
           </div>
           <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#C1440E22", border: "1px solid #C1440E66", textAlign: "center", fontSize: 14, fontWeight: 800, color: "#FF9A66" }}>🎁 Los primeros 2 meses, sin cargo</div>
-          <div style={{ marginTop: 8, fontSize: 12.5, color: "#E8A07A", textAlign: "center", fontWeight: 700, lineHeight: 1.5 }}>Muy pronto: 🎁 sorteos con tickets, con premios de comercios como el tuyo · 🛵 cadetería integrada</div>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: "#E8A07A", textAlign: "center", fontWeight: 700, lineHeight: 1.5 }}>Muy pronto: 🛵 cadetería integrada</div>
           <div style={{ marginTop: 10, fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.45, textAlign: "center" }}>Antes de que terminen los 2 meses te informamos el valor de la cuota y decidís si seguís. Nada se publica sin que administración lo apruebe.</div>
           <div style={{ marginTop: 10, textAlign: "center", fontSize: 13, color: "#B8B8B8" }}>Completá los datos de tu comercio acá abajo 👇</div>
         </div>

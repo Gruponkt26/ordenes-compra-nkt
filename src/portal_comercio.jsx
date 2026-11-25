@@ -208,7 +208,7 @@ export default function PortalComercio() {
   return (
     <div style={fondo}><div style={caja}>
       <div style={{ textAlign: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 11, letterSpacing: 2, color: "#8C8C8C", textTransform: "uppercase" }}>Comunidad Grupo Nkt</div>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: "#8C8C8C", textTransform: "uppercase" }}>{modoAlta ? "Portal de comercios · Comunidad Grupo Nkt" : "Comunidad Grupo Nkt · tus lugares en Punta Alta"}</div>
         <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>{modoAlta ? "Sumá tu comercio" : "Portal de comercios"}</div>
         <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Completá los datos de tu comercio y tu promo para los socios. Administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
         {wspAdm && <a href={linkWsp(wspAdm, modoAlta ? "Hola! Recibí la invitación para sumar mi comercio a la comunidad de Grupo Nkt y tengo una consulta." : "Hola! Soy un comercio de la comunidad de Grupo Nkt" + (pub && pub.nombre ? " («" + pub.nombre + "»)" : "") + " y tengo una consulta.")} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 10, padding: "9px 16px", borderRadius: 999, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 13 }}>💬 Comunicarme con administración</a>}

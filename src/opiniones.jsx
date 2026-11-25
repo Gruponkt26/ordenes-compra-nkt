@@ -1080,13 +1080,18 @@ function QRParaImprimir() {
     items.push({ local: id, canal: "salon", zona: "barra", titulo: "Barra" });
     items.push({ local: id, canal: "delivery", zona: "", titulo: "Delivery" });
   });
+  // Un QR general de la comunidad, para redes, folletos y vidriera (no es de opinión: lleva a la página de la comunidad).
+  items.push({ local: "", canal: "", zona: "", titulo: "General", comunidad: true });
 
   var [imgs, setImgs] = useState({});
   var [copiado, setCopiado] = useState("");
+  var [conTickets, setConTickets] = useState(false);   // mencionar los tickets en el cartel (solo cuando el sorteo ya esté en marcha)
+  var [grande, setGrande] = useState(false);            // un cartel grande por hoja
+  function urlDe(it) { return it.comunidad ? URL_PUBLICA + "/grupo/" : urlOpinion(it.local, it.canal, it.zona); }
   useEffect(function () {
     items.forEach(function (it) {
-      var url = urlOpinion(it.local, it.canal, it.zona);
-      QRCode.toDataURL(url, { margin: 1, width: 360, errorCorrectionLevel: "M" }).then(function (d) {
+      var url = urlDe(it);
+      QRCode.toDataURL(url, { margin: 1, width: 480, errorCorrectionLevel: "M" }).then(function (d) {
         setImgs(function (p) { var n = { ...p }; n[url] = d; return n; });
       });
     });
@@ -1095,29 +1100,43 @@ function QRParaImprimir() {
   function copiar(url) {
     try { navigator.clipboard.writeText(url); setCopiado(url); setTimeout(function () { setCopiado(""); }, 2000); } catch (e) {}
   }
+  var ink = "#1D1A16", suave = "#6B6256";
 
   return (
     <div>
-      <style>{"@media print { body * { visibility: hidden; } .qr-imprimir, .qr-imprimir * { visibility: visible; } .qr-imprimir { position: absolute; left: 0; top: 0; width: 100%; } .qr-no-imprimir { display: none !important; } }"}</style>
+      <style>{"@media print { body * { visibility: hidden; } .qr-imprimir, .qr-imprimir * { visibility: visible; } .qr-imprimir { position: absolute; left: 0; top: 0; width: 100%; } .qr-no-imprimir { display: none !important; } .qr-imprimir div { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }"}</style>
       <div className="qr-no-imprimir" style={{ fontSize: 12, color: "#9A9A9A", lineHeight: 1.6, marginBottom: 12 }}>
-        Un QR por zona de cada local, para pegar en las mesas y en la barra. El de <b style={{ color: "#C8C8C8" }}>delivery</b> imprimilo para la bolsa o el ticket, o copiá el enlace y mandalo por WhatsApp junto al pedido.
-        <div style={{ marginTop: 8 }}>
+        Un QR por zona de cada local, para pegar en las mesas y en la barra. El de <b style={{ color: "#C8C8C8" }}>delivery</b> imprimilo para la bolsa o el ticket, o copiá el enlace y mandalo por WhatsApp junto al pedido. El <b style={{ color: "#C8C8C8" }}>general</b> lleva a la página de la comunidad (para redes, folletos y vidriera).
+        <div style={{ marginTop: 8, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
           <button onClick={function () { window.print(); }} style={{ padding: "8px 16px", borderRadius: 9, border: "none", background: "#C1440E", color: "#fff", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimir</button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "#C8C8C8" }}><input type="checkbox" checked={grande} onChange={function (e) { setGrande(e.target.checked); }} /> Cartel grande (uno por hoja)</label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "#C8C8C8" }}><input type="checkbox" checked={conTickets} onChange={function (e) { setConTickets(e.target.checked); }} /> Mencionar los tickets del sorteo</label>
         </div>
+        {conTickets && <div style={{ marginTop: 6, color: "#E5C467" }}>⚠️ Activalo solo cuando el sorteo ya esté aprobado y encendido: lo impreso no se puede corregir.</div>}
       </div>
-      <div className="qr-imprimir" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 12 }}>
+      <div className="qr-imprimir" style={{ display: "grid", gridTemplateColumns: grande ? "1fr" : "repeat(auto-fill,minmax(230px,1fr))", gap: grande ? 24 : 12, maxWidth: grande ? 520 : "none", margin: grande ? "0 auto" : 0 }}>
         {items.map(function (it) {
-          var l = localDe(it.local);
-          var url = urlOpinion(it.local, it.canal, it.zona);
+          var l = it.comunidad ? null : localDe(it.local);
+          var color = l ? l.color : "#C1440E";
+          var url = urlDe(it);
+          var z = grande ? 1.5 : 1;
           return (
-            <div key={url} style={{ background: "#fff", color: "#111", borderRadius: 14, padding: "14px 12px", textAlign: "center", breakInside: "avoid", border: "3px solid " + l.color }}>
-              {LOGOS[it.local]
-                ? <div style={{ marginBottom: 6 }}><LogoLocal id={it.local} alto={it.local === "l1" ? 22 : 42} chico /></div>
-                : <div style={{ fontSize: 15, fontWeight: 800, color: l.color }}>{l.emoji} {l.nombre}</div>}
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#444", marginBottom: 6 }}>{LOGOS[it.local] ? l.nombre + " · " : ""}{it.titulo}</div>
-              {imgs[url] ? <img src={imgs[url]} alt={"QR " + l.nombre + " " + it.titulo} style={{ width: "100%", maxWidth: 180, display: "block", margin: "0 auto" }} /> : <div style={{ height: 150, color: "#888", fontSize: 12 }}>Generando…</div>}
-              <div style={{ fontSize: 13, fontWeight: 800, marginTop: 6 }}>¿Cómo te atendimos?</div>
-              <div style={{ fontSize: 11, color: "#555" }}>Escaneá y opiná en 20 segundos</div>
+            <div key={url} style={{ background: "#F4ECDC", color: ink, borderRadius: 18 * z, padding: (16 * z) + "px " + (14 * z) + "px", textAlign: "center", breakInside: "avoid", pageBreakAfter: grande ? "always" : "auto", border: (4 * z) + "px solid " + color, fontFamily: "'Jost','Futura','Century Gothic','Inter',sans-serif" }}>
+              <div style={{ minHeight: 44 * z, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 * z }}>
+                {it.comunidad
+                  ? <div style={{ fontSize: 17 * z, fontWeight: 800, letterSpacing: 1 }}>COMUNIDAD <span style={{ color: color }}>GRUPO NKT</span></div>
+                  : LOGOS[it.local]
+                    ? <LogoLocal id={it.local} alto={(it.local === "l1" ? 22 : 42) * z} chico />
+                    : <div style={{ fontSize: 17 * z, fontWeight: 800, color: color }}>{l.emoji} {l.nombre}</div>}
+              </div>
+              <div style={{ fontSize: 12 * z, fontWeight: 700, color: suave, marginBottom: 8 * z }}>{it.comunidad ? "Tus lugares en Punta Alta" : (LOGOS[it.local] ? l.nombre + " · " : "") + it.titulo}</div>
+              <div style={{ background: "#fff", borderRadius: 14 * z, padding: 8 * z, display: "inline-block", border: "1px solid #E3DCCD" }}>
+                {imgs[url] ? <img src={imgs[url]} alt={"QR " + (l ? l.nombre : "comunidad") + " " + it.titulo} style={{ width: 170 * z, height: 170 * z, display: "block" }} /> : <div style={{ width: 170 * z, height: 170 * z, color: "#888", fontSize: 12 }}>Generando…</div>}
+              </div>
+              <div style={{ fontSize: 20 * z, fontWeight: 800, marginTop: 10 * z, lineHeight: 1.15 }}>{it.comunidad ? "Sumate a la comunidad" : "¿Cómo te fue?"}</div>
+              <div style={{ fontSize: 12.5 * z, color: suave, marginTop: 2 * z }}>{it.comunidad ? "Tu cupón de beneficios y las novedades, en tu celular" : "Escaneá y opiná en 20 segundos"}</div>
+              {conTickets && !it.comunidad && <div style={{ fontSize: 13 * z, fontWeight: 800, color: color, marginTop: 6 * z }}>🎟️ Y jugá para ganar tickets del sorteo</div>}
+              {!it.comunidad && <div style={{ fontSize: 10.5 * z, color: suave, marginTop: 8 * z, letterSpacing: 0.5 }}>Comunidad Grupo Nkt · tus lugares en Punta Alta</div>}
               <button className="qr-no-imprimir" onClick={function () { copiar(url); }} style={{ marginTop: 8, padding: "5px 10px", borderRadius: 7, border: "1px solid #CCC", background: "#F4F4F4", color: "#333", fontSize: 11, cursor: "pointer" }}>
                 {copiado === url ? "✓ Copiado" : "Copiar enlace"}
               </button>

@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 import { descargarPlaca } from "./placa_comercio.js";
 import { descargarCartel } from "./cartel_comercio.js";
 import { SURL, SH } from "./comun.js";
-import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, cargarSociosPorComercio, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, otorgarJugada, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
+import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, cargarSociosPorComercio, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, otorgarJugada, cargarOfertasPremio, cargarPremios, cargarSorteos, premiosDelMes, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -14,6 +14,7 @@ var PAUTAS = [
   "No cobro de más ni pongo condiciones extra por usar el cupón.",
   "Mantengo mi información y mis promos al día (horarios, vigencia, condiciones).",
   "Respondo a administración dentro de las 48 horas ante un reclamo.",
+  "Aporto al menos un premio por mes para el sorteo de la comunidad (cuando los sorteos estén en marcha).",
   "Entiendo que administración puede pausar mi tarjeta si no se cumplen estas pautas.",
 ];
 function hoyISO() { var h = new Date(); return h.getFullYear() + "-" + String(h.getMonth() + 1).padStart(2, "0") + "-" + String(h.getDate()).padStart(2, "0"); }
@@ -50,10 +51,31 @@ export default function PortalComercio() {
   var [msgC, setMsgC] = useState("");
   var [ocupadoC, setOcupadoC] = useState(false);
   var [montoC, setMontoC] = useState("");
+  var [ofertas, setOfertas] = useState([]);       // los premios que este comercio ofreció para el sorteo
+  var [premiosTodos, setPremiosTodos] = useState([]);
+  var [sorteosHechos, setSorteosHechos] = useState([]);
+  var [ticketsOn, setTicketsOn] = useState(false);
+  var [of, setOf] = useState({ premio: "", cond: "", fecha: "" });
+  var [enviandoOf, setEnviandoOf] = useState(false);
+  var [msgOf, setMsgOf] = useState("");
   var [sociosQR, setSociosQR] = useState({ total: 0, mes: 0 });   // socios que se sumaron escaneando el QR de este comercio
   var [haciendoCartel, setHaciendoCartel] = useState(false);
   var [haciendoPlaca, setHaciendoPlaca] = useState("");   // "post" | "historia" mientras se arma la imagen
   var [msgPlaca, setMsgPlaca] = useState("");
+  // Ofrecer un premio para el sorteo: queda pendiente hasta que administración lo aprueba (entonces se crea como un sorteo de este comercio).
+  function ofrecerPremio() {
+    var prem = of.premio.trim();
+    if (prem.length < 3) { setMsgOf("Escribí cuál es el premio."); return; }
+    if (ofertas.filter(function (x) { return x.comercio_id === id && x.estado === "pendiente"; }).length >= 5) { setMsgOf("Ya tenés 5 premios esperando aprobación. Esperá a que administración los revise."); return; }
+    setEnviandoOf(true); setMsgOf("");
+    var oid = "ofpre_" + id + "_" + Date.now(), reg = { comercio_id: id, comercio_nombre: (pub && pub.nombre) || "", premio: prem.slice(0, 120), cond: of.cond.trim().slice(0, 300), fecha_sugerida: of.fecha || "", estado: "pendiente", enviado_at: new Date().toISOString() };
+    guardarFila(oid, "grupo_oferta_premio", reg).then(function (ok) {
+      setEnviandoOf(false);
+      if (!ok) { setMsgOf("No se pudo enviar. Probá de nuevo."); return; }
+      setOfertas(function (l) { return [{ id: oid, ...reg }].concat(l); }); setOf({ premio: "", cond: "", fecha: "" });
+      setMsgOf("✓ Enviado. Administración lo revisa y, si lo aprueba, aparece como un sorteo de tu comercio.");
+    });
+  }
   function bajarCartel() {
     setHaciendoCartel(true); setMsgPlaca("");
     descargarCartel(pub, id).then(function () { setHaciendoCartel(false); setMsgPlaca("✓ Listo, se bajó el cartel."); setTimeout(function () { setMsgPlaca(""); }, 5000); },
@@ -93,6 +115,8 @@ export default function PortalComercio() {
       if (!base.color) base.color = "#1A6B8A";
       cargarNovedadesComercios().then(function (l) { setNovs(l.filter(function (n) { return n.comercio_id === id; })); });
       cargarSociosPorComercio().then(function (o) { setSociosQR(o[id] || { total: 0, mes: 0 }); });
+      cargarOfertasPremio().then(function (l) { setOfertas(l); });
+      cargarPremios(true).then(setPremiosTodos); cargarSorteos().then(setSorteosHechos); cargarConfigGrupo().then(function (cf) { setTicketsOn(!!cf.ticketsActivo); });
       cargarCanjesComercios().then(function (l) { setCanjes(l.filter(function (x) { return x.comercio_id === id; })); });
       setPub(p); setCambio(c); setForm(base); setAcepta(!!p.pautas_ok_at || !!(c && c.datos && c.datos.pautas_ok)); setEstado("ok");
     })();
@@ -242,7 +266,7 @@ export default function PortalComercio() {
       {cambio && cambio.estado === "aprobado" && !msg && <div style={{ ...tarj, borderColor: "#3A7D4488", fontSize: 13.5, color: "#9FE0AA" }}>✓ Tu último cambio fue aprobado y ya está publicado.</div>}
 
       {!modoAlta && <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[["tarjeta", "🏪 Mi tarjeta"], ["canje", "🎟️ Canjear cupón"], ["numeros", "📊 Mis números"]].map(function (t) { var on = vista === t[0]; return <button key={t[0]} onClick={function () { setVista(t[0]); }} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: "1px solid " + (on ? "#1A6B8A" : "#2A2A2A"), background: on ? "#1A6B8A33" : "#111", color: on ? "#F0EDE8" : "#9A9A9A", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>; })}
+        {[["tarjeta", "🏪 Mi tarjeta"], ["canje", "🎟️ Canjear cupón"], ["numeros", "📊 Mis números"], ["premios", "🎁 Sorteos"]].map(function (t) { var on = vista === t[0]; return <button key={t[0]} onClick={function () { setVista(t[0]); }} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: "1px solid " + (on ? "#1A6B8A" : "#2A2A2A"), background: on ? "#1A6B8A33" : "#111", color: on ? "#F0EDE8" : "#9A9A9A", fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t[1]}</button>; })}
       </div>}
 
       {vista === "canje" && !modoAlta && (
@@ -276,6 +300,46 @@ export default function PortalComercio() {
           })()}
         </div>
       )}
+
+      {vista === "premios" && !modoAlta && (function () {
+        var mias = ofertas.filter(function (x) { return x.comercio_id === id; });
+        var nMes = premiosDelMes(id, ofertas, premiosTodos);
+        return (
+          <div>
+            <div style={{ ...tarj, borderColor: nMes > 0 ? "#3A7D4488" : "#D4A01788", background: nMes > 0 ? "#0F1A10" : "#16120A" }}>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>🎁 Tu compromiso: un premio por mes</div>
+              <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.5, marginTop: 4 }}>Parte de ser comercio amigo es aportar <b style={{ color: "#F0EDE8" }}>al menos un premio por mes</b> para el sorteo de la comunidad. Los socios ganan tickets al opinar y al usar su cupón, y los suman al sorteo que prefieran: es una vitrina más para tu comercio.</div>
+              <div style={{ marginTop: 8, fontSize: 13.5, fontWeight: 800, color: nMes > 0 ? "#9FE0AA" : "#E5C467" }}>{nMes > 0 ? "✓ Este mes ya ofreciste " + nMes + " premio" + (nMes === 1 ? "" : "s") + "." : "⚠️ Este mes todavía no ofreciste ningún premio."}</div>
+              {!ticketsOn && <div style={{ fontSize: 11.5, color: "#8C8C8C", marginTop: 6, lineHeight: 1.45 }}>Los sorteos todavía no arrancaron: lo que ofrezcas queda listo para cuando la comunidad los active.</div>}
+            </div>
+            <div style={tarj}>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Ofrecer un premio</div>
+              <label style={lbl}>Premio *</label>
+              <input value={of.premio} onChange={function (e) { var v = e.target.value; setOf(function (x) { return { ...x, premio: v }; }); }} placeholder="Ej: un desayuno para dos" style={inp} />
+              <label style={lbl}>Condiciones (opcional)</label>
+              <textarea value={of.cond} onChange={function (e) { var v = e.target.value; setOf(function (x) { return { ...x, cond: v }; }); }} rows={2} placeholder="Ej: válido de lunes a jueves, hasta 30 días después del sorteo" style={{ ...inp, resize: "vertical" }} />
+              <label style={lbl}>Fecha sugerida para el sorteo (opcional)</label>
+              <input type="date" value={of.fecha} onChange={function (e) { var v = e.target.value; setOf(function (x) { return { ...x, fecha: v }; }); }} style={inp} />
+              {msgOf && <div style={{ fontSize: 13, color: msgOf.charAt(0) === "✓" ? "#9FE0AA" : "#F0A090", fontWeight: 700, margin: "8px 0" }}>{msgOf}</div>}
+              <button onClick={ofrecerPremio} disabled={enviandoOf} style={{ width: "100%", marginTop: 10, padding: 13, borderRadius: 12, border: "none", background: enviandoOf ? "#2A2A2A" : "#1A6B8A", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>{enviandoOf ? "Enviando…" : "Enviar para aprobación"}</button>
+              <div style={{ fontSize: 11, color: "#7E7E7E", marginTop: 8, lineHeight: 1.45 }}>Administración lo revisa antes de mostrarlo a los socios. El sorteo lo hace administración, así queda parejo y registrado; vos solo ponés el premio.</div>
+            </div>
+            <div style={tarj}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>Mis premios</div>
+              {mias.length === 0 && <div style={{ fontSize: 13, color: "#7E7E7E" }}>Todavía no ofreciste ninguno.</div>}
+              {mias.map(function (x) {
+                var sort = x.premio_id ? sorteosHechos.find(function (s) { return s.premio_id === x.premio_id; }) : null;
+                return (
+                  <div key={x.id} style={{ borderTop: "1px solid #1A1A1A", padding: "8px 0", fontSize: 13 }}>
+                    <b>{x.premio}</b>
+                    <div style={{ fontSize: 11.5, color: x.estado === "aprobado" ? "#8FD19A" : x.estado === "rechazado" ? "#E0714A" : "#E5C467" }}>{x.estado === "aprobado" ? "✓ Aprobado: ya figura como sorteo de tu comercio" : x.estado === "rechazado" ? "✕ No se aprobó" + (x.motivo ? ": " + x.motivo : "") : "⏳ Esperando aprobación"}{x.fecha_sugerida ? " · sorteo sugerido el " + fechaCorta(x.fecha_sugerida) : ""}</div>
+                    {sort && <div style={{ fontSize: 11.5, color: "#9FE0AA" }}>🏆 Sorteo realizado: ganó {sort.ganador_publico}</div>}
+                  </div>);
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {vista === "numeros" && !modoAlta && (function () {
         var r30 = resumenCanjes(canjes, id, 30), rt = resumenCanjes(canjes, id, 0);

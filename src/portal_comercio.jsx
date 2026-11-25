@@ -293,6 +293,28 @@ export default function PortalComercio() {
         );
       })()}
 
+      {modoAlta && !(altaRow && (altaRow.estado === "pendiente" || altaRow.estado === "aprobada")) && (
+        <div style={{ ...tarj, borderColor: "#C1440E88", background: "linear-gradient(160deg,#1C120C,#111)" }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#F0EDE8" }}>Qué ganás al sumarte</div>
+          <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.45, marginTop: 3 }}>Una vitrina entre vecinos: los socios de la comunidad llegan a tu puerta con un beneficio en la mano.</div>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+            {[["🏪", "Tu tarjeta en la página", "con tu logo, dirección, horarios, WhatsApp y tu promo."],
+              ["🎟️", "Cupones que llegan solos", "el socio te muestra su código y, cuando lo usa, recibe el siguiente."],
+              ["📣", "Una novedad por semana", "para contar un plato nuevo, un evento o una oferta."],
+              ["📊", "Tus números", "cuántos cupones se canjearon y cuántos socios vuelven."],
+              ["🔑", "Tu portal propio", "editás tu información y tus promos cuando quieras."],
+              ["🖼️", "Tu placa para redes", "una imagen con tu logo y tu promo, lista para publicar."],
+              ["📲", "Te difundimos en nuestras redes", "El Bodegón, Kusama, Colantonio's y Grupo Nkt."]].map(function (b, i) {
+              return <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.4 }}><span style={{ fontSize: 18, lineHeight: 1.2 }}>{b[0]}</span><span><b style={{ color: "#F0EDE8" }}>{b[1]}</b> <span style={{ color: "#B8B8B8" }}>· {b[2]}</span></span></div>;
+            })}
+          </div>
+          <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: "#C1440E22", border: "1px solid #C1440E66", textAlign: "center", fontSize: 14, fontWeight: 800, color: "#FF9A66" }}>🎁 Los primeros 2 meses, sin cargo</div>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: "#E8A07A", textAlign: "center", fontWeight: 700 }}>🛵 Muy pronto: cadetería integrada</div>
+          <div style={{ marginTop: 10, fontSize: 11.5, color: "#8C8C8C", lineHeight: 1.45, textAlign: "center" }}>Antes de que terminen los 2 meses te informamos el valor de la cuota y decidís si seguís. Nada se publica sin que administración lo apruebe.</div>
+          <div style={{ marginTop: 10, textAlign: "center", fontSize: 13, color: "#B8B8B8" }}>Completá los datos de tu comercio acá abajo 👇</div>
+        </div>
+      )}
+
       {vista === "tarjeta" && !(modoAlta && altaRow && (altaRow.estado === "pendiente" || altaRow.estado === "aprobada")) && (
       <div>
       <div style={tarj}>

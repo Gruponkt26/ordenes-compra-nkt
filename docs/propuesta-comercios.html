@@ -12,10 +12,10 @@ h1{font-size:30px;line-height:1.15;margin:6px 0 8px}
 h2{font-size:17px;margin:26px 0 8px;color:var(--ac);text-transform:uppercase;letter-spacing:1px}
 ul{padding-left:20px;margin:6px 0}li{margin:6px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:10px 0}
-.caja{border:1px solid var(--ln);border-radius:12px;padding:13px 15px;background:#fcfaf5}
+.caja{break-inside:avoid;border:1px solid var(--ln);border-radius:12px;padding:13px 15px;background:#fcfaf5}
 .caja b{display:block;margin-bottom:3px}
 .pasos{counter-reset:p;list-style:none;padding:0}
-.pasos li{counter-increment:p;position:relative;padding-left:40px;margin:11px 0}
+.pasos li{break-inside:avoid;counter-increment:p;position:relative;padding-left:40px;margin:11px 0}
 .pasos li:before{content:counter(p);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--ac);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center}
 .precio{border:2px solid var(--ac);border-radius:14px;padding:16px 18px;margin:12px 0;text-align:center;background:#fff7f2}
 .precio .monto{font-size:32px;font-weight:800;color:var(--ac)}
@@ -23,7 +23,7 @@ ul{padding-left:20px;margin:6px 0}li{margin:6px 0}
 
 .pie{margin-top:26px;padding-top:14px;border-top:1px solid var(--ln);color:var(--mu);font-size:13px}
 
-@media print{body{background:#fff}.hoja{box-shadow:none;margin:0;padding:10px 0}}
+@media print{body{font-size:13.5px}h2{margin:16px 0 6px}h1{font-size:26px}.lema{margin-bottom:12px}.caja{padding:10px 12px}.pasos li{margin:7px 0}.precio{margin:8px 0;padding:12px}body{background:#fff}.hoja{box-shadow:none;margin:0;padding:10px 0}}
 @media (max-width:600px){.hoja{padding:24px 18px;margin:0;border-radius:0}h1{font-size:25px}}
 </style></head><body>
 <div class="hoja">
@@ -42,13 +42,15 @@ ul{padding-left:20px;margin:6px 0}li{margin:6px 0}
   <div class="caja"><b>📣 Una novedad por semana</b>Un plato nuevo, un evento, una oferta. Aparece en la página de la comunidad, después de las del Grupo.</div>
   <div class="caja"><b>📊 Tus números</b>Cuántos cupones se canjearon, cuántos socios distintos y cuántos volvieron, para que veas qué te trae.</div>
   <div class="caja"><b>🔑 Tu portal propio</b>Editás tu información y tus promos cuando quieras. Administración las revisa y las publica.</div>
+  <div class="caja"><b>📣 Difusión en nuestras redes</b>Presentamos tu comercio en las cuentas de El Bodegón, Kusama, Colantonio's y Grupo Nkt, con tu logo y tu promo.</div>
+  <div class="caja"><b>🖼️ Tu placa lista para redes</b>Bajás desde tu portal una imagen con tu logo y tu promo de hoy, lista para publicar en tus redes y en tus historias.</div>
   <div class="caja"><b>💬 Atención directa</b>Un botón para hablar con administración por WhatsApp ante cualquier duda.</div>
 </div>
 
 <h2>Próximamente</h2>
 <div class="caja" style="border-color:var(--ac);background:#fff7f2"><b>🛵 Cadetería integrada</b>Muy pronto, la comunidad suma un servicio de cadetería integrado, de la calidad de Grupo Nkt. Los comercios que ya estén en la red serán los primeros en enterarse.</div>
 
-<h2>Cómo funciona</h2>
+<h2 class="pasos-titulo">Cómo funciona</h2>
 <ol class="pasos">
   <li><b>Te anotás.</b> Completás un formulario con los datos de tu comercio, tu logo y tu promo con fecha de fin.</li>
   <li><b>Lo revisamos.</b> Administración aprueba tu tarjeta. Nada se publica sin aprobación.</li>
@@ -62,6 +64,7 @@ ul{padding-left:20px;margin:6px 0}li{margin:6px 0}
   <li>Atender al socio igual que a cualquier otro cliente, sin cobrar de más ni poner condiciones extra por usar el cupón.</li>
   <li>Mantener tu información y tus promos al día (horarios, vigencia, condiciones).</li>
   <li>Responder a administración dentro de las 48 horas ante un reclamo.</li>
+  <li>Si podés, compartir tu placa en tus redes etiquetando a Grupo Nkt. No es obligatorio, pero ayuda mucho a que la comunidad crezca, y con ella tus clientes.</li>
 </ul>
 <p style="font-size:13.5px;color:var(--mu)">Si no se cumplen estas pautas, administración puede pausar tu tarjeta. Los socios pueden avisarnos si tuvieron un problema, y lo revisamos con vos.</p>
 

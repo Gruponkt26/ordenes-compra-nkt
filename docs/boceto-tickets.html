@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boceto · tickets por opinar</title>
+<style>
+:root{--bg:#0d0d0d;--tx:#f0ede8;--mu:#9a9a9a;--pg:#e9e4dc;--or:#e8602a}
+@media (prefers-color-scheme: dark){:root{--pg:#1b1b1b}}
+*{box-sizing:border-box}body{margin:0;background:var(--pg);color:#222;font:15px/1.45 'Jost','Futura','Century Gothic',system-ui,sans-serif}
+@media (prefers-color-scheme: dark){body{color:#ddd}}
+.wrap{max-width:960px;margin:0 auto;padding:22px 14px 60px}
+h1{font-size:23px;margin:0 0 4px}.sub{color:#777;margin:0 0 18px;font-size:14px}
+.cols{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.tel{width:390px;max-width:100%;min-height:640px;background:var(--bg);color:var(--tx);border-radius:28px;padding:22px 18px 28px;box-shadow:0 8px 30px #0006;border:1px solid #2a2a2a;position:relative;overflow:hidden}
+.notas{flex:1 1 300px;font-size:14px;line-height:1.55}
+.notas h3{margin:18px 0 6px;font-size:15px}.notas h3:first-child{margin-top:0}
+.notas ul{padding-left:20px;margin:6px 0}.notas li{margin:5px 0}
+.warn{background:#fff3b0;color:#4a3d00;border-radius:10px;padding:9px 12px;font-size:13px;margin-top:10px}
+@media (prefers-color-scheme: dark){.warn{background:#3a3100;color:#f3e08a}}
+.pill{display:inline-block;background:#e8602a22;color:var(--or);border-radius:999px;padding:2px 10px;font-weight:800;font-size:12px}
+/* pantalla del teléfono */
+.logo{width:72px;height:72px;border-radius:18px;background:#fff;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;color:#000;letter-spacing:1px;line-height:1}
+.ctr{text-align:center}
+.gr{font-size:27px;font-weight:800;margin:10px 0 4px}
+.mu{color:var(--mu);font-size:14px}
+.card{background:#141414;border:1px solid #2a2a2a;border-radius:18px;padding:18px 16px;margin-top:16px}
+.titulo{font-size:19px;font-weight:800}
+.barra{position:relative;height:46px;border-radius:23px;background:#222;border:2px solid #333;margin:18px 0 6px;overflow:hidden}
+.zona{position:absolute;top:0;bottom:0}
+.z1{left:0;width:60%;background:#2f2f2f}.z2{left:60%;width:30%;background:#5a2a14}.z3{left:90%;width:10%;background:#c1440e}
+.puntero{position:absolute;top:-2px;bottom:-2px;width:8px;border-radius:4px;background:#fff;box-shadow:0 0 12px #fff}
+.rot{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);padding:0 4px}
+.btn{display:block;width:100%;border:none;border-radius:14px;padding:15px;font:inherit;font-size:17px;font-weight:800;margin-top:14px;cursor:pointer}
+.bn{background:var(--or);color:#fff}.bg{background:#1f1f1f;color:#ddd;border:1px solid #333;font-size:14px;padding:11px}
+.tk{font-size:64px;font-weight:900;color:var(--or);line-height:1;margin:6px 0}
+.tickets{display:flex;gap:7px;justify-content:center;margin:12px 0;flex-wrap:wrap}
+.t{width:54px;height:38px;border-radius:8px;background:linear-gradient(135deg,#e8602a,#c1440e);color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:12px;transform:scale(0);animation:pop .35s forwards}
+@keyframes pop{to{transform:scale(1)}}
+.tot{background:#0f2415;border:1px solid #3a7d4466;border-radius:14px;padding:11px;margin-top:14px;color:#9fe0aa;font-weight:800;text-align:center}
+.paso{position:absolute;top:10px;right:14px;font-size:11px;color:#666}
+.premio{margin-top:14px;background:#141414;border:1px dashed #444;border-radius:14px;padding:10px 12px;font-size:13px;color:#cfcfcf}
+</style></head><body><div class="wrap">
+<h1>Boceto · tickets por dejar una opinión</h1>
+<p class="sub">Probá la pantalla del celular (tocá los botones). Al lado, las reglas que propongo. Es un borrador: todavía no está en la app.</p>
+<div class="cols">
+  <div class="tel" id="tel"></div>
+  <div class="notas">
+    <h3>Cómo funciona</h3>
+    <ul>
+      <li>El socio escanea el QR del local y deja su opinión, como hoy.</li>
+      <li>En el «¡Gracias!» aparece una barra que se mueve. Toca <b>frenar</b>.</li>
+      <li>Según dónde frena, gana <b>1, 2 o 5 tickets</b>. Siempre gana al menos 1.</li>
+      <li>Los tickets se suman a su total y entran al sorteo del mes.</li>
+    </ul>
+    <h3>Reparto sugerido <span class="pill">se puede cambiar</span></h3>
+    <ul>
+      <li><b>60 %</b> de las veces: 1 ticket</li>
+      <li><b>30 %</b>: 2 tickets</li>
+      <li><b>10 %</b>: 5 tickets</li>
+      <li>Promedio: <b>1,7 tickets</b> por opinión. Así nadie junta demasiados.</li>
+    </ul>
+    <div class="warn">⚠️ La barra es <b>azar</b>: dónde frena no depende de la habilidad. Mejor que se vea claro, sin trampas.</div>
+    <h3>Para que no se abuse</h3>
+    <ul>
+      <li>Solo socios identificados (con su WhatsApp de la comunidad).</li>
+      <li><b>Una opinión premiada por local y por día</b>, por persona y por celular.</li>
+      <li>Mejor aún: atada a una visita real, por ejemplo un cupón canjeado ese día.</li>
+      <li>El ticket se da por opinar, <b>sea buena o mala</b>. No se premia la nota.</li>
+    </ul>
+    <h3>Dónde se guarda</h3>
+    <ul>
+      <li>Una fila por premio: socio, fecha, local, cantidad. El total del socio es la suma.</li>
+      <li>El sorteo se hace desde administración, con un botón, y el ganador sale en Novedades.</li>
+      <li>Los premios los ponen los comercios amigos: es visibilidad para ellos.</li>
+    </ul>
+    <h3>Lo que falta decidir</h3>
+    <ul>
+      <li><b>Lo legal:</b> un «rasca y gana» y un sorteo pueden necesitar autorización de la lotería provincial. Consultarlo con el abogado antes de lanzarlo.</li>
+      <li>Qué premios y cuántos por mes.</li>
+      <li>Hasta cuándo vale cada ticket (¿se reinician cada mes?).</li>
+      <li>Si el socio ve los tickets en su pantalla de la comunidad o solo después de opinar.</li>
+    </ul>
+  </div>
+</div>
+</div>
+<script>
+var tel=document.getElementById('tel'),total=7,pos=0,dir=1,timer=null,resultado=0;
+function pantalla(n){
+  clearInterval(timer);
+  if(n===1){
+    tel.innerHTML='<div class="paso">1 de 3</div><div class="ctr"><div class="logo">GRUPO<br>NKT</div><div class="gr">¡Gracias!</div><div class="mu">Tu opinión nos ayuda a mejorar.</div></div>'+
+    '<div class="card ctr"><div style="font-size:42px">🎟️</div><div class="titulo">¡Ganaste una jugada!</div><div class="mu" style="margin-top:4px">Frená la barra y sumá tickets para el sorteo del mes.</div><button class="btn bn" onclick="pantalla(2)">Jugar</button></div>'+
+    '<div class="premio">🎁 Este mes se sortea: <b>una cena para dos en El Bodegón</b> y otros premios de los comercios amigos. <i>(ejemplo)</i></div>';
+  }
+  if(n===2){
+    tel.innerHTML='<div class="paso">2 de 3</div><div class="ctr"><div class="titulo" style="margin-top:20px">¡Frená la barra!</div><div class="mu">Cuanto más a la derecha, más tickets.</div></div>'+
+    '<div class="card"><div class="barra"><div class="zona z1"></div><div class="zona z2"></div><div class="zona z3"></div><div class="puntero" id="pt"></div></div>'+
+    '<div class="rot"><span>1 ticket</span><span>2 tickets</span><span>5 tickets</span></div>'+
+    '<button class="btn bn" onclick="frenar()">¡Frenar!</button></div>';
+    pos=0;dir=1;timer=setInterval(function(){pos+=dir*3.1;if(pos>=100){pos=100;dir=-1}if(pos<=0){pos=0;dir=1}document.getElementById('pt').style.left='calc('+pos+'% - '+(pos/100*8)+'px)'},16);
+  }
+  if(n===3){
+    var tks='';for(var i=0;i<resultado;i++)tks+='<div class="t" style="animation-delay:'+(i*0.12)+'s">🎟️</div>';
+    tel.innerHTML='<div class="paso">3 de 3</div><div class="ctr"><div class="gr" style="margin-top:18px">'+(resultado>=5?'¡Premio mayor!':resultado===2?'¡Muy bien!':'¡Sumaste!')+'</div><div class="tk">+'+resultado+'</div><div class="mu">ticket'+(resultado>1?'s':'')+' para el sorteo</div><div class="tickets">'+tks+'</div></div>'+
+    '<div class="tot">Tus tickets este mes: '+(total)+'</div>'+
+    '<div class="premio">Volvé a opinar en otro local (o mañana en el mismo) y seguí sumando.</div>'+
+    '<button class="btn bg" onclick="total=7;pantalla(1)">↺ Probar de nuevo</button>';
+  }
+}
+function frenar(){
+  clearInterval(timer);
+  // el resultado es AZAR (60% / 30% / 10%); la barra solo se acomoda para que coincida con lo sorteado
+  var r=Math.random();resultado=r<0.6?1:r<0.9?2:5;
+  var destino=resultado===1?(5+Math.random()*50):resultado===2?(62+Math.random()*25):(92+Math.random()*6);
+  document.getElementById('pt').style.transition='left .5s ease-out';document.getElementById('pt').style.left='calc('+destino+'% - '+(destino/100*8)+'px)';
+  total+=resultado;
+  setTimeout(function(){pantalla(3)},900);
+}
+pantalla(1);
+</script></body></html>

@@ -2,7 +2,7 @@
 // Diseño y reglas: docs/boceto-tickets.html. Solo aparece si administración encendió los tickets (Comunidad → Datos → Tickets del sorteo).
 // El resultado es AZAR (60 % / 30 % / 10 %); la barra solo se acomoda a lo que ya salió. Una jugada por socio, por local y por día.
 import React, { useState, useEffect, useRef } from "react";
-import { guardarFila, leerPauta, cargarTicketsSocio, mesClave } from "./grupo.jsx";
+import { guardarFila, leerPauta, cargarTicketsSocio, mesClave, otorgarJugada } from "./grupo.jsx";
 
 // ─── sonido de nave espacial (se genera en el momento, sin archivos) ───
 var ac = null, bus = null, zum = null;
@@ -71,7 +71,9 @@ export default function JuegoTickets(props) {
   var wsp = props.wsp, localId = props.localId, prueba = !!props.prueba;
   // Regalo de bienvenida: una sola vez por WhatsApp (y por celular), siempre 1 ticket. Se muestra con la misma animación, pero NO es azar.
   var bienvenida = !!props.bienvenida;
-  var idTicket = bienvenida ? "tk_" + wsp + "_bienvenida" : "tk_" + wsp + "_" + localId + "_" + diaClave();
+  // Cada juego sale de una «jugada»: al opinar se crea en el momento (una por local y por día); las de canje (o las que quedaron sin jugar) se reclaman desde la pantalla.
+  var jugadaId = bienvenida ? null : (props.jugada ? props.jugada.id : "jug_" + wsp + "_opinion_" + localId + "_" + diaClave());
+  var idTicket = bienvenida ? "tk_" + wsp + "_bienvenida" : "tk_" + jugadaId.slice(4);
   var [fase, setFase] = useState("cargando");   // cargando | ya | slide | barra | guardando | error | resultado
   var [n, setN] = useState(0);
   var [total, setTotal] = useState(null);
@@ -79,12 +81,19 @@ export default function JuegoTickets(props) {
   var silRef = useRef(false);
   var mangoRef = useRef(null), slideRef = useRef(null), relRef = useRef(null), ptRef = useRef(null), rafRef = useRef(0);
   var guardadoRef = useRef(null);
+  var jugadaRef = useRef(null);
 
   useEffect(function () {
     if (prueba) { setFase("slide"); return; }
     // En este celular ya se entregó un regalo de bienvenida a otro WhatsApp: no se entrega otro.
     if (bienvenida) { try { var w0 = localStorage.getItem("nkt_bienvenida"); if (w0 && w0 !== wsp) { setFase("ya"); return; } } catch (e) {} }
-    leerPauta(idTicket).then(function (f) { setFase(f ? "ya" : "slide"); cargarTicketsSocio(wsp).then(setTotal); });
+    if (bienvenida) { leerPauta(idTicket).then(function (f) { setFase(f ? "ya" : "slide"); cargarTicketsSocio(wsp).then(setTotal); }); return; }
+    leerPauta(jugadaId).then(function (j) {
+      if (j && j.usada) { setFase("ya"); cargarTicketsSocio(wsp).then(setTotal); return; }
+      jugadaRef.current = j || { wsp: wsp, origen: "opinion", ref: localId + "_" + diaClave(), local: localId };
+      if (!j) otorgarJugada(wsp, "opinion", localId + "_" + diaClave(), { local: localId }).then(function () { setFase("slide"); }); else setFase("slide");
+      cargarTicketsSocio(wsp).then(setTotal);
+    });
     return function () { cancelAnimationFrame(rafRef.current); zumbidoOff(); };
   }, []);
 
@@ -94,9 +103,14 @@ export default function JuegoTickets(props) {
 
   function guardar(cant) {
     if (prueba) return Promise.resolve(true);
-    var fila = { wsp: wsp, n: cant, mes: mesClave(), local: localId || "", fecha: new Date().toISOString(), origen: bienvenida ? "bienvenida" : "opinion", opinion_id: props.opinionId || "" };
+    var fila = { wsp: wsp, n: cant, mes: mesClave(), local: localId || (props.jugada && props.jugada.local) || "", fecha: new Date().toISOString(), origen: bienvenida ? "bienvenida" : (props.jugada ? props.jugada.origen : "opinion"), opinion_id: props.opinionId || "" };
     if (bienvenida) { try { fila.disp = localStorage.getItem("nkt_dispositivo") || ""; } catch (e) {} }
-    return guardarFila(idTicket, "grupo_ticket", fila).then(function (ok) { if (ok && bienvenida) { try { localStorage.setItem("nkt_bienvenida", wsp); } catch (e) {} } return ok; });
+    return guardarFila(idTicket, "grupo_ticket", fila).then(function (ok) {
+      if (ok && bienvenida) { try { localStorage.setItem("nkt_bienvenida", wsp); } catch (e) {} }
+      // La jugada queda usada solo cuando el ticket ya está guardado.
+      if (ok && jugadaId) { var j = { ...(jugadaRef.current || {}), wsp: wsp }; delete j.id; return guardarFila(jugadaId, "grupo_jugada", { ...j, usada: true, n: cant, usada_at: new Date().toISOString() }).then(function () { return true; }); }
+      return ok;
+    });
   }
 
   // ─── deslizar para jugar ───
@@ -218,8 +232,8 @@ export default function JuegoTickets(props) {
         {tks.map(function (k) { return <div key={k} style={{ width: 54, height: 38, borderRadius: 8, background: "linear-gradient(135deg,#E8602A,#C1440E)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🎟️</div>; })}
       </div>
       {!prueba && <div style={{ background: "#E6F3E8", border: "1px solid #3A7D4466", borderRadius: 14, padding: 11, color: "#2A6A36", fontWeight: 800 }}>Tus tickets este mes: {total ? total.mes : "…"}</div>}
-      {bienvenida
-        ? <button onClick={function () { if (props.onListo) props.onListo(); }} style={{ display: "block", width: "100%", marginTop: 12, padding: 14, borderRadius: 14, border: "none", background: CREMA.naranja, color: "#fff", fontFamily: "inherit", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>¡Listo! Ver mi cupón</button>
+      {(bienvenida || props.onListo)
+        ? <button onClick={function () { if (props.onListo) props.onListo(); }} style={{ display: "block", width: "100%", marginTop: 12, padding: 14, borderRadius: 14, border: "none", background: CREMA.naranja, color: "#fff", fontFamily: "inherit", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{bienvenida ? "¡Listo! Ver mi cupón" : "¡Listo!"}</button>
         : <a href={"/grupo/" + (prueba ? "?prueba" : "")} style={{ display: "block", marginTop: 12, padding: 14, borderRadius: 14, background: CREMA.naranja, color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}>Ver mi pantalla de la comunidad</a>}
     </div>
   );

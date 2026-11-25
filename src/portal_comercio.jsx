@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
 import { descargarPlaca } from "./placa_comercio.js";
 import { descargarCartel } from "./cartel_comercio.js";
 import { SURL, SH } from "./comun.js";
-import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, cargarSociosPorComercio, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
+import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, cargarSociosPorComercio, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, otorgarJugada, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -166,7 +166,7 @@ export default function PortalComercio() {
         var reg = { comercio_id: id, comercio_nombre: (pub && pub.nombre) || "", codigo: cuponC.codigo, wsp: cuponC.wsp, nombre: nombrePila, beneficio: promo, monto: monto, at: ahora, prueba: cuponC.prueba ? 1 : 0 };
         guardarFila("comcanje_" + id + "_" + cuponC.codigo, "grupo_canje_comercio", reg).then(function () {
           setCanjes(function (l) { return [{ id: "comcanje_" + id + "_" + cuponC.codigo, ...reg }].concat(l); });
-          cargarConfigGrupo().then(function (cfg) { return renovarCupon(cuponC.wsp, cfg); }).then(function () {
+          cargarConfigGrupo().then(function (cfg) { if (cfg.ticketsActivo && !cuponC.prueba) otorgarJugada(cuponC.wsp, "canje", cuponC.codigo, { local: (pub && pub.nombre) || "", comercio: id }); return renovarCupon(cuponC.wsp, cfg); }).then(function () {
             setOcupadoC(false); setCuponC(nuevo); setMontoC(""); setCodigo(""); setMsgC("✅ Canjeado. Dale: " + promo + ".");
           });
         });

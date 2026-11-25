@@ -100,7 +100,9 @@ function TarjetaTickets(props) {
   var [sorteos, setSorteos] = useState([]);
   var [ocupado, setOcupado] = useState("");
   var [aviso, setAviso] = useState("");
-  function recargar() { return Promise.all([cargarTicketsSocio(wsp), cargarPremios(false), cargarParticipaciones(wsp), cargarSorteos()]).then(function (r) { setT(r[0]); setPremios(r[1]); setPartic(r[2]); setSorteos(r[3]); }); }
+  var [pend, setPend] = useState([]);       // raspaditas por reclamar (de opiniones y canjes que no se jugaron en el momento)
+  var [jugando, setJugando] = useState(null);
+  function recargar() { return Promise.all([cargarTicketsSocio(wsp), cargarPremios(false), cargarParticipaciones(wsp), cargarSorteos(), cargarJugadasPendientes(wsp)]).then(function (r) { setT(r[0]); setPremios(r[1]); setPartic(r[2]); setSorteos(r[3]); setPend(r[4]); }); }
   useEffect(function () { recargar(); }, [wsp]);
   var visibles = premios.filter(function (pr) { return esPremioAmigo(pr) ? props.amigos !== false : props.grupo !== false; });
   var gastados = partic.reduce(function (a, x) { return a + (Number(x.n) || 0); }, 0);
@@ -130,6 +132,14 @@ function TarjetaTickets(props) {
           <div style={{ fontSize: 12, color: "#BDBDBD", lineHeight: 1.4, marginTop: 2 }}>{t ? "Ganaste " + t.total + " en total" + (gastados ? " · ya sumaste " + gastados : "") + ". " : ""}Sumalos al sorteo que quieras. Ganás más dejando tu opinión en cualquiera de nuestros locales.</div>
         </div>
       </div>
+      {pend.length > 0 && !jugando && (
+        <div style={{ marginTop: 10, background: "linear-gradient(135deg,#E8602A,#C1440E)", borderRadius: 14, padding: "12px 14px", textAlign: "center", boxShadow: "0 3px 14px #C1440E66" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>🎁 ¡Tenés tickets disponibles para reclamar!</div>
+          <div style={{ fontSize: 12.5, color: "#FFE9DD", margin: "3px 0 9px", lineHeight: 1.4 }}>Tenés {pend.length} raspadita{pend.length === 1 ? "" : "s"} por opinar o canjear tu cupón. Reclamalas y sumá los tickets al sorteo que quieras.</div>
+          <button onClick={function () { setJugando(pend[0]); }} style={{ width: "100%", padding: 12, borderRadius: 12, border: "none", background: "#fff", color: "#C1440E", fontFamily: "'Inter',sans-serif", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>Reclamar mis tickets</button>
+        </div>
+      )}
+      {jugando && <JuegoTickets key={jugando.id} wsp={wsp} jugada={jugando} onListo={function () { setJugando(null); recargar(); }} />}
       {aviso && <div style={{ marginTop: 8, fontSize: 12.5, color: aviso.charAt(0) === "✓" ? "#9FE0AA" : "#E5C467", fontWeight: 700 }}>{aviso}</div>}
       {visibles.length > 0 && (
         <div style={{ marginTop: 10, background: "#141414", border: "1px dashed #444", borderRadius: 12, padding: "9px 11px" }}>
@@ -511,6 +521,20 @@ export async function cargarSorteos() {
     var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_sorteo&order=created_at.desc&limit=100", { headers: { ...SH, "Cache-Control": "no-cache" } });
     var d = await r.json();
     return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+// Una jugada (raspadita) por cada opinión y por cada cupón canjeado (ámbito grupo_jugada, id jug_<wsp>_<origen>_<ref>): {wsp, origen, ref, local, usada, n}.
+// Si el socio no la juega en el momento, queda pendiente y la reclama desde su pantalla («Tenés tickets disponibles»). Una por local y por día al opinar; una por cupón al canjear.
+export async function otorgarJugada(wsp, origen, ref, extra) {
+  var id = "jug_" + wsp + "_" + origen + "_" + ref;
+  try { if (await leerPauta(id)) return false; } catch (e) {}
+  return guardarFila(id, "grupo_jugada", { wsp: wsp, origen: origen, ref: ref, ...(extra || {}), fecha: new Date().toISOString(), usada: false });
+}
+export async function cargarJugadasPendientes(wsp) {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_jugada&id=like." + encodeURIComponent("jug_" + wsp + "_*") + "&limit=500", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return (Array.isArray(d) ? d : []).map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(function (j) { return j && !j.usada; });
   } catch (e) { return []; }
 }
 // Cada socio reparte sus tickets entre los sorteos que quiera: una fila por cada vez que suma (ámbito grupo_participacion, id part_<wsp>_<premio>_<ronda>_<momento>):
@@ -1862,6 +1886,8 @@ export function PanelCanje(props) {
       leerPauta("cupon_" + cupon.codigo).then(function (fresco) {
         if (fresco && fresco.estado === "usado") { setCupon(fresco); setMsg("Ese cupón ya fue canjeado."); return; }
         guardarFila("cupon_" + cupon.codigo, "cupon", nuevo).then(function (ok) { if (ok) {
+          // Con los tickets encendidos, cada cupón canjeado le da al socio una raspadita para reclamar.
+          if (cfgF.ticketsActivo && !cupon.prueba) otorgarJugada(cupon.wsp, "canje", cupon.codigo, { local: props.local || "" });
           setCupon(nuevo); setMsg("✅ Canjeado. Aplicá " + dar + ".");
           // Se le deja listo el siguiente cupón para su próxima compra.
           renovarCupon(cupon.wsp, cfgF).then(function (sig) {

@@ -7,7 +7,7 @@ Antes de usarlos: comprobar la cantidad de socios en el panel de Comunidad (el n
 ## 1. Cuando te escribe por primera vez
 Responder rápido, mejor en el día.
 
-> Hola [nombre]! Gracias por escribirnos 🙌 Te cuento: la Comunidad Grupo Nkt reúne a los clientes del Bodegón, Kusama y Colantonio's, hoy somos 70 socios. Los comercios que se suman aparecen en nuestra página y los socios los visitan con un cupón de beneficio. ¿Qué tipo de comercio tenés?
+> Hola [nombre]! Gracias por escribirnos 🙌 Te cuento: la Comunidad Grupo Nkt es la comunidad gastronómica de Punta Alta: reúne a los clientes del Bodegón, Kusama y Colantonio's, hoy somos 70 socios, y buscamos cafés, bares, restaurantes y todo lo gastronómico de la ciudad y la zona. Los comercios que se suman aparecen en nuestra página y los socios los visitan con un cupón de beneficio. ¿Qué tipo de comercio tenés?
 
 ## 2. Cuando ya te contó y le interesa (mandar el PDF)
 

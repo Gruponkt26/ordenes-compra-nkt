@@ -250,8 +250,8 @@ export default function PortalComercio() {
     <div style={fondo}><div style={caja}>
       <div style={{ textAlign: "center", marginBottom: 14 }}>
         <div style={{ fontSize: 11, letterSpacing: 2, color: "#8C8C8C", textTransform: "uppercase" }}>{modoAlta ? "Portal de comercios · Comunidad Grupo Nkt" : "Comunidad Grupo Nkt · tus lugares en Punta Alta"}</div>
-        <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>{modoAlta ? "Sumá tu comercio" : "Portal de comercios"}</div>
-        <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Completá los datos de tu comercio y tu promo para los socios. Administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
+        <div style={{ fontSize: 21, fontWeight: 800, marginTop: 3 }}>{modoAlta ? "Sumá tu comercio gastronómico" : "Portal de comercios"}</div>
+        <div style={{ fontSize: 13, color: "#9A9A9A", marginTop: 3 }}>{modoAlta ? "Buscamos cafés, bares, restaurantes y todo lo relacionado con la gastronomía en la ciudad y la zona. Completá los datos de tu comercio y tu promo para los socios: administración los revisa y te avisa por WhatsApp." : "Completá tu información y tus promos. Administración las revisa y las publica."}</div>
         {wspAdm && <a href={linkWsp(wspAdm, modoAlta ? "Hola! Recibí la invitación para sumar mi comercio a la comunidad de Grupo Nkt y tengo una consulta." : "Hola! Soy un comercio de la comunidad de Grupo Nkt" + (pub && pub.nombre ? " («" + pub.nombre + "»)" : "") + " y tengo una consulta.")} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 10, padding: "9px 16px", borderRadius: 999, background: "#25D366", color: "#08240F", fontWeight: 800, textDecoration: "none", fontSize: 13 }}>💬 Comunicarme con administración</a>}
       </div>
 
@@ -370,7 +370,7 @@ export default function PortalComercio() {
       {modoAlta && !(altaRow && (altaRow.estado === "pendiente" || altaRow.estado === "aprobada")) && (
         <div style={{ ...tarj, borderColor: "#C1440E88", background: "linear-gradient(160deg,#1C120C,#111)" }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: "#F0EDE8" }}>Qué ganás al sumarte</div>
-          <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.45, marginTop: 3 }}>Una vitrina entre vecinos: los socios de la comunidad llegan a tu puerta con un beneficio en la mano.</div>
+          <div style={{ fontSize: 13, color: "#B8B8B8", lineHeight: 1.45, marginTop: 3 }}>Una vitrina gastronómica entre vecinos: los socios de la comunidad llegan a tu puerta con un beneficio en la mano.</div>
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
             {[["🏪", "Tu tarjeta en la página", "con tu logo, dirección, horarios, WhatsApp y tu promo."],
               ["🎟️", "Cupones que llegan solos", "el socio te muestra su código y, cuando lo usa, recibe el siguiente."],

@@ -2,7 +2,7 @@
 // «[nombre]» se cambia por el nombre que se escribe en el panel; «{socios}» por la cantidad de socios de hoy.
 export var MENSAJES_COMERCIOS = [
   { id: "m1", titulo: "1. Cuando te escribe por primera vez", cuando: "Respondé rápido, mejor en el día.",
-    texto: "Hola [nombre]! Gracias por escribirnos 🙌 Te cuento: la Comunidad Grupo Nkt reúne a los clientes del Bodegón, Kusama y Colantonio's, hoy somos {socios} socios. Los comercios que se suman aparecen en nuestra página y los socios los visitan con un cupón de beneficio. ¿Qué tipo de comercio tenés?" },
+    texto: "Hola [nombre]! Gracias por escribirnos 🙌 Te cuento: la Comunidad Grupo Nkt es la comunidad gastronómica de Punta Alta: reúne a los clientes del Bodegón, Kusama y Colantonio's, hoy somos {socios} socios, y buscamos cafés, bares, restaurantes y todo lo gastronómico de la ciudad y la zona. Los comercios que se suman aparecen en nuestra página y los socios los visitan con un cupón de beneficio. ¿Qué tipo de comercio tenés?" },
   { id: "m2", titulo: "2. Cuando ya te contó y le interesa", cuando: "Mandá el PDF de la propuesta junto con este mensaje.",
     texto: "Genial! Te paso la propuesta con todo: qué te damos, qué te pedimos y cómo se suma. Los primeros 2 meses son sin cargo. Leela tranquilo/a y cualquier duda me escribís 👇" },
   { id: "m3", titulo: "3. Cuando dice que quiere sumarse", cuando: "Mandá el link de alta (botón «💬 Invitar por WhatsApp»).",

@@ -3,8 +3,9 @@
 // no se publican hasta que administración los aprueba (Administración → Comunidad → Comercios amigos).
 import React, { useState, useEffect } from "react";
 import { descargarPlaca } from "./placa_comercio.js";
+import { descargarCartel } from "./cartel_comercio.js";
 import { SURL, SH } from "./comun.js";
-import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
+import { linkWsp, leerPauta, achicarLogo, subirLogoComercio, TarjetaComercio, cargarNovedadesComercios, cargarSociosPorComercio, semanaClave, achicarFotoNov, subirFotoNovedad, fechaCorta, promoVigente, normCodigo, estadoCupon, renovarCupon, cargarConfigGrupo, guardarFila, cargarCanjesComercios, resumenCanjes } from "./grupo.jsx";
 
 var CAMPOS = ["nombre", "desc", "direccion", "horarios", "wsp", "carta", "instagram", "color", "logo", "beneficio", "promo_desde", "promo_hasta", "promo_cond"];
 var PAUTAS = [
@@ -49,8 +50,15 @@ export default function PortalComercio() {
   var [msgC, setMsgC] = useState("");
   var [ocupadoC, setOcupadoC] = useState(false);
   var [montoC, setMontoC] = useState("");
+  var [sociosQR, setSociosQR] = useState({ total: 0, mes: 0 });   // socios que se sumaron escaneando el QR de este comercio
+  var [haciendoCartel, setHaciendoCartel] = useState(false);
   var [haciendoPlaca, setHaciendoPlaca] = useState("");   // "post" | "historia" mientras se arma la imagen
   var [msgPlaca, setMsgPlaca] = useState("");
+  function bajarCartel() {
+    setHaciendoCartel(true); setMsgPlaca("");
+    descargarCartel(pub, id).then(function () { setHaciendoCartel(false); setMsgPlaca("✓ Listo, se bajó el cartel."); setTimeout(function () { setMsgPlaca(""); }, 5000); },
+      function () { setHaciendoCartel(false); setMsgPlaca("No se pudo armar el cartel. Probá de nuevo."); });
+  }
   function bajarPlaca(formato) {
     setHaciendoPlaca(formato); setMsgPlaca("");
     descargarPlaca(pub, formato).then(function () { setHaciendoPlaca(""); setMsgPlaca("✓ Listo, se bajó la imagen."); setTimeout(function () { setMsgPlaca(""); }, 5000); },
@@ -84,6 +92,7 @@ export default function PortalComercio() {
       var base = {}; CAMPOS.forEach(function (x) { base[x] = (c && c.estado === "pendiente" && c.datos && c.datos[x] !== undefined) ? c.datos[x] : (p[x] === undefined ? "" : p[x]); });
       if (!base.color) base.color = "#1A6B8A";
       cargarNovedadesComercios().then(function (l) { setNovs(l.filter(function (n) { return n.comercio_id === id; })); });
+      cargarSociosPorComercio().then(function (o) { setSociosQR(o[id] || { total: 0, mes: 0 }); });
       cargarCanjesComercios().then(function (l) { setCanjes(l.filter(function (x) { return x.comercio_id === id; })); });
       setPub(p); setCambio(c); setForm(base); setAcepta(!!p.pautas_ok_at || !!(c && c.datos && c.datos.pautas_ok)); setEstado("ok");
     })();
@@ -278,6 +287,7 @@ export default function PortalComercio() {
               {caja("Canjes", String(r30.canjes), rt.canjes + " en total")}
               {caja("Socios distintos", String(r30.socios), rt.socios + " en total")}
               {caja("Volvieron", String(r30.volvieron), "usaron 2 veces o más")}
+              {caja("Socios con tu QR", String(sociosQR.mes), sociosQR.total + " en total")}
               {caja("Gasto anotado", r30.gasto > 0 ? "$" + Math.round(r30.gasto).toLocaleString("es-AR") : "—", r30.gasto > 0 ? "de los canjes con monto" : "anotalo al canjear")}
             </div>
             <div style={tarj}>
@@ -416,6 +426,11 @@ export default function PortalComercio() {
             {[["post", "⬇️ Para publicación"], ["historia", "⬇️ Para historias"]].map(function (t) {
               return <button key={t[0]} disabled={haciendoPlaca} onClick={function () { bajarPlaca(t[0]); }} style={{ flex: "1 1 150px", padding: "11px", borderRadius: 10, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>{haciendoPlaca === t[0] ? "Armando…" : t[1]}</button>;
             })}
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1E1E1E" }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>🖨️ Cartel para tu mostrador</div>
+            <div style={{ fontSize: 12.5, color: "#9A9A9A", lineHeight: 1.45, marginTop: 3 }}>Una hoja A4 para imprimir y pegar en tu local: «Somos parte de la Comunidad Grupo Nkt», con tu logo, tu promo y un código QR. Quien lo escanea se suma a la comunidad, y te contamos cuántos socios nuevos trajiste (lo ves en <b style={{ color: "#F0EDE8" }}>Mis números</b>).</div>
+            <button disabled={haciendoCartel} onClick={bajarCartel} style={{ marginTop: 10, width: "100%", padding: "11px", borderRadius: 10, border: "1px solid #3A7D4488", background: "#3A7D4422", color: "#8FD19A", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>{haciendoCartel ? "Armando…" : "⬇️ Bajar el cartel para imprimir"}</button>
           </div>
           <div style={{ fontSize: 11, color: "#7E7E7E", marginTop: 8, lineHeight: 1.45 }}>Muestra lo que está publicado hoy en tu tarjeta. Si cambiás tu promo, volvé a bajarla cuando se apruebe.</div>
         </div>

@@ -2,9 +2,9 @@
 // Se dibuja en un canvas con lo que el comercio ya cargó en su portal, y se baja como imagen PNG lista para publicar.
 import { promoVigente } from "./grupo.jsx";
 
-var FUENTE = "Jost, Futura, 'Century Gothic', 'Trebuchet MS', sans-serif";
+export var FUENTE = "Jost, Futura, 'Century Gothic', 'Trebuchet MS', sans-serif";
 
-function cargarFuente() {
+export function cargarFuente() {
   try {
     if (!document.getElementById("fuente-jost")) {
       var l = document.createElement("link");
@@ -16,7 +16,7 @@ function cargarFuente() {
     return Promise.race([Promise.all([document.fonts.load("800 40px Jost"), document.fonts.load("500 30px Jost")]), espera]).catch(function () {});
   } catch (e) { return Promise.resolve(); }
 }
-function cargarImagen(src, cors) {
+export function cargarImagen(src, cors) {
   return new Promise(function (res) {
     var i = new Image();
     if (cors) i.crossOrigin = "anonymous";
@@ -25,13 +25,13 @@ function cargarImagen(src, cors) {
     i.src = src;
   });
 }
-function rect(ctx, x, y, w, h, r) {
+export function rect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 // Parte un texto en renglones que entren en un ancho; devuelve la cantidad de renglones dibujados.
-function parrafo(ctx, texto, x, y, ancho, alto, maxLineas) {
+export function parrafo(ctx, texto, x, y, ancho, alto, maxLineas) {
   var pal = String(texto || "").split(/\s+/), linea = "", lineas = [];
   pal.forEach(function (p) {
     var prueba = linea ? linea + " " + p : p;
@@ -99,7 +99,7 @@ function dibujar(c, alto, logoNkt, logoCom) {
   return cv;
 }
 
-function aBlob(cv) { return new Promise(function (res, rej) { try { cv.toBlob(function (b) { b ? res(b) : rej(new Error("sin imagen")); }, "image/png"); } catch (e) { rej(e); } }); }
+export function aBlob(cv) { return new Promise(function (res, rej) { try { cv.toBlob(function (b) { b ? res(b) : rej(new Error("sin imagen")); }, "image/png"); } catch (e) { rej(e); } }); }
 
 // formato: "post" (1080×1080) o "historia" (1080×1920). Baja el PNG.
 export async function descargarPlaca(c, formato) {

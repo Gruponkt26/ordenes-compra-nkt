@@ -14,7 +14,7 @@ var LOCALES_GRUPO = [
   { id: "l2", emoji: "🍣", nombre: "Kusama", color: "#8B2FC9", logo: "/logos/kusama.png", alto: 64, desc: "Sushi en Punta Alta." },
   { id: "l3", emoji: "🍕", nombre: "Colantonio's", color: "#1A6B8A", logo: "/logos/colantonio.png", alto: 64, desc: "Pizza napolitana." },
 ];
-var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {}, wspAdmin: "", ticketsActivo: false, ticketsPremio: "" };
+var CONFIG_VACIA = { frase: "", bienvenida: "", gancho: "", cuponPct: 10, cuponDias: 30, cuponPctLocal: {}, cuponBenefLocal: {}, locales: {}, wspAdmin: "", ticketsActivo: false, ticketsPremio: "", ticketsGrupo: true, ticketsAmigos: true };
 
 // La comunidad vive en su propia ruta (/grupo/) para instalarse como una app aparte de la de gestión.
 // ¿El aviso destacado de este local sigue vigente? Sin fecha, se muestra hasta que se borre; con fecha, hasta ese día inclusive.
@@ -70,7 +70,7 @@ export async function cargarConfigGrupo() {
     var r = await fetch(SURL + "/rest/v1/pautas?id=eq.grupo_config&limit=1", { headers: SH });
     var d = await r.json();
     var x = Array.isArray(d) && d[0] ? JSON.parse(d[0].texto) : null;
-    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {}, wspAdmin: (x && x.wspAdmin) || "", ticketsActivo: !!(x && x.ticketsActivo), ticketsPremio: (x && x.ticketsPremio) || "" };
+    return { frase: (x && x.frase) || "", bienvenida: (x && x.bienvenida) || "", gancho: (x && x.gancho) || "", cuponPct: (x && x.cuponPct) || 10, cuponDias: (x && x.cuponDias) || 30, cuponPctLocal: (x && x.cuponPctLocal) || {}, cuponBenefLocal: (x && x.cuponBenefLocal) || {}, locales: (x && x.locales) || {}, wspAdmin: (x && x.wspAdmin) || "", ticketsActivo: !!(x && x.ticketsActivo), ticketsPremio: (x && x.ticketsPremio) || "", ticketsGrupo: !(x && x.ticketsGrupo === false), ticketsAmigos: !(x && x.ticketsAmigos === false) };
   } catch (e) { return CONFIG_VACIA; }
 }
 export async function guardarFila(id, ambito, obj) {
@@ -96,6 +96,7 @@ function TarjetaTickets(props) {
   var [t, setT] = useState(null);
   var [premios, setPremios] = useState([]);
   useEffect(function () { cargarTicketsSocio(props.wsp).then(setT); cargarPremios(false).then(setPremios); }, [props.wsp]);
+  premios = premios.filter(function (pr) { return esPremioAmigo(pr) ? props.amigos !== false : props.grupo !== false; });
   return (
     <div style={{ background: "linear-gradient(135deg,#2A1208,#1A1A1A)", border: "1.5px solid #C1440E99", borderRadius: 16, padding: "13px 14px", marginBottom: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -479,6 +480,8 @@ export async function cargarPremios(todos) {
     return todos ? l : l.filter(function (x) { return x.activo !== false; });
   } catch (e) { return []; }
 }
+// Un premio es «de un comercio amigo» cuando su dueño es uno de ellos (los de Grupo Nkt son «grupo», l1, l2 o l3).
+function esPremioAmigo(pr) { return /^com_/.test(String((pr && pr.de_id) || "")); }
 function opcionesPremioDe(comercios) {
   return [{ id: "grupo", nombre: "Grupo Nkt" }].concat(LOCALES_GRUPO.map(function (l) { return { id: l.id, nombre: l.nombre }; }), (comercios || []).map(function (c) { return { id: c.id, nombre: c.nombre, amigo: true }; }));
 }
@@ -495,6 +498,14 @@ function PanelSorteo(props) {
   var [ult, setUlt] = useState(null);      // el sorteo recién hecho (para avisarle y publicarlo)
   var [msg, setMsg] = useState("");
   var [ocupado, setOcupado] = useState(false);
+  var cfg = props.cfg || {}, setCfg = props.setCfg;
+  // Los interruptores se guardan al instante (sobre la configuración que ya está guardada, sin arrastrar lo que se esté editando en «Datos que se muestran»).
+  function cambiarInterruptor(campo, valor) {
+    cargarConfigGrupo().then(function (c) { return guardarFila("grupo_config", "grupo_config", { ...c, [campo]: valor }); }).then(function (ok) {
+      if (ok && setCfg) setCfg(function (prev) { return { ...prev, [campo]: valor }; });
+      setMsg(ok ? "✓ Guardado" : "No se pudo guardar. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 2500);
+    });
+  }
   function recargar() { return Promise.all([cargarTicketsTodos(), cargarSorteos(), cargarPremios(true), cargarComercios(false)]).then(function (r) { setTickets(r[0]); setSorteos(r[1]); setPremios(r[2]); setComercios(r[3]); }); }
   useEffect(function () { if (abierto && tickets === null) recargar(); }, [abierto]);
   var meses = []; for (var i = 0; i < 6; i++) { var d = new Date(); d.setMonth(d.getMonth() - i, 1); meses.push(mesClave(d)); }
@@ -522,6 +533,7 @@ function PanelSorteo(props) {
   function quitarPremio(pr) { if (!window.confirm("¿Borrar el premio «" + pr.premio + "»? Los sorteos ya hechos se conservan.")) return; borrarFilas([pr.id]).then(function () { recargar(); }); }
   function sortear(pr) {
     if (ocupado) return;
+    if (esPremioAmigo(pr) ? cfg.ticketsAmigos === false : cfg.ticketsGrupo === false) return;
     var elegibles = ranking.filter(function (r) { return !(noRepetir && yaGanaron[r.wsp]); });
     var total = elegibles.reduce(function (a, r) { return a + r.n; }, 0);
     if (!elegibles.length) { setMsg(ranking.length ? "Todos los socios con tickets ya ganaron un premio este mes. Destildá «No repetir ganadores» para sortear igual." : "Todavía no hay tickets este mes."); setTimeout(function () { setMsg(""); }, 5000); return; }
@@ -555,11 +567,29 @@ function PanelSorteo(props) {
   var inp = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12.5, boxSizing: "border-box" };
   return (
     <div style={tarjeta}>
-      <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#D4A017" }}>{abierto ? "▾" : "▸"} 🎟️ Sorteos y premios</div>
+      <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#D4A017" }}>{abierto ? "▾" : "▸"} 🎟️ Sorteos y premios <span style={{ fontWeight: 700, fontSize: 11, color: cfg.ticketsActivo ? "#8FD19A" : "#6E6E6E" }}>· {cfg.ticketsActivo ? "ENCENDIDO" : "apagado"}</span></div>
       {abierto && (
         <div style={{ marginTop: 10 }}>
           {tickets === null ? <div style={{ fontSize: 12, color: "#8C8C8C" }}>Cargando…</div> : (
             <div>
+              <div style={{ padding: "10px 12px", border: "1px solid " + (cfg.ticketsActivo ? "#3A7D4488" : "#2A2A2A"), borderRadius: 10, background: cfg.ticketsActivo ? "#3A7D4414" : "#0E0E0E", marginBottom: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+                  <input type="checkbox" checked={!!cfg.ticketsActivo} onChange={function (e) { cambiarInterruptor("ticketsActivo", e.target.checked); }} />
+                  🎟️ Tickets {cfg.ticketsActivo ? "· ENCENDIDOS" : "· apagados"}
+                </label>
+                <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45, margin: "3px 0 8px" }}>Encendidos: los socios ganan tickets al opinar y al sumarse, y ven «Tus tickets» en su pantalla. Dejalos apagados hasta tener el visto bueno del abogado.</div>
+                <div style={{ fontSize: 11, color: "#C8C8C8", fontWeight: 700, marginBottom: 4 }}>¿Qué sorteos se muestran y se pueden hacer?</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, padding: "3px 0" }}>
+                  <input type="checkbox" checked={cfg.ticketsGrupo !== false} onChange={function (e) { cambiarInterruptor("ticketsGrupo", e.target.checked); }} />
+                  🍷 Sorteos de nuestros locales <span style={{ color: "#8C8C8C" }}>(Grupo Nkt, El Bodegón, Kusama, Colantonio's)</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, padding: "3px 0" }}>
+                  <input type="checkbox" checked={cfg.ticketsAmigos !== false} onChange={function (e) { cambiarInterruptor("ticketsAmigos", e.target.checked); }} />
+                  🤝 Sorteos de comercios amigos
+                </label>
+                <div style={{ fontSize: 11, color: "#6E6E6E", lineHeight: 1.45, marginTop: 4 }}>Si apagás uno, sus premios dejan de mostrarse a los socios y no se pueden sortear; los tickets y los sorteos ya hechos se conservan. Para frenar un premio puntual, usá ⏸ Pausar en cada uno.</div>
+                {msg && <div style={{ fontSize: 12, color: "#8FD19A", marginTop: 6, fontWeight: 700 }}>{msg}</div>}
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
                 <select value={mes} onChange={function (e) { setMes(e.target.value); setUlt(null); }} style={inp}>{meses.map(function (m) { return <option key={m} value={m}>{mesNombreLargo(m)}</option>; })}</select>
                 <button onClick={recargar} style={{ ...btn, border: "1px solid #333", background: "#161616", color: "#F0EDE8" }}>↻ Actualizar</button>
@@ -576,12 +606,13 @@ function PanelSorteo(props) {
               {premios.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "4px 0" }}>Todavía no cargaste ningún premio.</div>}
               {premios.map(function (pr) {
                 var h = hechosMes.filter(function (x) { return x.premio_id === pr.id; });
+                var tipoApagado = esPremioAmigo(pr) ? cfg.ticketsAmigos === false : cfg.ticketsGrupo === false;
                 return (
-                  <div key={pr.id} style={{ borderTop: "1px solid #161616", padding: "8px 0", opacity: pr.activo === false ? 0.55 : 1 }}>
+                  <div key={pr.id} style={{ borderTop: "1px solid #161616", padding: "8px 0", opacity: pr.activo === false || tipoApagado ? 0.55 : 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 800 }}>{pr.premio}</div>
-                    <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>de <b style={{ color: "#C8C8C8" }}>{pr.de_nombre || "Grupo Nkt"}</b>{opciones.find(function (o) { return o.id === pr.de_id && o.amigo; }) ? " · comercio amigo" : ""}{pr.activo === false ? " · ⏸ pausado" : ""}{h.length ? " · 🏆 " + mesNombreLargo(mes) + ": " + h[0].ganador_publico : ""}</div>
+                    <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>de <b style={{ color: "#C8C8C8" }}>{pr.de_nombre || "Grupo Nkt"}</b>{opciones.find(function (o) { return o.id === pr.de_id && o.amigo; }) ? " · comercio amigo" : ""}{pr.activo === false ? " · ⏸ pausado" : ""}{tipoApagado ? " · 🚫 sorteos de " + (esPremioAmigo(pr) ? "comercios amigos" : "nuestros locales") + " apagados" : ""}{h.length ? " · 🏆 " + mesNombreLargo(mes) + ": " + h[0].ganador_publico : ""}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-                      <button onClick={function () { sortear(pr); }} disabled={ocupado || pr.activo === false} style={{ ...btn, padding: "6px 12px", border: "none", background: pr.activo === false ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 12 }}>{h.length ? "🎲 Sortear de nuevo" : "🎲 Sortear este premio"}</button>
+                      <button onClick={function () { sortear(pr); }} disabled={ocupado || pr.activo === false || tipoApagado} style={{ ...btn, padding: "6px 12px", border: "none", background: pr.activo === false || tipoApagado ? "#2A2A2A" : "#C1440E", color: "#fff", fontSize: 12 }}>{h.length ? "🎲 Sortear de nuevo" : "🎲 Sortear este premio"}</button>
                       <button onClick={function () { pausarPremio(pr); }} style={{ ...btn, padding: "6px 10px", border: "1px solid #333", background: "#161616", color: "#C8C8C8", fontSize: 12 }}>{pr.activo === false ? "▶ Reactivar" : "⏸ Pausar"}</button>
                       <button onClick={function () { quitarPremio(pr); }} title="Borrar el premio" style={{ ...btn, padding: "6px 10px", border: "1px solid #333", background: "#161616", color: "#C8C8C8", fontSize: 12 }}>🗑️</button>
                     </div>
@@ -1632,7 +1663,7 @@ export function GrupoNkt() {
           {/* Regalo de bienvenida: solo recién sumado (en esta visita), con los tickets encendidos. Siempre 1 ticket, una vez por WhatsApp. */}
           {hecho === "ok" && cfg.ticketsActivo && cupon && !bienvenidaCerrada && <JuegoTickets key={"bv" + cupon.wsp} wsp={cupon.wsp} localId="" prueba={modoPrueba || !!cupon.prueba} bienvenida onListo={function () { setBienvenidaCerrada(true); }} />}
           {bCupon}
-          {cfg.ticketsActivo && cupon && <TarjetaTickets wsp={cupon.wsp} />}
+          {cfg.ticketsActivo && cupon && <TarjetaTickets wsp={cupon.wsp} grupo={cfg.ticketsGrupo !== false} amigos={cfg.ticketsAmigos !== false} />}
           {cupon && <TarjetaOpinar historial={historial} conJuego={!!cfg.ticketsActivo} prueba={modoPrueba || !!cupon.prueba} />}
           {bNovedades}
           {hecho === "ok" && <div style={{ marginBottom: 14 }}>{bSumarse}</div>}
@@ -2578,14 +2609,6 @@ export function PanelComunidad() {
             <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>WhatsApp de administración (el botón «Sumá tu comercio» de la página abre este chat)</div>
             <input value={cfg.wspAdmin || ""} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, wspAdmin: v }; }); }} inputMode="tel" placeholder="Ej: 2914123456 (si queda vacío, se usa el del Bodegón)" style={sel} />
-            <div style={{ margin: "12px 0 6px", padding: "10px 12px", border: "1px solid " + (cfg.ticketsActivo ? "#3A7D4488" : "#2A2A2A"), borderRadius: 10, background: cfg.ticketsActivo ? "#3A7D4414" : "#0E0E0E" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
-                <input type="checkbox" checked={!!cfg.ticketsActivo} onChange={function (e) { var v = e.target.checked; setCfg(function (c) { return { ...c, ticketsActivo: v }; }); }} />
-                🎟️ Tickets del sorteo {cfg.ticketsActivo ? "· ENCENDIDO" : "· apagado"}
-              </label>
-              <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45, margin: "4px 0 6px" }}>Cuando está encendido, los socios ven «Tus tickets» en su pantalla de la comunidad. Dejalo apagado hasta tener el visto bueno del abogado. Acordate de tocar Guardar.</div>
-              <div style={{ fontSize: 11, color: "#8C8C8C", lineHeight: 1.45 }}>Los premios (puede haber varios a la vez, de un local del grupo o de un comercio amigo) se cargan y se sortean más abajo, en <b style={{ color: "#C8C8C8" }}>🎟️ Sorteos y premios</b>.</div>
-            </div>
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Mensaje al sumarse (ej: un beneficio de bienvenida)</div>
             <input value={cfg.bienvenida} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, bienvenida: v }; }); }} placeholder="Mostrá este mensaje en caja y te regalamos un café." style={sel} />
             {LOCALES_GRUPO.map(function (l) {
@@ -2611,7 +2634,7 @@ export function PanelComunidad() {
         )}
       </div>
 
-      <PanelSorteo tarjeta={tarjeta} socios={reales} />
+      <PanelSorteo tarjeta={tarjeta} socios={reales} cfg={cfg} setCfg={setCfg} />
       <PanelReclamos tarjeta={tarjeta} />
       <PanelComerciosRed tarjeta={tarjeta} socios={reales.length} />
     </div>

@@ -390,6 +390,134 @@ function PanelReclamos(props) {
   );
 }
 // Administración: alta, edición y baja de los comercios amigos.
+// ─── SORTEO DE TICKETS (administración) ───
+// Cada ticket es una chance: quien tiene 5 tickets tiene 5 veces más probabilidades que quien tiene 1. El sorteo queda guardado (ámbito grupo_sorteo).
+var MESES_NOMBRE = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function mesNombreLargo(clave) { var m = /^(\d{4})-(\d{2})$/.exec(clave || ""); return m ? MESES_NOMBRE[parseInt(m[2], 10) - 1] + " de " + m[1] : clave; }
+function aleatorioEntero(max) {   // 0 .. max-1, sin sesgo, con el generador del navegador
+  try { var a = new Uint32Array(1), lim = Math.floor(4294967296 / max) * max; do { crypto.getRandomValues(a); } while (a[0] >= lim); return a[0] % max; }
+  catch (e) { return Math.floor(Math.random() * max); }
+}
+export async function cargarTicketsTodos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_ticket&order=created_at.desc&limit=5000", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+export async function cargarSorteos() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_sorteo&order=created_at.desc&limit=100", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+function PanelSorteo(props) {
+  var tarjeta = props.tarjeta, socios = props.socios || [];
+  var [abierto, setAbierto] = useState(false);
+  var [tickets, setTickets] = useState(null);
+  var [sorteos, setSorteos] = useState([]);
+  var [mes, setMes] = useState(mesClave());
+  var [premio, setPremio] = useState(props.premio || "");
+  var [ult, setUlt] = useState(null);      // el sorteo recién hecho (para avisarle y publicarlo)
+  var [msg, setMsg] = useState("");
+  var [ocupado, setOcupado] = useState(false);
+  function recargar() { return Promise.all([cargarTicketsTodos(), cargarSorteos()]).then(function (r) { setTickets(r[0]); setSorteos(r[1]); }); }
+  useEffect(function () { if (abierto && tickets === null) recargar(); }, [abierto]);
+  useEffect(function () { if (props.premio && !premio) setPremio(props.premio); }, [props.premio]);
+  var meses = []; for (var i = 0; i < 6; i++) { var d = new Date(); d.setMonth(d.getMonth() - i, 1); meses.push(mesClave(d)); }
+  // Los tickets del mes, sumados por persona, solo de quienes siguen en la comunidad (no pruebas ni empleados).
+  var porWsp = {}; socios.forEach(function (m) { porWsp[m.wsp] = m; });
+  var cuenta = {}, fuera = 0;
+  (tickets || []).forEach(function (t) { if (t.mes !== mes) return; var c = Number(t.n) || 0; if (porWsp[t.wsp]) cuenta[t.wsp] = (cuenta[t.wsp] || 0) + c; else fuera += c; });
+  var ranking = Object.keys(cuenta).map(function (w) { return { wsp: w, n: cuenta[w], m: porWsp[w] }; }).sort(function (a, b) { return b.n - a.n; });
+  var totalTickets = ranking.reduce(function (a, r) { return a + r.n; }, 0);
+  var hechos = sorteos.filter(function (x) { return x.mes === mes; });
+  function publico(m) { var ap = String((m && m.apellido) || "").trim(); return ((m && m.nombre) || "").trim() + (ap ? " " + ap.charAt(0).toUpperCase() + "." : ""); }
+  function sortear() {
+    if (!ranking.length || ocupado) return;
+    var extra = hechos.length ? "\n\n⚠️ Ya hay un sorteo de " + mesNombreLargo(mes) + " (ganó " + hechos[0].ganador_nombre + "). Esto hace otro distinto." : "";
+    if (!window.confirm("¿Hacer el sorteo de " + mesNombreLargo(mes) + "?\n\nParticipan " + ranking.length + " socio" + (ranking.length === 1 ? "" : "s") + " con " + totalTickets + " ticket" + (totalTickets === 1 ? "" : "s") + ". Cada ticket es una chance. Premio: " + (premio.trim() || "(sin premio escrito)") + "." + extra + "\n\nEl resultado queda guardado y no se puede deshacer.")) return;
+    setOcupado(true);
+    var pos = aleatorioEntero(totalTickets), acum = 0, ganador = ranking[0];
+    for (var k = 0; k < ranking.length; k++) { acum += ranking[k].n; if (pos < acum) { ganador = ranking[k]; break; } }
+    var fila = { mes: mes, premio: premio.trim(), ganador_wsp: ganador.wsp, ganador_nombre: nombreCompleto(ganador.m), ganador_publico: publico(ganador.m), tickets_ganador: ganador.n, tickets_total: totalTickets, participantes: ranking.length, fecha: new Date().toISOString(), publicado: false };
+    var id = "sorteo_" + mes + "_" + Date.now();
+    guardarFila(id, "grupo_sorteo", fila).then(function (ok) {
+      setOcupado(false);
+      if (!ok) { setMsg("No se pudo guardar el sorteo. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 4000); return; }
+      setUlt({ id: id, ...fila }); recargar();
+    });
+  }
+  function avisarGanador(x) {
+    var txt = "Hola " + String(x.ganador_nombre || "").split(" ")[0] + "! 🎉 Ganaste el sorteo de " + mesNombreLargo(x.mes) + " de la Comunidad Grupo Nkt" + (x.premio ? ": " + x.premio : "") + ". Escribinos para coordinar cómo retirarlo. ¡Felicitaciones y gracias por ser parte!";
+    window.open(linkWsp(x.ganador_wsp, txt), "_blank");
+  }
+  function publicar(x) {
+    if (!window.confirm("Se va a publicar en Novedades: «" + x.ganador_publico + "» ganó " + (x.premio || "el sorteo") + ". Se muestra el nombre y la inicial del apellido.\n\n¿Publicar?")) return;
+    var id = "nov_" + Date.now(), hasta = new Date(Date.now() + 30 * 86400000), iso = hasta.getFullYear() + "-" + String(hasta.getMonth() + 1).padStart(2, "0") + "-" + String(hasta.getDate()).padStart(2, "0");
+    guardarFila(id, "grupo_novedad", { titulo: "🎉 Ganador del sorteo de " + mesNombreLargo(x.mes), texto: x.ganador_publico + " ganó " + (x.premio || "el sorteo del mes") + " con sus " + x.tickets_ganador + " ticket" + (x.tickets_ganador === 1 ? "" : "s") + ". ¡Gracias por participar! Sumá tickets dejando tu opinión en cualquiera de nuestros locales.", local: "todos", hasta: iso, foto_url: "", video: "", creado: new Date().toISOString(), activa: true }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo publicar. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 4000); return; }
+      var o = { ...x }; delete o.id; guardarFila(x.id, "grupo_sorteo", { ...o, publicado: true }).then(function () { setUlt(function (u) { return u && u.id === x.id ? { ...u, publicado: true } : u; }); recargar(); setMsg("✓ Publicado en Novedades."); setTimeout(function () { setMsg(""); }, 4000); });
+    });
+  }
+  var btn = { padding: "9px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "'Inter',sans-serif" };
+  var inp = { padding: "8px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 12.5, boxSizing: "border-box" };
+  return (
+    <div style={tarjeta}>
+      <div onClick={function () { setAbierto(!abierto); }} style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#D4A017" }}>{abierto ? "▾" : "▸"} 🎟️ Sorteo del mes{hechos.length ? "" : ""}</div>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          {tickets === null ? <div style={{ fontSize: 12, color: "#8C8C8C" }}>Cargando…</div> : (
+            <div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <select value={mes} onChange={function (e) { setMes(e.target.value); setUlt(null); }} style={inp}>{meses.map(function (m) { return <option key={m} value={m}>{mesNombreLargo(m)}</option>; })}</select>
+                <button onClick={recargar} style={{ ...btn, border: "1px solid #333", background: "#161616", color: "#F0EDE8" }}>↻ Actualizar</button>
+              </div>
+              <div style={{ fontSize: 12.5, color: "#C8C8C8", marginBottom: 8 }}><b style={{ color: "#F0EDE8" }}>{totalTickets}</b> ticket{totalTickets === 1 ? "" : "s"} entre <b style={{ color: "#F0EDE8" }}>{ranking.length}</b> socio{ranking.length === 1 ? "" : "s"} en {mesNombreLargo(mes)}.{fuera > 0 ? " (" + fuera + " ticket" + (fuera === 1 ? "" : "s") + " de pruebas o de personas que ya no están en la comunidad no participan.)" : ""}</div>
+              {ranking.length === 0 && <div style={{ fontSize: 12, color: "#6E6E6E", padding: "4px 0 8px" }}>Todavía no hay tickets este mes.</div>}
+              {ranking.slice(0, 15).map(function (r) {
+                return <div key={r.wsp} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}><span>{nombreCompleto(r.m)}</span><span style={{ color: "#8C8C8C" }}>{r.n} ticket{r.n === 1 ? "" : "s"} · {totalTickets ? Math.round(r.n / totalTickets * 1000) / 10 : 0} %</span></div>;
+              })}
+              {ranking.length > 15 && <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 4 }}>… y {ranking.length - 15} más.</div>}
+              <div style={{ fontSize: 11, color: "#8C8C8C", margin: "12px 0 4px" }}>Premio de este sorteo (queda anotado)</div>
+              <input value={premio} onChange={function (e) { setPremio(e.target.value); }} placeholder="Ej: una cena para dos en El Bodegón" style={{ ...inp, width: "100%" }} />
+              <button onClick={sortear} disabled={!ranking.length || ocupado} style={{ ...btn, marginTop: 10, width: "100%", border: "none", background: ranking.length ? "#C1440E" : "#2A2A2A", color: "#fff", fontSize: 14 }}>{ocupado ? "Sorteando…" : "🎲 Hacer el sorteo de " + mesNombreLargo(mes)}</button>
+              <div style={{ fontSize: 11, color: "#6E6E6E", marginTop: 6, lineHeight: 1.45 }}>Cada ticket es una chance. El resultado queda guardado. Antes del primer sorteo real, confirmá con el abogado las bases (docs/sorteo-preguntas.md).</div>
+              {msg && <div style={{ fontSize: 12.5, color: "#8FD19A", marginTop: 8, fontWeight: 700 }}>{msg}</div>}
+              {ult && (
+                <div style={{ marginTop: 12, background: "#0F2415", border: "1px solid #3A7D4488", borderRadius: 12, padding: "12px 14px", textAlign: "center" }}>
+                  <div style={{ fontSize: 12, color: "#9FE0AA", fontWeight: 800, letterSpacing: 1.4 }}>🎉 GANADOR/A</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, margin: "4px 0" }}>{ult.ganador_nombre}</div>
+                  <div style={{ fontSize: 12, color: "#B8D8BE" }}>con {ult.tickets_ganador} de {ult.tickets_total} ticket{ult.tickets_total === 1 ? "" : "s"}{ult.premio ? " · " + ult.premio : ""}</div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 10 }}>
+                    <button onClick={function () { avisarGanador(ult); }} style={{ ...btn, border: "none", background: "#25D366", color: "#08240F" }}>💬 Avisarle por WhatsApp</button>
+                    {!ult.publicado ? <button onClick={function () { publicar(ult); }} style={{ ...btn, border: "1px solid #D4A017", background: "#D4A01722", color: "#E5C467" }}>📣 Publicar en Novedades</button> : <span style={{ fontSize: 12, color: "#9FE0AA", alignSelf: "center" }}>✓ Ya publicado</span>}
+                  </div>
+                </div>
+              )}
+              {sorteos.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 4 }}>Sorteos hechos</div>
+                  {sorteos.map(function (x) {
+                    return <div key={x.id} style={{ padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
+                      <b>{mesNombreLargo(x.mes)}</b> · ganó <b>{x.ganador_nombre}</b> <span style={{ color: "#8C8C8C" }}>({x.tickets_ganador} de {x.tickets_total} tickets{x.premio ? " · " + x.premio : ""})</span>
+                      <span style={{ display: "block", fontSize: 11, color: "#6E6E6E" }}>{new Date(x.fecha).toLocaleString("es-AR")} · {x.publicado ? "📣 publicado" : "sin publicar"}
+                        <button onClick={function () { avisarGanador(x); }} style={{ marginLeft: 8, background: "none", border: "none", color: "#6FE0A0", cursor: "pointer", fontSize: 11 }}>💬 avisar</button>
+                        {!x.publicado && <button onClick={function () { publicar(x); }} style={{ marginLeft: 6, background: "none", border: "none", color: "#E5C467", cursor: "pointer", fontSize: 11 }}>📣 publicar</button>}
+                      </span>
+                    </div>;
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelComerciosRed(props) {
   var tarjeta = props.tarjeta;
   var [lista, setLista] = useState(null);
@@ -2359,6 +2487,7 @@ export function PanelComunidad() {
         )}
       </div>
 
+      <PanelSorteo tarjeta={tarjeta} socios={reales} premio={cfg.ticketsPremio} />
       <PanelReclamos tarjeta={tarjeta} />
       <PanelComerciosRed tarjeta={tarjeta} socios={reales.length} />
     </div>

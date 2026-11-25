@@ -150,6 +150,7 @@ function TarjetaTickets(props) {
               <div key={pr.id} style={{ borderTop: "1px solid #1E1E1E", padding: "8px 0" }}>
                 <div style={{ fontSize: 13, color: "#F0EDE8", fontWeight: 800 }}>{pr.premio}</div>
                 <div style={{ fontSize: 11.5, color: "#9A9A9A" }}>{pr.de_nombre ? "de " + pr.de_nombre : "Grupo Nkt"}{pr.fecha_sorteo ? " · se sortea el " + fechaLarga(pr.fecha_sorteo) : ""}</div>
+                {pr.cond && <div style={{ fontSize: 11, color: "#8C8C8C", fontStyle: "italic" }}>{pr.cond}</div>}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 5 }}>
                   <span style={{ fontSize: 12, color: mios ? "#9FE0AA" : "#8C8C8C" }}>{mios ? "🎟️ Tenés " + mios + " acá" : "Todavía no sumaste tickets"}</span>
                   {abierto ? (
@@ -537,6 +538,22 @@ export async function cargarJugadasPendientes(wsp) {
     return (Array.isArray(d) ? d : []).map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(function (j) { return j && !j.usada; });
   } catch (e) { return []; }
 }
+// Los comercios amigos ofrecen premios para el sorteo desde su portal (ámbito grupo_oferta_premio): {comercio_id, comercio_nombre, premio, cond, fecha_sugerida, estado, enviado_at}.
+// Administración los aprueba (se crea el premio, de ese comercio) o los rechaza con un motivo. Cada comercio se compromete a aportar al menos un premio por mes.
+export async function cargarOfertasPremio() {
+  try {
+    var r = await fetch(SURL + "/rest/v1/pautas?ambito=eq.grupo_oferta_premio&order=created_at.desc&limit=500", { headers: { ...SH, "Cache-Control": "no-cache" } });
+    var d = await r.json();
+    return Array.isArray(d) ? d.map(function (f) { try { return { id: f.id, ...JSON.parse(f.texto) }; } catch (e) { return null; } }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+// Cuántos premios aportó un comercio este mes: sus ofertas no rechazadas y los premios que administración le cargó (sin contar dos veces el que salió de una oferta).
+export function premiosDelMes(comercioId, ofertas, premios) {
+  var mes = mesClave(), n = 0, deOferta = {};
+  (ofertas || []).forEach(function (o) { if (o.comercio_id === comercioId && o.estado !== "rechazado" && o.enviado_at && mesClave(new Date(o.enviado_at)) === mes) { n++; deOferta[o.id] = true; } });
+  (premios || []).forEach(function (pr) { if (pr.de_id === comercioId && !(pr.oferta_id && deOferta[pr.oferta_id]) && pr.creado && mesClave(new Date(pr.creado)) === mes) n++; });
+  return n;
+}
 // Cada socio reparte sus tickets entre los sorteos que quiera: una fila por cada vez que suma (ámbito grupo_participacion, id part_<wsp>_<premio>_<ronda>_<momento>):
 // {wsp, premio_id, ronda, n}. Los tickets sumados a un sorteo no se pueden mover. Disponibles = tickets ganados − tickets sumados.
 export async function cargarParticipaciones(wsp) {
@@ -801,10 +818,12 @@ function PanelComerciosRed(props) {
   var [novs, setNovs] = useState([]);            // novedades que mandaron los comercios (las pendientes se aprueban acá)
   var [canjes, setCanjes] = useState([]);        // canjes registrados por los comercios (para sus resultados)
   var [altas, setAltas] = useState([]);          // solicitudes de comercios nuevos
+  var [ofertas, setOfertas] = useState([]);      // premios que ofrecen los comercios para el sorteo (los pendientes se aprueban acá)
+  var [premiosAdm, setPremiosAdm] = useState([]);
   var [avisoCom, setAvisoCom] = useState(null);  // después de aprobar o rechazar: el mensaje de WhatsApp para avisarle al comercio {nombre, link}
   var [verCambio, setVerCambio] = useState("");   // el comercio cuyos cambios se están revisando
   var sel = { width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #2A2A2A", background: "#111", color: "#F0EDE8", fontFamily: "'Inter',sans-serif", fontSize: 13, marginBottom: 6 };
-  function recargar() { cargarSociosPorComercio().then(setSociosQR); cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); cargarAltasComercios().then(setAltas); return cargarComercios(false).then(setLista); }
+  function recargar() { cargarOfertasPremio().then(setOfertas); cargarPremios(true).then(setPremiosAdm); cargarSociosPorComercio().then(setSociosQR); cargarCambiosComercios().then(setCambios); cargarReclamos().then(setReclamos); cargarNovedadesComercios().then(setNovs); cargarCanjesComercios().then(setCanjes); cargarAltasComercios().then(setAltas); return cargarComercios(false).then(setLista); }
   useEffect(function () { recargar(); }, []);
   function nuevo() { setForm({ id: "com_" + Date.now(), nombre: "", desc: "", color: "#1A6B8A", logo: "", direccion: "", horarios: "", wsp: "", carta: "", instagram: "", beneficio: "", activo: true, orden: ((lista || []).length + 1) * 10 }); }
   function setF(k, v) { setForm(function (f) { var n = { ...f }; n[k] = v; return n; }); }
@@ -841,6 +860,24 @@ function PanelComerciosRed(props) {
     var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", "");
     if (m === null) return;
     guardarFila(n.id, "grupo_novedad_comercio", { ...limpiarNov(n), estado: "rechazada", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () { recargar(); ofrecerAviso((lista || []).find(function (x) { return x.id === n.comercio_id; }), "Hola! No pudimos aprobar tu novedad «" + n.titulo + "» en la comunidad de Grupo Nkt" + (m.trim() ? ": " + m.trim() : "") + ". Podés corregirla desde tu portal."); });
+  }
+  // Premios que ofrecen los comercios para el sorteo: al aprobar se crea el premio (de ese comercio); la fecha se ajusta en «Sorteos y premios».
+  function limpiarOferta(o) { var x = { ...o }; delete x.id; return x; }
+  function aprobarOferta(o) {
+    var pid = "prem_" + Date.now();
+    guardarFila(pid, "grupo_premio", { premio: o.premio, cond: o.cond || "", de_id: o.comercio_id, de_nombre: o.comercio_nombre, fecha_sorteo: o.fecha_sugerida || "", ronda: 1, activo: true, creado: new Date().toISOString(), oferta_id: o.id }).then(function (ok) {
+      if (!ok) { setMsg("No se pudo crear el premio. Probá de nuevo."); setTimeout(function () { setMsg(""); }, 4000); return; }
+      guardarFila(o.id, "grupo_oferta_premio", { ...limpiarOferta(o), estado: "aprobado", premio_id: pid, resuelto_at: new Date().toISOString() }).then(function () {
+        recargar(); setMsg("✓ Premio aprobado: ya figura en «Sorteos y premios»."); setTimeout(function () { setMsg(""); }, 4000);
+        ofrecerAviso((lista || []).find(function (x) { return x.id === o.comercio_id; }), "Hola! Aprobamos tu premio «" + o.premio + "» para el sorteo de la comunidad de Grupo Nkt 🎁. ¡Gracias por sumarte!");
+      });
+    });
+  }
+  function rechazarOferta(o) {
+    var m = window.prompt("Motivo del rechazo (lo ve el comercio en su portal):", ""); if (m === null) return;
+    guardarFila(o.id, "grupo_oferta_premio", { ...limpiarOferta(o), estado: "rechazado", motivo: m.trim(), resuelto_at: new Date().toISOString() }).then(function () {
+      recargar(); ofrecerAviso((lista || []).find(function (x) { return x.id === o.comercio_id; }), "Hola! No pudimos aprobar tu premio «" + o.premio + "» para el sorteo" + (m.trim() ? ": " + m.trim() : "") + ". Podés mandar otro desde tu portal.");
+    });
   }
   function darExtra(c) {
     if (!window.confirm("¿Habilitar 1 novedad extra esta semana para «" + c.nombre + "»?\n\nSe cobra aparte.")) return;
@@ -997,9 +1034,24 @@ function PanelComerciosRed(props) {
               {lista.map(function (c, i) { var r = resumenCanjes(canjes, c.id, 30); return (
                 <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid #14202A", fontSize: 12.5 }}>
                   <b style={{ color: "#F0EDE8" }}>{c.nombre}</b>
-                  <span style={{ color: "#B8C8D0", textAlign: "right" }}>{r.canjes} canje{r.canjes === 1 ? "" : "s"} · {r.socios} socio{r.socios === 1 ? "" : "s"}{r.volvieron > 0 ? " · " + r.volvieron + " volvió" + (r.volvieron === 1 ? "" : "ron") : ""}{r.gasto > 0 ? " · $" + Math.round(r.gasto).toLocaleString("es-AR") : ""}{(sociosQR[c.id] || {}).total ? " · 👥 " + sociosQR[c.id].total + " socio" + (sociosQR[c.id].total === 1 ? "" : "s") + " nuevo" + (sociosQR[c.id].total === 1 ? "" : "s") + " con su QR" : ""}</span>
+                  <span style={{ color: "#B8C8D0", textAlign: "right" }}>{r.canjes} canje{r.canjes === 1 ? "" : "s"} · {r.socios} socio{r.socios === 1 ? "" : "s"}{r.volvieron > 0 ? " · " + r.volvieron + " volvió" + (r.volvieron === 1 ? "" : "ron") : ""}{r.gasto > 0 ? " · $" + Math.round(r.gasto).toLocaleString("es-AR") : ""}{premiosDelMes(c.id, ofertas, premiosAdm) > 0 ? " · 🎁 " + premiosDelMes(c.id, ofertas, premiosAdm) + " premio" + (premiosDelMes(c.id, ofertas, premiosAdm) === 1 ? "" : "s") + " este mes" : " · ⚠️ sin premio este mes"}{(sociosQR[c.id] || {}).total ? " · 👥 " + sociosQR[c.id].total + " socio" + (sociosQR[c.id].total === 1 ? "" : "s") + " nuevo" + (sociosQR[c.id].total === 1 ? "" : "s") + " con su QR" : ""}</span>
                 </div>); })}
               <div style={{ fontSize: 10.5, color: "#6E7E88", marginTop: 6 }}>El gasto suma lo que cada comercio anotó al canjear (es opcional).</div>
+            </div>
+          )}
+          {ofertas.filter(function (o) { return o.estado === "pendiente"; }).length > 0 && (
+            <div style={{ background: "#0F1A10", border: "1px solid #3A7D4466", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#8FD19A", marginBottom: 6 }}>🎁 Premios ofrecidos para el sorteo ({ofertas.filter(function (o) { return o.estado === "pendiente"; }).length})</div>
+              {ofertas.filter(function (o) { return o.estado === "pendiente"; }).map(function (o) { return (
+                <div key={o.id} style={{ borderTop: "1px solid #1A2A1C", padding: "8px 0" }}>
+                  <div style={{ fontSize: 11.5, color: "#8FD1E6", fontWeight: 700 }}>🤝 {o.comercio_nombre}{o.fecha_sugerida ? " · sorteo sugerido el " + fechaLarga(o.fecha_sugerida) : ""}</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#F0EDE8", marginTop: 2 }}>{o.premio}</div>
+                  {o.cond && <div style={{ fontSize: 12.5, color: "#C8C8C8", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{o.cond}</div>}
+                  <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                    <button onClick={function () { aprobarOferta(o); }} style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "#3A7D44", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✅ Aprobar</button>
+                    <button onClick={function () { rechazarOferta(o); }} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #C1440E66", background: "none", color: "#E0714A", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Rechazar</button>
+                  </div>
+                </div>); })}
             </div>
           )}
           {novs.filter(function (n) { return n.estado === "pendiente"; }).length > 0 && (

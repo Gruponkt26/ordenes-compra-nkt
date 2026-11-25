@@ -1294,7 +1294,8 @@ export function GrupoNkt() {
       {modoPrueba && <div style={{ background: "#2A1A00", border: "1px solid #E0914A", color: "#E0914A", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, textAlign: "center", marginBottom: 14 }}>🧪 Modo prueba: lo que cargues acá no cuenta y lo podés borrar desde el panel.</div>}
       <div style={{ textAlign: "center", marginBottom: 22 }}>
         <img src="/icon-192.png" alt="Grupo Nkt" style={{ width: 112, height: 112, borderRadius: 24, display: "block", margin: "0 auto 8px" }} />
-        <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 6, lineHeight: 1.5 }}>{cfg.frase || "Tres lugares de Punta Alta, una misma comunidad."}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, marginTop: 6, color: "#F0EDE8" }}>Comunidad Grupo Nkt</div>
+        <div style={{ fontSize: 14, color: "#B8B8B8", marginTop: 4, lineHeight: 1.5 }}>{cfg.frase || "Tus lugares en Punta Alta"}</div>
       </div>
       {esParte ? (
         <div>
@@ -2236,7 +2237,7 @@ export function PanelComunidad() {
         {verDatos && (
           <div style={{ marginTop: 10 }}>
             <div style={{ fontSize: 11, color: "#8C8C8C", marginBottom: 4 }}>Frase de presentación</div>
-            <input value={cfg.frase} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, frase: v }; }); }} placeholder="Tres lugares de Punta Alta, una misma comunidad." style={sel} />
+            <input value={cfg.frase} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, frase: v }; }); }} placeholder="Tus lugares en Punta Alta" style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>Invitación que ve quien termina de opinar (qué se lleva si se suma)</div>
             <input value={cfg.gancho} onChange={function (e) { var v = e.target.value; setCfg(function (c) { return { ...c, gancho: v }; }); }} placeholder="Sumate y participá de los sorteos y beneficios del grupo." style={sel} />
             <div style={{ fontSize: 11, color: "#8C8C8C", margin: "6px 0 4px" }}>WhatsApp de administración (el botón «Sumá tu comercio» de la página abre este chat)</div>

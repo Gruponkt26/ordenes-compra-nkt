@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
 import { SURL, SH } from "./comun.js";
 import { PedirDelivery, SeguimientoPedido } from "./pedido_delivery.jsx";
+import JuegoTickets from "./juego_tickets.jsx";
 
 var URL_PUBLICA = "https://ordenes-compra-nkt.vercel.app";
 var LOCALES_GRUPO = [
@@ -1201,6 +1202,7 @@ export function GrupoNkt() {
   var [cupon, setCupon] = useState(null);
   var cuponRef = useRef(null); cuponRef.current = cupon;
   var [novedades, setNovedades] = useState([]);
+  var [bienvenidaCerrada, setBienvenidaCerrada] = useState(false);   // el regalo de bienvenida ya se vio y se cerró
   var [historial, setHistorial] = useState([]);   // todos los cupones de este cliente
   var [verMi, setVerMi] = useState(false);   // "Ya soy parte: ver mi cupón"
   var [wspVer, setWspVer] = useState("");
@@ -1562,6 +1564,8 @@ export function GrupoNkt() {
       {esParte ? (
         <div>
           <SeguimientoPedido key={segKey} locales={LOCALES_GRUPO} cfgLocales={cfg.locales} />
+          {/* Regalo de bienvenida: solo recién sumado (en esta visita), con los tickets encendidos. Siempre 1 ticket, una vez por WhatsApp. */}
+          {hecho === "ok" && cfg.ticketsActivo && cupon && !bienvenidaCerrada && <JuegoTickets key={"bv" + cupon.wsp} wsp={cupon.wsp} localId="" prueba={modoPrueba || !!cupon.prueba} bienvenida onListo={function () { setBienvenidaCerrada(true); }} />}
           {bCupon}
           {cfg.ticketsActivo && cupon && <TarjetaTickets wsp={cupon.wsp} premio={cfg.ticketsPremio} />}
           {cupon && <TarjetaOpinar historial={historial} conJuego={!!cfg.ticketsActivo} prueba={modoPrueba || !!cupon.prueba} />}

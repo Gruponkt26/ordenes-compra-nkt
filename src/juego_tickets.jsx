@@ -69,7 +69,9 @@ var CREMA = { fondo: "#F4ECDC", tinta: "#1D1A16", suave: "#6B6256", linea: "#E3D
 
 export default function JuegoTickets(props) {
   var wsp = props.wsp, localId = props.localId, prueba = !!props.prueba;
-  var idTicket = "tk_" + wsp + "_" + localId + "_" + diaClave();
+  // Regalo de bienvenida: una sola vez por WhatsApp (y por celular), siempre 1 ticket. Se muestra con la misma animación, pero NO es azar.
+  var bienvenida = !!props.bienvenida;
+  var idTicket = bienvenida ? "tk_" + wsp + "_bienvenida" : "tk_" + wsp + "_" + localId + "_" + diaClave();
   var [fase, setFase] = useState("cargando");   // cargando | ya | slide | barra | guardando | error | resultado
   var [n, setN] = useState(0);
   var [total, setTotal] = useState(null);
@@ -80,6 +82,8 @@ export default function JuegoTickets(props) {
 
   useEffect(function () {
     if (prueba) { setFase("slide"); return; }
+    // En este celular ya se entregó un regalo de bienvenida a otro WhatsApp: no se entrega otro.
+    if (bienvenida) { try { var w0 = localStorage.getItem("nkt_bienvenida"); if (w0 && w0 !== wsp) { setFase("ya"); return; } } catch (e) {} }
     leerPauta(idTicket).then(function (f) { setFase(f ? "ya" : "slide"); cargarTicketsSocio(wsp).then(setTotal); });
     return function () { cancelAnimationFrame(rafRef.current); zumbidoOff(); };
   }, []);
@@ -90,8 +94,9 @@ export default function JuegoTickets(props) {
 
   function guardar(cant) {
     if (prueba) return Promise.resolve(true);
-    var fila = { wsp: wsp, n: cant, mes: mesClave(), local: localId, fecha: new Date().toISOString(), origen: "opinion", opinion_id: props.opinionId || "" };
-    return guardarFila(idTicket, "grupo_ticket", fila);
+    var fila = { wsp: wsp, n: cant, mes: mesClave(), local: localId || "", fecha: new Date().toISOString(), origen: bienvenida ? "bienvenida" : "opinion", opinion_id: props.opinionId || "" };
+    if (bienvenida) { try { fila.disp = localStorage.getItem("nkt_dispositivo") || ""; } catch (e) {} }
+    return guardarFila(idTicket, "grupo_ticket", fila).then(function (ok) { if (ok && bienvenida) { try { localStorage.setItem("nkt_bienvenida", wsp); } catch (e) {} } return ok; });
   }
 
   // ─── deslizar para jugar ───
@@ -114,7 +119,7 @@ export default function JuegoTickets(props) {
     m.addEventListener("pointermove", pm); m.addEventListener("pointerup", soltar); m.addEventListener("pointercancel", soltar);
   }
   function jugar() {
-    var cant = sortear(); setN(cant);
+    var cant = bienvenida ? 1 : sortear(); setN(cant);
     sonido(ignicion);
     guardadoRef.current = guardar(cant);   // se guarda ya: cerrar la página no sirve para volver a tirar
     setTimeout(function () { setFase("barra"); }, 250);
@@ -157,6 +162,7 @@ export default function JuegoTickets(props) {
   var btnSon = <button onClick={alternarSonido} style={{ position: "absolute", top: 8, left: 10, background: "#fff", border: "1px solid #D8CDB6", color: "#4A4339", borderRadius: 999, padding: "3px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>{silencio ? "🔇 sin sonido" : "🔊 sonido"}</button>;
 
   if (fase === "cargando") return null;
+  if (fase === "ya" && bienvenida) return null;
   if (fase === "ya") return (
     <div style={tarj}>
       <div style={{ fontSize: 34 }}>🎟️</div>
@@ -168,9 +174,9 @@ export default function JuegoTickets(props) {
     <div style={tarj}>
       {btnSon}
       {prueba && <div style={{ fontSize: 11, color: "#B2420D", fontWeight: 700 }}>🧪 Modo prueba: no se guarda nada</div>}
-      <div style={{ fontSize: 40, marginTop: 14 }}>🎟️</div>
-      <div style={{ fontSize: 20, fontWeight: 800 }}>¡Ganaste una jugada!</div>
-      <div style={{ fontSize: 13.5, color: CREMA.suave, marginTop: 4, lineHeight: 1.4 }}>Deslizá y descubrí cuántos tickets sumás para el sorteo del mes.</div>
+      <div style={{ fontSize: 40, marginTop: 14 }}>{bienvenida ? "🎁" : "🎟️"}</div>
+      <div style={{ fontSize: 20, fontWeight: 800 }}>{bienvenida ? "¡Bienvenido/a a la comunidad!" : "¡Ganaste una jugada!"}</div>
+      <div style={{ fontSize: 13.5, color: CREMA.suave, marginTop: 4, lineHeight: 1.4 }}>{bienvenida ? "Tenés un regalo de bienvenida: deslizá y descubrí tu ticket para el sorteo del mes." : "Deslizá y descubrí cuántos tickets sumás para el sorteo del mes."}</div>
       <div ref={slideRef} style={{ position: "relative", height: 62, borderRadius: 31, background: "linear-gradient(90deg,#FBE6D6,#F6CFB2)", border: "2px solid #E8A07A", marginTop: 18, overflow: "hidden", touchAction: "none" }}>
         <div ref={relRef} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 0, background: "linear-gradient(90deg,#E8602A55,#E8602AAA)" }} />
         <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, color: "#B2420D", paddingLeft: 52, pointerEvents: "none" }}>Deslizá para jugar</div>
@@ -181,7 +187,7 @@ export default function JuegoTickets(props) {
   if (fase === "barra" || fase === "guardando") return (
     <div style={tarj}>
       {btnSon}
-      <div style={{ fontSize: 20, fontWeight: 800, marginTop: 20 }}>{fase === "guardando" ? "Guardando tus tickets…" : "¿Cuántos te tocan?"}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginTop: 20 }}>{fase === "guardando" ? "Guardando tus tickets…" : bienvenida ? "Tu regalo de bienvenida…" : "¿Cuántos te tocan?"}</div>
       <div style={{ fontSize: 13.5, color: CREMA.suave }}>{fase === "guardando" ? "Un segundo…" : "Mirá dónde frena…"}</div>
       <div style={{ position: "relative", height: 50, borderRadius: 25, background: "#ECE3D1", border: "2px solid #D8CDB6", margin: "18px 0 6px", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: "60%", background: "#E3D8C2" }} />
@@ -205,14 +211,16 @@ export default function JuegoTickets(props) {
   return (
     <div style={tarj}>
       {btnSon}
-      <div style={{ fontSize: 27, fontWeight: 800, marginTop: 28 }}>{n >= 5 ? "¡PREMIO MAYOR!" : n === 2 ? "¡Muy bien!" : "¡Sumaste!"}</div>
+      <div style={{ fontSize: 27, fontWeight: 800, marginTop: 28 }}>{bienvenida ? "¡Te regalamos un ticket!" : n >= 5 ? "¡PREMIO MAYOR!" : n === 2 ? "¡Muy bien!" : "¡Sumaste!"}</div>
       <div style={{ fontSize: 64, fontWeight: 900, color: CREMA.naranja, lineHeight: 1, margin: "6px 0" }}>+{n}</div>
       <div style={{ fontSize: 14, color: CREMA.suave }}>ticket{n > 1 ? "s" : ""} para el sorteo</div>
       <div style={{ display: "flex", gap: 7, justifyContent: "center", margin: "12px 0", flexWrap: "wrap" }}>
         {tks.map(function (k) { return <div key={k} style={{ width: 54, height: 38, borderRadius: 8, background: "linear-gradient(135deg,#E8602A,#C1440E)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🎟️</div>; })}
       </div>
       {!prueba && <div style={{ background: "#E6F3E8", border: "1px solid #3A7D4466", borderRadius: 14, padding: 11, color: "#2A6A36", fontWeight: 800 }}>Tus tickets este mes: {total ? total.mes : "…"}</div>}
-      <a href={"/grupo/" + (prueba ? "?prueba" : "")} style={{ display: "block", marginTop: 12, padding: 14, borderRadius: 14, background: CREMA.naranja, color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}>Ver mi pantalla de la comunidad</a>
+      {bienvenida
+        ? <button onClick={function () { if (props.onListo) props.onListo(); }} style={{ display: "block", width: "100%", marginTop: 12, padding: 14, borderRadius: 14, border: "none", background: CREMA.naranja, color: "#fff", fontFamily: "inherit", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>¡Listo! Ver mi cupón</button>
+        : <a href={"/grupo/" + (prueba ? "?prueba" : "")} style={{ display: "block", marginTop: 12, padding: 14, borderRadius: 14, background: CREMA.naranja, color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}>Ver mi pantalla de la comunidad</a>}
     </div>
   );
 }

@@ -85,10 +85,15 @@ h1{font-size:23px;margin:0 0 4px}.sub{color:#777;margin:0 0 14px;font-size:14px}
 </style></head><body><div class="wrap">
 <h1>Boceto · tickets por dejar una opinión</h1>
 <p class="sub">Probá las dos pantallas del celular. Al lado, las reglas. Es un borrador: todavía no está en la app. <b>Subí el volumen</b>: tiene sonido.</p>
-<div class="tabs"><button id="tab1" class="on" onclick="modo(1)">1 · Al dejar la opinión</button><button id="tab2" onclick="modo(2)">2 · Mi pantalla de la comunidad</button><span class="sep"></span><button id="fondo" onclick="alternarFondo()">☀️ Fondo claro</button></div>
+<div class="tabs"><button id="tab1" class="on" onclick="modo(1)">1 · Al dejar la opinión</button><button id="tab2" onclick="modo(2)">2 · Mi pantalla de la comunidad</button></div>
 <div class="cols">
   <div class="tel claro" id="tel"></div>
   <div class="notas">
+    <h3>Cómo se ve <span class="pill">decidido</span></h3>
+    <ul>
+      <li><b>El juego del sorteo</b> (¡Gracias!, deslizar, barra y resultado) va en <b>crema</b>, como las placas.</li>
+      <li><b>La pantalla de la comunidad</b> se queda <b>oscura</b>, como la página de hoy. Solo se le suma la tarjeta «Tus tickets».</li>
+    </ul>
     <h3>Cómo funciona</h3>
     <ul>
       <li>El socio escanea el QR del local y deja su opinión, como hoy.</li>
@@ -208,10 +213,9 @@ function melodia(n){
 function alternarSonido(){silencio=!silencio;if(silencio)zumbidoOff();document.querySelectorAll('.sonido').forEach(function(b){b.textContent=silencio?'🔇 sin sonido':'🔊 sonido'});if(!silencio)ping(880,.2,.12)}
 function btnSonido(){return '<button class="sonido" onclick="alternarSonido()">'+(silencio?'🔇 sin sonido':'🔊 sonido')+'</button>'}
 /* ---------- pantallas ---------- */
-function alternarFondo(){claro=!claro;tel.className='tel'+(claro?' claro':'');document.getElementById('fondo').textContent=claro?'☀️ Fondo claro':'🌙 Fondo oscuro'}
 function modo(m){document.getElementById('tab1').className=m===1?'on':'';document.getElementById('tab2').className=m===2?'on':'';m===1?pantalla(1):comunidad()}
 function comunidad(){
-  cancelAnimationFrame(raf);
+  cancelAnimationFrame(raf);tel.className='tel';   // la pantalla de la comunidad queda oscura, como la página de hoy
   tel.innerHTML=btnSonido()+'<div class="ctr" style="margin-top:22px"><div class="logo">GRUPO<br>NKT</div><div style="font-size:20px;font-weight:800;margin-top:6px">Comunidad Grupo Nkt</div><div class="mu">Tus lugares en Punta Alta</div></div>'+
   '<div class="cup"><div style="font-size:11px;color:#9a9a9a;letter-spacing:1.5px">TU CUPÓN</div><div class="big">10%</div><div class="cod">NKT-7QX2</div><div style="font-size:12px;color:#9fd5a8">Válido hasta el 30/12</div></div>'+
   '<div class="mis"><div class="n">'+total+'</div><div><b>🎟️ Tus tickets este mes</b><span>Entran al sorteo del mes. Sumá más dejando tu opinión en cualquier local.</span></div></div>'+
@@ -219,7 +223,7 @@ function comunidad(){
   '<div class="nov"><b>📣 Novedades</b><small>…acá siguen las novedades de siempre.</small></div>';
 }
 function pantalla(n){
-  cancelAnimationFrame(raf);
+  cancelAnimationFrame(raf);tel.className='tel claro';   // el juego del sorteo va en crema
   if(n===1){
     tel.innerHTML=btnSonido()+'<div class="paso">1 de 3</div><div class="ctr" style="margin-top:22px"><div class="logo">GRUPO<br>NKT</div><div class="gr">¡Gracias!</div><div class="mu">Tu opinión nos ayuda a mejorar.</div></div>'+
     '<div class="card ctr"><div style="font-size:42px">🎟️</div><div class="titulo">¡Ganaste una jugada!</div><div class="mu" style="margin-top:4px">Deslizá y descubrí cuántos tickets sumás para el sorteo del mes.</div>'+

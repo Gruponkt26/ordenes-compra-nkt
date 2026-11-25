@@ -22,6 +22,13 @@ Mandar uno solo. Si no contesta, dejar pasar unos días y no insistir más.
 
 > Hola [nombre], ¿pudiste ver la propuesta? Si tenés alguna duda te la respondo por acá. Y si preferís que lo hablemos por llamada, también se puede 🙂
 
+## 4 bis. Aviso a un comercio que ya está en la red: un premio por mes
+Cambiar `[nombre]` y pegar su link privado (botón 🔗 Link de Comunidad → Comercios amigos) donde dice `[link]`. Si el primer sorteo todavía no está aprobado, sumar «te avisamos cuándo arranca».
+
+> Hola [nombre]! En la Comunidad Grupo Nkt sumamos sorteos con tickets. Cada comercio amigo aporta al menos un premio por mes: lo cargás vos en tu portal (pestaña 🎁 Sorteos) y nosotros lo aprobamos. Tu portal: [link]. ¡Gracias!
+
+La versión larga (con el cartel de mostrador y la placa) está en la app, en Comunidad → Material para comercios.
+
 ## 5. Respuestas a las dudas más comunes
 
 **¿Cuánto sale?**

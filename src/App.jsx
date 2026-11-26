@@ -25882,6 +25882,7 @@ function diasJustificados(emp, mes, justificativos, conMarcas, hasta, vacD){
     if(j.empleado_id!==emp.id||j.estado!=="aprobado")return;
     var f=String(j.fecha||"").substring(0,10);
     if(f.slice(0,7)!==mes||(hasta&&f>hasta)||(conMarcas&&conMarcas[f])||(vacD&&vacD[f]!==undefined))return;
+    if(FERIADOS_AR[f])return;   // feriado: no se trabajó, así que la falta justificada no suma horas (el feriado se paga aparte)
     var t=turnoDe(emp,f);
     if(t&&!t.franco)out[f]=t.minutos||0;
   });

@@ -2149,6 +2149,7 @@ async function leerAmbito(amb) {
 export function MovimientoComunidad(props) {
   var [datos, setDatos] = useState(null);
   var [per, setPer] = useState("mes");
+  var [verBajas, setVerBajas] = useState(false);   // la lista de quiénes se fueron en el período elegido
   useEffect(function () { Promise.all([leerAmbito("comunidad"), leerAmbito("comunidad_baja")]).then(function (r) { setDatos({ miembros: r[0], bajas: r[1] }); }); }, []);
   var hoy = diaAR(new Date().toISOString());
   var hace7 = diaAR(new Date(Date.now() - 6 * 86400000).toISOString());
@@ -2207,6 +2208,33 @@ export function MovimientoComunidad(props) {
           })}
         </tbody>
       </table>
+      {(function () {
+        var lista = bajas.filter(function (b) { return enPeriodo(diaAR(b.fecha)); }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+        if (!datos) return null;
+        return (
+          <div style={{ marginTop: 8, borderTop: "1px solid #1E1E1E", paddingTop: 8 }}>
+            <div onClick={function () { setVerBajas(!verBajas); }} style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: "#E0714A" }}>{verBajas ? "▾" : "▸"} 🚪 Quiénes se fueron · {lista.length}</div>
+            {verBajas && (
+              <div style={{ marginTop: 6 }}>
+                {lista.length === 0 && <div style={{ fontSize: 11.5, color: "#6E6E6E" }}>Nadie se fue en este período.</div>}
+                {lista.map(function (b) {
+                  var l = LOCALES_GRUPO.find(function (x) { return x.id === b.fav; });
+                  return (
+                    <div key={b.id} style={{ padding: "6px 0", borderTop: "1px solid #161616", fontSize: 12.5 }}>
+                      <b style={{ color: "#F0EDE8" }}>{b.nombre || "Sin nombre"}</b>{l ? <span style={{ color: l.color, fontSize: 11 }}> · {l.emoji} {l.nombre}</span> : null}
+                      <div style={{ fontSize: 11, color: "#8C8C8C" }}>
+                        {b.entro ? "Se sumó el " + new Date(b.entro).toLocaleDateString("es-AR") + " · " : ""}se fue el {new Date(b.fecha).toLocaleDateString("es-AR")} · {b.motivo === "admin" ? "lo sacó administración" : (b.motivo || "sin motivo")}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>WhatsApp {b.wsp}</div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10, color: "#6E6E6E", marginTop: 4 }}>Solo figuran las bajas anotadas desde que existe este registro. Si alguien pidió que lo saquen, no le escribas.</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{ fontSize: 9.5, color: "#6E6E6E", marginTop: 6, lineHeight: 1.4 }}>El local es el que eligió cada cliente al sumarse. Las bajas se cuentan desde que se empezaron a anotar (cuando se saca a alguien de la lista). No incluye empleados ni pruebas.</div>
     </div>
   );

@@ -2,7 +2,7 @@
 // Rige desde CELULAR_BLOQUEO_DESDE. Se guarda en pautas (ámbito fichaje_dispositivo, id fdisp_<id del celular>):
 // {empleado_id, empleado_nombre, estado: "aprobado" | "pendiente", origen, desde}. La tablet del local (kiosco) y administración no se ven afectadas.
 // El primer celular de cada persona se aprueba solo; uno más queda «pendiente» hasta que administración lo apruebe.
-export var CELULAR_BLOQUEO_DESDE = "2026-11-26";
+export var CELULAR_BLOQUEO_DESDE = "2026-11-25";
 
 var MSG_AJENO = function (n) { return "🚫 Este celular está asociado a " + (n || "otro compañero") + ". No se puede marcar con el celular de un compañero.\n\nSi es tu celular, pedile a administración que lo libere."; };
 var MSG_PENDIENTE = "⏳ Este celular nuevo está esperando que administración lo apruebe.\n\nMientras tanto marcá con la tablet del local o avisale a administración.";

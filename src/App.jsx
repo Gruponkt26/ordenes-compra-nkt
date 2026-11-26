@@ -10870,11 +10870,13 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
   var [percIibbF,setPercIibbF]=useState("");
   // Tipos de factura: alícuota de IVA y porcentajes de percepción sobre el neto. "auto" = como siempre (21 % o 10,5 % según el proveedor).
   var TIPOS_FACT=[["auto","Automático (21 % o 10,5 % según el proveedor)"],["21","Solo IVA 21 %"],["105","Solo IVA 10,5 %"],["21pp","IVA 21 % + percepción IVA 3 % + percepción IIBB 4 %"],["105pp","IVA 10,5 % + percepción IVA 3 % + percepción IIBB 4 %"],["otro","Otro (porcentajes a mano)"]];
+  function esCooperativaF(){ return /cooperativa/i.test([form.concepto,form.subramo,form.detalle,area].join(" ")); }
   function tasasTipo(){
     if(tipoFact==="21")return {a:0.21,pi:0,pb:0};
     if(tipoFact==="105")return {a:0.105,pi:0,pb:0};
     if(tipoFact==="21pp")return {a:0.21,pi:0.03,pb:0.04};
     if(tipoFact==="105pp")return {a:0.105,pi:0.03,pb:0.04};
+    if(tipoFact==="auto"&&esCooperativaF())return {a:0.21,pi:0.03,pb:0.04};   // cooperativa: IVA 21 % + percepción IVA 3 % + percepción IIBB 4 %, salvo que se elija otro tipo o se carguen los importes
     if(tipoFact==="otro")return {a:(parseFloat(String(pctOtro.iva).replace(",","."))||0)/100,pi:(parseFloat(String(pctOtro.pIva).replace(",","."))||0)/100,pb:(parseFloat(String(pctOtro.pIibb).replace(",","."))||0)/100};
     return null;
   }
@@ -11265,7 +11267,7 @@ function PanelFormEgreso({area, gastos, gastosLocalActual, todosGastos, usuario,
                     var R=function(n){return "$"+(Math.round(n*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
                     return <div style={{fontSize:11,color:"#B8D8BC",marginTop:7,lineHeight:1.6}}>Neto <b>{R(d.neto)}</b> · IVA {(d.a*100).toString().replace(".",",")} % <b>{R(d.iva)}</b>{(d.pI>0||d.pB>0)?<span> · perc. IVA <b>{R(d.pI)}</b> · perc. IIBB <b>{R(d.pB)}</b></span>:null}<div style={{fontSize:10,color:"#7E7E7E"}}>{d.exacto?"Con los importes exactos del ticket.":"Calculado con el tipo de factura."} Crédito de IVA del mes: {R(d.iva+d.pI)}.</div></div>;
                   })()}
-                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Si el ticket trae los importes de las percepciones, cargalos: mandan sobre el cálculo. Si queda en «Automático» y no cargás nada, se calcula como siempre.</div>
+                  <div style={{fontSize:10,color:"#7E7E7E",marginTop:5,lineHeight:1.5}}>Si el ticket trae los importes de las percepciones, cargalos: mandan sobre el cálculo. Si queda en «Automático» y no cargás nada, se calcula como siempre{esCooperativaF()?" (en una cooperativa: IVA 21 % + percepción IVA 3 % + percepción IIBB 4 %)":""}.</div>
                 </div>
               )}
             </div>

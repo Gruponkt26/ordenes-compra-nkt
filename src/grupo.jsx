@@ -2225,7 +2225,12 @@ export function MovimientoComunidad(props) {
                       <div style={{ fontSize: 11, color: "#8C8C8C" }}>
                         {b.entro ? "Se sumó el " + new Date(b.entro).toLocaleDateString("es-AR") + " · " : ""}se fue el {new Date(b.fecha).toLocaleDateString("es-AR")} · {b.motivo === "admin" ? "lo sacó administración" : (b.motivo || "sin motivo")}
                       </div>
-                      <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>WhatsApp {b.wsp}</div>
+                      <div style={{ fontSize: 10.5, color: "#6E6E6E" }}>WhatsApp {b.wsp}
+                        <span onClick={function () {
+                          if (!window.confirm("¿Borrar esta baja del registro? Es solo para sacar pruebas: no vuelve.")) return;
+                          borrarFilas([b.id]).then(function (ok) { if (!ok) { window.alert("No se pudo borrar. Probá de nuevo."); return; } setDatos({ miembros: datos.miembros, bajas: datos.bajas.filter(function (x) { return x.id !== b.id; }) }); });
+                        }} style={{ marginLeft: 10, color: "#E0714A", cursor: "pointer", fontWeight: 700 }}>🗑️ Borrar</span>
+                      </div>
                     </div>
                   );
                 })}

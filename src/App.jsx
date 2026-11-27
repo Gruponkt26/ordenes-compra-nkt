@@ -28786,6 +28786,7 @@ function PanelIVA(p) {
                       <label style={lblc}>Alícuota de IVA</label>
                       <select value={formCred.alic||"0.21"} onChange={function(e){setCalcIVA("alic",e.target.value);}} style={INPc}>
                         <option value="0.21">21%</option>
+                        <option value="0.24">21% + percepción de IVA 3% (el crédito suma las dos)</option>
                         <option value="0.105">10,5%</option>
                       </select>
                     </div>

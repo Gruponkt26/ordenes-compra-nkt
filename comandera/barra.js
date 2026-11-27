@@ -61,6 +61,7 @@ const cfg = {
   usb: opcion("usb", process.env.COMANDERA_USB || (tiene("usb-guardada") ? impresoraGuardada() : "")),
 };
 const NOMBRES = { l1: "El Bodegon NKT", l2: "Kusama", l3: "Colantonio's" };
+const CORTOS = { l1: "BODEGON", l2: "KUSAMA", l3: "COLANTONIO'S" };
 // Dirección que sale en el ticket de control.
 const DIRECCIONES = { l1: "Villanueva 35 Punta Alta", l2: "Mitre 677 Punta Alta", l3: "Humberto 376 Punta Alta" };
 
@@ -95,7 +96,8 @@ function ticketDe(job) {
   return {
     tipo: control ? "CONTROL" : (cocina ? "COCINA" : "BARRA"),
     nota: notas.length ? notas : undefined,
-    local: limpiar(job.titulo || NOMBRES[job.local] || ""),
+    // Con la comandera compartida entre locales (sin --local) el encabezado lleva el local: "KUSAMA - Mesa 12". Con --local queda como siempre.
+    local: limpiar((!LOCAL && CORTOS[job.local] ? CORTOS[job.local] + " - " : "") + (job.titulo || NOMBRES[job.local] || "")),
     numero: job.numero || undefined,
     hora: fechaHora(job.at),
     mozo: limpiar(job.mozo || ""),
@@ -208,7 +210,7 @@ if (tiene("listar")) {
   listarImpresorasWindows().then((l) => { console.log("Impresoras instaladas en esta PC:\n" + l.map((x) => "  " + x).join("\n") + "\n\nUsá el nombre exacto con --usb \"NOMBRE\"."); })
     .catch((e) => { console.error(e.message); process.exit(1); });
 } else if (tiene("demo")) {
-  const demo = { local: LOCAL || "l1", tipo: "mesa", titulo: "Mesa 12 · Salón", numero: 7, at: new Date().toISOString(), mozo: "Prueba",
+  const demo = { local: process.env.DEMO_LOCAL || LOCAL || "l1", tipo: "mesa", titulo: "Mesa 12 · Salón", numero: 7, at: new Date().toISOString(), mozo: "Prueba",
     items: [{ cant: 2, nombre: "Cerveza IPA 500cc" }, { cant: 1, nombre: "Fernet con coca", nota: "sin hielo" }, { cant: 3, nombre: "Gaseosa línea Coca-Cola 1,5 litros" }] };
   const t = ticketDe(demo);
   if (SIMULAR) { mostrar(t); process.exit(0); }

@@ -28754,8 +28754,12 @@ function PanelIVA(p) {
                 setFormCred(function(f){
                   var n={...f}; n[k]=v;
                   var t=parseFloat(n.total)||0, a=parseFloat(n.alic||"0.21");
-                  // "0.28" = 21 % + percepción de IVA 3 % + percepción de IIBB 4 %: el crédito de IVA es solo el IVA y su percepción; el IIBB se carga aparte.
-                  if(t>0)n.monto=String(Math.round((a>0.27?t*0.24/1.28:(t-t/(1+a)))*100)/100);
+                  // "0.28" = 21 % + percepción de IVA 3 % + percepción de IIBB (por defecto 4 %): el crédito de IVA es el IVA con su percepción y el IIBB se carga como su propio crédito.
+                  n.iibbCalc=0;
+                  if(t>0&&a>0.27){
+                    var pb=(parseFloat(String(n.pibb==null||n.pibb===""?"4":n.pibb).replace(",","."))||0)/100, neto=t/(1.24+pb);
+                    n.monto=String(Math.round(neto*0.24*100)/100); n.iibbCalc=Math.round(neto*pb*100)/100;
+                  } else if(t>0)n.monto=String(Math.round((t-t/(1+a))*100)/100);
                   return n;
                 });
               }
@@ -28763,7 +28767,10 @@ function PanelIVA(p) {
                 var monto=parseFloat(formCred.monto)||0;
                 if(monto<=0){alert("Cargá el monto de IVA, mayor a cero.");return;}
                 if(!/^\d{4}-\d{2}$/.test(formCred.mes)){alert("Elegí el mes en que se computa.");return;}
-                p.onSaveCredito({id:formCred.id||("credfisc_"+Date.now()),cuit:formCred.cuit,mes:formCred.mes,monto:monto,detalle:formCred.detalle.trim(),fecha_factura:formCred.fecha_factura||""});
+                var idNuevo=Date.now();
+                p.onSaveCredito({id:formCred.id||("credfisc_"+idNuevo),cuit:formCred.cuit,mes:formCred.mes,monto:monto,detalle:formCred.detalle.trim(),fecha_factura:formCred.fecha_factura||""});
+                // Con la opción de IIBB, la percepción de IIBB queda cargada también como su propio crédito (solo en un crédito nuevo).
+                if(!formCred.id&&parseFloat(formCred.alic)>0.27&&formCred.iibbCalc>0)GUARDAR_CRED_IIBB({id:"credibb_"+idNuevo,cuit:formCred.cuit,mes:formCred.mes,monto:formCred.iibbCalc,detalle:"Percepción IIBB · "+(formCred.detalle.trim()||"factura")});
                 setFormCred(null);
               }
               return(
@@ -28788,10 +28795,21 @@ function PanelIVA(p) {
                       <select value={formCred.alic||"0.21"} onChange={function(e){setCalcIVA("alic",e.target.value);}} style={INPc}>
                         <option value="0.21">21%</option>
                         <option value="0.24">21% + percepción de IVA 3% (el crédito suma las dos)</option>
-                        <option value="0.28">21% + percepción de IVA 3% + percepción de IIBB 4% (acá va solo el IVA)</option>
+                        <option value="0.28">21% + percepción de IVA 3% + percepción de IIBB (carga las dos)</option>
                         <option value="0.105">10,5%</option>
                       </select>
                     </div>
+                    {parseFloat(formCred.alic)>0.27&&(
+                      <div style={{gridColumn:"1 / -1"}}>
+                        <label style={lblc}>Percepción de IIBB (%) sobre el neto</label>
+                        <input type="number" step="0.01" value={formCred.pibb==null?"4":formCred.pibb} onChange={function(e){setCalcIVA("pibb",e.target.value);}} style={INPc}/>
+                        {parseFloat(formCred.total)>0&&(function(){
+                          var t=parseFloat(formCred.total), pb=(parseFloat(String(formCred.pibb==null||formCred.pibb===""?"4":formCred.pibb).replace(",","."))||0)/100, neto=t/(1.24+pb);
+                          var R=function(n){return "$"+(Math.round(n*100)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});};
+                          return <div style={{fontSize:11,color:"#B8D8BC",marginTop:6,lineHeight:1.6}}>Neto <b>{R(neto)}</b> · IVA 21 % <b>{R(neto*0.21)}</b> · perc. IVA 3 % <b>{R(neto*0.03)}</b> · perc. IIBB <b>{R(neto*pb)}</b><div style={{fontSize:10,color:"#7E7E7E"}}>Al guardar: crédito de IVA {R(neto*0.24)} y crédito de IIBB {R(neto*pb)}.</div></div>;
+                        })()}
+                      </div>
+                    )}
                     <div>
                       <label style={lblc}>IVA de la factura ($)</label>
                       <input type="number" placeholder="0" value={formCred.monto} onChange={function(e){setC("monto",e.target.value);}} style={INPc}/>

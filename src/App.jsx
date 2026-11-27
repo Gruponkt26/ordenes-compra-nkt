@@ -15219,7 +15219,7 @@ function BloquesIIBBPorCuit(props){
                     {linea("Ventas sin IVA (efectivo + electrónico)",base,"#C8C8C8")}
                     {linea("IIBB devengado ("+(alic*100).toFixed(1).replace(".",",")+"%)",devengado,"#E0714A")}
                     {linea("Retenido por los bancos (SIRCREB "+pctIIBB()+"%)",o.iibbRetenido,"#4C9A5A",true)}
-                    {o.iibbAFavor>0.5&&linea("Percepciones Coca Cola / Pepsi / La Serenísima",o.iibbAFavor,"#4C9A5A",true)}
+                    {o.iibbAFavor>0.5&&linea("Percepciones (Coca Cola, Pepsi, La Serenísima, cooperativas y las cargadas en Egresos)",o.iibbAFavor,"#4C9A5A",true)}
                     {extra>0.5&&linea("IIBB a favor cargado a mano (percepciones)",extra,"#4C9A5A",true)}
                     <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #1A1A1A",marginTop:4,paddingTop:5,fontSize:13,fontWeight:800}}>
                       <span style={{color:saldo>0?"#E0714A":"#4C9A5A"}}>{saldo>0?"IIBB a pagar":"Saldo a favor"}</span>

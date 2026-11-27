@@ -2031,6 +2031,43 @@ function mozosDeLocal(empleados, localId) {
       return ia - ib || String(a.nombre).localeCompare(String(b.nombre));
     });
 }
+// Responsable de caja: quién abre o cierra el turno. Lista a todos los empleados activos del local (cualquier puesto) y deja escribir a alguien que no esté.
+function ElegirResponsable(props) {
+  var color = props.color, lista = props.lista || [];
+  var [otro, setOtro] = useState("");
+  var sectores = [];
+  lista.forEach(function(m) { var k = m.categoria || "Otro"; if (sectores.indexOf(k) < 0) sectores.push(k); });
+  return (
+    <div onClick={props.onCancelar} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div onClick={function(e) { e.stopPropagation(); }} style={{ background:"#111", border:"1px solid "+color+"55", borderRadius:14, padding:"16px", width:"100%", maxWidth:420, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ fontSize:15, fontWeight:800, color:"#F0EDE8", marginBottom:3 }}>🔑 {props.titulo}</div>
+        <div style={{ fontSize:11, color:"#777", marginBottom:12 }}>Queda anotado como responsable de la caja.</div>
+        {sectores.map(function(sec) {
+          return (
+            <div key={sec} style={{ marginBottom:11 }}>
+              <div style={{ fontSize:9, color:"#666", textTransform:"uppercase", letterSpacing:1.5, marginBottom:6 }}>{sec}</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {lista.filter(function(m) { return (m.categoria || "Otro") === sec; }).map(function(m) {
+                  return <button key={m.id} onClick={function() { props.onElegir(m.nombre); }}
+                    style={{ padding:"10px 14px", borderRadius:9, border:"1px solid #2A2A2A", background:"#161616", color:"#DDD", fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, cursor:"pointer" }}>{m.nombre}</button>;
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {lista.length === 0 && <div style={{ fontSize:12, color:"#8C8C8C", marginBottom:10 }}>No hay empleados cargados en este local: escribí el nombre.</div>}
+        <div style={{ borderTop:"1px solid #222", paddingTop:10, marginTop:4 }}>
+          <div style={{ fontSize:10, color:"#8C8C8C", textTransform:"uppercase", marginBottom:5 }}>Otra persona (que no está en la lista)</div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input value={otro} onChange={function(e) { setOtro(e.target.value); }} placeholder="Nombre y apellido" style={{ ...INP, flex:1 }} />
+            <button onClick={function() { if (otro.trim()) props.onElegir(otro.trim()); }} disabled={!otro.trim()} style={{ padding:"9px 14px", borderRadius:8, border:"none", background:otro.trim() ? color : "#2A2A2A", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>Listo</button>
+          </div>
+        </div>
+        <button onClick={props.onCancelar} style={{ ...GH, width:"100%", padding:"9px", fontSize:11, marginTop:10 }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
 // ¿Quién toma el pedido? Se pregunta al abrir una mesa, un delivery o un mostrador.
 // ¿Cuántas personas vienen a la mesa? Se pregunta al abrirla y se puede corregir después desde las opciones de la mesa.
 function ElegirPersonas(props) {
@@ -3693,6 +3730,9 @@ export default function PanelComandas(p) {
   var [verCocina, setVerCocina] = useState(false);   // la pantalla de cocina, a pantalla completa dentro de Comandas
   var [turnos, setTurnos] = useState(null);          // null = todavía no se leyó
   var [abriendoTurno, setAbriendoTurno] = useState(false);
+  var [eligeResp, setEligeResp] = useState(null);   // "abrir" | "cerrar": se pregunta quién es el responsable de caja
+  var responsables = (p.empleados || []).filter(function(e) { return e.activo !== false && e.local === localId && e.nombre; })
+    .sort(function(a, b) { return String(a.categoria || "").localeCompare(String(b.categoria || "")) || String(a.nombre).localeCompare(String(b.nombre)); });
   var [fechaTurno, setFechaTurno] = useState("");
   var turnoActual = (turnos || []).find(function(t) { return t.estado === "abierto"; }) || null;
   // El día de las ventas es el del turno abierto: así lo cobrado cae en el cierre de esa fecha.
@@ -4075,12 +4115,18 @@ export default function PanelComandas(p) {
     alert(turnos === null ? "Todavía se está leyendo el turno, probá de nuevo en un segundo." : "El turno está cerrado. Primero hay que abrir el turno.");
     return false;
   }
+  // Abrir y cerrar el turno piden primero quién es el responsable de caja (obligatorio); recién ahí se guarda.
   function abrirTurno() {
     var f = fechaTurno;
     if (!f) return;
     var previo = (turnos || []).find(function(t) { return t.fecha === f; });
     if (previo && !window.confirm("El " + f.split("-").reverse().join("/") + " ya tuvo un turno" + (previo.estado === "cerrado" ? " cerrado" : "") + ". ¿Reabrirlo?")) return;
-    var t = { local: localId, fecha: f, estado: "abierto", abierto_at: new Date().toISOString(), abierto_por: usuario, cerrado_at: null, cerrado_por: null };
+    setEligeResp("abrir");
+  }
+  function abrirTurnoCon(resp) {
+    var f = fechaTurno;
+    if (!f) return;
+    var t = { local: localId, fecha: f, estado: "abierto", abierto_at: new Date().toISOString(), abierto_por: usuario, abierto_responsable: resp, cerrado_at: null, cerrado_por: null };
     setTurnos(function(prev) { return [t].concat((prev || []).filter(function(x) { return x.fecha !== f; })); });
     setAbriendoTurno(false);
     sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar la apertura del turno."); });
@@ -4092,7 +4138,10 @@ export default function PanelComandas(p) {
       return;
     }
     if (!window.confirm("¿Cerrar el turno del " + turnoActual.fecha.split("-").reverse().join("/") + "?\n\nDespués no se pueden abrir cuentas nuevas hasta abrir otro turno.")) return;
-    var t = { ...turnoActual, estado: "cerrado", cerrado_at: new Date().toISOString(), cerrado_por: usuario };
+    setEligeResp("cerrar");
+  }
+  function cerrarTurnoCon(resp) {
+    var t = { ...turnoActual, estado: "cerrado", cerrado_at: new Date().toISOString(), cerrado_por: usuario, cerrado_responsable: resp };
     setTurnos(function(prev) { return (prev || []).map(function(x) { return x.fecha === t.fecha ? t : x; }); });
     sbGuardarTurno(t).then(function(ok) { if (!ok) alert("No se pudo guardar el cierre del turno."); });
   }
@@ -4260,7 +4309,7 @@ export default function PanelComandas(p) {
         turnoActual ? (
           <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", background:"#0E1F14", border:"1px solid #3A7D4466", borderRadius:10, padding:"10px 12px", marginBottom:10 }}>
             <span style={{ fontSize:13, fontWeight:800, color:"#4C9A5A" }}>🟢 Turno abierto{practica ? " (práctica)" : ""}</span>
-            <span style={{ fontSize:12, color:"#C8C8C8", flex:1, minWidth:150 }}>Día {turnoActual.fecha.split("-").reverse().join("/")} · desde las {horaSeg(turnoActual.abierto_at).slice(0, 5)} · {turnoActual.abierto_por}</span>
+            <span style={{ fontSize:12, color:"#C8C8C8", flex:1, minWidth:150 }}>Día {turnoActual.fecha.split("-").reverse().join("/")} · desde las {horaSeg(turnoActual.abierto_at).slice(0, 5)} · {turnoActual.abierto_por}{turnoActual.abierto_responsable ? " · 🔑 responsable: " + turnoActual.abierto_responsable : ""}</span>
             {verInforme && <button onClick={cerrarTurno} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #C1440E", background:"#C1440E22", color:"#E0714A", fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:800, cursor:"pointer" }}>⏹ Cerrar turno</button>}
           </div>
         ) : (
@@ -4414,6 +4463,9 @@ export default function PanelComandas(p) {
         onElegir={function(n) { var f = eligePersonas.alElegir; setEligePersonas(null); f(n); }}
         onOmitir={function() { var f = eligePersonas.alElegir; setEligePersonas(null); f(null); }}
         onCancelar={function() { setEligePersonas(null); }} />}
+      {eligeResp && <ElegirResponsable lista={responsables} color={color} titulo={eligeResp === "abrir" ? "¿Quién abre la caja?" : "¿Quién cierra la caja?"}
+        onElegir={function(nombre) { var q = eligeResp; setEligeResp(null); if (q === "abrir") abrirTurnoCon(nombre); else cerrarTurnoCon(nombre); }}
+        onCancelar={function() { setEligeResp(null); }} />}
       {eligeMozo && <ElegirMozo mozos={mozos} color={color} ultimo={ultimoMozo} usuario={usuario} titulo={eligeMozo.titulo}
         onElegir={function(nombre) { var f = eligeMozo.alElegir; setEligeMozo(null); setUltimoMozo(nombre); f(nombre); }}
         onCancelar={function() { setEligeMozo(null); }} />}

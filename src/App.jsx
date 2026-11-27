@@ -13947,6 +13947,12 @@ function PanelFichar(p){
           </div>
         );
       })()}
+      {soyYo&&(
+        <div style={{background:"#1A0D0A",border:"1px solid #C1440E88",borderRadius:12,padding:"11px 13px",marginBottom:12,fontSize:12,color:"#F0C8B8",lineHeight:1.6}}>
+          <b style={{color:"#FF8A5C"}}>⚠️ Aviso sobre las opiniones de clientes</b><br/>
+          Los colaboradores <b>no pueden dejar opiniones</b> en el QR de los locales para sumar puntos a la competencia. Esas opiniones <b>no son válidas</b>: no se cuentan y, además, <b>se descuentan puntos</b> al local.
+        </div>
+      )}
       {soyYo&&p.onTurnoDia&&(function(){
         var hoyF=fechaLocal(), ov=TURNOS_DIA[soyYo.id+"|"+hoyF]; if(ov&&!ov.desde)ov=null;
         var INPh={padding:"9px 11px",borderRadius:8,border:"1px solid #2A2A2A",background:"#111",color:"#F0EDE8",fontFamily:"'Inter',sans-serif",fontSize:13,width:"100%",boxSizing:"border-box"};

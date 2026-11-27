@@ -28754,7 +28754,8 @@ function PanelIVA(p) {
                 setFormCred(function(f){
                   var n={...f}; n[k]=v;
                   var t=parseFloat(n.total)||0, a=parseFloat(n.alic||"0.21");
-                  if(t>0)n.monto=String(Math.round((t-t/(1+a))*100)/100);
+                  // "0.28" = 21 % + percepción de IVA 3 % + percepción de IIBB 4 %: el crédito de IVA es solo el IVA y su percepción; el IIBB se carga aparte.
+                  if(t>0)n.monto=String(Math.round((a>0.27?t*0.24/1.28:(t-t/(1+a)))*100)/100);
                   return n;
                 });
               }
@@ -28787,6 +28788,7 @@ function PanelIVA(p) {
                       <select value={formCred.alic||"0.21"} onChange={function(e){setCalcIVA("alic",e.target.value);}} style={INPc}>
                         <option value="0.21">21%</option>
                         <option value="0.24">21% + percepción de IVA 3% (el crédito suma las dos)</option>
+                        <option value="0.28">21% + percepción de IVA 3% + percepción de IIBB 4% (acá va solo el IVA)</option>
                         <option value="0.105">10,5%</option>
                       </select>
                     </div>

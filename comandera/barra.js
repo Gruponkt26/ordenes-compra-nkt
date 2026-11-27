@@ -66,7 +66,8 @@ const CORTOS = { l1: "BODEGON", l2: "KUSAMA", l3: "COLANTONIO'S" };
 const DIRECCIONES = { l1: "Villanueva 35 Punta Alta", l2: "Mitre 677 Punta Alta", l3: "Humberto 376 Punta Alta" };
 
 // La impresora no entiende los símbolos fuera del abecedario con acentos: se cambian por algo que sí se imprime.
-const limpiar = (t) => String(t || "").replace(/[·•]/g, "-").replace(/[→»]/g, ">").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+// Los emojis (🪑, 🥤…) no existen en la impresora y salían como "?": se sacan, y los acentos y la ñ se conservan.
+const limpiar = (t) => String(t || "").replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, "").replace(/\s{2,}/g, " ").trim().replace(/[·•]/g, "-").replace(/[→»]/g, ">").replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
 const dos = (n) => String(n).padStart(2, "0");
 // Fecha y hora de la comanda (hora del local, la de esta PC): 21/11/2026 09:24. Sale en todas: mesa, mostrador y delivery.
 const fechaHora = (iso) => { try { const d = new Date(iso); if (isNaN(d.getTime())) return ""; return dos(d.getDate()) + "/" + dos(d.getMonth() + 1) + "/" + d.getFullYear() + " " + dos(d.getHours()) + ":" + dos(d.getMinutes()); } catch (e) { return ""; } };
